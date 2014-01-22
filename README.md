@@ -38,11 +38,17 @@ GryEnergy (From 0 to 100)
 
 
 cloak_stop // used to prevend using of NW bools, because of optimization
+
 cloak_start
+
 armor_start
+
 speed_start
+
 strenght_start
+
 gry_spawn
+
 gry_jump // used to fix problems, you'll don't need it
 
 
@@ -57,33 +63,11 @@ gry_jump // used to fix problems, you'll don't need it
   Credits     
 ======
 
-////////////ExtReM-Team.com////////////
+Lapin : All the coding and shits
 
-/// Version : Well, i have no idea  ///
-/// Edition : Official              ///
-/// Developer : [ExtReM] Lapin      ///
-/////////////HELP-FAQ//////////////////
-/// How to open the menu ? -> Bind a///
-/// key to +crysishud (guide on the ///
-/// workshop page)                  ///
-///          -------------          ///
-/// Wow such lags. -> That's not a  ///
-/// question and buy a new PC       ///
-///          -------------          ///
-/// I found a bug -> That's still   ///
-/// not a question, tell me what it ///
-/// is on the workshop page of the  ///
-/// addon                           ///
-///                                 ///
-/////////////THANKS////////////////////
-/// Carl Mcgee : Working on         ///
-/// GryEngine models-map            ///
-///          -------------          ///
-/// Vuthakral Darastrix : Ideas and ///
-/// his work on the materials       ///
-///          -------------          ///
-/// The community : For the ideas   ///
-/// AND the support !               ///
-///          -------------          ///
-/// Kids : For spamming me on steam ///
+Carl Mcgee : Working on GryEngine and models-map 
+
+Vuthakral Darastrix : Ideas and his work on the materials  
+
+
 
