@@ -1,0 +1,17 @@
+"Refract"
+{
+
+
+ 	"$model" 1
+ 	"$refractamount" ".015"
+ 	"$bluramount" "0"
+	"$scale" "[1 1]"
+ 	"$dudvmap" "cloak/organic"
+ 	"$normalmap" "cloak/organic_ddn"
+	"$phongexponenttexture" "cloak/organic_ddndif"
+	"$bumpframe" "0"
+	"$translucent" "1"
+
+	"$forcerefract" 1
+	"$nofog" "1"
+}

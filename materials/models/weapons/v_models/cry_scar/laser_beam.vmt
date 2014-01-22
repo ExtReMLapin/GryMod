@@ -1,0 +1,19 @@
+"UnlitGeneric"
+{
+ "$basetexture" "models/weapons/v_models/cry_scar/laser_beam"
+ "$additive" 1
+ "$model" 1
+ "$nocull" 1
+ "$selfillum" 1
+ "$selfillumtint" "[255 0 0]"
+
+ "Proxies"
+{
+ "AnimatedTexture"
+{
+	"animatedtexturevar" "$basetexture"
+	"animatedtextureframenumvar" "$frame"
+	"animatedtextureframerate" 30.00
+	}
+    }
+}

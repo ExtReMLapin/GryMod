@@ -1,0 +1,11 @@
+"AddonInfo"
+
+{
+	"name"		"GryMod"
+	"version"	"FINAL"
+	"up_date"	""
+	"author_name"	"ExtReM Lapin"
+	"author_email"	"contact@extrem-team.com"
+	"author_url"	""
+	"info"		"Wow such crysis"
+}

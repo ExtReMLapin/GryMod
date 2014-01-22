@@ -1,0 +1,12 @@
+{
+	"title"		:	"GryMod",
+	"type"		:	"gamemode",
+	"tags"		:	[ "fun", "realism" ],
+	"ignore"	:
+	[
+		"*.psd",
+		"*.vcproj",
+		"*.svn*"
+	]
+}
+

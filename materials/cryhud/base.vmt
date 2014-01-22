@@ -1,0 +1,35 @@
+
+
+
+"UnlitGeneric"
+{
+	"$basetexture" "cryhud/base"
+	"$nolod" 1
+	"$translucent" 1
+	"$vertexalpha" 1
+
+	$distancealpha	1
+	
+	$softedges		1
+	$edgesoftnessstart	.8
+	$edgesoftnessend	.6
+	$scaleedgesoftnessbasedonscreenres 2
+	
+	$glow		0
+	$glowcolor	"[1 1 1]"
+	$glowalpha	.9
+	$glowstart	.1
+	$glowend	0.01
+	//$glowx	.98
+	//$glowy	.98
+
+
+	$no_fullbright	1
+	$ignorez	1
+
+	"$vertexcolor" 1
+}
+
+
+
+

@@ -1,0 +1,25 @@
+"VertexLitGeneric"
+{
+	"$baseTexture" 		"models\weapons\v_models\cry_scar\scar"
+	"$bumpmap" 		"models\weapons\v_models\cry_scar\scar_normal"
+	"$phongexponenttexture" "models\weapons\v_models\cry_scar\scar_exp"
+
+	"$rimlight" "1"
+	"$rimlightexponent" "44"	
+//	"$rimlightboost" "0.2"
+	"$phong" 		"1"
+	"$phongexponent" 	"100"
+	"$phongboost" "25"
+	"$phongfresnelranges" "[2 2 2]"
+	"$phongalbedotint" "1"
+	"$normalmapalphaenvmapmask"	"1"
+	"$envmap"			"Cubemap/hdr"
+	"$envmapcontrast" 		"8"
+	"$envmapsaturation" 		"0.8"
+	"$envmaptint" 			"[ 0.3 0.3 0.3 ]"
+        "$ambientocclusion"  "1"
+        "$AmbientOcclColor"  "[ .3 .3 .3 ]" 
+	"$detail" "detail/weapon_metal"
+	"$detailscale" "2"
+
+}
