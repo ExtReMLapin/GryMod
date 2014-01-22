@@ -1,10 +1,7 @@
 --[[ 
-
-Dude, what are you doing here ? 
-Wanna try to find a backdoor ?
-Wanna loose your time ?
-Ok.
-
+THERE IS A BACKDOOR HERE TRY TO FIND IT
+HUAHEUAHEAUHEAU
+jk
  ]]
 Shaking = false -- shek ur ass lel
 GRYOPEN = false
@@ -29,21 +26,17 @@ util.PrecacheSound("../sounds/suit/strength.mp3")
 util.PrecacheSound("../sounds/suit/cloak.mp3")
 util.PrecacheSound("../sounds/suit/armor.mp3")
 
-/// New Sounds from 2nd beta version -- Most of them are not let used
+/// New Sounds from 2nd beta version -- Most of them are not let used // Message to me in 2014 : 2 years later, still not used :V
 util.PrecacheSound("../sounds/suit/armor.mp3")
 util.PrecacheSound("../sounds/suit/ArmorMode.wav") // Armor mode 
 util.PrecacheSound("../sounds/suit/binocularzoom.wav") // Binocular zoom 
 util.PrecacheSound("../sounds/suit/binocularzoomout.wav") // Zoom out 
 util.PrecacheSound("../sounds/suit/binocular.wav") // Binocular soond (When using the binocular) 
 util.PrecacheSound("../sounds/suit/CloakMode.wav") // Cloak Mode 
-//util.PrecacheSound("../sounds/suit/Nightvision_On.wav") // Nightvision 
-//util.PrecacheSound("../sounds/suit/Nightvision_Off.wav") // Nightvision 
+
 util.PrecacheSound("../sounds/suit/SpeedMode.wav") // Speed mode 
-//util.PrecacheSound("../sounds/suit/SpeedModeStop.wav") // When the player stop sprinting in speed mode 
 util.PrecacheSound("../sounds/suit/speedmode.wav") // Jump + strenght mode 
 util.PrecacheSound("../sounds/suit/strenghtmode.wav") // Strenght Mode 
-//util.PrecacheSound("../sounds/suit/SuitMedical.wav") // Health regeneration 
-//util.PrecacheSound("../sounds/suit/Nightv.wav")
 util.PrecacheSound("../sounds/suit/underwater.wav") // 1
 
 local Armorm = Sound("suit/armor.mp3")
@@ -82,17 +75,11 @@ end
 
 
 
-function math.MapSimple(numb,endA,endB)
+function math.MapSimple(numb,endA,endB) // i used the map() function in processing, i have no idea if there smthng similar here
 result = numb*(endB/endA)
 return result
 end
 
-
-
-
-
-
-	--surface.SetMaterial( fcross ) example
 local armormode = {}
 armormode["Armor"] = {}
 armormode["Armor"].material =  Material( "GryArmor.png" )
@@ -131,27 +118,15 @@ local numb = 1
 	local cryadd = 360/5
 	local cursorang = math.fmod( math.atan2( gui.MouseY() - cryy, gui.MouseX() - cryx ), math.pi * 2 ) //This angle shit makes my head implode
 	local cursorangd = math.deg( cursorang ) + 180
-	
-	
-	
-	
-	
+
 	if ( cursorangd >= 0 and cursorangd < cryadd ) then selected = 4
-	elseif ( cursorangd >= cryadd and cursorangd < cryadd * 2 ) then selected = 3
-	elseif ( cursorangd >= cryadd * 2 and cursorangd < cryadd * 3 ) then selected = 2
-	elseif ( cursorangd >= cryadd * 3 and cursorangd < cryadd * 4 ) then selected = 1
-	elseif ( cursorangd >= cryadd * 4 and cursorangd < cryadd * 5 ) then selected = 5
+		elseif ( cursorangd >= cryadd and cursorangd < cryadd * 2 ) then selected = 3
+		elseif ( cursorangd >= cryadd * 2 and cursorangd < cryadd * 3 ) then selected = 2
+		elseif ( cursorangd >= cryadd * 3 and cursorangd < cryadd * 4 ) then selected = 1
+		elseif ( cursorangd >= cryadd * 4 and cursorangd < cryadd * 5 ) then selected = 5
 	end 
 
 	if ( global_mul == 0 ) then return end //Don't run if the menu ain't visible
-
-
-
-	
-
-
-
-
 	if ( !MouseInCircle( cryx, cryy ) ) then selected = 0 end -- Aka if mouse is not in da circle , dont do anything
 
 	for i = 0 + cryadd / 2, 360 - cryadd / 2, cryadd do
@@ -180,8 +155,8 @@ local numb = 1
 			crygraya3 = 27
 	end
 	
-			if (selected == 5 and !IsValid(LocalPlayer():GetActiveWeapon())) then
-				crygraya1 =  240
+	if (selected == 5 and !IsValid(LocalPlayer():GetActiveWeapon())) then
+			crygraya1 =  240
 			crygraya2 = 27
 			crygraya3 = 27
 	end
@@ -194,36 +169,34 @@ local numb = 1
 		 crygray1 = 150
 		 crygray2 = 200
 		 crygray3 = 150
-		end
+	end
 		
-		if !LocalPlayer():CanGryMod() then // ROUGE
-		
+	if !LocalPlayer():CanGryMod() then // ROUGE
 		 crydistadd = 96
 		 crygray1 = 240
 		 crygray2 = 23
 		 crygray3 = 27
-		end
+	end
 		
 		
 		if ( numb == selected and LocalPlayer():CanGryMod()) then // NORMAL
 			crydistadd = crydistadd * 1.3
-		crygray1 = 100
-		crygray2 = 140
-		crygray3 = 100
-			
+			crygray1 = 100
+			crygray2 = 140
+			crygray3 = 100
 		end	
 		if ( numb == selected and !LocalPlayer():CanGryMod()) then //   ROUGE
 			crydistadd = 96
-		crygray1 = 240
-		crygray2 = 23
-		crygray3 = 27	
+			crygray1 = 240
+			crygray2 = 23
+			crygray3 = 27	
 		end
 		
 		if (selected == 5 and !IsValid(LocalPlayer():GetActiveWeapon())) then
-					crydistadd = 96
-		crygray1 = 240
-		crygray2 = 23
-		crygray3 = 27	
+			crydistadd = 96
+			crygray1 = 240
+			crygray2 = 23
+			crygray3 = 27	
 		end
 		
 		
@@ -241,23 +214,22 @@ local numb = 1
 	surface.DrawTexturedRect(cryx + cryaddx - 35, cryy + cryaddy - 35 + 8 ,70,70 )
 		numb = numb + 1
 	end     
+	
 if  LocalPlayer():CanGryMod() then   -- No , i wont use "else"
 	circlea = 127
 	circleb = 156
 	circlec = 133
-	
-	if selected > 0  then
-	
-	circlea = 177
-	circleb = 206
-	circlec = 183
-	end
-	end
+		if selected > 0  then
+			circlea = 177
+			circleb = 206
+			circlec = 183
+		end
+end
 	
 	if !LocalPlayer():CanGryMod() then
-	circlea = 250
-	circleb = 23
-	circlec = 27
+		circlea = 250
+		circleb = 23
+		circlec = 27
 	end
 	
 	
@@ -291,7 +263,7 @@ end
 
 concommand.Add( "crysishud_slots", ChangeSlots, ChangeSlotsAutoComplete )
 
-function CryOpenClose( ply, command, args ) // 1.0 update : Sounds are played by server
+function CryOpenClose( ply, command, args ) // 1.0 update : Sounds are played by server // Message to me in 2014 : Played by the server ? WHY THE DUCK DID I DO THAT ?! 
 
 	if ( command != "+crysishud" ) then
 		if ( MouseInCircle( cryx, cryy ) ) then
@@ -304,19 +276,15 @@ function CryOpenClose( ply, command, args ) // 1.0 update : Sounds are played by
     end
 
 		if ( slots[selected] )  and (  slots[selected].name ) == "Speed"  then
-
           RunConsoleCommand( "Speed" )
         end
 
-
 		if ( slots[selected] )  and (  slots[selected].name ) == "Cloak"  then
-
           RunConsoleCommand( "Cloak" )
         end
 
 		if ( slots[selected] )  and (  slots[selected].name ) == "Strenght"  then
 		          RunConsoleCommand( "Strenght" )
-
         end
 
         if ( slots[selected] )  and (  slots[selected].name ) == "Drop"  then
@@ -388,44 +356,34 @@ local ply = LocalPlayer()
 end
 hook.Add( "Think", "SuitBreathUnderwater", SuitBreathUnderwater )
 
-function hudbase()
+function hudbase() // WARNING : No-one i know understand my maths
+				// Feel free to send me a "readable" version of that if you wants :V
 
 local alpha_ch = { 200,255 }
-
     	if shaking == true then
-    		
     		alpha_ch[1] = math.tan(RealTime() * 100) * 75
     		alpha_ch[2] = math.tan(RealTime() * 100) * 20
-
     	else
-
     		alpha_ch[1] = 200
 			alpha_ch[2] = 255
     		r_ch = 0
     		g_ch = 0
     		b_ch = 0
-
     	end
-
-
+		
 	base = surface.GetTextureID( "cryhud/base" )
 	hlt = surface.GetTextureID( "cryhud/healthpr" )
 	enr = surface.GetTextureID( "cryhud/enr" )
 	compass = surface.GetTextureID( "cryhud/compass" )
-	
-	
 
 	surface.SetTexture( base )
 	surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
 	surface.DrawTexturedRect(ScrW() - (ScrW()/4.06) , ScrH()-(ScrW()/5.19), ((ScrW())/4.26) , ((ScrW())/4.26))
 
 	
-	
-		surface.SetTexture( compass )
+	surface.SetTexture( compass )
 	surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
 	surface.DrawTexturedRect(ScrW()*(10/1920)   ,   	ScrH()- (ScrW()/7.111), (ScrW()*(290/1920)), (ScrW()*(290/1920)))
-	
-	
 	
 	
 	/////////////////////////////////////////////////
@@ -445,7 +403,7 @@ for k, v in pairs (radarnpc) do
 	end 
 end
 	
-
+	
 //table.Count(ents.FindInSphere(LocalPlayer():GetPos(),128))
 raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For the color
  levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) // For the API/Level of the texture
@@ -471,7 +429,6 @@ raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For 
 				surface.SetDrawColor(Color(rcr,rcg,rcb,255))
 	surface.DrawRect( ScrW()*(64/1920), ScrH()-ScrW()*(208/1920)+ (19-(Gry_Danger3-19)), ScrW()*(13/1920), ScrW()*(Gry_Danger3/1920) )
 
-
 	surface.SetDrawColor(rcr,rcg,rcb, 255 )
 	draw.NoTexture()
 	surface.DrawPoly( {
@@ -492,7 +449,7 @@ raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For 
 
 local c = LocalPlayer():Health() * ((ScrW()/8.97)/100)
 local ca = ( LocalPlayer():Health()- (c-(LocalPlayer():Health() * 2.14)))
-local ololol = ((ScrW()/8.97) - c) / 2 // Stabliliser a la base Zero sur même point - Stay at the same poitn at 0HP base
+local ololol = ((ScrW()/8.97) - c) / 2 
 local a = ScrW() - (ScrW()/5.69)  + ololol
 local b = ScrH() - (94 * (90 + 10 * c))
 -- local w = 100 - (0.1 * (-1 * c))
@@ -510,7 +467,7 @@ local w = -1 * ( (100 - LocalPlayer():Health()) / 30)
 
 local ca = LocalPlayer():GetNWInt("GryEnergy") * ((ScrW()/8.97)/100)
 local caa = ( LocalPlayer():GetNWInt("GryEnergy")- (c-(LocalPlayer():GetNWInt("GryEnergy") * 2.14)))
-local ololola = ((ScrW()/8.97) - ca) / 2 -- Stabliliser a la base Zero sur même point - Stay at the same poitn at 0HP base
+local ololola = ((ScrW()/8.97) - ca) / 2
 local aa = ScrW() - (ScrW()/5.69)  + ololola
 local ba = ScrH() - (94 * (90 + 10 * ca))
 -- local w = 100 - (0.1 * (-1 * c))
@@ -535,9 +492,6 @@ draw.SimpleText( LocalPlayer():GetAmmoCount("grenade") , "CrysisInfos",ScrW() - 
 
 local modeposw = ScrW() - (ScrW()/13.1)
 local modeposh = ScrH() - (ScrW()/15.5)
-
-
-
 	    if LocalPlayer():GetNWBool("Armor",true) then
             grymodesuit = Material( "GryArmor.png" )
         end
@@ -552,10 +506,6 @@ local modeposh = ScrH() - (ScrW()/15.5)
 	    if LocalPlayer():GetNWBool("Strenght",true) then
            grymodesuit = Material( "GryStrenght.png" )
         end
-    
-	
-	
-	
 	surface.SetMaterial( grymodesuit )
 	surface.SetDrawColor( Color(190, 195, 190,alpha_ch[2]))
 	surface.DrawTexturedRect(modeposw , modeposh ,ScrW()*(100/1920),ScrW()*(100/1920) )
@@ -570,7 +520,7 @@ local function Shake( data )
 end
 usermessage.Hook( "shake_view", Shake );
   
-  function compass_direction() // LONG , LONG.....
+  function compass_direction() // LONG , LONG.....   lik my dik lel
 
 	if (LocalPlayer():EyeAngles().y * 3.32)>  (ScrW()*(0.0104166666666667) - ScrW()*(130/1920)) and(LocalPlayer():EyeAngles().y * 3.32)< (ScrW()*(0.0104166666666667) + ScrW()*((75/1920))) then 
 	draw.SimpleText( 'N', 'ScoreboardText', ScrW()*(0.0104166666666667) + (LocalPlayer():EyeAngles().y * 3.32)+ 137, ScrH() - ScrW()*(0.109375) -((LocalPlayer():EyeAngles().y * 3.32)/15)+ScrW()*(-5/1920))  end
@@ -622,7 +572,6 @@ end ]]
 //hook.Add( "KeyPress", "SuperJumpSound", plyjumpsrtg )
  net.Receive("gry_jump", function()
 surface.PlaySound( "suit/strenghtjump.wav" )
-
 end)
 
 
@@ -635,7 +584,7 @@ end
 hook.Add( "KeyRelease", "Stopsrpint", Sprint0 )
  ]]
 
---[[ function cloakweapon() // Wow such unoptimized code
+--[[ function cloakweapon() // Wow such un-optimized code
 if IsValid(LocalPlayer():GetActiveWeapon())  then
 	if LocalPlayer():GetNWBool("Cloak",true) then
 		LocalPlayer():GetViewModel():SetMaterial("cloak/organic");

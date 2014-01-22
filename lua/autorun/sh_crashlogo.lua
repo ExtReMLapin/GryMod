@@ -1,5 +1,6 @@
+
+-- Fapadar made 90 of the code
 if SERVER then
-	
 	concommand.Add("_ping" , function(p , c , a)
 		if (p.LastPing and p.LastPing + 5 < CurTime()) or not p.LastPing then
 			p.LastPing = CurTime()
@@ -14,7 +15,6 @@ local lastmovetime = CurTime() + 10 -- Variable to check when move packets were 
 local reconnecttime = math.min(GetConVarNumber("sv_timeout") - 6 , GetConVarNumber("cl_timeout") - 6 , 30) -- in seconds
 local enabled = util.tobool(math.floor(CreateConVar("anticrash_enabled" , 1 , true , true):GetInt()))
 cvars.AddChangeCallback("anticrash_enabled" , function( c , o , n )
-
 	enabled = util.tobool(math.floor(n))
 end )
 
@@ -74,7 +74,7 @@ hook.Add("Think" , "CrashReconnect" , function()
 	end
 end )
 
-function CrashLogo()
+function CrashLogo() // Wow such coding skillz
 if IsCrashed() and !game.SinglePlayer() then 
 local	crashlogo = surface.GetTextureID( "cryhud/crash" )
 	surface.SetTexture( crashlogo )
@@ -83,8 +83,3 @@ local	crashlogo = surface.GetTextureID( "cryhud/crash" )
 end
 end
 hook.Add("HUDPaint", "DetectCrash", CrashLogo)
-
-
-
-
-

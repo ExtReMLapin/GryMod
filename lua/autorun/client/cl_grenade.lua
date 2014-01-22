@@ -7,7 +7,7 @@ end
 local function grenadetetect()
 	local player = LocalPlayer()
 
-detectable = {}
+detectable = {} // Feel Free to customize that, that's why i used a table system.
 detectable[1] = {}
 detectable[1].realname = "gmod_button"
 detectable[1].drawname = "Button"

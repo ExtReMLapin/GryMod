@@ -47,7 +47,7 @@ surface.CreateFont( "Crysis2",
 
 --[[ 	surface.CreateFont( "csd", ScreenScale( 30 ), 500, true, true, "CSKillIcons" )
 	
-	--------- After that : Not realy for Grymod but can be prevent bug from other addons (Made before gmod 12)
+	--------- After that : Not really for Grymod but can be prevent bug from other addons (Made before gmod 12)
 	
 	surface.CreateFont( "csd", ScreenScale( 60 ), 500, true, true, "CSSelectIcons" )
  ]]
