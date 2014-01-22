@@ -7,11 +7,16 @@ Crysis for Garry's mod
          
 How it Works =====
          
-Download & Put this in garrysmod/garrysmodaddons
+Download and Put this in garrysmod/garrysmodaddons
+
          Open the console and bind a key to "+crysishud"  (Without quotes, don't be stupid)
+         
             like this command :  bind mouse3 +crysishud
+            
                 here, when you'll press the middle button of your mouse the QuickMenu (AKA the menu for the modes&shitz) will open
+                
             if your head spine as hell, you're running it on a non-allowed mouse gamemode
+            
         If it says "Unknow command : +crysishud", reinstall it.
     
          
