@@ -4,6 +4,7 @@ AddCSLuaFile( "client/cl_fonts.lua" )
 AddCSLuaFile( "client/cl_grenade.lua" )
 AddCSLuaFile( "client/cl_allycross.lua" )
 AddCSLuaFile( "client/cl_nanoholo.lua" )
+AddCSLuaFile( "client/cl_options.lua" )
 AddCSLuaFile( "sh_crashlogo.lua" )
 AddCSLuaFile( "sh_math.lua" )
 end
