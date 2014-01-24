@@ -118,6 +118,16 @@ ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
 end
 end
 concommand.Add("Armor", armor)
+
+
+function ArmorFUUUUU(ply)
+ply:SetNWInt("GryEnergy", 0);
+end
+concommand.Add("ArmorFUUUUU", ArmorFUUUUU)
+
+
+
+
  local function Drop(ply)
  if IsValid(ply:GetActiveWeapon()) then
 		ply:DropWeapon(ply:GetActiveWeapon()) --Drop active weapon

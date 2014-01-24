@@ -318,6 +318,7 @@ concommand.Add( "-crysishud", CryOpenClose )
 function cloackattack (ply,key)
     if key == IN_ATTACK and ply:GetNWInt("Cloak", true)  then
         RunConsoleCommand( "Armor" )
+		 RunConsoleCommand( "ArmorFUUUUU" )
         surface.PlaySound( Armorm )
     end
 end
