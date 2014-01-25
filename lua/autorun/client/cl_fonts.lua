@@ -38,7 +38,7 @@ surface.CreateFont( "CrysisInfos",
 surface.CreateFont( "Crysis2",
                     {
                     font    = "CrysisSuitModes3",
-                    size    = (ScrW()/14.37),
+                    size    = (EyeFinityScrW()/14.37),
                     weight  = 0,
                     antialias = true,
                     shadow = false
