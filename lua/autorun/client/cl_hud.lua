@@ -361,6 +361,7 @@ local function BinocularZoomIn( player, key )
 	if ( player:GetCanZoom() and key == IN_ZOOM ) then
 		surface.PlaySound( "interface_suit/binocularzoomin.wav" )
 		LocalPlayer().ZSing = true ;
+		//ZoomScaleform()
 	end
 end
 
@@ -370,6 +371,7 @@ local function BinocularZoomOut( player, key )
 	if ( player:GetCanZoom() and key == IN_ZOOM ) then
 		surface.PlaySound( "interface_suit/binocularzoomout.wav" )
 		LocalPlayer().ZSing = false ; 
+		//DeZoomScaleform()
 	end
 end
 
