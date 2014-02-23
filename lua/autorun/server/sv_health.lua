@@ -47,13 +47,15 @@ ply.HRT = 0
 end
 hook.Add("PlayerSpawn", "Player spawnadads AR", Regen_PlayerHasSpawned)
 local function Regen_PlayerTakesDamage(ent, inflictor, attacker, _, dmginfo)
-if (!ent:IsPlayer()) then return end
+if (!ent:IsPlayer())then return end
 ent.RD = CurTime() + (ent.RD * 0 + 5) // ent.RD * 0 + (CurTime() + 5)
 ent.HRA = 1
 ent.HRT = 0
 end
 hook.Add("EntityTakeDamage", "Regen Time Penalty After Daadadamage", Regen_PlayerTakesDamage)
 local function Regen_Do()
+
+if gry_Should_Regen then
 for _, ply in pairs (player.GetAll()) do
 if ply:Alive() then
 if Regen_Status == true then
@@ -111,6 +113,7 @@ if ply:Health() < 100 then
 if CurTime() >= ply.RD then
 ply:SetHealth(ply:Health() + 1)
 ply.RD = CurTime() + 0.1
+end
 end
 end
 end

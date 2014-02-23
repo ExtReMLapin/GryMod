@@ -8,7 +8,8 @@ util.AddNetworkString( "strenght_start" )
 util.AddNetworkString("gry_spawn")
 util.AddNetworkString("gry_jump")
 local meta = FindMetaTable("Player")
-
+gry_Should_Regen = true
+gry_InfiniteArmor = false
 
 --CreateConVar( "GryMod", 1, false, false )
   
@@ -157,7 +158,7 @@ end
 hook.Add( "KeyRelease", "RKeyPressedSpeedGry", RIsMovingSpeed )
 
 function SuperJump(ply, key) -- Cost 40 enery point
-	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") >= 40 and ply:OnGround() then
+	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") >= 40 and ply:OnGround() and !gry_InfiniteArmor then
 		if key == IN_JUMP  then 
 			ply:SetJumpPower(500)
 			hook.Call("GryUseEnergy", ply, ply)
@@ -183,7 +184,7 @@ hook.Add("KeyRelease", "keyreleasestrenghtgry", RSuperJump)
 
 function Speedsystem()
 	for k, v in pairs(player.GetAll()) do
-		if (v.SP == true) and v:GetNWBool("Speed", true) then 
+		if (v.SP == true) and v:GetNWBool("Speed", true) and !gry_InfiniteArmor then 
 		v:SetNWInt("GryEnergy", (v:GetNWInt("GryEnergy") - 1))
 		hook.Call("GryUseEnergy", v, v, v)
 		end
@@ -195,7 +196,7 @@ Speedsystem()
 
 function Cloaksystem()
 	for k, v in pairs(player.GetAll()) do
-		if v:GetNWBool("Cloak", true) then 
+		if v:GetNWBool("Cloak", true) and !gry_InfiniteArmor then 
 		v:DrawWorldModel(false) // Because the WeaponEquip/Switch is not working
 		v:SetNWInt("GryEnergy", (v:GetNWInt("GryEnergy") - (0.092 + (0.001*v:GetVelocity():Length()))))
 		hook.Call("GryUseEnergy", v, v, v)
@@ -238,3 +239,12 @@ armor(ply)
 ply:SetNWInt("GryEnergy", 0)
 end end
 hook.Add("GryUseEnergy", "SuitMod Auto" , FixEnergySuitMod)
+
+
+
+concommand.Add("gry_Armor", function(ply)
+if ply:IsAdmin() then gry_InfiniteArmor = !gry_InfiniteArmor end
+end)
+concommand.Add("gry_Health", function(ply)
+if ply:IsAdmin() then gry_Should_Regen = !gry_Should_Regen end
+end)
