@@ -242,7 +242,7 @@ hook.Add("GryUseEnergy", "SuitMod Auto" , FixEnergySuitMod)
 
 
 
-concommand.Add("gry_Armor", function(ply)
+concommand.Add("gry_Armor", function(ply) // wew sush cedng skilz
 if ply:IsAdmin() then gry_InfiniteArmor = !gry_InfiniteArmor end
 end)
 concommand.Add("gry_Health", function(ply)
