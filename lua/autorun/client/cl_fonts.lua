@@ -13,8 +13,8 @@ surface.CreateFont("CrysisSuitModes3",130,1,true,true,"Crysis2") -- New Crysis f
  
 surface.CreateFont( "CrysisInfos",
                     {
-                    font    = "CRYSISB",
-                    size    = (ScrW()/87.27),
+                    font    = "Agency FB",
+                    size    = (ScrW()/50.27),
                     weight  = 0.1,
                     antialias = true,
                     shadow = false
@@ -25,7 +25,7 @@ surface.CreateFont( "CrysisInfos",
 			
 			surface.CreateFont( "Crysis",
                     {
-                    font    = "CrysisSuitModes3",
+                    font    = "Agency FB",
                     size    = 90,
                     weight  = 0,
                     antialias = true,
@@ -37,7 +37,7 @@ surface.CreateFont( "CrysisInfos",
 			
 surface.CreateFont( "Crysis2",
                     {
-                    font    = "CrysisSuitModes3",
+                    font    = "Agency FB",
                     size    = (ScrW()/14.37),
                     weight  = 0,
                     antialias = true,
@@ -55,17 +55,15 @@ surface.CreateFont( "Crysis2",
 
 	
 
+
 surface.CreateFont( "ScoreboardText",
                     {
-                    font    = "Tahoma",
-					size = 13,
-					weight = 500,
+                    font    = "Agency FB",
+                    size    = (ScrW()/70.27),
+                    weight  = 1000,
                     antialias = true,
                     shadow = false
             })
-	
-
-
-
+			
 
 

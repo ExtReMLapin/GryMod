@@ -12,6 +12,7 @@ end
 
 
 if (SERVER) then
+	resource.AddWorkshop(209535414)
     resource.AddSingleFile( "sound/cry_close.wav" )
     resource.AddSingleFile( "sound/cry_error.wav" )
     resource.AddSingleFile( "sound/cry_hover.wav" )
