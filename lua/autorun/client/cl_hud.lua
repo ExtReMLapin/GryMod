@@ -26,15 +26,12 @@ function EyeFinityScrW()
 end
  -- You can change it , for others admins mods , but you'll have to change it in example : 
  
- 
 --[[  
 function meta:CanGryMod() 
 if LocalPlayer():IsAdmin() or LocalPlayer():IsVip() then return true end
 else return false end
  ]]
 
-
- 
  
  function draw.TextRotated( text,font, x, y, color, ang ) // From the wiki
 	render.PushFilterMag( TEXFILTER.ANISOTROPIC )
@@ -601,7 +598,7 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 	 ]]
 	 
 	 
-	 //// BRRRRAAAAAAAAAAAAIIIIIIINNNNNNNNNNNNFFUUUUUUUUUCCCCCCKKKKKK
+	 //// BRRRRAAAAAAAAAAAAIIIIIIINNNNNNNNNNNN FFUUUUUUUUUCCCCCCKKKKKK
 	 
 surface.SetTexture( hlt ) // HEALTH BAR
 	surface.SetDrawColor(Color(200,164,27,alpha_ch[1])) 
@@ -726,37 +723,9 @@ local function HUDShouldDraw(name)
 end
 hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 
---[[ local function plyjumpsrtg( ply, key )
-	if ( LocalPlayer():GetNWBool("Strenght",true) and key == IN_JUMP and LocalPlayer():IsOnGround()) then
-		surface.PlaySound( "suit/strenghtjump.wav" )
-	end
-end ]]
-//hook.Add( "KeyPress", "SuperJumpSound", plyjumpsrtg )
  net.Receive("gry_jump", function()
 	surface.PlaySound( "suit/strenghtjump.wav" )
 end)
-
-
---[[    -- Removed cuz of i hate this sound (and players too).
-local function Sprint0( ply, key )
-	if ply:GetNWBool("Speed",true)and ( key == IN_SPEED ) then
-		surface.PlaySound( "suit/SpeedModeStop.wav" )
-	end
-end
-hook.Add( "KeyRelease", "Stopsrpint", Sprint0 )
- ]]
-
---[[ function cloakweapon() // Wow such un-optimized code
-if IsValid(LocalPlayer():GetActiveWeapon())  then
-	if LocalPlayer():GetNWBool("Cloak",true) then
-		LocalPlayer():GetViewModel():SetMaterial("cloak/organic");
-	else 
-		LocalPlayer():GetViewModel():SetMaterial("");
-	end
-end
-end
-hook.Add("Think","PR00N",cloakweapon) ]]  -- See next code block
-
 
  net.Receive("cloak_stop", function()
 	LocalPlayer():GetViewModel():SetMaterial("");
@@ -783,7 +752,6 @@ local t = util.__TraceLine(...);
 	end
 return t;
 end
-
 
 net.Receive("gry_spawn", function()	// Wow much swag
 	
@@ -903,5 +871,4 @@ gui.SetMousePos(posx, posy)
 
 	end
 end
-hook.Add("Think", "HueHue fix normal shit", RadialThinklel)			 
-
+hook.Add("Think", "HueHue fix normal shit", RadialThinklel)
