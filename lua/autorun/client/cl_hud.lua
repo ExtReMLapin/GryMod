@@ -4,6 +4,11 @@ HUAHEUAHEAUHEAU
 jk
  ]]
  
+ 
+ 
+ 
+ //Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 1270x860 (dunno if this resolution exist lel)
+ 
 GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
 GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
 EyeFinity = CreateClientConVar( "cl_Eyefinity", "0", false, false )
@@ -542,14 +547,7 @@ raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For 
 	/////////////////////////HERE/////////////////////////////////
 	//////////////////////////////////////////////////////////////
 	
-	
-	
-	
-	
-	
-	
 
-	
 	
 // If gmod break it any day , i cannot fix it cuz i changed the code for WWII screens (Adaptative variables
 
@@ -599,35 +597,35 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 	 
 	 
 	 //// BRRRRAAAAAAAAAAAAIIIIIIINNNNNNNNNNNN FFUUUUUUUUUCCCCCCKKKKKK
-	 
+// My brain literaly exploded, REALLY, i mean i'm resious, i can't understand my code anymore, all this fucking map.Simple, which dynamicaly change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
 surface.SetTexture( hlt ) // HEALTH BAR
 	surface.SetDrawColor(Color(200,164,27,alpha_ch[1])) 
-	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 , ScrH()- EyeFinityScrW()*(95/1920)- (-1*(200-LocalPlayer():Health()))/120 , math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
+	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()- EyeFinityScrW()*(95/1920)- (-1*(200-LocalPlayer():Health()))/120 , math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
 	
 	 
 	surface.SetTexture( enr ) // ENERGY THIS TIME
 	surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
-	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():GetNWInt("GryEnergy")-20,80,EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 ,
+	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():GetNWInt("GryEnergy")-20,80,EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 +  GryModXDistance:GetInt() + GryModXDistance2:GetInt() ,
 	ScrH()- EyeFinityScrW()*(130/1920)- (-1*(200-LocalPlayer():GetNWInt("GryEnergy")))/38 , math.MapSimple(LocalPlayer():GetNWInt("GryEnergy")-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
 	 
 	 
 	 	surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
-	 draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920))))),
+	 draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920)))))+  GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
 	 ScrH()-(EyeFinityScrW()*(133/1920)), // Small bar energy
 	math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920))),
-	 (EyeFinityScrW()/84), Color(4,133,211,alpha_ch[1]), 4)
+	 (EyeFinityScrW()/84), Color(4,133,211,alpha_ch[1]), 3.5)
 	 
 	 
 	 
 	 	surface.SetDrawColor(Color(200,164,2,alpha_ch[1])) 
-	 	 draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (EyeFinityScrW()*(40/1920))))),
+	 	 draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (EyeFinityScrW()*(40/1920)))))  + GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
 	 ScrH()-(EyeFinityScrW()*(100/1920)), // Small bar health
 	math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (EyeFinityScrW()*(40/1920))),
-	 (EyeFinityScrW()/84), Color(200,164,2,alpha_ch[1]), 4)
+	 (EyeFinityScrW()/84), Color(200,164,2,alpha_ch[1]), 3.5)
 
 draw.TextRotated( LocalPlayer():GetAmmoCount("grenade") , "CrysisInfos",EyeFinityScrW() - (EyeFinityScrW()/9) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(EyeFinityScrW()/11),  Color(190, 195, 190,alpha_ch[2]), 1) // Fixed in v2.3
 draw.TextRotated( LocalPlayer():Health() , "CrysisInfos",EyeFinityScrW() - (EyeFinityScrW()/10) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(EyeFinityScrW()/22),  Color(190, 195, 190,alpha_ch[2]), 1) // Fixed in v2.3
-draw.TextRotated( LocalPlayer():GetNWInt("GryEnergy") , "CrysisInfos",EyeFinityScrW() - (EyeFinityScrW()/10) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(EyeFinityScrW()/16),  Color(190, 195, 190,alpha_ch[2]), 1) // Fixed in v2.3
+draw.TextRotated( math.Round(LocalPlayer():GetNWInt("GryEnergy")) , "CrysisInfos",EyeFinityScrW() - (EyeFinityScrW()/10) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(EyeFinityScrW()/16),  Color(190, 195, 190,alpha_ch[2]), 1) // Fixed in v2.3
 
 
 

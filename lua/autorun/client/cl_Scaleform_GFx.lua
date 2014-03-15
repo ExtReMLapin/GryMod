@@ -1,5 +1,11 @@
 // 22/02/2014 NOTE : IIII FEEEEEEELLLLL THE POWER OF THE POTATOOOOOOOO
 --[[ 
+No srsly, if someone read that, i just checked back old GryMod comments, dat feel,
+ i was felling bad in Jully2k13 ans some peoples were still here to say GryMod was a good addon :),  
+ so i'm here to finish my job. 
+ 
+ 
+ Thanks to all peoples who supported me and this project since 2 years
  
  
  

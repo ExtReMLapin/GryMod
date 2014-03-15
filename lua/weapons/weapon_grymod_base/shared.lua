@@ -37,9 +37,14 @@ SWEP.IsAiming 				= false
 SWEP.Secondary.ClipSize		= -1
 SWEP.Secondary.DefaultClip	= -1
 SWEP.Secondary.Automatic	= false
+//SWEP.RunArmOffset 			= Vector (-2.8, 2, 2)
 SWEP.Secondary.Ammo			= "none"
-SWEP.RunArmOffset 			= Vector (-3, -1, -8)
-SWEP.RunArmAngle 			= Angle(-25, 60, 5)
+//SWEP.RunArmAngle 			= Angle(-24, 20.10, -10.436) // haut/bas  ---  gauche droite // self rotate
+SWEP.RunArmOffset = Vector (-3, -1, -8)
+SWEP.RunArmAngle = Angle(-25, 60, 5)
+
+
+
 SWEP.Rifle					= true
 SWEP.HoldType			= "smg"
 SWEP.DeployDelay		= 0.2

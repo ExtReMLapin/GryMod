@@ -1,6 +1,9 @@
-"VertexLitGeneric"
+VertexLitGeneric
 {
-
-	 $model "1"
-	 $basetexture "models/crysis_pack/base"
+	"$model" "1"
+	"$basetexture" "models/crysis_pack/base"
+	"$bumpma" "models/crysis_pack/normalmap"
+	//"$surfaceprop" "carpet"
+	"$ssbump" "1"
+	"$SSBumpMathFix"	"1"
 }
