@@ -1,6 +1,0 @@
-"AddonInfo"
-{
-	"name" "Arma Style"
-	"author_name" "Lapin"
-	"info" "Wuow"
-}
