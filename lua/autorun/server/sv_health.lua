@@ -1,44 +1,22 @@
-
+local hook =  hook;
+local umsg = umsg;
+local player = player;
 hook.Add("EntityTakeDamage","Sahek",function( target, dmginfo )
-
 	if ( target:IsPlayer() ) then
- 
-		umsg.Start( "shake_view" );
-		umsg.Entity(target)
-		umsg.Bool(true)
-		umsg.End();
-
+		umsg.Start( "shake_view" ); umsg.Entity(target) umsg.Bool(true) umsg.End();
 		timer.Simple(0.75,function() if target:IsValid() then
-			
 		umsg.Start( "shake_view" );
 		umsg.Entity(target)
 		umsg.Bool(false)
 		umsg.End();
-
 		end end)
-		
 	end
-
 end)
 
 
 Regen_Status = true
 Regen_HealRamps = true
 Regen_PerSect = false 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 local function Regen_PlayerHasSpawned(ply)
 ply.RD = CurTime() + 0.1

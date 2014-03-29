@@ -1,4 +1,11 @@
 
+local util = util;
+local net = net;
+local hook = hook;
+local timer = timer;
+local concommand = concommand;
+local FindMetaTable = FindMetaTable;
+
 -- fak u i comnt in frech 
 util.AddNetworkString( "cloak_stop" ) // Optimisation coté client + Anti bug
 util.AddNetworkString( "cloak_start" ) // Les util du cloak sont utilisés pour signaler le changement du material de Viewmodel
