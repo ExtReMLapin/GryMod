@@ -4,8 +4,29 @@ HUAHEUAHEAUHEAU
 jk
  ]]
  
- 
- 
+local DrawMotionBlur = DrawMotionBlur; // About 20% performance gain
+local FindMetaTable = FindMetaTable;
+local LocalPlayer = LocalPlayer
+local CurTime = CurTime;
+local IsValid = IsValid;
+local Entity = Entity;
+local pairs = pairs;
+local Color = Color;
+local print = print;
+local ScrW = ScrW;
+local ScrH = ScrH;
+local concommand = concommand;
+local surface = surface;
+local render = render;
+local timer = timer;
+local ents = ents;
+local hook = hook;
+local math = math;
+local draw = draw;
+local util = util;
+local vgui = vgui;
+local gui = gui;
+local cam = cam;
  
  //Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 1270x860 (dunno if this resolution exist lel)
  
@@ -19,15 +40,18 @@ FirstInit = false
 ply = LocalPlayer()
 tempscrw = ScrW()
 tempscrh = ScrH()
-function meta:CanGryMod()  
-	return true
-end
+
 
 function EyeFinityScrW()
 	if tempscrw/tempscrh == 16/3  and EyeFinity:GetInt() > 0 then
 		return tempscrw/3
 	else return tempscrw
 	end
+end
+
+
+function meta:CanGryMod()  
+	return true
 end
  -- You can change it , for others admins mods , but you'll have to change it in example : 
  
@@ -37,6 +61,9 @@ if LocalPlayer():IsAdmin() or LocalPlayer():IsVip() then return true end
 else return false end
  ]]
 
+ 
+ 
+ 
  
  function draw.TextRotated( text,font, x, y, color, ang ) // From the wiki
 	render.PushFilterMag( TEXFILTER.ANISOTROPIC )
@@ -77,9 +104,7 @@ surface.DrawRect(0,0, scalex, scaley, Color(255,255,255,255))
 end
 
  
-function math.MapSimple(numb,endA,endB) // i used the map() function in processing, i have no idea if there smthng similar here
-	return numb*(endB/endA)
-end
+
 
  
  
@@ -114,10 +139,7 @@ local Binoz = Sound("suit/binocularzoom.wav")
 local Binozo = Sound("suit/binocularzoomout.wav")
 local Bino = Sound("suit/binocular.wav")
 local Cloakm = Sound("suit/CloakMode.wav")
-local nv1 = Sound("suit/Nightvision_On.wav")
-local nv0 = Sound("suit/Nightvision_Off.wav")
 local speedmode = Sound("suit/SpeedMode.wav")
-local speedstop = Sound("suit/SpeedModeStop.wav")
 local JumpS = Sound("suit/speedmode.wav")
 local Strenghtmode = Sound("suit/strenghtmode.wav")
 local medic = Sound("suit/SuitMedical.wav")
@@ -423,7 +445,7 @@ local function BinocularZoomOut( player, key )
 	end
 end
 
-
+ 
 hook.Add( "KeyRelease", "BinocularZoomOut", BinocularZoomOut )
 
 local function SuitBreathUnderwater() // Not made by me
@@ -446,7 +468,7 @@ function hudbase() // WARNING : No-one i know understand my maths
 
 local alpha_ch = { 200,255 }
     	if shaking == true then
-    		alpha_ch[1] = math.tan(RealTime() * 100) * 75
+    		alpha_ch[1] = math.tan(RealTime() * 100) * 20
     		alpha_ch[2] = math.tan(RealTime() * 100) * 20
     	else
     		alpha_ch[1] = 200
@@ -598,7 +620,7 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 	 
 	 //// BRRRRAAAAAAAAAAAAIIIIIIINNNNNNNNNNNN FFUUUUUUUUUCCCCCCKKKKKK
 // My brain literaly exploded, REALLY, i mean i'm resious, i can't understand my code anymore, all this fucking map.Simple, which dynamicaly change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
-surface.SetTexture( hlt ) // HEALTH BAR
+	surface.SetTexture( hlt ) // HEALTH BAR
 	surface.SetDrawColor(Color(200,164,27,alpha_ch[1])) 
 	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()- EyeFinityScrW()*(95/1920)- (-1*(200-LocalPlayer():Health()))/120 , math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
 	
@@ -609,11 +631,11 @@ surface.SetTexture( hlt ) // HEALTH BAR
 	ScrH()- EyeFinityScrW()*(130/1920)- (-1*(200-LocalPlayer():GetNWInt("GryEnergy")))/38 , math.MapSimple(LocalPlayer():GetNWInt("GryEnergy")-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
 	 
 	 
-	 	surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
-	 draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920)))))+  GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
-	 ScrH()-(EyeFinityScrW()*(133/1920)), // Small bar energy
-	math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920))),
-	 (EyeFinityScrW()/84), Color(4,133,211,alpha_ch[1]), 3.5)
+		surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
+		draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920)))))+  GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
+		ScrH()-(EyeFinityScrW()*(133/1920)), // Small bar energy
+		math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920))),
+		(EyeFinityScrW()/84), Color(4,133,211,alpha_ch[1]), 3.5)
 	 
 	 
 	 
