@@ -18,6 +18,6 @@ end
 
 
 if (SERVER) then
-	resource.AddWorkshop(209535414)
+	resource.AddWorkshop("209535414")
 	resource.AddFile( "resource/fonts/Agency FB.ttf" ) // PLEASE PUT IT IN YOUR FASTDL PLEEEEASSSEEEEE
 end	
