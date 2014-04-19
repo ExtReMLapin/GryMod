@@ -1,60 +1,61 @@
 GryMod
 ======
-
 Crysis for Garry's mod
            
-         
-         
-How it Works =====
+How it Works 
+-------------
          
 Download and Put this in garrysmod/garrysmodaddons
 
 Open the console and bind a key to "+crysishud"  (Without quotes, don't be stupid)
-         
-	like this command :  bind mouse3 +crysishud
 
+Like this command
+        
+              bind mouse3 +crysishud          
 
-            
-here, when you'll press the middle button of your mouse the QuickMenu (AKA the menu for the modes&shitz) will open
+Here, when you'll press the middle button of your mouse the QuickMenu (AKA the menu for the modes&shitz) will open
 if your head spine as hell, you're running it on a non-allowed mouse gamemode
 If it says "Unknow command : +crysishud", reinstall it.
     
          
          
   For developers       
-======
+-------------
+##
+>NW bools are less used as possible, here are they :
 
-NW bools are less used as possible, here are they :
+* Strenght
 
-Strenght
-Armor
-Speed
-Cloak
+* Armor
 
+* Speed
 
-===Here is the NW Int ===
+* Cloak
 
-GryEnergy (From 0 to 100)
+##
+>Here is the NW Int
 
-
-
-
-=== Network Strings (aka the net. things)
+* GryEnergy (0-100)
 
 
-cloak_stop // used to prevend using of NW bools, because of optimization
+##
 
-cloak_start
+>Network Strings (aka the net. things)
 
-armor_start
 
-speed_start
+* cloak_stop // used to prevend using of NW bools, because of optimization
 
-strenght_start
+* cloak_start
 
-gry_spawn
+* armor_start
 
-gry_jump // used to fix problems, you'll don't need it
+* speed_start
+
+* strenght_start
+
+* gry_spawn
+
+* gry_jump // used to fix problems, you'll don't need it
 
 
 
