@@ -1,5 +1,5 @@
 
--- Fapadar made 90 of the code
+-- Fapadar made 95% of the code
 if SERVER then
 	concommand.Add("_ping" , function(p , c , a)
 		if (p.LastPing and p.LastPing + 5 < CurTime()) or not p.LastPing then

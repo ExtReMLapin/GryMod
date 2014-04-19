@@ -23,8 +23,7 @@ hook.Add( "KeyRelease", "Hehehehe", detectcible_release )
 
 function cross()
 	if AllyCrossDraw == true then
-		local	fcross = surface.GetTextureID( "cryhud/fcross" )
-		surface.SetTexture( fcross )
+		surface.SetTexture(  surface.GetTextureID( "cryhud/fcross" ) )
 		surface.SetDrawColor(Color(255,255,255,255))
 		surface.DrawTexturedRect(ScrW()/2-15, ScrH()/2-15, 30, 30)
 	end

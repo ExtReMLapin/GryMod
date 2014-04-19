@@ -5,11 +5,6 @@ surface.CreateFont("CrysisSuitModes3",130,1,true,true,"Crysis2") -- New Crysis f
  ]]  // Gmod 12
 
  
-
-
-
-
- 
  
 surface.CreateFont( "CrysisInfos",
                     {

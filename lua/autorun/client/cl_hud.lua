@@ -80,7 +80,7 @@ else return false end
 	m:SetAngles( Angle( 0, ang, 0 ) )
 	m:SetTranslation( Vector( x, y, 0 ) )
 	cam.PushModelMatrix( m )
-		surface.DrawText( text )
+	surface.DrawText( text )
 	cam.PopModelMatrix()
 	render.PopFilterMag()
 	render.PopFilterMin()
@@ -97,7 +97,7 @@ end
 	m:SetAngles( Angle( 0, ang, 0 ) )
 	m:SetTranslation( Vector( x, y, 0 ) )
 	cam.PushModelMatrix( m )
-surface.DrawRect(0,0, scalex, scaley, Color(255,255,255,255))
+	surface.DrawRect(0,0, scalex, scaley, Color(255,255,255,255))
 	cam.PopModelMatrix()
 	render.PopFilterMag()
 	render.PopFilterMin()
@@ -115,23 +115,23 @@ end
  
  
  // Originals sounds
-util.PrecacheSound("../sounds/suit/speed.mp3")
-util.PrecacheSound("../sounds/suit/strength.mp3")
-util.PrecacheSound("../sounds/suit/cloak.mp3")
-util.PrecacheSound("../sounds/suit/armor.mp3")
+util.PrecacheSound("suit/speed.mp3")
+util.PrecacheSound("suit/strength.mp3")
+util.PrecacheSound("suit/cloak.mp3")
+util.PrecacheSound("suit/armor.mp3")
 
 /// New Sounds from 2nd beta version -- Most of them are not let used // Message to me in 2014 : 2 years later, still not used :V
-util.PrecacheSound("../sounds/suit/armor.mp3")
-util.PrecacheSound("../sounds/suit/ArmorMode.wav") // Armor mode 
-util.PrecacheSound("../sounds/suit/binocularzoom.wav") // Binocular zoom 
-util.PrecacheSound("../sounds/suit/binocularzoomout.wav") // Zoom out 
-util.PrecacheSound("../sounds/suit/binocular.wav") // Binocular soond (When using the binocular) 
-util.PrecacheSound("../sounds/suit/CloakMode.wav") // Cloak Mode 
+util.PrecacheSound("suit/armor.mp3")
+util.PrecacheSound("suit/ArmorMode.wav") // Armor mode 
+util.PrecacheSound("suit/binocularzoom.wav") // Binocular zoom 
+util.PrecacheSound("suit/binocularzoomout.wav") // Zoom out 
+util.PrecacheSound("suit/binocular.wav") // Binocular soond (When using the binocular) 
+util.PrecacheSound("suit/CloakMode.wav") // Cloak Mode 
 
-util.PrecacheSound("../sounds/suit/SpeedMode.wav") // Speed mode 
-util.PrecacheSound("../sounds/suit/speedmode.wav") // Jump + strenght mode 
-util.PrecacheSound("../sounds/suit/strenghtmode.wav") // Strenght Mode 
-util.PrecacheSound("../sounds/suit/underwater.wav") // 1
+util.PrecacheSound("suit/SpeedMode.wav") // Speed mode 
+util.PrecacheSound("suit/speedmode.wav") // Jump + strenght mode 
+util.PrecacheSound("suit/strenghtmode.wav") // Strenght Mode 
+util.PrecacheSound("suit/underwater.wav") // 1
 
 local Armorm = Sound("suit/armor.mp3")
 local Armor = Sound("suit/ArmorMode.wav")
@@ -561,7 +561,7 @@ raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For 
 	
 	
 	
-// TO DO : Fix that
+// TO DO : Fix that // Edit : No, i have to DO that
 	
 	
 	//////////////////////////////////////////////////////////////

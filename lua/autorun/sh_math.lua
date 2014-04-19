@@ -27,14 +27,9 @@ function math.DistanceVectors(a, b)
 	return math.sqrt(x*x + y*y + z*z);
 end
 
-
 function math.Delta(actual,goal)
 return goal - actual;
 end
-
-
-
-
 
 function EyeFinityScrW()
 	if tempscrw/tempscrh == 16/3  and EyeFinity:GetInt() > 0 then
@@ -46,7 +41,6 @@ end
 function constrain(val, minv, maxv)
 	return math.min(math.max(val, minv), maxv)
  end
- 
  
  function math.MapSimple(numb,endA,endB) // i used the map() function in processing, i have no idea if there smthng similar here
 	return numb*(endB/endA)

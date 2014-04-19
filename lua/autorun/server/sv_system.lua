@@ -49,7 +49,6 @@ function strenght(ply)
 		ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
 			net.Start("cloak_stop")
 			net.Send(ply)
-
 			net.Start("strenght_start")
 			net.Send(ply)	
 	end
@@ -72,33 +71,29 @@ function speed(ply)
 		ply:EmitSound("suit/speed.mp3", 100, 100)
 		ply:SetMaterial("")
 		ply:SetNoTarget(false)
-		
 			net.Start("cloak_stop")
 			net.Send(ply)	
-			
 			net.Start("speed_start")
 			net.Send(ply)	
-			
 	end
 end
 concommand.Add("Speed", speed)
 
 function cloak(ply)
-if ply:Alive() then
-	ply:SetMaterial("cloak/organic")
-	ply:SetWalkSpeed(150)
-	ply:SetRunSpeed(300)
-	ply:EmitSound("suit/cloak.mp3", 100, 100)
-	ply:SetNoTarget(true)
-	ply:SetJumpPower(200)
-	ply:SetNWBool("Strenght",false)
-	ply:SetNWBool("Armor",false)
-	ply:SetNWBool("Speed",false)
-	ply:SetNWBool("Cloak",true); ply:DrawWorldModel(false);
-
+	if ply:Alive() then
+		ply:SetMaterial("cloak/organic")
+		ply:SetWalkSpeed(150)
+		ply:SetRunSpeed(300)
+		ply:EmitSound("suit/cloak.mp3", 100, 100)
+		ply:SetNoTarget(true)
+		ply:SetJumpPower(200)
+		ply:SetNWBool("Strenght",false)
+		ply:SetNWBool("Armor",false)
+		ply:SetNWBool("Speed",false)
+		ply:SetNWBool("Cloak",true); ply:DrawWorldModel(false);
 			net.Start("cloak_start")
 			net.Send(ply)	
-end
+	end
 end
 concommand.Add("Cloak", cloak)
  
@@ -107,23 +102,21 @@ concommand.Add("Cloak", cloak)
  
 function armor(ply)
 	if ply:Alive() then
-	
-
-ply:SetWalkSpeed(150)
-ply:SetRunSpeed(300)
-ply:SetJumpPower(200)
-ply:EmitSound("suit/armor.mp3", 100, 100)
-ply:SetMaterial("")
-ply:SetNoTarget(false)
-ply:SetNWBool("Strenght",false)
-ply:SetNWBool("Armor",true)
-ply:SetNWBool("Speed",false)
-ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
+		ply:SetWalkSpeed(150)
+		ply:SetRunSpeed(300)
+		ply:SetJumpPower(200)
+		ply:EmitSound("suit/armor.mp3", 100, 100)
+		ply:SetMaterial("")
+		ply:SetNoTarget(false)
+		ply:SetNWBool("Strenght",false)
+		ply:SetNWBool("Armor",true)
+		ply:SetNWBool("Speed",false)
+		ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
 			net.Start("cloak_stop")
 			net.Send(ply)	
 			net.Start("armor_start")
 			net.Send(ply)	
-end
+	end
 end
 concommand.Add("Armor", armor)
 
@@ -242,16 +235,16 @@ hook.Add("EntityTakeDamage", "ArmorGryTake", RealArmorGry)
 
 function FixEnergySuitMod(ply)
 if ply:GetNWInt("GryEnergy") < 0 then
-armor(ply)
-ply:SetNWInt("GryEnergy", 0)
+	armor(ply)
+	ply:SetNWInt("GryEnergy", 0)
 end end
 hook.Add("GryUseEnergy", "SuitMod Auto" , FixEnergySuitMod)
 
 
 
 concommand.Add("gry_Armor", function(ply) // wew sush cedng skilz
-if ply:IsAdmin() then gry_InfiniteArmor = !gry_InfiniteArmor end
+	if ply:IsAdmin() then gry_InfiniteArmor = !gry_InfiniteArmor end
 end)
 concommand.Add("gry_Health", function(ply)
-if ply:IsAdmin() then gry_Should_Regen = !gry_Should_Regen end
+	if ply:IsAdmin() then gry_Should_Regen = !gry_Should_Regen end
 end)
