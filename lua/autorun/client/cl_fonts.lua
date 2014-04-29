@@ -24,3 +24,13 @@ surface.CreateFont( "Crysis2",
                     antialias = true,
                     shadow = false
 })
+
+
+surface.CreateFont( "ScoreboardText",
+             {
+                 font    = "Agency FB",
+                 size    = (ScrW()/70.27),
+                 weight  = 1000,
+                 antialias = true,
+                shadow = false
+          })
