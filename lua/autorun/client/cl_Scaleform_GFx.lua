@@ -13,16 +13,13 @@
 
  
  function ScaleFormGFx_Proxy(address, x, y, time)
-HTMLTest = vgui.Create( "HTML" )
-HTMLTest:SetPos( ((ScrW()-x)/2),((ScrH()-y)/2) )
-HTMLTest:SetSize( x+500 , y+500  ) // +500 To prevent the Scrollbar, tell me if you have a way to bypass this ;) And not 5000 to prevent Lag , lel
-HTMLTest:OpenURL( address )
-
-
-timer.Create( "ScaleFormTimer", time, 1, function()
-	HTMLTest:Remove()
-end)
-
+	HTMLTest = vgui.Create( "HTML" )
+	HTMLTest:SetPos( ((ScrW()-x)/2),((ScrH()-y)/2) )
+	HTMLTest:SetSize( x+500 , y+500  ) // +500 To prevent the Scrollbar, tell me if you have a way to bypass this ;) And not 5000 to prevent Lag , lel
+	HTMLTest:OpenURL( address )
+		timer.Create( "ScaleFormTimer", time, 1, function()
+			HTMLTest:Remove()
+		end)
  end
  
  
@@ -35,10 +32,10 @@ end)
  end
  
  function DeZoomScaleform()
- if !IsValid(GryBinoCulars) then return end
-GryBinoCulars:Clear() // Maybe useless ... who know ? :V
-GryBinoCulars:Stop()
-GryBinoCulars:Remove()
+if !IsValid(GryBinoCulars) then return end
+	GryBinoCulars:Clear() // Maybe useless ... who know ? :V
+	GryBinoCulars:Stop()
+	GryBinoCulars:Remove()
  end
  
  
@@ -47,7 +44,7 @@ ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) // Rip chea
  end)
  
  
- 
+--[[  // TODO : Fix this shit
  
  hook.Add("PlayerStartVoice", "GrySclVoiceStart", function()
  GryVoice = vgui.Create( "HTML" )
@@ -63,6 +60,6 @@ ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) // Rip chea
  GryVoice:Remove()
  end)
  
- 
+  ]]
  
  

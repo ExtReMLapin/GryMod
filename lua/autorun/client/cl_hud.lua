@@ -4,7 +4,7 @@ HUAHEUAHEAUHEAU
 jk
  ]]
  
-local DrawMotionBlur = DrawMotionBlur; // About 20% performance gain
+local DrawMotionBlur = DrawMotionBlur; // About 20% performance boost
 local FindMetaTable = FindMetaTable;
 local LocalPlayer = LocalPlayer
 local CurTime = CurTime;
@@ -28,7 +28,7 @@ local vgui = vgui;
 local gui = gui;
 local cam = cam;
  
- //Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 1270x860 (dunno if this resolution exist lel)
+ //Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 1270x860 (not sure if this resolution exist :>)
  
 GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
 GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
@@ -307,11 +307,8 @@ function CRYHUD() //Good luck figuring all this shit out
 		crydist[numb] = crydist[numb] + ( crydistadd - crydist[numb] ) * math.Clamp( FrameTimeExt() * 20, 0, 1 )
 		
 		local cryaddx, cryaddy = math.sin( math.rad( i ) ) * crydist[numb] * global_mul, math.cos( math.rad( i ) ) * crydist[numb] * global_mul
-		--local crytxtw, crytxth = surface.GetTextSize( slots[numb].material )
 		surface.SetDrawColor( crygray1, crygray2, crygray3, global_mul * 200 ) // Color Button, yes  its weired
 		surface.DrawTexturedRectRotated( cryx + cryaddx, cryy + cryaddy, 100 * global_mul, 100 * global_mul, i - 180 )
-		--surface.SetTextPos( cryx + cryaddx - 64, cryy + cryaddy - 64 + 8 )
-		--surface.DrawText( slots[numb].material ) //Draw the character
 		
 	surface.SetMaterial( slots[numb].material )
 	surface.SetDrawColor(Color(crygraya1, crygraya2, crygraya3, global_mul * 250) )
@@ -612,7 +609,7 @@ local ba = ScrH() - (94 * (90 + 10 * ca))
 -- local w = 100 - (0.1 * (-1 * c))
 local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 	surface.SetTexture( enr ) // energy BAR
-	surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
+	surface.SetDrawColor(Color(20,150,230alpha_ch[1])) 
 	surface.DrawTexturedRectRotated( aa + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH() - (EyeFinityScrW()/15.1) - wa  , ca,     (EyeFinityScrW()/87.272727) , -2.98  )  
 
 	 ]]
@@ -621,25 +618,25 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 	 //// BRRRRAAAAAAAAAAAAIIIIIIINNNNNNNNNNNN FFUUUUUUUUUCCCCCCKKKKKK
 // My brain literaly exploded, REALLY, i mean i'm resious, i can't understand my code anymore, all this fucking map.Simple, which dynamicaly change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
 	surface.SetTexture( hlt ) // HEALTH BAR
-	surface.SetDrawColor(Color(200,164,27,alpha_ch[1])) 
+	surface.SetDrawColor(Color(116,194,27,alpha_ch[1])) 
 	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()- EyeFinityScrW()*(95/1920)- (-1*(200-LocalPlayer():Health()))/120 , math.MapSimple(LocalPlayer():Health()-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
 	
 	 
 	surface.SetTexture( enr ) // ENERGY THIS TIME
-	surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
+	surface.SetDrawColor(Color(20,150,230,alpha_ch[1])) 
 	surface.DrawTexturedRectRotated( (EyeFinityScrW()-EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():GetNWInt("GryEnergy")-20,80,EyeFinityScrW()*(167/1920))/2 + EyeFinityScrW()*(167/1920)/2 +  GryModXDistance:GetInt() + GryModXDistance2:GetInt() ,
 	ScrH()- EyeFinityScrW()*(130/1920)- (-1*(200-LocalPlayer():GetNWInt("GryEnergy")))/38 , math.MapSimple(LocalPlayer():GetNWInt("GryEnergy")-20,80, EyeFinityScrW()*(167/1920)), (EyeFinityScrW()/84), -3.5  ) 
 	 
 	 
-		surface.SetDrawColor(Color(4,133,211,alpha_ch[1])) 
+		surface.SetDrawColor(Color(20,150,230,alpha_ch[1])) 
 		draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920)))))+  GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
 		ScrH()-(EyeFinityScrW()*(133/1920)), // Small bar energy
 		math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (EyeFinityScrW()*(40/1920))),
-		(EyeFinityScrW()/84), Color(4,133,211,alpha_ch[1]), 3.5)
+		(EyeFinityScrW()/84), Color(20,150,230,alpha_ch[1]), 3.5)
 	 
 	 
 	 
-	 	surface.SetDrawColor(Color(200,164,2,alpha_ch[1])) 
+	 	surface.SetDrawColor(Color(116,194,40,alpha_ch[1])) 
 	 	 draw.BoxRotated(EyeFinityScrW()-(EyeFinityScrW()*(269/1920))+   ((EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (EyeFinityScrW()*(40/1920)))))  + GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
 	 ScrH()-(EyeFinityScrW()*(100/1920)), // Small bar health
 	math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (EyeFinityScrW()*(40/1920))),
@@ -825,7 +822,7 @@ end
 ////////ExtReM-Team.com/cmd.html///////
 ///////////////////////////////////////
 /////                             /////
-/// Version : FINAL                 ///
+/// Version : FINAL (More or less)  ///
 /// Edition : Official              ///
 /// Developer : [ExtReM] Lapin      ///
 /////////////HELP-FAQ//////////////////
@@ -843,7 +840,7 @@ end
 ///                                 ///
 /////////////THANKS////////////////////
 /// Carl Mcgee : Working on         ///
-/// GryEngine models-map            ///
+/// GryEngine models/map            ///
 ///          -------------          ///
 /// Vuthakral Darastrix : Ideas and ///
 /// his work on the materials       ///
@@ -883,8 +880,6 @@ if !GRYOPEN then return end
 			posy = (gui.MouseY()-(gui.MouseY()-((ScrH()/2) - MOUSE_CHECK_DIST)))
 		else posy = gui.MouseY()
 	end
-
-
 
 gui.SetMousePos(posx, posy)
 
