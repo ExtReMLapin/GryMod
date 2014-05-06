@@ -13,11 +13,13 @@ end
 
 hook.Add( "KeyPress", "HueHueHueHue", detectcible )
 
+
 local function detectcible_release( player, key )
 	if key == IN_ATTACK then
 		AllyCrossDraw = false
 	end 
 end
+
 hook.Add( "KeyRelease", "Hehehehe", detectcible_release )
 
 
@@ -28,4 +30,5 @@ function cross()
 		surface.DrawTexturedRect(ScrW()/2-15, ScrH()/2-15, 30, 30)
 	end
 end
+
 hook.Add("HUDPaint", "wazaaa", cross) 
