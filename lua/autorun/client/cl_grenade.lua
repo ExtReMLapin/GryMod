@@ -1,11 +1,12 @@
 
+local player = LocalPlayer()
 
 function surface.ScreenScale( size )
 	return size * ( ScrH() / 480.0 )
 end
 
 local function grenadetetect()
-	local player = LocalPlayer()
+	
 
 detectable = {} // Feel Free to customize that, that's why i used a table system.
 detectable[1] = {}
@@ -52,7 +53,4 @@ detectable[2].distancecolor = Color(220, 5, 5, 255)
 end
 
 hook.Add( "HUDPaint", "Nade detection", grenadetetect )
-
-
-
 
