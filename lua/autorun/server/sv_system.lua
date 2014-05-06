@@ -22,18 +22,20 @@ gry_InfiniteArmor = false
   
  
 
- function Init_Suitmode(ply)
-ply:SetNWBool("Strenght",false)
-ply:SetNWBool("Armor",true)
-ply:SetNWBool("Speed",false)
-ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
-ply:SetMaterial("");
-ply:SetNWInt("GryEnergy", 0)
-ply.SP = false
-net.Start("gry_spawn")
-net.Send(ply)
- end
+function Init_Suitmode(ply)
+	ply:SetNWBool("Strenght",false)
+	ply:SetNWBool("Armor",true)
+	ply:SetNWBool("Speed",false)
+	ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
+	ply:SetMaterial("");
+	ply:SetNWInt("GryEnergy", 0)
+	ply.SP = false
+		net.Start("gry_spawn")
+		net.Send(ply)
+end
+
 hook.Add( "PlayerSpawn", "problemson", Init_Suitmode )
+
 
 function strenght(ply)
 	if ply:Alive() then
@@ -77,7 +79,9 @@ function speed(ply)
 			net.Send(ply)	
 	end
 end
+
 concommand.Add("Speed", speed)
+
 
 function cloak(ply)
 	if ply:Alive() then
@@ -95,9 +99,8 @@ function cloak(ply)
 			net.Send(ply)	
 	end
 end
-concommand.Add("Cloak", cloak)
- 
 
+concommand.Add("Cloak", cloak)
  
  
 function armor(ply)
@@ -118,24 +121,25 @@ function armor(ply)
 			net.Send(ply)	
 	end
 end
+
 concommand.Add("Armor", armor)
 
 
 function ArmorFUUUUU(ply)
-ply:SetNWInt("GryEnergy", 0);
+	ply:SetNWInt("GryEnergy", 0);
 end
+
 concommand.Add("ArmorFUUUUU", ArmorFUUUUU)
 
 
-
-
- local function Drop(ply)
- if IsValid(ply:GetActiveWeapon()) then
+local function Drop(ply)
+	if IsValid(ply:GetActiveWeapon()) then
 		ply:DropWeapon(ply:GetActiveWeapon()) --Drop active weapon
-		end
-		
+	end
 end
+
 concommand.Add("Drop", Drop)
+
 
 -- Starting energy system.
 function IsMovingSpeed(ply, key)
@@ -145,7 +149,9 @@ function IsMovingSpeed(ply, key)
 		end
 	end
 end
+
 hook.Add( "KeyPress", "KeyPressedSpeedGry", IsMovingSpeed )
+
 
 function RIsMovingSpeed(ply, key)
 	if ply:Alive()   then
@@ -155,7 +161,9 @@ function RIsMovingSpeed(ply, key)
 		end
 	end
 end
+
 hook.Add( "KeyRelease", "RKeyPressedSpeedGry", RIsMovingSpeed )
+
 
 function SuperJump(ply, key) -- Cost 40 enery point
 	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") >= 40 and ply:OnGround() and !gry_InfiniteArmor then
@@ -173,12 +181,16 @@ function SuperJump(ply, key) -- Cost 40 enery point
 		ply.ps = true	
 	end
 end
+
 hook.Add( "KeyPress", "KeyPressedStrenghtGry", SuperJump )
+
+
 function RSuperJump(ply, key)
 	if key == IN_JUMP then 
-ply.ps = false
+		ply.ps = false
 	end
 end
+
 hook.Add("KeyRelease", "keyreleasestrenghtgry", RSuperJump)
 
 
@@ -189,9 +201,9 @@ function Speedsystem()
 		hook.Call("GryUseEnergy", v, v, v)
 		end
 	 end
- timer.Simple(0.1,Speedsystem)
- end
-Speedsystem()
+    timer.Simple(0.1,Speedsystem)
+end
+    Speedsystem()
 
 
 function Cloaksystem()
@@ -202,12 +214,14 @@ function Cloaksystem()
 		hook.Call("GryUseEnergy", v, v, v)
 		end
 	 end
- timer.Simple(0.1,Cloaksystem)
+    timer.Simple(0.1,Cloaksystem)
  end
-Cloaksystem()
+    Cloaksystem()
+
 
 
 function RealArmorGry(ply, dmginfo)
+
 local infl = dmginfo:GetInflictor()
 local att = dmginfo:GetAttacker()
 local amount = dmginfo:GetDamage()
@@ -222,24 +236,21 @@ local amount = dmginfo:GetDamage()
 			ply:SetHealth(ply:Health() - lam)
 			dmginfo:ScaleDamage(0)
 		end
-		
 		hook.Call("GryUseEnergy", ply, ply)
 	end
-
-
 end
+
 hook.Add("EntityTakeDamage", "ArmorGryTake", RealArmorGry)
 
 
-
-
 function FixEnergySuitMod(ply)
-if ply:GetNWInt("GryEnergy") < 0 then
-	armor(ply)
-	ply:SetNWInt("GryEnergy", 0)
-end end
-hook.Add("GryUseEnergy", "SuitMod Auto" , FixEnergySuitMod)
+	if ply:GetNWInt("GryEnergy") < 0 then
+		armor(ply)
+		ply:SetNWInt("GryEnergy", 0)
+	end 
+end
 
+hook.Add("GryUseEnergy", "SuitMod Auto" , FixEnergySuitMod)
 
 
 concommand.Add("gry_Armor", function(ply) // wew sush cedng skilz
