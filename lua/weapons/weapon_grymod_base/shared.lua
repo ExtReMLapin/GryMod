@@ -102,12 +102,13 @@ function SWEP:Think()
 					self.Weapon:SendWeaponAnim(ACT_VM_IDLE_SILENCED)
 				else
 					self.Weapon:SendWeaponAnim(ACT_VM_IDLE)
-				end
+			end
 
 		self.IdleApply = false
 	elseif self.Weapon:Clip1() <= 0 then
 		self.IdleApply = false
 	end
+
 
 	if self.Weapon:GetDTBool(1) and self.Owner:KeyDown(IN_SPEED) then
 		self:SetIronsights(false)
