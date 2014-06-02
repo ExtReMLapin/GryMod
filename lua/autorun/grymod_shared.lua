@@ -109,7 +109,6 @@ if (SERVER) then
 	resource.AddFile( "materials/cryhud/base.vmt" )
 	resource.AddFile( "materials/cryhud/base.vtf" )
 	resource.AddFile( "materials/cryhud/bluebar.png" )
-	resource.AddFile( "materials/cryhud/bluebar.png" )
 	resource.AddFile( "materials/cryhud/cadre.vmt" )
 	resource.AddFile( "materials/cryhud/cadre.vtf" )
 	resource.AddFile( "materials/cryhud/compass.vmt" )
