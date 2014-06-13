@@ -17,7 +17,7 @@ CryDrawFrame:OpenURL( "http://extrem-team.com/Credits.html" )
 end)
 
 
-function GryOptionschute (Panel)
+function GryMod.GryOptionschute (Panel)
 Panel:AddControl("Label", {Text = "GryMod Config"})
 
 	enabled1 = vgui.Create( "DButton", Panel )
@@ -100,8 +100,8 @@ Panel:AddItem(CheckBoxThing)
 Panel:AddControl("Button", {Label = "Credits", Text = "tel me who med dis mod plz", Command = "GryCredits"})
 end
 
-function GryOptionschuteOptionmenu()
-spawnmenu.AddToolMenuOption( "Options", "GryMod", "Config", "Config it !", "test1", "test23", GryOptionschute )
+function GryMod.GryOptionschuteOptionmenu()
+spawnmenu.AddToolMenuOption( "Options", "GryMod", "Config", "Config it !", "test1", "test23", GryMod.GryOptionschute )
 end
-hook.Add("PopulateToolMenu", "PopulateToolMenu", GryOptionschuteOptionmenu)
+hook.Add("PopulateToolMenu", "PopulateToolMenu", GryMod.GryOptionschuteOptionmenu)
 

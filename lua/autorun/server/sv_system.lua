@@ -22,7 +22,7 @@ gry_InfiniteArmor = false
   
  
 
-function Init_Suitmode(ply)
+function GryMod.Init_Suitmode(ply)
 	ply:SetNWBool("Strenght",false)
 	ply:SetNWBool("Armor",true)
 	ply:SetNWBool("Speed",false)
@@ -34,10 +34,10 @@ function Init_Suitmode(ply)
 		net.Send(ply)
 end
 
-hook.Add( "PlayerSpawn", "problemson", Init_Suitmode )
+hook.Add( "PlayerSpawn", "problemson", GryMod.Init_Suitmode )
 
 
-function strenght(ply)
+function GryMod.Strenght(ply)
 	if ply:Alive() then
 		ply:SetWalkSpeed(150)
 		ply:SetRunSpeed(300)
@@ -56,12 +56,12 @@ function strenght(ply)
 	end
 end
 
-concommand.Add("Strenght", strenght)
+concommand.Add("Strenght", GryMod.Strenght)
 
 
 
 
-function speed(ply)
+function GryMod.Speed(ply)
 	if ply:Alive() then
 		ply:SetNWBool("Strenght",false)
 		ply:SetNWBool("Armor",false)
@@ -80,10 +80,10 @@ function speed(ply)
 	end
 end
 
-concommand.Add("Speed", speed)
+concommand.Add("Speed", GryMod.Speed)
 
 
-function cloak(ply)
+function GryMod.Cloak(ply)
 	if ply:Alive() then
 		ply:SetMaterial("cloak/organic")
 		ply:SetWalkSpeed(150)
@@ -100,10 +100,10 @@ function cloak(ply)
 	end
 end
 
-concommand.Add("Cloak", cloak)
+concommand.Add("Cloak", GryMod.Cloak)
  
  
-function armor(ply)
+function GryMod.Armor(ply)
 	if ply:Alive() then
 		ply:SetWalkSpeed(150)
 		ply:SetRunSpeed(300)
@@ -122,27 +122,27 @@ function armor(ply)
 	end
 end
 
-concommand.Add("Armor", armor)
+concommand.Add("Armor", GryMod.Armor)
 
 
-function ArmorFUUUUU(ply)
+function GryMod.ArmorFUUUUU(ply)
 	ply:SetNWInt("GryEnergy", 0);
 end
 
-concommand.Add("ArmorFUUUUU", ArmorFUUUUU)
+concommand.Add("ArmorFUUUUU", GryMod.ArmorFUUUUU)
 
 
-local function Drop(ply)
+function GryMod.Drop(ply)
 	if IsValid(ply:GetActiveWeapon()) then
 		ply:DropWeapon(ply:GetActiveWeapon()) --Drop active weapon
 	end
 end
 
-concommand.Add("Drop", Drop)
+concommand.Add("Drop", GryMod.Drop)
 
 
 -- Starting energy system.
-function IsMovingSpeed(ply, key)
+function GryMod.IsMovingSpeed(ply, key)
 	if ply:Alive()  then
 		if key == IN_SPEED then 
 		ply.SP = true
@@ -150,10 +150,10 @@ function IsMovingSpeed(ply, key)
 	end
 end
 
-hook.Add( "KeyPress", "KeyPressedSpeedGry", IsMovingSpeed )
+hook.Add( "KeyPress", "KeyPressedSpeedGry", GryMod.IsMovingSpeed )
 
 
-function RIsMovingSpeed(ply, key)
+function GryMod.RIsMovingSpeed(ply, key)
 	if ply:Alive()   then
 		if key == IN_SPEED then 
 		--hook.Call("GryUseEnergyStop", ply, ply)
@@ -162,10 +162,10 @@ function RIsMovingSpeed(ply, key)
 	end
 end
 
-hook.Add( "KeyRelease", "RKeyPressedSpeedGry", RIsMovingSpeed )
+hook.Add( "KeyRelease", "RKeyPressedSpeedGry", GryMod.RIsMovingSpeed )
 
 
-function SuperJump(ply, key) -- Cost 40 enery point
+function GryMod.SuperJump(ply, key) -- Cost 40 enery point
 	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") >= 40 and ply:OnGround() and !gry_InfiniteArmor then
 		if key == IN_JUMP  then 
 			ply:SetJumpPower(500)
@@ -182,19 +182,19 @@ function SuperJump(ply, key) -- Cost 40 enery point
 	end
 end
 
-hook.Add( "KeyPress", "KeyPressedStrenghtGry", SuperJump )
+hook.Add( "KeyPress", "KeyPressedStrenghtGry", GryMod.SuperJump )
 
 
-function RSuperJump(ply, key)
+function GryMod.RSuperJump(ply, key)
 	if key == IN_JUMP then 
 		ply.ps = false
 	end
 end
 
-hook.Add("KeyRelease", "keyreleasestrenghtgry", RSuperJump)
+hook.Add("KeyRelease", "keyreleasestrenghtgry", GryMod.RSuperJump)
 
 
-function Speedsystem()
+function GryMod.Speedsystem()
 	for k, v in pairs(player.GetAll()) do
 		if (v.SP == true) and v:GetNWBool("Speed", true) and !gry_InfiniteArmor then 
 		v:SetNWInt("GryEnergy", (v:GetNWInt("GryEnergy") - 1))
@@ -203,10 +203,10 @@ function Speedsystem()
 	 end
     timer.Simple(0.1,Speedsystem)
 end
-    Speedsystem()
+    GryMod.Speedsystem()
 
 
-function Cloaksystem()
+function GryMod.Cloaksystem()
 	for k, v in pairs(player.GetAll()) do
 		if v:GetNWBool("Cloak", true) and !gry_InfiniteArmor then 
 		v:DrawWorldModel(false) // Because the WeaponEquip/Switch is not working
@@ -216,11 +216,11 @@ function Cloaksystem()
 	 end
     timer.Simple(0.1,Cloaksystem)
  end
-    Cloaksystem()
+    GryMod.Cloaksystem()
 
 
 
-function RealArmorGry(ply, dmginfo)
+function GryMod.RealArmorGry(ply, dmginfo)
 
 local infl = dmginfo:GetInflictor()
 local att = dmginfo:GetAttacker()
@@ -240,17 +240,17 @@ local amount = dmginfo:GetDamage()
 	end
 end
 
-hook.Add("EntityTakeDamage", "ArmorGryTake", RealArmorGry)
+hook.Add("EntityTakeDamage", "ArmorGryTake", GryMod.RealArmorGry)
 
 
-function FixEnergySuitMod(ply)
+function GryMod.FixEnergySuitMod(ply)
 	if ply:GetNWInt("GryEnergy") < 0 then
 		armor(ply)
 		ply:SetNWInt("GryEnergy", 0)
 	end 
 end
 
-hook.Add("GryUseEnergy", "SuitMod Auto" , FixEnergySuitMod)
+hook.Add("GryUseEnergy", "SuitMod Auto" , GryMod.FixEnergySuitMod)
 
 
 concommand.Add("gry_Armor", function(ply) // wew sush cedng skilz

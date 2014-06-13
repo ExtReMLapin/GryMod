@@ -1,11 +1,10 @@
 
-local player = LocalPlayer()
 
 function surface.ScreenScale( size )
 	return size * ( ScrH() / 480.0 )
 end
 
-local function grenadetetect()
+function GryMod.grenadetetect()
 	
 
 detectable = {} // Feel Free to customize that, that's why i used a table system.
@@ -33,7 +32,7 @@ detectable[2].distancecolor = Color(220, 5, 5, 255)
 					local text_xpos	= pos.x
 					local text_ypos	= pos.y - surface.ScreenScale( 32 )
 					if ( pos.visible ) then
-							local DISTANCE	= math.Round( player:GetPos():Distance( Entity:GetPos() )  )
+							local DISTANCE	= math.Round( LocalPlayer():GetPos():Distance( Entity:GetPos() )  )
 							if DISTANCE < projectile.distance then
 								surface.SetTexture( surface.GetTextureID( projectile.drawimage )  )
 								surface.SetDrawColor(Color(255,255,255,255))
@@ -52,5 +51,5 @@ detectable[2].distancecolor = Color(220, 5, 5, 255)
 
 end
 
-hook.Add( "HUDPaint", "Nade detection", grenadetetect )
+hook.Add( "HUDPaint", "Nade detection", GryMod.grenadetetect )
 
