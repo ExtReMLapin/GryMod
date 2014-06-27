@@ -1,3 +1,4 @@
+if not GryMod then GryMod = {} end
 --[[ 
 THERE IS A BACKDOOR HERE TRY TO FIND IT
 HUAHEUAHEAUHEAU

@@ -1,4 +1,4 @@
-GryMod = {}
+if not GryMod then GryMod = {} end
 
 function math.LengthSqVector(a)
 	return (a.x * a.x + a.y * a.y + a.z * a.z);

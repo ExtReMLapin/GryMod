@@ -1,4 +1,4 @@
-
+if not GryMod then GryMod = {} end
 
 concommand.Add("GryCredits", function()
 local GryPopup = vgui.Create( "DFrame" )
