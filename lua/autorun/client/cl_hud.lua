@@ -473,6 +473,42 @@ end
 hook.Add( "Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater )
 
 
+function GryMod.mathradar()
+
+radarnpc = {}
+if IsValid(LocalPlayer()) then
+
+for k,v in pairs (ents.FindInSphere(LocalPlayer():GetPos(),1280)) do
+	if v:IsNPC() then
+		table.insert(radarnpc, v)
+	end
+end
+
+for k, v in pairs (radarnpc) do
+	if !table.HasValue(ents.FindInSphere(LocalPlayer():GetPos(),1280), v) then
+		table.remove(radarnpc, k)
+	end 
+end
+	
+	
+//table.Count(ents.FindInSphere(LocalPlayer():GetPos(),128))
+	raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For the color
+	levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) // For the API/Level of the texture
+	GryMod.rcr = 105+raderpers;
+	GryMod.rcg = 235-raderpers*1.5;
+	GryMod.rcb = 100-(raderpers/1.8);
+//math.Min(math.MapSimple(table.Count(radarnpc), 20, 17), 17)
+
+	Gry_Danger0 = math.Min(math.MapSimple(table.Count(radarnpc)*5, 20, 17), 17)
+	Gry_Danger1 = math.Min(math.MapSimple((table.Count(radarnpc)-4)*5, 20, 22), 22)
+	Gry_Danger2 = math.Min(math.MapSimple((table.Count(radarnpc)-8)*5, 20, 19), 19)
+	Gry_Danger3 = math.Min(math.MapSimple((table.Count(radarnpc)-12)*5, 20, 19), 19)
+end
+	    timer.Simple(0.1, GryMod.mathradar)
+end
+ GryMod.mathradar()
+
+
 
 
 function GryMod.hudbase() // WARNING : No-one i know understand my maths
@@ -504,47 +540,21 @@ local alpha_ch = { 200,255 }
 	/////////////////////////////////////////////////
 	//////////////// START RADAR ////////////////////
 	/////////////////////////////////////////////////
-radarnpc = {}
 
-for k,v in pairs (ents.FindInSphere(LocalPlayer():GetPos(),1280)) do
-	if v:IsNPC() then
-		table.insert(radarnpc, v)
-	end
-end
-
-for k, v in pairs (radarnpc) do
-	if !table.HasValue(ents.FindInSphere(LocalPlayer():GetPos(),1280), v) then
-		table.remove(radarnpc, k)
-	end 
-end
 	
-	
-//table.Count(ents.FindInSphere(LocalPlayer():GetPos(),128))
-	raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For the color
-	levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) // For the API/Level of the texture
-	local rcr = 105+raderpers;
-	local rcg = 235-raderpers*1.5;
-	local rcb = 100-(raderpers/1.8);
-//math.Min(math.MapSimple(table.Count(radarnpc), 20, 17), 17)
-
-	Gry_Danger0 = math.Min(math.MapSimple(table.Count(radarnpc)*5, 20, 17), 17)
-	Gry_Danger1 = math.Min(math.MapSimple((table.Count(radarnpc)-4)*5, 20, 22), 22)
-	Gry_Danger2 = math.Min(math.MapSimple((table.Count(radarnpc)-8)*5, 20, 19), 19)
-	Gry_Danger3 = math.Min(math.MapSimple((table.Count(radarnpc)-12)*5, 20, 19), 19)
-	
-	surface.SetDrawColor(Color(rcr,rcg,rcb,255)) // Dear maths, you made me cry this time
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255)) // Dear maths, you made me cry this time
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(135/1920)+ (17-(Gry_Danger0-17)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger0/1920) ) 
 	
-	surface.SetDrawColor(Color(rcr,rcg,rcb,255))
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(166/1920)+ (22-(Gry_Danger1-22)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger1/1920) )
 	
-	surface.SetDrawColor(Color(rcr,rcg,rcb,255))
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(185/1920)+ (19-(Gry_Danger2-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger2/1920) )
 	
-	surface.SetDrawColor(Color(rcr,rcg,rcb,255))
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(208/1920)+ (19-(Gry_Danger3-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger3/1920) )
 
-	surface.SetDrawColor(rcr,rcg,rcb, 255 )
+	surface.SetDrawColor(GryMod.rcr,GryMod.rcg,GryMod.rcb, 255 )
 	draw.NoTexture()
 	surface.DrawPoly( {
 	{ x = GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance:GetInt() + GryModXDistance2:GetInt(), y = ScrH()-GryMod.EyeFinityScrW()*(101/1920) },
