@@ -96,17 +96,33 @@ end
 	render.PopFilterMin()
 end
 
- 
+
+grymodesuit = Material( "GryArmor.png" )
+GryMod.Cloaked = false
+
+net.Receive( "cloak_start", function( length, client )
+	grymodesuit = Material( "GryCloak.png" )
+	GryMod.Cloaked = true
+	LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
+	LocalPlayer():GetHands():SetMaterial("cloak/organic")
+end)
+
+net.Receive( "armor_start", function( length, client )
+	grymodesuit = Material( "GryArmor.png" )
+	GryMod.Cloaked = false
+end)
+
+net.Receive( "speed_start", function( length, client )
+	grymodesuit = Material( "GrySpeed.png" )
+	GryMod.Cloaked = false
+end)
+
+net.Receive( "strenght_start", function( length, client )
+	grymodesuit = Material( "GryStrenght.png" )
+	GryMod.Cloaked = false
+end)
 
 
- 
- 
- 
- 
- 
- 
- 
- 
  // Originals sounds
 util.PrecacheSound("suit/speed.mp3")
 util.PrecacheSound("suit/strength.mp3")
@@ -169,7 +185,7 @@ enemytype["player"].material = Material( "cryhud/gry_WhoAreU.png" )
 enemytype["player"].color = Color(255,255,255,200)
 
 
- nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"}
+nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"}
 
 
 
@@ -207,7 +223,7 @@ function GryMod.CRYHUD() //Good luck figuring all this shit out
 	if ( global_mul_goal != global_mul ) then
 		global_mul = global_mul + ( global_mul_goal - global_mul ) * math.Clamp( FrameTimeExt() * 10, 0, 1 ) //I love mah math
 	end
-	
+
 	local numb = 1
 	local cryadd = 360/5
 	local cursorang = math.fmod( math.atan2( gui.MouseY() - cryy, gui.MouseX() - cryx ), math.pi * 2 ) //This angle shit makes my head implode
@@ -226,9 +242,9 @@ function GryMod.CRYHUD() //Good luck figuring all this shit out
 	for i = 0 + cryadd / 2, 360 - cryadd / 2, cryadd do
 
 	-- No , i dont use "else"
-	
-	
-	
+
+
+
 	-- NORMAL
 			local crygraya1 = 90
 			local 	crygraya2 = 130
@@ -250,14 +266,14 @@ function GryMod.CRYHUD() //Good luck figuring all this shit out
 			crygraya2 = 27
 			crygraya3 = 27
 	end
-	
+
 	if (selected == 5 and !IsValid(LocalPlayer():GetActiveWeapon())) then
 			crygraya1 =  240
 			crygraya2 = 27
 			crygraya3 = 27
 	end
 
-	
+
 	surface.SetTexture( crytx )
 
 	if LocalPlayer():CanGryMod() then // NORMAL
@@ -273,8 +289,8 @@ function GryMod.CRYHUD() //Good luck figuring all this shit out
 		 crygray2 = 23
 		 crygray3 = 27
 	end
-		
-		
+
+
 		if ( numb == selected and LocalPlayer():CanGryMod()) then // NORMAL
 			crydistadd = crydistadd * 1.3
 			crygray1 = 100
@@ -295,20 +311,20 @@ function GryMod.CRYHUD() //Good luck figuring all this shit out
 			crygray2 = 23
 			crygray3 = 27	
 		end
-		
-		
+
+
 		crydist[numb] = crydist[numb] + ( crydistadd - crydist[numb] ) * math.Clamp( FrameTimeExt() * 20, 0, 1 )
 		
 		local cryaddx, cryaddy = math.sin( math.rad( i ) ) * crydist[numb] * global_mul, math.cos( math.rad( i ) ) * crydist[numb] * global_mul
 		surface.SetDrawColor( crygray1, crygray2, crygray3, global_mul * 200 ) // Color Button, yes  its weired
 		surface.DrawTexturedRectRotated( cryx + cryaddx, cryy + cryaddy, 100 * global_mul, 100 * global_mul, i - 180 )
-		
+
 	surface.SetMaterial( slots[numb].material )
 	surface.SetDrawColor(Color(crygraya1, crygraya2, crygraya3, global_mul * 250) )
 	surface.DrawTexturedRect(cryx + cryaddx - 35, cryy + cryaddy - 35 + 8 ,70,70 )
 		numb = numb + 1
 	end     
-	
+
 if  LocalPlayer():CanGryMod() then   -- No , i wont use "else"
 	circlea = 127
 	circleb = 156
@@ -326,8 +342,8 @@ end
 		circleb = 23
 		circlec = 27
 	end
-	
-	
+
+
 	surface.SetTexture( crycircletx )
 	surface.SetDrawColor( circlea, circleb, circlec, global_mul * 230 )
 	surface.DrawTexturedRectRotated( cryx, cryy, 128 * global_mul, 128 * global_mul, math.fmod( CurTime() * -16, 360 ) )
@@ -400,7 +416,7 @@ concommand.Add( "-crysishud", GryMod.CryOpenClose )
 
 
 function GryMod.CloackAttack (ply,key)
-    if key == IN_ATTACK and ply:GetNWInt("Cloak", true)  then
+    if key == IN_ATTACK and GryMod.Cloaked  then
         RunConsoleCommand( "Armor" )
 		 RunConsoleCommand( "ArmorFUUUUU" )
         surface.PlaySound( Armorm )
@@ -434,7 +450,6 @@ function GryMod.BinocularZoomOut( player, key )
 	end
 end
 
- 
 hook.Add( "KeyRelease", "BinocularZoomOut", GryMod.BinocularZoomOut )
 
 function SuitBreathUnderwater() // Not made by me
@@ -453,7 +468,7 @@ end
 hook.Add( "Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater )
 
 function GryMod.hudbase() // WARNING : No-one i know understand my maths
-				// Feel free to send me a "readable" version of that if you wants :V
+// Feel free to send me a "readable" version of that if you wants :V
 
 local alpha_ch = { 200,255 }
     	if shaking == true then
@@ -501,8 +516,8 @@ end
 	
 	
 //table.Count(ents.FindInSphere(LocalPlayer():GetPos(),128))
-raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For the color
- levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) // For the API/Level of the texture
+	raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For the color
+	levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) // For the API/Level of the texture
 	local rcr = 105+raderpers;
 	local rcg = 235-raderpers*1.5;
 	local rcb = 100-(raderpers/1.8);
@@ -516,13 +531,13 @@ raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) // For 
 	surface.SetDrawColor(Color(rcr,rcg,rcb,255)) // Dear maths, you made me cry this time
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(135/1920)+ (17-(Gry_Danger0-17)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger0/1920) ) 
 	
-		surface.SetDrawColor(Color(rcr,rcg,rcb,255))
+	surface.SetDrawColor(Color(rcr,rcg,rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(166/1920)+ (22-(Gry_Danger1-22)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger1/1920) )
 	
-			surface.SetDrawColor(Color(rcr,rcg,rcb,255))
+	surface.SetDrawColor(Color(rcr,rcg,rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(185/1920)+ (19-(Gry_Danger2-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger2/1920) )
 	
-				surface.SetDrawColor(Color(rcr,rcg,rcb,255))
+	surface.SetDrawColor(Color(rcr,rcg,rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-GryMod.EyeFinityScrW()*(208/1920)+ (19-(Gry_Danger3-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger3/1920) )
 
 	surface.SetDrawColor(rcr,rcg,rcb, 255 )
@@ -603,9 +618,8 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 
 	 ]]
 	 
-	 
-	 //// BRRRRAAAAAAAAAAAAIIIIIIINNNNNNNNNNNN FFUUUUUUUUUCCCCCCKKKKKK
-// My brain literaly exploded, REALLY, i mean i'm resious, i can't understand my code anymore, all this fucking map.Simple, which dynamicaly change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
+
+// My brain literaly exploded, i can't understand my code anymore, all this fucking map.Simple, which change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
 	surface.SetTexture( hlt ) // HEALTH BAR
 	surface.SetDrawColor(Color(116,194,27,alpha_ch[1])) 
 	surface.DrawTexturedRectRotated( (GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80, GryMod.EyeFinityScrW()*(167/1920))/2 + GryMod.EyeFinityScrW()*(167/1920)/2 + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()- GryMod.EyeFinityScrW()*(95/1920)- (-1*(200-LocalPlayer():Health()))/120 , math.MapSimple(LocalPlayer():Health()-20,80, GryMod.EyeFinityScrW()*(167/1920)), (GryMod.EyeFinityScrW()/84), -3.5  ) 
@@ -631,33 +645,14 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 
 
 
+	local modeposw = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/13.1)
+	local modeposh = ScrH() - (GryMod.EyeFinityScrW()/15.5)
 
-local modeposw = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/13.1)
-local modeposh = ScrH() - (GryMod.EyeFinityScrW()/15.5)
 
-	if LocalPlayer():GetNWBool("Armor",true) then
-            grymodesuit = Material( "GryArmor.png" )
-        end
-        
-    	if LocalPlayer():GetNWBool("Speed",true) then
-             grymodesuit = Material( "GrySpeed.png" )
-        end
-
-	if LocalPlayer():GetNWBool("Cloak",true) then
-             grymodesuit = Material( "GryCloak.png" )
-        end
-
-	if LocalPlayer():GetNWBool("Strenght",true) then
-           grymodesuit = Material( "GryStrenght.png" )
-        end
-        
 	surface.SetMaterial( grymodesuit )
 	surface.SetDrawColor( Color(190, 195, 190,alpha_ch[2]))
 	surface.DrawTexturedRect(modeposw + GryModXDistance:GetInt() + GryModXDistance2:GetInt() , modeposh ,GryMod.EyeFinityScrW()*(100/1920),GryMod.EyeFinityScrW()*(100/1920) )
-	
-	
-	
-	
+
 	if LocalPlayer():GetActiveWeapon():IsValid() then // Lets get ammo MOTHERFUCKER
 		if table.HasValue(nilweps, LocalPlayer():GetActiveWeapon():GetClass()) then 
 			   draw.TextRotated("∞", "CrysisInfos",GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/8) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(GryMod.EyeFinityScrW()/8.4),  Color(190, 195, 190,alpha_ch[2]), 3)
@@ -714,7 +709,7 @@ function GryMod.CompassDirection() // LONG , LONG.....   lik my dik lel
 	draw.SimpleText( 'NW',  'ScoreboardText', GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance:GetInt() + GryModXDistance2:GetInt()  + (( LocalPlayer():EyeAngles().y - 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( ScrH() - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y - 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920)))) end
 end
 
-hook.Add( "HUDPaint", "ololol", GryMod.CompassDirection) 
+hook.Add( "HUDPaint", "ololol", GryMod.CompassDirection)
 
 
 
@@ -738,25 +733,20 @@ net.Receive("gry_jump", function()
 end)
 
 net.Receive("cloak_stop", function()
-	LocalPlayer():GetViewModel():SetMaterial("");
+	LocalPlayer():GetViewModel():SetMaterial("")
 	LocalPlayer():GetHands( ):SetMaterial("")
 end)
 
-net.Receive("cloak_start", function()
-	LocalPlayer():GetViewModel():SetMaterial("cloak/organic");
-	LocalPlayer():GetHands():SetMaterial("cloak/organic")
-end)
 
 
-
-if(util.__TraceLine) then return end; // I know i'm a terrible person
+if(util.__TraceLine) then return end // I know i'm a terrible person
 util.__TraceLine = util.TraceLine;
 	
 function util.TraceLine(...)
 	local t = util.__TraceLine(...);
 	if(t and IsValid(t.Entity)) then
 		if(t.Entity:IsPlayer()) then
-			if t.Entity:GetNWBool("Cloak",true)  then
+			if t.Entity:GetMaterial() == "cloak/organic" then
 				t.Entity = NULL
 			end;
 		end
@@ -765,17 +755,15 @@ function util.TraceLine(...)
 end
 
 net.Receive("gry_spawn", function()	// Wow much swag
-	
-
-if gamemode.Get("sandbox") and jesus != 4646434346 then
+	if gamemode.Get("sandbox") and jesus != 4646434346 then // I know...
 		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 5);
 		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 4.2);
 		jesus = 4646434346 // MAGIC
-end
+	end
 
 
 
-		print[[
+print[[
 		
 
 	                                                                                    
@@ -849,7 +837,7 @@ end
 
 
 
-		]]
+]]
 	
 	
 end)

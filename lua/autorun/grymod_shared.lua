@@ -57,7 +57,6 @@ AddCSLuaFile( "client/cl_nanoholo.lua" )
 AddCSLuaFile( "client/cl_options.lua" )
 AddCSLuaFile( "client/cl_Scaleform_GFx.lua" )
 AddCSLuaFile( "sh_crashlogo.lua" )
-AddCSLuaFile( "sh_math.lua" )
 end
 
 if (SERVER) then

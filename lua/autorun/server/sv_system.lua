@@ -214,7 +214,7 @@ function GryMod.Cloaksystem()
 		hook.Call("GryUseEnergy", v, v, v)
 		end
 	 end
-    timer.Simple(0.1,Cloaksystem)
+    timer.Simple(0.1,GryModCloaksystem)
  end
     GryMod.Cloaksystem()
 
