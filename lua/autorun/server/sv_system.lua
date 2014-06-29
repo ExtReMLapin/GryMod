@@ -201,7 +201,7 @@ function GryMod.Speedsystem()
 		hook.Call("GryUseEnergy", v, v, v)
 		end
 	 end
-    timer.Simple(0.1,Speedsystem)
+    timer.Simple(0.1,GryMod.Speedsystem)
 end
     GryMod.Speedsystem()
 
