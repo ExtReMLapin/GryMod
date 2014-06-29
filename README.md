@@ -1,6 +1,6 @@
 GryMod
 ======
-Crysis for Garry's mod
+Crysis for Garry's <od
            
            
 YOU ARE NOT ALLOWED TO RE-UPLOAD IT
@@ -8,7 +8,7 @@ YOU ARE NOT ALLOWED TO RE-UPLOAD IT
 How it Works 
 -------------
          
-Download and Put this in garrysmod/garrysmodaddons
+Download and Put this in GarrysMod/garrysmod/addons
 
 Open the console and bind a key to "+crysishud"  (Without quotes, don't be stupid)
 
@@ -58,7 +58,7 @@ If it says "Unknow command : +crysishud", reinstall it.
 
 * gry_spawn
 
-* gry_jump // used to fix problems, you'll don't need it
+* gry_jump // used to fix problems, you won't need it
 
 
 
