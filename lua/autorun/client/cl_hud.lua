@@ -42,6 +42,11 @@ ply = LocalPlayer()
 tempscrw = ScrW()
 tempscrh = ScrH()
 
+local base = surface.GetTextureID( "cryhud/base" )
+local hlt = surface.GetTextureID( "cryhud/healthpr" )
+local enr = surface.GetTextureID( "cryhud/enr" )
+local compass = surface.GetTextureID( "cryhud/compass" )
+
 function meta:CanGryMod() 
 	return true
 end
@@ -467,6 +472,9 @@ local ply = LocalPlayer()
 end
 hook.Add( "Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater )
 
+
+
+
 function GryMod.hudbase() // WARNING : No-one i know understand my maths
 // Feel free to send me a "readable" version of that if you wants :V
 
@@ -482,10 +490,6 @@ local alpha_ch = { 200,255 }
     		b_ch = 0
     	end
 		
-	base = surface.GetTextureID( "cryhud/base" )
-	hlt = surface.GetTextureID( "cryhud/healthpr" )
-	enr = surface.GetTextureID( "cryhud/enr" )
-	compass = surface.GetTextureID( "cryhud/compass" )
 
 	surface.SetTexture( base )
 	surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
@@ -635,9 +639,9 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 	draw.BoxRotated(GryMod.EyeFinityScrW()-(GryMod.EyeFinityScrW()*(269/1920))+   ((GryMod.EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (GryMod.EyeFinityScrW()*(40/1920)))))+  GryModXDistance:GetInt() + GryModXDistance2:GetInt(),	ScrH()-(GryMod.EyeFinityScrW()*(133/1920)), math.MapSimple(math.Min(LocalPlayer():GetNWInt("GryEnergy"),20 ), 20, (GryMod.EyeFinityScrW()*(40/1920))),(GryMod.EyeFinityScrW()/84), Color(20,150,230,alpha_ch[1]), 3.5)
 	 
 	 
-	surface.SetDrawColor(Color(116,194,40,alpha_ch[1])) 
+	surface.SetDrawColor(Color(116,194,27,alpha_ch[1])) 
 	draw.BoxRotated(GryMod.EyeFinityScrW()-(GryMod.EyeFinityScrW()*(269/1920))+   ((GryMod.EyeFinityScrW()*(40/1920))-(math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (GryMod.EyeFinityScrW()*(40/1920)))))  + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(GryMod.EyeFinityScrW()*(100/1920)), math.MapSimple(math.Min(LocalPlayer():Health(),20 ), 20, (GryMod.EyeFinityScrW()*(40/1920))),
-	(GryMod.EyeFinityScrW()/84), Color(200,164,2,alpha_ch[1]), 3.5)
+	(GryMod.EyeFinityScrW()/84), Color(116,194,27,alpha_ch[1]), 3.5)
 
 	draw.TextRotated( LocalPlayer():GetAmmoCount("grenade") , "CrysisInfos",GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/9) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(GryMod.EyeFinityScrW()/11),  Color(190, 195, 190,alpha_ch[2]), 1) // Fixed in v2.3
 	draw.TextRotated( LocalPlayer():Health() , "CrysisInfos",GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/10) + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()-(GryMod.EyeFinityScrW()/22),  Color(190, 195, 190,alpha_ch[2]), 1) // Fixed in v2.3
@@ -650,7 +654,7 @@ local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
 
 
 	surface.SetMaterial( grymodesuit )
-	surface.SetDrawColor( Color(190, 195, 190,alpha_ch[2]))
+	surface.SetDrawColor( Color(150, 195, 150,alpha_ch[2] - 100))
 	surface.DrawTexturedRect(modeposw + GryModXDistance:GetInt() + GryModXDistance2:GetInt() , modeposh ,GryMod.EyeFinityScrW()*(100/1920),GryMod.EyeFinityScrW()*(100/1920) )
 
 	if LocalPlayer():GetActiveWeapon():IsValid() then // Lets get ammo MOTHERFUCKER
@@ -806,7 +810,7 @@ print[[
 /////                             /////
 /// Version : FINAL (More or less)  ///
 /// Edition : Official              ///
-/// Developer : [ExtReM] Lapin      ///
+/// Dev : [ExtReM] Lapin            ///
 /////////////HELP-FAQ//////////////////
 /// How to open the menu ? -> Bind a///
 /// key to +crysishud (guide on the ///
@@ -816,9 +820,9 @@ print[[
 /// question and buy a new PC       ///
 ///          -------------          ///
 /// I found a bug -> That's still   ///
-/// not a question, tell me what it ///
-/// is on the workshop page of the  ///
-/// addon                           ///
+/// not a question, make an issue   ///
+/// ion github                      ///
+///                                 ///
 ///                                 ///
 /////////////THANKS////////////////////
 /// Carl Mcgee : Working on         ///
