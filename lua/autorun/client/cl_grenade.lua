@@ -4,29 +4,27 @@ function surface.ScreenScale( size )
 	return size * ( ScrH() / 480.0 )
 end
 
+GryMod.detectable = {} // Feel Free to customize that, that's why i used a table system.
+GryMod.detectable[1] = {}
+GryMod.detectable[1].realname = "gmod_button"
+GryMod.detectable[1].drawname = "Button"
+GryMod.detectable[1].drawimage = "gui/arrow"
+GryMod.detectable[1].distance = 130
+GryMod.detectable[1].distancecolor = Color(255, 255, 255, 255)
+GryMod.detectable[2] = {}
+GryMod.detectable[2].realname = "npc_grenade_frag"
+GryMod.detectable[2].drawname = "Frag Grenade"
+GryMod.detectable[2].drawimage = "cryhud/cadre"
+GryMod.detectable[2].distance = 750
+GryMod.detectable[2].distancecolor = Color(220, 5, 5, 255)
+
+
 function GryMod.grenadetetect()
-	
 
-detectable = {} // Feel Free to customize that, that's why i used a table system.
-detectable[1] = {}
-detectable[1].realname = "gmod_button"
-detectable[1].drawname = "Button"
-detectable[1].drawimage = "gui/arrow"
-detectable[1].distance = 130
-detectable[1].distancecolor = Color(255, 255, 255, 255)
-detectable[2] = {}
-detectable[2].realname = "npc_grenade_frag"
-detectable[2].drawname = "Frag Grenade"
-detectable[2].drawimage = "cryhud/cadre"
-detectable[2].distance = 750
-detectable[2].distancecolor = Color(220, 5, 5, 255)
-	
-
-	
 
 	for k, Entity in pairs( ents.GetAll() ) do
 		if ( Entity and IsValid(Entity) ) then
-			for l, projectile in pairs( detectable) do
+			for l, projectile in pairs( GryMod.detectable) do
 				if (Entity:GetClass() == projectile.realname ) then
 					local pos		= Entity:LocalToWorld( Entity:OBBCenter() ):ToScreen()
 					local text_xpos	= pos.x
