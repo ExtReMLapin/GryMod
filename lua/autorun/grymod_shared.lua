@@ -60,11 +60,6 @@ AddCSLuaFile( "sh_crashlogo.lua" )
 end
 
 if (SERVER) then
-	resource.AddWorkshop("209535414")
-	resource.AddFile( "resource/fonts/Agency FB.ttf" ) // PLEASE PUT IT IN YOUR FASTDL PLEEEEASSSEEEEE
-end	
-
-if (SERVER) then
 	resource.AddFile( "sound/cry_close.wav" )
 	resource.AddFile( "sound/cry_error.wav" )
 	resource.AddFile( "sound/cry_hover.wav" )
