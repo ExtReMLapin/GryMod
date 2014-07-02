@@ -1,22 +1,15 @@
 "UnlitGeneric"
 {
 	"$basetexture" "crysis_arrow"
-
 	"$vertexalpha" 1
 	"$vertexcolor" 1
-
-
+	
 	$translucent	1
 	$distancealpha	1
-	
 	$softedges		1
 	$edgesoftnessstart	0.9
 	$edgesoftnessend	0.65
 	$scaleedgesoftnessbasedonscreenres 2
-	
-
-
-
 	$no_fullbright	1
 	$ignorez	1
 }
