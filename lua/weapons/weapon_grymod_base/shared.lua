@@ -1,6 +1,6 @@
 if (SERVER) then
 	AddCSLuaFile( "shared.lua" )
-	SWEP.Weight				= 5
+	SWEP.Weight			= 5
 	SWEP.AutoSwitchTo		= false
 	SWEP.AutoSwitchFrom		= false
 
@@ -11,10 +11,10 @@ if ( CLIENT ) then
 	SWEP.DrawCrosshair		= true
 	SWEP.ViewModelFOV		= 86
 	SWEP.ViewModelFlip		= true
-	SWEP.CSMuzzleFlashes	= true
+	SWEP.CSMuzzleFlashes		= true
 end
 
-SWEP.Author			= "ExtReM Lapin"
+SWEP.Author		= "ExtReM Lapin"
 SWEP.Contact		= ""
 SWEP.Purpose		= ""
 SWEP.Instructions	= ""
@@ -24,28 +24,28 @@ SWEP.AdminSpawnable		= false
 
 SWEP.Primary.Sound			= Sound("Scar.Single")
 SWEP.Primary.Damage			= 40
-SWEP.Primary.NumShots		= 1
+SWEP.Primary.NumShots			= 1
 SWEP.Primary.Delay			= 0.15
-SWEP.Silenced = false
-SWEP.UseSilencer = true
-SWEP.SilencerAnim = true
+SWEP.Silenced 		= false
+SWEP.UseSilencer 	= true
+SWEP.SilencerAnim 	= true
 SWEP.Primary.ClipSize		= -1
 SWEP.Primary.DefaultClip	= -1
 SWEP.Primary.Automatic		= false
-SWEP.Primary.Ammo			= "none"
-SWEP.IsAiming 				= false
+SWEP.Primary.Ammo		= "none"
+SWEP.IsAiming 			= false
 SWEP.Secondary.ClipSize		= -1
 SWEP.Secondary.DefaultClip	= -1
 SWEP.Secondary.Automatic	= false
-//SWEP.RunArmOffset 			= Vector (-2.8, 2, 2)
-SWEP.Secondary.Ammo			= "none"
-//SWEP.RunArmAngle 			= Angle(-24, 20.10, -10.436) // haut/bas  ---  gauche droite // self rotate
-SWEP.RunArmOffset = Vector (-3, -1, -8)
-SWEP.RunArmAngle = Angle(-25, 60, 5)
+//SWEP.RunArmOffset 		= Vector (-2.8, 2, 2)
+SWEP.Secondary.Ammo		= "none"
+//SWEP.RunArmAngle 		= Angle(-24, 20.10, -10.436) // haut/bas  ---  gauche droite // self rotate
+SWEP.RunArmOffset 		= Vector (-3, -1, -8)
+SWEP.RunArmAngle 		= Angle(-25, 60, 5)
 
 
 
-SWEP.Rifle					= true
+SWEP.Rifle			= true
 SWEP.HoldType			= "smg"
 SWEP.DeployDelay		= 0.2
 SWEP.IsAiming			= false
@@ -499,21 +499,22 @@ function SWEP:Deploy()
 	self:ResetVar()
 	
 	if !self.Silenced then
-	if self.Weapon:Clip1() <= 0 then
-		self.Weapon:SendWeaponAnim(ACT_VM_DRAW_EMPTY)
-	else
-		self.Weapon:SendWeaponAnim(ACT_VM_DRAW)
-	end
+		
+		if self.Weapon:Clip1() <= 0 then
+			self.Weapon:SendWeaponAnim(ACT_VM_DRAW_EMPTY)
+		else
+			self.Weapon:SendWeaponAnim(ACT_VM_DRAW)
+		end
+		
 	elseif self.Silenced and self.SilencerAnim then
 
-	self.Weapon:SendWeaponAnim(ACT_VM_DRAW_SILENCED)
+		self.Weapon:SendWeaponAnim(ACT_VM_DRAW_SILENCED)
 
 	end
 	
 	self.Weapon:SetNextPrimaryFire(CurTime() + self.DeployDelay + 0.05)
 	self.Weapon:SetNextSecondaryFire(CurTime() + self.DeployDelay + 0.05)
 	self.ActionDelay = (CurTime() + self.DeployDelay + 0.05)
-
 	self:SetIronsights(false)
 
 	return true
@@ -523,10 +524,7 @@ function SWEP:DeployAnimation()
 
 	-- Weapon has a suppressor
 		if self.Silenced and self.SilencerAnim then
-			
-
-		self.Weapon:SendWeaponAnim( ACT_VM_DRAW_SILENCED )
-			
+			self.Weapon:SendWeaponAnim( ACT_VM_DRAW_SILENCED )
 		else
 			self.Weapon:SendWeaponAnim( ACT_VM_DRAW )
 		end
@@ -537,9 +535,9 @@ function SWEP:IdleAnimation(time)
 
 	if not self.AllowIdleAnimation then return false end
 
-	self.IdleApply = true
-	self.ActionDelay = CurTime() + time
-	self.IdleDelay = CurTime() + time
+	self.IdleApply 		= true
+	self.ActionDelay 	= CurTime() + time
+	self.IdleDelay		= CurTime() + time
 end
 
 
@@ -562,9 +560,7 @@ function SWEP:ResetVar()
 end
 
 function SWEP:GetSilencer()
-
     return self.Silenced
-	
 end
 
 
