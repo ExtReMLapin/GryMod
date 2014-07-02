@@ -54,8 +54,12 @@ end
  
 --[[  
 function meta:CanGryMod() 
-if LocalPlayer():IsAdmin() or LocalPlayer():IsVip() then return true end
-else return false end
+	if LocalPlayer():IsAdmin() or LocalPlayer():IsVip() then 
+		return true 
+	else 
+		return false 
+	end
+end
  ]]
 
  
@@ -134,7 +138,7 @@ util.PrecacheSound("suit/strength.mp3")
 util.PrecacheSound("suit/cloak.mp3")
 util.PrecacheSound("suit/armor.mp3")
 
-/// New Sounds from 2nd beta version -- Most of them are not let used // Message to me in 2014 : 2 years later, still not used :V
+
 util.PrecacheSound("suit/armor.mp3")
 util.PrecacheSound("suit/ArmorMode.wav") // Armor mode 
 util.PrecacheSound("suit/binocularzoom.wav") // Binocular zoom 
@@ -778,11 +782,11 @@ net.Receive("gry_spawn", function()	// Wow much swag
 
 
 print[[
-		
 
-	                                                                                    
-                                                                                                                                                         
-                                                                                    
+
+
+
+
    ,.........,         ...............,    ,........`  ..      .,                   
    @@@@@@@@@@@@      ,@@@@@@@@@@@@@@@@@@   @@@@@@@@@; `@@@   ,@@@                   
    @@@@@@@@@@@@@    '@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@' `@@@@ :@@@@                   
@@ -853,9 +857,8 @@ print[[
 
 ]]
 	
-	
 end)
- 
+
 local MOUSE_CHECK_DIST = 95
 local MOUSE_CUR_DIST = 0
 function GryMod.RadialThinklel() // Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
