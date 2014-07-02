@@ -3,7 +3,7 @@ GryMod
 Crysis for Garry's mod
            
            
-YOU ARE NOT ALLOWED TO RE-UPLOAD IT
+**YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
            
 How it Works 
 -------------
