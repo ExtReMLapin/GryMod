@@ -1,6 +1,6 @@
 GryMod
 ======
-Crysis for Garry's mod
+Crysis for Garry's Mod
            
            
 **YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
