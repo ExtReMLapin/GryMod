@@ -1,8 +1,6 @@
 if SERVER then
-
 	AddCSLuaFile("shared.lua")
 	SWEP.HoldType = "ar2"
-	
 end
 
 if CLIENT then
@@ -10,12 +8,12 @@ if CLIENT then
 	SWEP.DrawAmmo			= true
 	SWEP.DrawCrosshair		= true
 	SWEP.ViewModelFlip		= true
-		
+
 	SWEP.PrintName			= "SCAR by [ExtReM] Lapin"			
 	SWEP.Author				= "Lapin"
 	SWEP.Slot				= 2
 	SWEP.SlotPos			= 5
-	
+
 	killicon.AddFont( "weapon_glock", "CSKillIcons", SWEP.IconLetter, Color( 255, 80, 0, 255 ) )
 	SWEP.SupportsLaser			= true
 	SWEP.LaserAttachment 	= 1	
