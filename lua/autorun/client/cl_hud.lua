@@ -1,11 +1,19 @@
+/*
+TODO  (If i'm not too lazy/dead):
+Radar
+Finish some optimisation
+You should be able to read my code (maybe not lelelelel) 
+Optimizing network system, less NWars, more net. library (More risks here )
+Optimizing drawing system, like i did last day with the radar calc function (moved it to a 0,1 timer. beacause we don't really need it to refrest every (1/FPS) secs)
+
+
+Not *really* sure :
+Making a better render using ScaleForm GFx, cuz i'm using Awesomium framework for the moment, so uh, i'm waiting to KB to fix it, else i'll have to go back with my 100% legal (Well, it's just expired , it's not really illegal) Scaleofrm license
+*/
+
 if not GryMod then GryMod = {} end
---[[ 
-THERE IS A BACKDOOR HERE TRY TO FIND IT
-HUAHEUAHEAUHEAU
-jk
- ]]
- 
-local DrawMotionBlur = DrawMotionBlur; // About 20% performance boost, for all the following vars (not only for that, don't be dumb)
+
+local DrawMotionBlur = DrawMotionBlur; // About 20% performance boost, for all the following vars
 local FindMetaTable = FindMetaTable;
 local LocalPlayer = LocalPlayer
 local CurTime = CurTime;
@@ -34,11 +42,11 @@ local cam = cam;
 GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
 GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
 EyeFinity = CreateClientConVar( "cl_Eyefinity", "0", false, false )
-Shaking = false -- shek ur ass lel
+Shaking = false -- shek ur ass lel // better make it local next time
 GRYOPEN = false
 local meta = FindMetaTable("Player")
 FirstInit = false
-ply = LocalPlayer()
+ply = LocalPlayer()// More of less used (less :V)
 tempscrw = ScrW()
 tempscrh = ScrH()
 
@@ -48,7 +56,7 @@ local enr = surface.GetTextureID( "cryhud/enr" )
 local compass = surface.GetTextureID( "cryhud/compass" )
 
 function meta:CanGryMod() 
-	return true
+	return true // return meta:Alive() ????
 end
  -- You can change it , for others admins mods , but you'll have to change it in example : 
  
@@ -66,7 +74,7 @@ end
  
  
  
- function draw.TextRotated( text,font, x, y, color, ang ) // From the wiki
+ function draw.TextRotated( text,font, x, y, color, ang ) // Just drawing lib, used one time or less, not really used
 	render.PushFilterMag( TEXFILTER.ANISOTROPIC )
 	render.PushFilterMin( TEXFILTER.ANISOTROPIC )
 	surface.SetFont( font )
@@ -87,9 +95,8 @@ end
 	render.PopFilterMin()
 end
 
-
  
- function draw.BoxRotated(x, y, scalex, scaley, color, ang ) // From the wiki
+ function draw.BoxRotated(x, y, scalex, scaley, color, ang ) 
 	render.PushFilterMag( TEXFILTER.ANISOTROPIC )
 	render.PushFilterMin( TEXFILTER.ANISOTROPIC )
 	local rad = -math.rad( ang )
@@ -106,10 +113,10 @@ end
 end
 
 
-grymodesuit = Material( "GryArmor.png" )
+grymodesuit = Material( "GryArmor.png" ) // Init mode, you better not reload this files, else there will be a de-sync
 GryMod.Cloaked = false
 
-net.Receive( "cloak_start", function( length, client )
+net.Receive( "cloak_start", function( length, client ) // First network optimizations are here 
 	grymodesuit = Material( "GryCloak.png" )
 	GryMod.Cloaked = true
 	LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
@@ -133,26 +140,23 @@ end)
 
 
  // Originals sounds
-util.PrecacheSound("suit/speed.mp3")
+util.PrecacheSound("suit/speed.mp3") // I don't really know if it's changing something or not, i don't really care anyway
 util.PrecacheSound("suit/strength.mp3")
 util.PrecacheSound("suit/cloak.mp3")
 util.PrecacheSound("suit/armor.mp3")
-
-
 util.PrecacheSound("suit/armor.mp3")
 util.PrecacheSound("suit/ArmorMode.wav") // Armor mode 
 util.PrecacheSound("suit/binocularzoom.wav") // Binocular zoom 
 util.PrecacheSound("suit/binocularzoomout.wav") // Zoom out 
 util.PrecacheSound("suit/binocular.wav") // Binocular soond (When using the binocular) 
 util.PrecacheSound("suit/CloakMode.wav") // Cloak Mode 
-
 util.PrecacheSound("suit/SpeedMode.wav") // Speed mode 
 util.PrecacheSound("suit/speedmode.wav") // Jump + strenght mode 
 util.PrecacheSound("suit/strenghtmode.wav") // Strenght Mode 
 util.PrecacheSound("suit/underwater.wav") // 1
 
 local Armorm = Sound("suit/armor.mp3")
-local Armor = Sound("suit/ArmorMode.wav")
+local Armor = Sound("suit/ArmorMode.wav") // i know, i know but's it's local so it's okay, right ?
 local Binoz = Sound("suit/binocularzoom.wav")
 local Binozo = Sound("suit/binocularzoomout.wav")
 local Bino = Sound("suit/binocular.wav")
@@ -182,7 +186,7 @@ for i = 1, 5 do
 end
 
 
-local enemytype = {}
+local enemytype = {} // ikr , i better do it at the next update, just wait
 enemytype["npc"] = {}
 enemytype["npc"].material =  Material( "cryhud/gry_BadGuys.png" )
 enemytype["npc"].color = Color(255,255,255,200)
@@ -194,7 +198,7 @@ enemytype["player"].material = Material( "cryhud/gry_WhoAreU.png" )
 enemytype["player"].color = Color(255,255,255,200)
 
 
-nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"}
+nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"} // Weapons with *infinite* ammo
 
 
 
@@ -431,12 +435,12 @@ function GryMod.CloackAttack (ply,key)
         surface.PlaySound( Armorm )
     end
 end
-
  hook.Add("KeyPress","AttackDetection", GryMod.CloackAttack )
 
 function PlaySnd( snd )
 	if ( soundconvar:GetBool() ) then surface.PlaySound( snd ) end
 end
+
 function FrameTimeExt()
 	if ( smoothconvar:GetBool() ) then return FrameTime() else return 1 end
 end
@@ -448,7 +452,6 @@ function GryMod.BinocularZoomIn( player, key )
 		//ZoomScaleform()
 	end
 end
-
 hook.Add( "KeyPress", "BinocularZoomIn", GryMod.BinocularZoomIn )
 
 function GryMod.BinocularZoomOut( player, key )
@@ -458,8 +461,8 @@ function GryMod.BinocularZoomOut( player, key )
 		//DeZoomScaleform()
 	end
 end
-
 hook.Add( "KeyRelease", "BinocularZoomOut", GryMod.BinocularZoomOut )
+
 
 function SuitBreathUnderwater() // Not made by me
 local UnderWater = Sound("suit/underwater.wav")
