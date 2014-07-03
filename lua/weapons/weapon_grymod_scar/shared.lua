@@ -14,6 +14,7 @@ if CLIENT then
 	SWEP.SlotPos			= 5
 
 	killicon.AddFont( "weapon_glock", "CSKillIcons", SWEP.IconLetter, Color( 255, 80, 0, 255 ) )
+	
 	SWEP.SupportsLaser		= true
 	SWEP.LaserAttachment 		= 1	
 	SWEP.LaserOffset 		= Angle( 0, 0, 90 )
@@ -42,10 +43,7 @@ SWEP.Primary.Delay	= 0.1
 SWEP.Primary.DefaultCli	= 120
 SWEP.Primary.Automatic	= true
 SWEP.Primary.Ammo	= "smg1"
-
-
 SWEP.Primary.Automatic	= true
-
 
 SWEP.Secondary.ClipSize	= -1
 SWEP.Secondary.DefaultClip	= -1
@@ -56,15 +54,8 @@ SWEP.IdleApply		= false
 SWEP.AllowIdleAnimation	= true
 SWEP.AllowPlaybackRate	= true
 
-
-
 SWEP.IronSightsPos = Vector (4.076, -7.3, 1.1002)
 SWEP.IronSightsAng = Vector (-0.37, 0.2, 0.0)
-
-
-
-
-
 SWEP.ViewModel			= "models/weapons/v_cry_m4a1.mdl"
 SWEP.WorldModel			= "models/weapons/w_rif_m4a1.mdl"
 
