@@ -8,17 +8,16 @@
 	"$translucent" 1
 	"$vertexalpha" 1
 	"$vertexcolor" 1
-	$distancealpha	1
 	
+	
+	$distancealpha	1
 	$softedges		1
 	$edgesoftnessstart 1
 	$edgesoftnessend	0.3
 	$scaleedgesoftnessbasedonscreenres 2
-	
-
-
 	$vertexcolor	1
 	$vertexalpha	1
+
 	$no_fullbright	1
 	$ignorez	1
 
