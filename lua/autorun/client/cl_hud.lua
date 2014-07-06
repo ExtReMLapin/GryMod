@@ -275,7 +275,7 @@ function GryMod.CRYHUD() //Good luck figuring all this shit out
 	end
 	
 	if ( numb  == selected and !LocalPlayer():CanGryMod()) then -- ROUGE
-			crygraya1 =  240
+			crygraya1 = 240
 			crygraya2 = 27
 			crygraya3 = 27
 	end
