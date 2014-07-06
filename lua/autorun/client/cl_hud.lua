@@ -581,64 +581,13 @@ local alpha_ch = { 200,255 }
 	//////////////////////////////////////////////////////////////
 	
 	
-	
-	
-// TO DO : Fix that // Edit : No, i have to DO that
-	
+	// No map for you 
 	
 	//////////////////////////////////////////////////////////////
 	////////////////////// MAP ENDS  /////////////////////////////
 	/////////////////////////HERE/////////////////////////////////
 	//////////////////////////////////////////////////////////////
 	
-
-	
-// If gmod break it any day , i cannot fix it cuz i changed the code for WWII screens (Adaptative variables
-
-
---[[ 
-	surface.SetMaterial( Material("cryhud/bluebar.png" , "noclamp"))
-	surface.SetDrawColor(Color(255,255,255,alpha_ch[1]))
-	surface.DrawTexturedRectUV(1475, 936, 217, 33, 1 , 1, 2 ,2)
-	
-
-	
-	
-	surface.SetMaterial( Material("cryhud/greenbar.png" ))
-	surface.SetDrawColor(Color(255,255,255,alpha_ch[1]))
-	surface.DrawTexturedRect(1475, 969, 217, 33)
- ]]
- --[[ local c = LocalPlayer():Health() * ((GryMod.EyeFinityScrW()/8.97)/100)
-local ca = ( LocalPlayer():Health()- (c-(LocalPlayer():Health() * 2.14)))
-local ololol = ((GryMod.EyeFinityScrW()/8.97) - c) / 2 
-local a = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/5.69)  + ololol
-local b = ScrH() - (94 * (90 + 10 * c))
--- local w = 100 - (0.1 * (-1 * c))
-
-local w = -1 * ( (100 - LocalPlayer():Health()) / 30)
-
-
-	surface.SetTexture( hlt ) // HEALTH BAR
-	surface.SetDrawColor(Color(100,164,27,alpha_ch[1])) 
-	surface.DrawTexturedRectRotated( a + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH() - (GryMod.EyeFinityScrW()/20) - w  , c,    (GryMod.EyeFinityScrW()/87.272727), -2.98  ) 
-		
-		
-	-- Now armor
-		
-
-local ca = LocalPlayer():GetNWInt("GryEnergy") * ((GryMod.EyeFinityScrW()/8.97)/100)
-local caa = ( LocalPlayer():GetNWInt("GryEnergy")- (c-(LocalPlayer():GetNWInt("GryEnergy") * 2.14)))
-local ololola = ((GryMod.EyeFinityScrW()/8.97) - ca) / 2
-local aa = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/5.69)  + ololola
-local ba = ScrH() - (94 * (90 + 10 * ca))
--- local w = 100 - (0.1 * (-1 * c))
-local wa = -1 * ( (100 - LocalPlayer():GetNWInt("GryEnergy")) / 30)
-	surface.SetTexture( enr ) // energy BAR
-	surface.SetDrawColor(Color(20,150,230alpha_ch[1])) 
-	surface.DrawTexturedRectRotated( aa + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH() - (GryMod.EyeFinityScrW()/15.1) - wa  , ca,     (GryMod.EyeFinityScrW()/87.272727) , -2.98  )  
-
-	 ]]
-	 
 
 // My brain literaly exploded, i can't understand my code anymore, all this fucking map.Simple, which change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
 	surface.SetTexture( hlt ) // HEALTH BAR
@@ -734,19 +683,6 @@ hook.Add( "HUDPaint", "ololol", GryMod.CompassDirection)
 
 
 
- local hidethings = { -- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
-    ["CHudHealth"] = true,
-    ["CHudBattery"] = true,
-    ["CHudAmmo"] = true,
-    ["CHudSecondaryAmmo"] = true
-}
-local function HUDShouldDraw(name)
-    if (hidethings[name]) then
-        return false;
-    end
-end
-
-hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 
 
 net.Receive("gry_jump", function()
@@ -758,22 +694,6 @@ net.Receive("cloak_stop", function()
 	LocalPlayer():GetHands( ):SetMaterial("")
 end)
 
-
-
-if(util.__TraceLine) then return end // I know i'm a terrible person
-util.__TraceLine = util.TraceLine;
-	
-function util.TraceLine(...)
-	local t = util.__TraceLine(...);
-	if(t and IsValid(t.Entity)) then
-		if(t.Entity:IsPlayer()) then
-			if t.Entity:GetMaterial() == "cloak/organic" then
-				t.Entity = NULL
-			end;
-		end
-	end
-	return t;
-end
 
 net.Receive("gry_spawn", function()	// Wow much swag
 	if gamemode.Get("sandbox") and jesus != 4646434346 then // I know...
@@ -862,6 +782,11 @@ print[[
 	
 end)
 
+
+////////////////FIX/////////////////
+
+
+
 local MOUSE_CHECK_DIST = 95
 local MOUSE_CUR_DIST = 0
 function GryMod.RadialThinklel() // Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
@@ -885,3 +810,37 @@ if !GRYOPEN then return end
 	end
 end
 hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThinklel)
+
+
+
+ local hidethings = { -- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
+    ["CHudHealth"] = true,
+    ["CHudBattery"] = true,
+    ["CHudAmmo"] = true,
+    ["CHudSecondaryAmmo"] = true
+}
+local function HUDShouldDraw(name)
+    if (hidethings[name]) then
+        return false;
+    end
+end
+
+hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+
+
+
+
+if(util.__TraceLine) then return end // I know i'm a terrible person
+util.__TraceLine = util.TraceLine;
+	
+function util.TraceLine(...) // Aka, if i'm looking at you and you're cloaked, then i can't see your name, ikr this is rangerous to do that, i'll fix it later
+	local t = util.__TraceLine(...);
+	if(t and IsValid(t.Entity)) then
+		if(t.Entity:IsPlayer()) then
+			if t.Entity:GetMaterial() == "cloak/organic" then
+				t.Entity = NULL
+			end;
+		end
+	end
+	return t;
+end
