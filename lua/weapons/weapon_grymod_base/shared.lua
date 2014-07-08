@@ -37,13 +37,9 @@ SWEP.IsAiming 			= false
 SWEP.Secondary.ClipSize		= -1
 SWEP.Secondary.DefaultClip	= -1
 SWEP.Secondary.Automatic	= false
-//SWEP.RunArmOffset 		= Vector (-2.8, 2, 2)
 SWEP.Secondary.Ammo		= "none"
-//SWEP.RunArmAngle 		= Angle(-24, 20.10, -10.436) // haut/bas  ---  gauche droite // self rotate
 SWEP.RunArmOffset 		= Vector (-3, -1, -8)
 SWEP.RunArmAngle 		= Angle(-25, 60, 5)
-
-
 
 SWEP.Rifle			= true
 SWEP.HoldType			= "smg"
@@ -223,9 +219,9 @@ function SWEP:SecondaryAttack()
 				self.Primary.Sound			= Sound("Weapon_USP.SilencedShot") // Yes
  			self.Silenced 			= true
 		end
-        self:SetIronsights(false)
-        self.Weapon:SetNextPrimaryFire(CurTime() + 1.95)
-        self.Weapon:SetNextSecondaryFire(CurTime() + 1.95)
+		self:SetIronsights(false)
+		self.Weapon:SetNextPrimaryFire(CurTime() + 1.95)
+		self.Weapon:SetNextSecondaryFire(CurTime() + 1.95)
         return
     end
 	if (!self.IronSightsPos) or (self.Owner:KeyDown(IN_SPEED) or self.Weapon:GetDTBool(0)) then return end
@@ -496,8 +492,6 @@ function SWEP:Deploy()
 
 		local vm = self.Owner:GetViewModel()
 	
-	self:ResetVar()
-	
 	if !self.Silenced then
 		
 		if self.Weapon:Clip1() <= 0 then
@@ -555,25 +549,9 @@ function SWEP:SetSilencer( b )
 	end	
 	
 end
-function SWEP:ResetVar()
-
-end
 
 function SWEP:GetSilencer()
-    return self.Silenced
+	return self.Silenced
 end
 
 
-
-function SWEP:OnRemove()
-	self:ResetVar()
-end
-
-function SWEP:OnRestore()
-	self:ResetVar()
-end
-
-
-function SWEP:OwnerChanged()
-	self:ResetVar()
-end
