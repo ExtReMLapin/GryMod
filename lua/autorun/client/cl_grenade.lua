@@ -4,7 +4,7 @@ function surface.ScreenScale( size )
 	return size * ( ScrH() / 480.0 )
 end
 
-GryMod.detectable = {} // Feel Free to customize that, that's why i used a table system.
+GryMod.detectable = {} -- Feel Free to customize this
 GryMod.detectable[1] = {}
 GryMod.detectable[1].realname = "gmod_button"
 GryMod.detectable[1].drawname = "Button"
@@ -20,8 +20,6 @@ GryMod.detectable[2].distancecolor = Color(220, 5, 5, 255)
 
 
 function GryMod.grenadetetect()
-
-
 	for k, Entity in pairs( ents.GetAll() ) do
 		if ( Entity and IsValid(Entity) ) then
 			for l, projectile in pairs( GryMod.detectable) do
@@ -38,15 +36,10 @@ function GryMod.grenadetetect()
 								draw.SimpleText( projectile.drawname, "CrysisInfos",pos.x + 150, pos.y + 25, projectile.distancecolor, 2, 3)			
 							end
 					end
-
 				end
-
 			end
-
 		end
-
 	end
-
 end
 
 hook.Add( "HUDPaint", "Nade detection", GryMod.grenadetetect )
