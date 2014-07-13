@@ -22,7 +22,7 @@ If it says "Unknow command : +crysishud", reinstall it.
     
          
          
-  For developers       
+Developers       
 -------------
 ##
 >NW bools are less used as possible, here are they :
