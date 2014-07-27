@@ -591,7 +591,10 @@ local alpha_ch = { 200,255 }
 -- My brain literaly exploded, i can't understand my code anymore, all this fucking map.Simple, which change the range of a variable, and all the other shit, for WW2 monitor, multiple formats, scale, rezs...
 	surface.SetTexture( hlt ) -- HEALTH BAR
 	surface.SetDrawColor(Color(116,194,27,alpha_ch[1])) 
-	surface.DrawTexturedRectRotated( (GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80, GryMod.EyeFinityScrW()*(167/1920))/2 + GryMod.EyeFinityScrW()*(167/1920)/2 + GryModXDistance:GetInt() + GryModXDistance2:GetInt(), ScrH()- GryMod.EyeFinityScrW()*(95/1920)- (-1*(200-LocalPlayer():Health()))/120 , math.MapSimple(LocalPlayer():Health()-20,80, GryMod.EyeFinityScrW()*(167/1920)), (GryMod.EyeFinityScrW()/84), -3.5  ) 
+	surface.DrawTexturedRectRotated( (
+	GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(362/1920)) - math.MapSimple(LocalPlayer():Health()-20,80,GryMod.EyeFinityScrW()*(167/1920))/2 + GryMod.EyeFinityScrW()*(167/1920)/2 + GryModXDistance:GetInt() + GryModXDistance2:GetInt(),
+	ScrH()- GryMod.EyeFinityScrW()*(95/1920)- ((LocalPlayer():Health()))/17.5 + 6 ,
+	math.MapSimple(LocalPlayer():Health()-20,80, GryMod.EyeFinityScrW()*(167/1920)), (GryMod.EyeFinityScrW()/84), -3.5  ) 
 	
 	 
 	surface.SetTexture( enr ) -- ENERGY THIS TIME

@@ -32,7 +32,8 @@ function GryMod.grenadetetect()
 							if DISTANCE < projectile.distance then
 								surface.SetTexture( surface.GetTextureID( projectile.drawimage )  )
 								surface.SetDrawColor(Color(255,255,255,255))
-								surface.DrawTexturedRect(pos.x-(25)  , pos.y-(25) ,  50, 50)	
+								local sizea = 50
+								surface.DrawTexturedRect(pos.x-(25)+(DISTANCE/80)  , pos.y-(25)+(DISTANCE/80) ,  50-(DISTANCE/40), 50-(DISTANCE/40))
 								draw.SimpleText( projectile.drawname, "CrysisInfos",pos.x + 150, pos.y + 25, projectile.distancecolor, 2, 3)			
 							end
 					end
