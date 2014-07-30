@@ -45,7 +45,6 @@ EyeFinity = CreateClientConVar( "cl_Eyefinity", "0", false, false )
 Shaking = false -- shek ur ass lel -- better make it local next time
 GRYOPEN = false
 local meta = FindMetaTable("Player")
-FirstInit = false
 ply = LocalPlayer()-- More of less used (less :V)
 tempscrw = ScrW()
 tempscrh = ScrH()
@@ -119,7 +118,7 @@ net.Receive( "cloak_start", function( length, client ) -- First network optimiza
 	grymodesuit = Material( "GryCloak.png" )
 	GryMod.Cloaked = true
 	LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
-	LocalPlayer():GetHands():SetMaterial("cloak/organic")
+	LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
 end)
 
 net.Receive( "armor_start", function( length, client )

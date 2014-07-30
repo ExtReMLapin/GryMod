@@ -44,7 +44,7 @@ function constrain(val, minv, maxv)
 	return math.min(math.max(val, minv), maxv)
  end
  
- function math.MapSimple(numb,endA,endB) // i used the map() function in processing, i have no idea if there smthng similar here
+ function math.MapSimple(numb,endA,endB) -- i used the map() function in processing, i have no idea if there smthng similar here
 	return numb*(endB/endA)
 end
 
