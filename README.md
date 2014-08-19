@@ -72,11 +72,11 @@ Developers
   Credits     
 ======
 
-Lapin : All the coding and shits
+Lapin : Lua code, HUD materials and some others shitz
 
-Carl Mcgee : Working on GryEngine and models-map 
+Carl Mcgee : Working on GryEngine models-map 
 
-Vuthakral Darastrix : Ideas and his work on the materials  
+Vuthakral Darastrix : Ideas and his work on the scar materials  
 
 Dlaor : The original quick-menu
 
