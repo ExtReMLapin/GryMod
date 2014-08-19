@@ -57,6 +57,7 @@ AddCSLuaFile( "client/cl_nanoholo.lua" )
 AddCSLuaFile( "client/cl_options.lua" )
 AddCSLuaFile( "client/cl_Scaleform_GFx.lua" )
 AddCSLuaFile( "sh_crashlogo.lua" )
+AddCSLuaFile( )
 end
 
 if (SERVER) then
@@ -149,7 +150,6 @@ if (SERVER) then
 	resource.AddFile( "materials/Cubemap/hdr.vtf" )
 	resource.AddFile( "materials/cryhud/base.vmt" )
 	resource.AddFile( "materials/cryhud/base.vtf" )
-	resource.AddFile( "materials/cryhud/bluebar.png" )
 	resource.AddFile( "materials/cryhud/cadre.vmt" )
 	resource.AddFile( "materials/cryhud/cadre.vtf" )
 	resource.AddFile( "materials/cryhud/compass.vmt" )
@@ -160,10 +160,6 @@ if (SERVER) then
 	resource.AddFile( "materials/cryhud/enr.vtf" )
 	resource.AddFile( "materials/cryhud/fcross.vmt" )
 	resource.AddFile( "materials/cryhud/fcross.vtf" )
-	resource.AddFile( "materials/cryhud/greenbar.png" )
-	resource.AddFile( "materials/cryhud/gry_badguys.png" )
-	resource.AddFile( "materials/cryhud/gry_friendly.png" )
-	resource.AddFile( "materials/cryhud/gry_whoAreu.png" )
 	resource.AddFile( "materials/cryhud/healthpr.vmt" )
 	resource.AddFile( "materials/cryhud/healthpr.vtf" )
 	resource.AddFile( "materials/cryhud/scarprofil1.png" )
