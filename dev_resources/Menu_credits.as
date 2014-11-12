@@ -163,10 +163,7 @@ SendSoundEvents = function (obj, dir)
 ;
 prepareData = function ()
 {
-	
-	
 
-   
     addName("", 0);
     addName("", 0);
     addName("GryMod Project", 3);
@@ -210,18 +207,17 @@ prepareData = function ()
     addName("", 0);
     addName("Ideas", 1);
     addName("Steam Community", 2);
-  	addName("", 0);
- 	  addName("Spamming me on Steam", 1);
+    addName("", 0);
+    addName("Spamming me on Steam", 1);
     addName("Steam Kids", 2);
     addName("", 0);
-	  addName("", 0);
     addName("", 0);
-  	addName("", 5);
+    addName("", 0);
+    addName("", 5);
 
-
-  	addName("CryTek Staff", 3);
-   	addName("Because all of them worked on Crysis 1 Interface", 1);
-  	addName("", 0);
+    addName("CryTek Staff", 3);
+    addName("Because all of them worked on Crysis 1 Interface", 1);
+    addName("", 0);
     addName("2D Artist", 1);
     addName("Pino Gengo", 2);
     addName("Marco Siegel", 2);
@@ -248,7 +244,7 @@ prepareData = function ()
     addName("", 0);
     addName("Special Thanks", 3);
     addName("", 5);
-   	addName("Facepunch Community", 2);
+    addName("Facepunch Community", 2);
     addName("You, for using GryMod !", 2);
     addName("", 0);
     addName("", 0);
@@ -256,5 +252,4 @@ prepareData = function ()
     addName("Because it's where are Lazy devs", 3);
 	addName("", 6); // ExtReM Team logo
 }
-;
 prepareData();
