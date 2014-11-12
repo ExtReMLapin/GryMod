@@ -46,7 +46,7 @@ Developers
 >Network Strings (aka the net. things)
 
 
-* cloak_stop // used to prevend using of NW bools, because of optimization
+* cloak_stop // used to prevent the usage of NW bools, because fuck off that's why
 
 * cloak_start
 
