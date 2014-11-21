@@ -4,6 +4,7 @@ Crysis for Garry's Mod
            
            
 **YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
+**YOU ARE NOT ALLOWED TO MAKE MONEY USING THIS MOD**
            
 How it Works 
 -------------
