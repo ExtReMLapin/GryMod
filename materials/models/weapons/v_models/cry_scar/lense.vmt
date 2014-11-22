@@ -1,6 +1,0 @@
-"Refract"
-{	"$scale" "[1 1]"
-	"$normalmap" "models/weapons/v_models/cry_scar/lense"
-	"$translucent" 1
-	"$model" 1
-}
