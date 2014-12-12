@@ -3,7 +3,6 @@ TODO  (If i'm not too lazy/dead):
 Radar
 Finish some optimisation
 You should be able to read my code (maybe not lelelelel) 
-Optimizing network system, less NWars, more net. library (More risks here )
 Optimizing drawing system, like i did last day with the radar calc function (moved it to a 0,1 timer. beacause we don't really need it to refrest every (1/FPS) secs)
 
 
@@ -39,15 +38,16 @@ local cam = cam;
  
  --Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 1270x860 (not sure if this resolution exist :>)
  
-GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
-GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
-EyeFinity = CreateClientConVar( "cl_Eyefinity", "0", false, false )
-Shaking = false -- shek ur ass lel -- better make it local next time
-GRYOPEN = false
+local GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
+local GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
+local EyeFinity = CreateClientConVar( "cl_Eyefinity", "0", false, false )
+local Shaking = false -- shek ur ass lel -- better make it local next time
+local GRYOPEN = false
 local meta = FindMetaTable("Player")
-ply = LocalPlayer()-- More of less used (less :V)
-tempscrw = ScrW()
-tempscrh = ScrH()
+
+local InContextMenu = false
+local tempscrw = ScrW()
+local tempscrh = ScrH()
 
 local base = surface.GetTextureID( "cryhud/base" )
 local hlt = surface.GetTextureID( "cryhud/healthpr" )
@@ -69,7 +69,13 @@ function meta:CanGryMod()
 end
  ]]
 
-
+function GryMod.EyeFinityScrW()
+	if tempscrw/tempscrh == 16/3  and EyeFinity:GetInt() > 0 then
+		return tempscrw/3
+	else
+		return tempscrw
+	end
+end
 
 
 function draw.TextRotated( text,font, x, y, color, ang ) -- Just drawing lib, used one time or less, not really used
@@ -111,7 +117,7 @@ function draw.BoxRotated(x, y, scalex, scaley, color, ang )
 end
 
 
-grymodesuit = Material( "GryArmor.png" ) -- Init mode, you better not reload this files, else there will be a de-sync
+local grymodesuit = Material( "GryArmor.png" ) -- Init mode, you better not reload this files, else there will be a de-sync
 GryMod.Cloaked = false
 
 net.Receive( "cloak_start", function( length, client ) -- First network optimizations are here 
@@ -196,7 +202,7 @@ enemytype["player"].material = Material( "cryhud/gry_WhoAreU.png" )
 enemytype["player"].color = Color(255,255,255,200)
 
 
-nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"} -- Weapons with *infinite* ammo
+local nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"} -- Weapons with *infinite* ammo
 
 
 
@@ -467,15 +473,14 @@ hook.Add( "KeyRelease", "BinocularZoomOut", GryMod.BinocularZoomOut )
 
 function SuitBreathUnderwater() -- Not made by me
 	local UnderWater = Sound("suit/underwater.wav")
-	local ply = LocalPlayer()
 
-	if ( ply:WaterLevel() >= 3 ) then -- A bit useless
-		if ( !ply.m_bIsUsingSuitOxygen ) then
-			ply.m_bIsUsingSuitOxygen = true
+	if ( LocalPlayer():WaterLevel() >= 3 ) then -- A bit useless
+		if ( !LocalPlayer().m_bIsUsingSuitOxygen ) then
+			LocalPlayer().m_bIsUsingSuitOxygen = true
 			surface.PlaySound( UnderWater )
 		end
 	else
-		ply.m_bIsUsingSuitOxygen = false
+		LocalPlayer().m_bIsUsingSuitOxygen = false
 	end
 end
 hook.Add( "Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater )
@@ -486,27 +491,22 @@ function GryMod.mathradar()
 radarnpc = {}
 if IsValid(LocalPlayer()) then
 
-for k,v in pairs (ents.FindInSphere(LocalPlayer():GetPos(),1280)) do
-	if v:IsNPC() then
-		table.insert(radarnpc, v)
+	for k,v in pairs (ents.FindInSphere(LocalPlayer():GetPos(),1280)) do
+		if v:IsNPC() then
+			table.insert(radarnpc, v)
+		end
 	end
-end
 
-for k, v in pairs (radarnpc) do
-	if !table.HasValue(ents.FindInSphere(LocalPlayer():GetPos(),1280), v) then
-		table.remove(radarnpc, k)
-	end 
-end
-	
-	
---table.Count(ents.FindInSphere(LocalPlayer():GetPos(),128))
+	for k, v in pairs (radarnpc) do
+		if !table.HasValue(ents.FindInSphere(LocalPlayer():GetPos(),1280), v) then
+			table.remove(radarnpc, k)
+		end 
+	end
 	raderpers = math.Min(math.MapSimple(table.Count(radarnpc),20, 150), 150) -- For the color
 	levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) -- For the API/Level of the texture
 	GryMod.rcr = 105+raderpers;
 	GryMod.rcg = 235-raderpers*1.5;
 	GryMod.rcb = 100-(raderpers/1.8);
---math.Min(math.MapSimple(table.Count(radarnpc), 20, 17), 17)
-
 	Gry_Danger0 = math.Min(math.MapSimple(table.Count(radarnpc)*5, 20, 17), 17)
 	Gry_Danger1 = math.Min(math.MapSimple((table.Count(radarnpc)-4)*5, 20, 22), 22)
 	Gry_Danger2 = math.Min(math.MapSimple((table.Count(radarnpc)-8)*5, 20, 19), 19)
@@ -517,12 +517,12 @@ end
  GryMod.mathradar()
 
 
-
+local alpha_ch = { 200,255 }
 
 function GryMod.hudbase() -- WARNING : No-one i know understand my maths
 -- Feel free to send me a "readable" version of that if you wants :V
 
-local alpha_ch = { 200,255 }
+
     	if shaking == true then
     		alpha_ch[1] = math.tan(RealTime() * 100) * 20
     		alpha_ch[2] = math.tan(RealTime() * 100) * 20
@@ -695,7 +695,7 @@ end)
 
 net.Receive("cloak_stop", function()
 	LocalPlayer():GetViewModel():SetMaterial("")
-	LocalPlayer():GetHands( ):SetMaterial("")
+	LocalPlayer():GetHands():SetMaterial("")
 end)
 
 
@@ -793,7 +793,7 @@ end)
 local MOUSE_CHECK_DIST = 95
 local MOUSE_CUR_DIST = 0
 function GryMod.RadialThinklel() -- Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
-if !GRYOPEN then return end
+if !GRYOPEN or InContextMenu then return end
 	if math.Dist( gui.MouseX(), gui.MouseY(), GryMod.EyeFinityScrW()/2, ScrH()/2  ) > 150 then
 		if gui.MouseX() > ((GryMod.EyeFinityScrW()/2) + MOUSE_CHECK_DIST) then -- 
 			posx = (gui.MouseX()-(gui.MouseX()-((GryMod.EyeFinityScrW()/2) + MOUSE_CHECK_DIST)))		
@@ -814,6 +814,15 @@ if !GRYOPEN then return end
 end
 hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThinklel)
 
+hook.Add("OnContextMenuClose", "GryMod Wheel", function()
+	InContextMenu = false;
+	GryMod.CryOpenClose( ply, "-crysishud" )
+end)
+
+hook.Add("OnContextMenuOpen", "GryMod Wheel", function()	
+	InContextMenu = true;
+	GryMod.CryOpenClose( ply, "+crysishud" )
+end)
 
 
  local hidethings = { -- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
@@ -829,8 +838,6 @@ function HUDShouldDraw(name)
 end
 
 hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
-
-
 
 
 if(util.__TraceLine) then return end -- I know i'm a terrible person
