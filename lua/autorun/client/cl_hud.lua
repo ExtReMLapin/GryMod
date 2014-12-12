@@ -389,21 +389,24 @@ function GryMod.CryOpenClose( ply, command, args ) -- 1.0 update : Sounds are pl
 	if ( command != "+crysishud" ) then
 		if ( GryMod.MouseInCircle( cryx, cryy ) ) then
 			PlaySnd( snd_s )
-
 	    if ( slots[selected] )  and (  slots[selected].name ) == "Armor"  then
-          RunConsoleCommand( "Armor" )
+			RunConsoleCommand( "Armor" )
+			PlaySnd(Sound("suit/armor.mp3"))
 
         end
 		if ( slots[selected] )  and (  slots[selected].name ) == "Speed"  then
-          RunConsoleCommand( "Speed" )
+			RunConsoleCommand( "Speed" )
+			PlaySnd(Sound("suit/speed.mp3"))
         end
 
 		if ( slots[selected] )  and (  slots[selected].name ) == "Cloak"  then
-          RunConsoleCommand( "Cloak" )
+			RunConsoleCommand( "Cloak" )
+			PlaySnd(Sound("suit/cloak.mp3"))
         end
 
-		if ( slots[selected] )  and (  slots[selected].name ) == "Strenght"  then
-		          RunConsoleCommand( "Strenght" )
+		if ( slots[selected] )  and (  slots[selected].name ) == "Strenght"  then		
+			RunConsoleCommand( "Strenght" )
+			PlaySnd(Sound("suit/strength.mp3"))
         end
 
         if ( slots[selected] )  and (  slots[selected].name ) == "Drop"  then
@@ -819,7 +822,7 @@ hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThinklel)
  ["CHudAmmo"] = true,
  ["CHudSecondaryAmmo"] = true
 }
-local function HUDShouldDraw(name)
+function HUDShouldDraw(name)
 	if (hidethings[name]) then
 		return false;
 	end

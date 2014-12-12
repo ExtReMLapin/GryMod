@@ -1,4 +1,3 @@
-
 local util = util;
 local net = net;
 local hook = hook;
@@ -19,31 +18,25 @@ gry_Should_Regen = true
 gry_InfiniteArmor = false
 
 --CreateConVar( "GryMod", 1, false, false )
-  
- 
 
 function GryMod.Init_Suitmode(ply)
-	ply:SetNWBool("Strenght",false)
-	ply:SetNWBool("Armor",true)
-	ply:SetNWBool("Speed",false)
-	ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
-	ply:SetMaterial("");
+	GryMod.Armor(ply)
 	ply:SetNWInt("GryEnergy", 0)
 	ply.SP = false
 		net.Start("gry_spawn")
 		net.Send(ply)
 end
 
-hook.Add( "PlayerSpawn", "problemson", GryMod.Init_Suitmode )
+--hook.Add( "PlayerSpawn", "problemson", GryMod.Init_Suitmode )
 
 
 function GryMod.Strenght(ply)
 	if ply:Alive() then
-		ply:SetWalkSpeed(150)
-		ply:SetRunSpeed(300)
+		ply:SetWalkSpeed(200)
+		ply:SetRunSpeed(400)
 		ply:SetJumpPower(500)
 		ply:SetMaterial("")
-		ply:EmitSound("suit/strength.mp3", 100, 100)
+		--ply:EmitSound("suit/strength.mp3", 100, 100)
 		ply:SetNoTarget(false)
 		ply:SetNWBool("Strenght",true)
 		ply:SetNWBool("Armor",false)
@@ -67,10 +60,10 @@ function GryMod.Speed(ply)
 		ply:SetNWBool("Armor",false)
 		ply:SetNWBool("Speed",true)
 		ply:SetNWBool("Cloak",false); ply:DrawWorldModel(true)
-		ply:SetWalkSpeed(300)
+		ply:SetWalkSpeed(400)
 		ply:SetRunSpeed(600)
 		ply:SetJumpPower(200)
-		ply:EmitSound("suit/speed.mp3", 100, 100)
+		--ply:EmitSound("suit/speed.mp3", 100, 100)
 		ply:SetMaterial("")
 		ply:SetNoTarget(false)
 			net.Start("cloak_stop")
@@ -86,9 +79,9 @@ concommand.Add("Speed", GryMod.Speed)
 function GryMod.Cloak(ply)
 	if ply:Alive() then
 		ply:SetMaterial("cloak/organic")
-		ply:SetWalkSpeed(150)
-		ply:SetRunSpeed(300)
-		ply:EmitSound("suit/cloak.mp3", 100, 100)
+		ply:SetWalkSpeed(200)
+		ply:SetRunSpeed(400)
+		--ply:EmitSound("suit/cloak.mp3", 100, 100)
 		ply:SetNoTarget(true)
 		ply:SetJumpPower(200)
 		ply:SetNWBool("Strenght",false)
@@ -105,10 +98,10 @@ concommand.Add("Cloak", GryMod.Cloak)
  
 function GryMod.Armor(ply)
 	if ply:Alive() then
-		ply:SetWalkSpeed(150)
-		ply:SetRunSpeed(300)
+		ply:SetWalkSpeed(200)
+		ply:SetRunSpeed(400)
 		ply:SetJumpPower(200)
-		ply:EmitSound("suit/armor.mp3", 100, 100)
+		--ply:EmitSound("suit/armor.mp3", 100, 100)
 		ply:SetMaterial("")
 		ply:SetNoTarget(false)
 		ply:SetNWBool("Strenght",false)
@@ -242,7 +235,6 @@ end
 
 hook.Add("EntityTakeDamage", "ArmorGryTake", GryMod.RealArmorGry)
 
-
 function GryMod.FixEnergySuitMod(ply)
 	if ply:GetNWInt("GryEnergy") < 0 then
 		GryMod.Armor(ply)
@@ -251,7 +243,6 @@ function GryMod.FixEnergySuitMod(ply)
 end
 
 hook.Add("GryUseEnergy", "SuitMod Auto" , GryMod.FixEnergySuitMod)
-
 
 concommand.Add("gry_Armor", function(ply) // wew sush cedng skilz
 	if ply:IsAdmin() then gry_InfiniteArmor = !gry_InfiniteArmor end

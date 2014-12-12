@@ -1,3 +1,4 @@
+if not GryMod then GryMod = {} end
 
 local function detectcible( player, key )
 	if key == IN_ATTACK then
@@ -23,7 +24,7 @@ end
 hook.Add( "KeyRelease", "Hehehehe", detectcible_release )
 
 
-local function cross()
+function GryMod.cross()
 	if AllyCrossDraw == true then
 		surface.SetTexture(  surface.GetTextureID( "cryhud/fcross" ) )
 		surface.SetDrawColor(Color(255,255,255,255))
@@ -31,4 +32,4 @@ local function cross()
 	end
 end
 
-hook.Add("HUDPaint", "wazaaa", cross) 
+hook.Add("HUDPaint", "GryCross", GryMod.cross) 

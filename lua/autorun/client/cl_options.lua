@@ -23,9 +23,11 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 	enabled1:SetText( "Enable Base HUD" )
 	
 	enabled1.DoClick = function()
-		 hook.Add( "HUDPaint", "HUDBASECRY", GryMod.hudbase )
-		 hook.Add( "HUDPaint", "ololol", GryMod.compass_direction) 
-		 hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+			 hook.Add( "HUDPaint", "HUDBASECRY", GryMod.hudbase )
+			 hook.Add( "HUDPaint", "ololol", GryMod.compass_direction) 
+			 hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+			 hook.Add( "HUDPaint", "Nade detection", GryMod.grenadetetect )
+			 hook.Add("HUDPaint", "GryCross", GryMod.cross) 
 	end
 	
 	
@@ -36,12 +38,13 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 	disabled1.DoClick = function()
 			hook.Remove( "HUDPaint", "HUDBASECRY")
 			hook.Remove( "HUDPaint", "ololol") 
-			hook.Remove("HUDShouldDraw", "How to: HUD Example HUD hider")
+			hook.Remove( "HUDShouldDraw", "How to: HUD Example HUD hider")
+			hook.Remove( "HUDPaint", "Nade detection")
+			hook.Remove( "HUDPaint", "GryCross")
 	end
  
  	
 	togglehealth = vgui.Create( "DButton", Panel )
-	//togglehealth:SetPos( 25, 220 )
 	togglehealth:SetSize( 250, 20 )
 	togglehealth:SetText( "[ADMIN] Toggle Health Regen" )
 	
@@ -51,7 +54,6 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 	
 	
 	togglearmor = vgui.Create( "DButton", Panel )
-	//togglearmor:SetPos( 25, 280 )
 	togglearmor:SetSize( 250, 20 )
 	togglearmor:SetText( "[ADMIN] Toggle Infinite Armor" )
 	
@@ -61,30 +63,30 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 	
 	
 	local NumSliderThingy = vgui.Create( "DNumSlider", Panel )
-NumSliderThingy:SetPos( 25,150)
-NumSliderThingy:SetSize( 250, 10 )
-NumSliderThingy:SetText( "Mirror Distance" )
-NumSliderThingy:SetMin( -5000 )
-NumSliderThingy:SetMax( 5000 )
-NumSliderThingy:SetDecimals( 0 )
-NumSliderThingy:SetConVar( "gry_xadd" )
+		NumSliderThingy:SetPos( 25,150)
+		NumSliderThingy:SetSize( 250, 10 )
+		NumSliderThingy:SetText( "Mirror Distance" )
+		NumSliderThingy:SetMin( -5000 )
+		NumSliderThingy:SetMax( 5000 )
+		NumSliderThingy:SetDecimals( 0 )
+		NumSliderThingy:SetConVar( "gry_xadd" )
  
 	local NumSliderThingy1 = vgui.Create( "DNumSlider", Panel )
-NumSliderThingy1:SetPos( 25,180)
-NumSliderThingy1:SetSize( 250, 10 ) 
-NumSliderThingy1:SetText( "X Posision" )
-NumSliderThingy1:SetMin( -5000 ) 
-NumSliderThingy1:SetMax( 5000 ) 
-NumSliderThingy1:SetDecimals( 0 ) 
-NumSliderThingy1:SetConVar( "gry_xdist" )
+		NumSliderThingy1:SetPos( 25,180)
+		NumSliderThingy1:SetSize( 250, 10 ) 
+		NumSliderThingy1:SetText( "X Posision" )
+		NumSliderThingy1:SetMin( -5000 ) 
+		NumSliderThingy1:SetMax( 5000 ) 
+		NumSliderThingy1:SetDecimals( 0 ) 
+		NumSliderThingy1:SetConVar( "gry_xdist" )
  
  
  local CheckBoxThing = vgui.Create( "DCheckBoxLabel", Panel )
-CheckBoxThing:SetPos( 25,195 )
-CheckBoxThing:SetText( "Eyefinity" )
-CheckBoxThing:SetConVar( "cl_Eyefinity" ) 
-CheckBoxThing:SetValue( 0 )
-CheckBoxThing:SizeToContents() 
+		CheckBoxThing:SetPos( 25,195 )
+		CheckBoxThing:SetText( "Eyefinity" )
+		CheckBoxThing:SetConVar( "cl_Eyefinity" ) 
+		CheckBoxThing:SetValue( 0 )
+		CheckBoxThing:SizeToContents() 
  
 Panel:AddItem(disabled1)
 Panel:AddItem(enabled1)
