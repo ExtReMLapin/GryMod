@@ -113,7 +113,6 @@ if (SERVER) then
 	resource.AddFile( "materials/cryhud/fcross.vtf" )
 	resource.AddFile( "materials/cryhud/healthpr.vmt" )
 	resource.AddFile( "materials/cryhud/healthpr.vtf" )
-	resource.AddFile( "materials/cryhud/scarprofil1.png" )
 	resource.AddFile( "materials/cloak/cloak.vmt" )
 	resource.AddFile( "materials/cloak/organic.vmt" )
 	resource.AddFile( "materials/cloak/organic.vtf" )
