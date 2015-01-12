@@ -45,7 +45,6 @@ local Shaking = false -- shek ur ass lel -- better make it local next time
 local GRYOPEN = false
 local meta = FindMetaTable("Player")
 
-local InContextMenu = false
 local tempscrw = ScrW()
 local tempscrh = ScrH()
 
@@ -766,7 +765,7 @@ end)
 local MOUSE_CHECK_DIST = 95
 local MOUSE_CUR_DIST = 0
 function GryMod.RadialThinklel() -- Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
-if !GRYOPEN or InContextMenu then return end
+if !GRYOPEN then return end
 	if math.Dist( gui.MouseX(), gui.MouseY(), GryMod.EyeFinityScrW()/2, tempscrh/2  ) > 150 then
 		if gui.MouseX() > ((GryMod.EyeFinityScrW()/2) + MOUSE_CHECK_DIST) then -- 
 			posx = (gui.MouseX()-(gui.MouseX()-((GryMod.EyeFinityScrW()/2) + MOUSE_CHECK_DIST)))		
@@ -785,16 +784,6 @@ if !GRYOPEN or InContextMenu then return end
 	gui.SetMousePos(posx, posy)
 	end
 end
-
-hook.Add("OnContextMenuClose", "GryMod Wheel", function()
-	InContextMenu = false;
-	GryMod.CryOpenClose( ply, "-crysishud" )
-end)
-
-hook.Add("OnContextMenuOpen", "GryMod Wheel", function()	
-	InContextMenu = true;
-	GryMod.CryOpenClose( ply, "+crysishud" )
-end)
 
 
  local hidethings = { -- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
