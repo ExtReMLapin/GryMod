@@ -18,6 +18,7 @@ GryMod.detectable[2].drawimage = "cryhud/cadre"
 GryMod.detectable[2].distance = 750
 GryMod.detectable[2].distancecolor = Color(220, 5, 5, 255)
 
+local srf = surface.ScreenScale( 32 )
 
 function GryMod.grenadetetect()
 	for k, Entity in pairs( ents.GetAll() ) do
@@ -26,12 +27,12 @@ function GryMod.grenadetetect()
 				if (Entity:GetClass() == projectile.realname ) then
 					local pos		= Entity:LocalToWorld( Entity:OBBCenter() ):ToScreen()
 					local text_xpos	= pos.x
-					local text_ypos	= pos.y - surface.ScreenScale( 32 )
+					local text_ypos	= pos.y - srf
 					if ( pos.visible ) then
 							local DISTANCE	= math.Round( LocalPlayer():GetPos():Distance( Entity:GetPos() )  )
 							if DISTANCE < projectile.distance then
-								surface.SetTexture( surface.GetTextureID( projectile.drawimage )  )
-								surface.SetDrawColor(Color(255,255,255,255))
+								surface.SetTexture( surface.GetTextureID( projectile.drawimage ) )
+								surface.SetDrawColor( color_white )
 								local sizea = 50
 								surface.DrawTexturedRect(pos.x-(25)+(DISTANCE/80)  , pos.y-(25)+(DISTANCE/80) ,  50-(DISTANCE/40), 50-(DISTANCE/40))
 								draw.SimpleText( projectile.drawname, "CrysisInfos",pos.x + 150, pos.y + 25, projectile.distancecolor, 2, 3)			

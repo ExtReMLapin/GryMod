@@ -23,11 +23,11 @@ function GryMod.Init_Suitmode(ply)
 	GryMod.Armor(ply)
 	ply:SetNWInt("GryEnergy", 0)
 	ply.SP = false
-		net.Start("gry_spawn")
-		net.Send(ply)
+	net.Start("gry_spawn")
+	net.Send(ply)
 end
 
---hook.Add( "PlayerSpawn", "problemson", GryMod.Init_Suitmode )
+hook.Add( "PlayerSpawn", "GryModSpawn", GryMod.Init_Suitmode )
 
 
 function GryMod.Strenght(ply)
