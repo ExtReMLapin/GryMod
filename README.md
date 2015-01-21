@@ -1,10 +1,23 @@
 GryMod
-======
+===================
 Crysis for Garry's Mod
-           
+
+----------
            
 **YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
 **YOU ARE NOT ALLOWED TO MAKE MONEY USING THIS MOD**
+           
+           
+> **Features:**
+
+> - Crysis 1/Warhead like hud
+> - Crysis 1 suit modes (Strength, Speed, Armor, Cloak and shit)
+> - Crysis 1 energy system
+> - Eyefinity support
+> - Auto resizing support (Different monitors format and different sizes, so it will not look like shit)
+> - Pseudo-Vectorized textures
+> - ScaleForm GFx like animations styles (Suit init etc...)
+
            
 How it Works 
 -------------
