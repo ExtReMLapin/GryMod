@@ -1,15 +1,3 @@
---[[
-TODO  (If i'm not too lazy/dead):
-Radar
-Finish some optimisation
-You should be able to read my code (maybe not lelelelel) 
-Optimizing drawing system, like i did last day with the radar calc function (moved it to a 0,1 timer. beacause we don't really need it to refrest every (1/FPS) secs)
-
-
-Not *really* sure :
-Making a better render using ScaleForm GFx, cuz i'm using Awesomium framework for the moment, so uh, i'm waiting to KB to fix it, else i'll have to go back with my 100% legal (Well, it's just expired , it's not really illegal) Scaleofrm license
---]]
-
 if not GryMod then GryMod = {} end
 
 local DrawMotionBlur = DrawMotionBlur; -- About 20% performance boost, for all the following vars
