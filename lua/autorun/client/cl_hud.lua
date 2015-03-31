@@ -114,21 +114,25 @@ net.Receive( "cloak_start", function( length, client ) -- First network optimiza
 	GryMod.Cloaked = true
 	LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
 	LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
+	PlaySnd(Sound("suit/cloak.mp3"))
 	end)
 
 net.Receive( "armor_start", function( length, client )
 	grymodesuit = Material( "GryArmor.png" )
 	GryMod.Cloaked = false
+	PlaySnd(Sound("suit/armor.mp3"))
 	end)
 
 net.Receive( "speed_start", function( length, client )
 	grymodesuit = Material( "GrySpeed.png" )
 	GryMod.Cloaked = false
+	PlaySnd(Sound("suit/speed.mp3"))
 	end)
 
 net.Receive( "strenght_start", function( length, client )
 	grymodesuit = Material( "GryStrenght.png" )
 	GryMod.Cloaked = false
+	PlaySnd(Sound("suit/strength.mp3"))
 	end)
 
 
@@ -368,22 +372,21 @@ function GryMod.CryOpenClose( ply, command, args ) -- 1.0 update : Sounds are pl
 			PlaySnd( snd_s )
 			if ( slots[selected] )  and (  slots[selected].name ) == "Armor"  then
 				RunConsoleCommand( "Armor" )
-				PlaySnd(Sound("suit/armor.mp3"))
 
 			end
 			if ( slots[selected] )  and (  slots[selected].name ) == "Speed"  then
 				RunConsoleCommand( "Speed" )
-				PlaySnd(Sound("suit/speed.mp3"))
+				
 			end
 
 			if ( slots[selected] )  and (  slots[selected].name ) == "Cloak"  then
 				RunConsoleCommand( "Cloak" )
-				PlaySnd(Sound("suit/cloak.mp3"))
+				
 			end
 
 			if ( slots[selected] )  and (  slots[selected].name ) == "Strenght"  then		
 				RunConsoleCommand( "Strenght" )
-				PlaySnd(Sound("suit/strength.mp3"))
+
 			end
 
 			if ( slots[selected] )  and (  slots[selected].name ) == "Drop"  then
@@ -647,6 +650,7 @@ end)
 net.Receive("cloak_stop", function()
 	LocalPlayer():GetViewModel():SetMaterial("")
 	LocalPlayer():GetHands():SetMaterial("")
+
 end)
 
 

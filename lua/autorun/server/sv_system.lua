@@ -236,7 +236,7 @@ end
 hook.Add("EntityTakeDamage", "ArmorGryTake", GryMod.RealArmorGry)
 
 function GryMod.FixEnergySuitMod(ply)
-	if ply:GetNWInt("GryEnergy") < 0 then
+	if ply:GetNWInt("GryEnergy") <= 0 then
 		GryMod.Armor(ply)
 		ply:SetNWInt("GryEnergy", 0)
 	end 
