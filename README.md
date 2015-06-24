@@ -6,6 +6,7 @@ Crysis for Garry's Mod
            
 **YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
 **YOU ARE NOT ALLOWED TO MAKE MONEY USING THIS MOD**
+**This project is abandonned, if you want peoples to play it, feel free to make a pull request fixing all the shit**
            
            
 > **Features:**
