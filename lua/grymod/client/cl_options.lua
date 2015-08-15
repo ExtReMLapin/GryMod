@@ -23,10 +23,10 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 	enabled1:SetText( "Enable Base HUD" )
 	
 	enabled1.DoClick = function()
-			 hook.Add( "HUDPaint", "HUDBASECRY", GryMod.hudbase )
-			 hook.Add( "HUDPaint", "ololol", GryMod.compass_direction) 
+			 hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase )
+			 hook.Add("HUDPaint", "ololol", GryMod.Stencils) 
 			 hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
-			 hook.Add( "HUDPaint", "Nade detection", GryMod.grenadetetect )
+			 hook.Add("HUDPaint", "Nade detection", GryMod.grenadetetect )
 			 hook.Add("HUDPaint", "GryCross", GryMod.cross) 
 	end
 	

@@ -614,27 +614,27 @@ function GryMod.Stencils()
 	}
 
 	local energybarpoly = { -- if we want to support eyefinity, we have to update the table each frames
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(136/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(436/1920), y = ScrH()-GryMod.EyeFinityScrW()*(144/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(133/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(111/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(122/1920) }
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(136/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(436/1920), y = ScrH()-GryMod.EyeFinityScrW()*(144/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(133/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(111/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(122/1920) }
 	}
 
 	local healthbarpoly = { -- if we want to support eyefinity, we have to update the table each frames
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(112/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(100/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(78/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(436/1920), y = ScrH()-GryMod.EyeFinityScrW()*(91/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(97/1920) }
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(112/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(100/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(229/1920), y = ScrH()-GryMod.EyeFinityScrW()*(78/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(436/1920), y = ScrH()-GryMod.EyeFinityScrW()*(91/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(97/1920) }
 	}
 
 
 	local removebar = { -- cut the bars
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(140/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(140/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(45/1920) },
-		{ x = -1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(45/1920) }
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(140/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(140/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(45/1920) },
+		{ x = GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(45/1920) }
 	}
 
 	
@@ -687,7 +687,7 @@ function GryMod.Stencils()
 	        surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
 			local hltoffset = math.Remap(LocalPlayer():GetNWInt("GryEnergy"), 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
 			surface.DrawRect( 
-				-1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+				GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
 				ScrH()-GryMod.EyeFinityScrW()*(144/1920) ,
 				GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
 				GryMod.EyeFinityScrW()*(37/1920))
@@ -712,7 +712,7 @@ function GryMod.Stencils()
 	        surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
 			local hltoffset = math.Remap(LocalPlayer():Health(), 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
 			surface.DrawRect( 
-				-1*GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+				GryModXDistance:GetInt() + GryModXDistance2:GetInt() + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
 				ScrH()-GryMod.EyeFinityScrW()*(113/1920) ,
 				GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
 				GryMod.EyeFinityScrW()*(37/1920))
