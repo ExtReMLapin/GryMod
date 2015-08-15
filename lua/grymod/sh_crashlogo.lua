@@ -23,7 +23,7 @@ local shouldretry = true
 local crashed = false
 local spawned = false
 local pending = false
-local spawntime
+local spawntime;
 
 -- Slightly neater having all the stuff in a function, but the script overall is still a mess
 
