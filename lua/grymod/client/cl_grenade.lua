@@ -45,4 +45,3 @@ function GryMod.grenadetetect()
 end
 
 hook.Add( "HUDPaint", "Nade detection", GryMod.grenadetetect )
-

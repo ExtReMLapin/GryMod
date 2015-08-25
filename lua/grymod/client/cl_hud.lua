@@ -446,19 +446,17 @@ function FrameTimeExt()
 	if ( smoothconvar:GetBool() ) then return FrameTime() else return 1 end
 end
 
-function GryMod.BinocularZoomIn( player, key )
-	if ( player:GetCanZoom() and key == IN_ZOOM ) then
+function GryMod.BinocularZoomIn( player, key ) // here is the fucking function fucking up everting
+	if ( player:GetCanZoom() and key == IN_ZOOM ) then // no fucking hud related
 		surface.PlaySound( "interface_suit/binocularzoomin.wav" )
 		LocalPlayer().ZSing = true ;
-		--ZoomScaleform()
 	end
 end
 
 function GryMod.BinocularZoomOut( player, key )
 	if ( player:GetCanZoom() and key == IN_ZOOM ) then
 		surface.PlaySound( "interface_suit/binocularzoomout.wav" )
-		LocalPlayer().ZSing = false ; 
-		--DeZoomScaleform()
+	LocalPlayer().ZSing = false ;
 	end
 end
 
@@ -526,13 +524,14 @@ else
 end
 
 
+local gry_color_base = Color(220,235,220,alpha_ch[1])
 surface.SetTexture( base )
-surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
+surface.SetDrawColor(gry_color_base)
 surface.DrawTexturedRect(GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/4.06)+ GryModXDistance_int + GryModXDistance2_int , tempscrh-(GryMod.EyeFinityScrW()/5.19), ((GryMod.EyeFinityScrW())/4.26) , ((GryMod.EyeFinityScrW())/4.26))
 
 
 surface.SetTexture( compass )
-surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
+surface.SetDrawColor(gry_color_base)
 surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int + GryModXDistance2_int  ,   	tempscrh- (GryMod.EyeFinityScrW()/7.111), (GryMod.EyeFinityScrW()*(290/1920)), (GryMod.EyeFinityScrW()*(290/1920)))
 
 
@@ -541,19 +540,12 @@ surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int 
 	------------------------------------------------/
 
 	
-	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255)) -- Dear maths, you made me cry this time
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,alpha_ch[1])) -- Dear maths, you made me cry this time
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(135/1920)+ (17-(Gry_Danger0-17)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger0/1920) ) 
-	
-	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(166/1920)+ (22-(Gry_Danger1-22)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger1/1920) )
-	
-	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(185/1920)+ (19-(Gry_Danger2-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger2/1920) )
-	
-	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(208/1920)+ (19-(Gry_Danger3-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger3/1920) )
 
-	surface.SetDrawColor(GryMod.rcr,GryMod.rcg,GryMod.rcb, 255 )
 	draw.NoTexture()
 	surface.DrawPoly( {
 		{ x = GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance_int + GryModXDistance2_int, y = tempscrh-GryMod.EyeFinityScrW()*(101/1920) },
@@ -665,10 +657,26 @@ function GryMod.Stencils()
 	local nbener 	= LocalPlayer():GetNWInt("GryEnergy")
 	local nbhlt 	= LocalPlayer():Health()
 
+
+
+
+----------------------------------------------- // HOTFIX vvvv
         render.ClearStencil()
         render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 1 )
-        render.SetStencilTestMask( 1 )
+        render.SetStencilWriteMask( 42 )
+        render.SetStencilTestMask( 42 )
+        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+        render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
+        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
+        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+        render.SetStencilReferenceValue( 42 )
+		render.SetStencilEnable( false )
+----------------------------------------------- // HOTFIX ^^^^
+        render.ClearStencil()
+        render.SetStencilEnable( true )
+        render.SetStencilWriteMask( 42 )
+        render.SetStencilTestMask( 42 )
  
         render.SetStencilFailOperation( STENCILOPERATION_ZERO )
         render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -679,7 +687,7 @@ function GryMod.Stencils()
 
        
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 1 )
+        render.SetStencilReferenceValue( 42 )
 			draw.SimpleText( 'N', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int + (LocalPlayer():EyeAngles().y * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((LocalPlayer():EyeAngles().y * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))
 			draw.SimpleText( 'NE','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y + 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y + 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
 			draw.SimpleText( 'E', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +(( LocalPlayer():EyeAngles().y + 90 ) * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), (( tempscrh -GryMod.EyeFinityScrW()*(218/1920) -(( LocalPlayer():EyeAngles().y + 90 )* 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920)))
@@ -690,13 +698,12 @@ function GryMod.Stencils()
 			draw.SimpleText( 'NW','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y - 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y - 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
 		render.SetStencilEnable( false )
 
-		render.ClearStencil()
 
 		------------------------------------------------------------------------------------------------------------------------------------------------------------
-
+		render.ClearStencil()
         render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 1 )
-        render.SetStencilTestMask( 1 )
+        render.SetStencilWriteMask( 42 )
+        render.SetStencilTestMask( 42 )
  
         render.SetStencilFailOperation( STENCILOPERATION_ZERO )
         render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -706,7 +713,7 @@ function GryMod.Stencils()
         surface.DrawPoly( energybarpoly1 )
 
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 1 )
+        render.SetStencilReferenceValue( 42 )
         	
 	        surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
 			local hltoffset = math.Remap(nbener, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
@@ -723,8 +730,8 @@ function GryMod.Stencils()
 
 	 render.ClearStencil()
         render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 1 )
-        render.SetStencilTestMask( 1 )
+        render.SetStencilWriteMask( 42 )
+        render.SetStencilTestMask( 42 )
  
         render.SetStencilFailOperation( STENCILOPERATION_ZERO )
         render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -733,7 +740,7 @@ function GryMod.Stencils()
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
         surface.DrawPoly( healthbarpoly1 )
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 1 )
+        render.SetStencilReferenceValue( 42 )
 
 	        surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
 			local hltoffset = math.Remap(nbhlt, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
@@ -750,8 +757,8 @@ function GryMod.Stencils()
 
 		render.ClearStencil()
         render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 1 )
-        render.SetStencilTestMask( 1 )
+        render.SetStencilWriteMask( 42 )
+        render.SetStencilTestMask( 42 )
  
         render.SetStencilFailOperation( STENCILOPERATION_ZERO )
         render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -760,7 +767,7 @@ function GryMod.Stencils()
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
         surface.DrawPoly( healthbarpoly2 )
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 1 )
+        render.SetStencilReferenceValue( 42 )
 
         if nbhlt > 20 then 
 	        surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
@@ -779,8 +786,8 @@ function GryMod.Stencils()
 
 		render.ClearStencil()
         render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 1 )
-        render.SetStencilTestMask( 1 )
+        render.SetStencilWriteMask( 42 )
+        render.SetStencilTestMask( 42 )
  
         render.SetStencilFailOperation( STENCILOPERATION_ZERO )
         render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -789,7 +796,7 @@ function GryMod.Stencils()
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
         surface.DrawPoly( energybarpoly2 )
         render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 1 )
+        render.SetStencilReferenceValue( 42 )
 
         	if nbener >20 then 
 	       		surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
@@ -975,6 +982,6 @@ hook.Add( "KeyPress", "BinocularZoomIn", 		GryMod.BinocularZoomIn )
 hook.Add( "KeyRelease", "BinocularZoomOut",	 	GryMod.BinocularZoomOut )
 hook.Add( "Think", "SuitBreathUnderwater", 		GryMod.SuitBreathUnderwater )
 hook.Add( "HUDPaint", "HUDBASECRY", 			GryMod.hudbase ) 
-hook.Add( "HUDPaint", "GryMod stencils", 				GryMod.Stencils)
+hook.Add( "HUDPaint", "GryMod stencils", 		GryMod.Stencils)
 hook.Add( "Think", "HueHue fix normal shit", 	GryMod.RadialThinklel)
 hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
