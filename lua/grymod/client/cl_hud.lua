@@ -70,7 +70,6 @@ end
 ]]
 
 function GryMod.EyeFinityScrW()
-	do return 1920 end
 	if tempscrw/tempscrh == 16/3 and EyeFinity:GetInt() > 0 then
 		return tempscrw/3
 	else
