@@ -87,14 +87,25 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 		CheckBoxThing:SetConVar( "cl_Eyefinity" ) 
 		CheckBoxThing:SetValue( 0 )
 		CheckBoxThing:SizeToContents() 
+		
+	donate = vgui.Create( "DButton", Panel )
+	donate:SetSize( 250, 20 )
+	donate:SetText( "Donate items to the dev" )
+	
+	donate.DoClick = function()
+				gui.OpenURL("https://steamcommunity.com/tradeoffer/new/?partner=41186253&token=jQYiWt5M")
+	end
+
  
 Panel:AddItem(disabled1)
 Panel:AddItem(enabled1)
 Panel:AddItem(togglehealth)
 Panel:AddItem(togglearmor)
+
 Panel:AddItem(NumSliderThingy)
 Panel:AddItem(NumSliderThingy1)
 Panel:AddItem(CheckBoxThing)
+Panel:AddItem(donate)
 
 Panel:AddControl("Button", {Label = "Credits", Text = "tel me who med dis mod plz", Command = "GryCredits"})
 end
