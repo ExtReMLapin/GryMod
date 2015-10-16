@@ -1,5 +1,3 @@
-if not GryMod then GryMod = {} end
-
 concommand.Add("GryCredits", function()
 	local GryPopup = vgui.Create( "DFrame" )
 			GryPopup:SetSize( 1366+4, 768+27 )
@@ -87,14 +85,45 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 		CheckBoxThing:SetConVar( "cl_Eyefinity" ) 
 		CheckBoxThing:SetValue( 0 )
 		CheckBoxThing:SizeToContents() 
+		
+	donate = vgui.Create( "DButton", Panel )
+	donate:SetSize( 250, 20 )
+	donate:SetText( "Donate items to the dev" )
+	
+	donate.DoClick = function()
+				SetClipboardText( "https://steamcommunity.com/tradeoffer/new/?partner=41186253&token=jQYiWt5M")
+				donate:SetSize(250,60)
+				donate:SetText("Link copied to clipboard,\npaste in in the web browser to send items ;)")
+	end
+
+	donate2 = vgui.Create( "DButton", Panel )
+	donate2:SetSize( 250, 20 )
+	donate2:SetText( "Donate with PayPal" )
+	
+	donate2.DoClick = function()
+				SetClipboardText( "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=TEBSENKPGYD9A")
+				gui.OpenURL( "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=TEBSENKPGYD9A")
+				donate:SetSize(200,60)
+				donate:SetText("Link copied to clipboard,\npaste in in the web browser ;)")
+
+	end
  
+
+
 Panel:AddItem(disabled1)
 Panel:AddItem(enabled1)
 Panel:AddItem(togglehealth)
 Panel:AddItem(togglearmor)
+
 Panel:AddItem(NumSliderThingy)
 Panel:AddItem(NumSliderThingy1)
 Panel:AddItem(CheckBoxThing)
+Panel:AddItem(donate)
+Panel:AddItem(donate2)
+
+
+
+
 
 Panel:AddControl("Button", {Label = "Credits", Text = "tel me who med dis mod plz", Command = "GryCredits"})
 end

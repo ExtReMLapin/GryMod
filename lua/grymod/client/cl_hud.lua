@@ -1,5 +1,3 @@
-if not GryMod then GryMod = {} end
-
 local DrawMotionBlur = DrawMotionBlur; -- About 20% performance boost, for all the following vars
 local FindMetaTable = FindMetaTable;
 local LocalPlayer = LocalPlayer
@@ -24,9 +22,10 @@ local vgui = vgui;
 local gui = gui;
 local cam = cam;
 
- --Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
- --Yeah, fuck you, the guys with shitty monitors.
- 
+
+--Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
+--Yeah, fuck you, the guys with shitty monitors.
+local color_white = Color(255,255,255,255)
 local GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
 local GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
 local GryModXDistance_int = GryModXDistance:GetInt()
@@ -38,11 +37,11 @@ local meta = FindMetaTable("Player")
 
 cvars.AddChangeCallback( "gry_xadd", function( convar_name, value_old, value_new )
 	GryModXDistance_int = value_new
-end )
+	end )
 
 cvars.AddChangeCallback( "gry_xdist", function( convar_name, value_old, value_new )
 	GryModXDistance2_int = value_new
-end )
+	end )
 
 
 
@@ -57,8 +56,8 @@ local compass = surface.GetTextureID( "cryhud/compass" )
 function meta:CanGryMod() 
 	return true -- return meta:Alive() ????
 end
- -- You can change it , for others admins mods , but you'll have to change it in example : 
- 
+-- You can change it , for others admins mods , but you'll have to change it in example : 
+
 --[[  
 function meta:CanGryMod() 
 	if LocalPlayer():IsAdmin() or LocalPlayer():IsVip() then 
@@ -70,7 +69,6 @@ end
 ]]
 
 function GryMod.EyeFinityScrW()
-	do return 1920 end
 	if tempscrw/tempscrh == 16/3 and EyeFinity:GetInt() > 0 then
 		return tempscrw/3
 	else
@@ -205,28 +203,28 @@ end
 local nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"} -- Weapons with *infinite* ammo
 
 local armormode = {}
-	armormode["Armor"] = {}
-	armormode["Armor"].material =  Material( "GryArmor.png" )
-	armormode["Armor"].name = "Armor"
-	armormode["Speed"] = {}
-	armormode["Speed"].material = Material( "GrySpeed.png" )
-	armormode["Speed"].name = "Speed"
-	armormode["Strenght"] = {}
-	armormode["Strenght"].material = Material( "GryStrenght.png" )
-	armormode["Strenght"].name = "Strenght"
-	armormode["Cloak"] = {}
-	armormode["Cloak"].material = Material( "GryCloak.png" )
-	armormode["Cloak"].name = "Cloak"
-	armormode["Drop"] = {}
-	armormode["Drop"].material = Material( "GryDrop.png" )
-	armormode["Drop"].name = "Drop"
+armormode["Armor"] = {}
+armormode["Armor"].material =  Material( "GryArmor.png" )
+armormode["Armor"].name = "Armor"
+armormode["Speed"] = {}
+armormode["Speed"].material = Material( "GrySpeed.png" )
+armormode["Speed"].name = "Speed"
+armormode["Strenght"] = {}
+armormode["Strenght"].material = Material( "GryStrenght.png" )
+armormode["Strenght"].name = "Strenght"
+armormode["Cloak"] = {}
+armormode["Cloak"].material = Material( "GryCloak.png" )
+armormode["Cloak"].name = "Cloak"
+armormode["Drop"] = {}
+armormode["Drop"].material = Material( "GryDrop.png" )
+armormode["Drop"].name = "Drop"
 
 local slots = {} --Standard slots, change these at will
-	slots[1] = armormode["Cloak"]
-	slots[2] = armormode["Strenght"]
-	slots[3] = armormode["Speed"]
-	slots[4] = armormode["Armor"]
-	slots[5] = armormode["Drop"]
+slots[1] = armormode["Cloak"]
+slots[2] = armormode["Strenght"]
+slots[3] = armormode["Speed"]
+slots[4] = armormode["Armor"]
+slots[5] = armormode["Drop"]
 
 function GryMod.MouseInCircle( x, y ) --Checks if the mouse is in the circle
 	local centerdist = math.Dist( gui.MouseX(), gui.MouseY(), x, y )
@@ -245,11 +243,11 @@ function GryMod.CRYHUD() --Good luck figuring all this shit out
 	local cursorangd = math.deg( cursorang ) + 180
 
 	if ( cursorangd >= 0 and cursorangd < cryadd ) then selected = 4
-		elseif ( cursorangd >= cryadd and cursorangd < cryadd * 2 ) then selected = 3
-			elseif ( cursorangd >= cryadd * 2 and cursorangd < cryadd * 3 ) then selected = 2
-				elseif ( cursorangd >= cryadd * 3 and cursorangd < cryadd * 4 ) then selected = 1
-					elseif ( cursorangd >= cryadd * 4 and cursorangd < cryadd * 5 ) then selected = 5
-					end 
+	elseif ( cursorangd >= cryadd and cursorangd < cryadd * 2 ) then selected = 3
+	elseif ( cursorangd >= cryadd * 2 and cursorangd < cryadd * 3 ) then selected = 2
+	elseif ( cursorangd >= cryadd * 3 and cursorangd < cryadd * 4 ) then selected = 1
+	elseif ( cursorangd >= cryadd * 4 and cursorangd < cryadd * 5 ) then selected = 5
+	end 
 
 	if ( global_mul == 0 ) then return end --Don't run if the menu ain't visible
 	if ( !GryMod.MouseInCircle( cryx, cryy ) ) then selected = 0 end -- Aka if mouse is not in da circle , dont do anything
@@ -446,17 +444,19 @@ function FrameTimeExt()
 	if ( smoothconvar:GetBool() ) then return FrameTime() else return 1 end
 end
 
-function GryMod.BinocularZoomIn( player, key ) // here is the fucking function fucking up everting
-	if ( player:GetCanZoom() and key == IN_ZOOM ) then // no fucking hud related
+function GryMod.BinocularZoomIn( player, key )
+	if ( player:GetCanZoom() and key == IN_ZOOM ) then
 		surface.PlaySound( "interface_suit/binocularzoomin.wav" )
 		LocalPlayer().ZSing = true ;
+		--ZoomScaleform()
 	end
 end
 
 function GryMod.BinocularZoomOut( player, key )
 	if ( player:GetCanZoom() and key == IN_ZOOM ) then
 		surface.PlaySound( "interface_suit/binocularzoomout.wav" )
-	LocalPlayer().ZSing = false ;
+		LocalPlayer().ZSing = false ; 
+		--DeZoomScaleform()
 	end
 end
 
@@ -524,14 +524,13 @@ else
 end
 
 
-local gry_color_base = Color(220,235,220,alpha_ch[1])
 surface.SetTexture( base )
-surface.SetDrawColor(gry_color_base)
+surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
 surface.DrawTexturedRect(GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/4.06)+ GryModXDistance_int + GryModXDistance2_int , tempscrh-(GryMod.EyeFinityScrW()/5.19), ((GryMod.EyeFinityScrW())/4.26) , ((GryMod.EyeFinityScrW())/4.26))
 
 
 surface.SetTexture( compass )
-surface.SetDrawColor(gry_color_base)
+surface.SetDrawColor(Color(220,235,220,alpha_ch[1]))
 surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int + GryModXDistance2_int  ,   	tempscrh- (GryMod.EyeFinityScrW()/7.111), (GryMod.EyeFinityScrW()*(290/1920)), (GryMod.EyeFinityScrW()*(290/1920)))
 
 
@@ -540,12 +539,19 @@ surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int 
 	------------------------------------------------/
 
 	
-	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,alpha_ch[1])) -- Dear maths, you made me cry this time
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255)) -- Dear maths, you made me cry this time
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(135/1920)+ (17-(Gry_Danger0-17)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger0/1920) ) 
+	
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(166/1920)+ (22-(Gry_Danger1-22)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger1/1920) )
+	
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(185/1920)+ (19-(Gry_Danger2-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger2/1920) )
+	
+	surface.SetDrawColor(Color(GryMod.rcr,GryMod.rcg,GryMod.rcb,255))
 	surface.DrawRect( GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance_int + GryModXDistance2_int, tempscrh-GryMod.EyeFinityScrW()*(208/1920)+ (19-(Gry_Danger3-19)), GryMod.EyeFinityScrW()*(13/1920), GryMod.EyeFinityScrW()*(Gry_Danger3/1920) )
 
+	surface.SetDrawColor(GryMod.rcr,GryMod.rcg,GryMod.rcb, 255 )
 	draw.NoTexture()
 	surface.DrawPoly( {
 		{ x = GryMod.EyeFinityScrW()*(64/1920)- GryModXDistance_int + GryModXDistance2_int, y = tempscrh-GryMod.EyeFinityScrW()*(101/1920) },
@@ -608,9 +614,8 @@ usermessage.Hook( "shake_view", Shake );
 
 
 
-function GryMod.Stencils()
-
-	local compassmask = { -- if we want to support eyefinity, we have to update the table each frames
+function GryMod.Stencils1()
+		local compassmask = { -- if we want to support eyefinity, we have to update the table each frames
 		{ x = -1*GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()*(072/1920), y = ScrH()-GryMod.EyeFinityScrW()*(215/1920) },
 		{ x = -1*GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()*(273/1920), y = ScrH()-GryMod.EyeFinityScrW()*(227/1920) },
 		{ x = -1*GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()*(294/1920), y = ScrH()-GryMod.EyeFinityScrW()*(207/1920) },
@@ -618,6 +623,44 @@ function GryMod.Stencils()
 		{ x = -1*GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()*(060/1920), y = ScrH()-GryMod.EyeFinityScrW()*(204/1920) }
 	}
 
+
+
+
+	local nbener 	= LocalPlayer():GetNWInt("GryEnergy")
+	local nbhlt 	= LocalPlayer():Health()
+
+	render.ClearStencil()
+	render.SetStencilEnable( true )
+	render.SetStencilWriteMask( 255 )
+	render.SetStencilTestMask( 255 )
+	render.SetStencilReferenceValue( 15 )
+
+	render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+	render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+	render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
+
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
+	surface.SetDrawColor( Color(255,255,255,255) ) 
+	render.SetBlend(0)
+	surface.DrawPoly( compassmask )
+	render.SetBlend(1)
+
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+	
+	draw.SimpleText( 'N', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int + (LocalPlayer():EyeAngles().y * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((LocalPlayer():EyeAngles().y * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920),color_white)
+	draw.SimpleText( 'NE','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y + 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y + 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
+	draw.SimpleText( 'E', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +(( LocalPlayer():EyeAngles().y + 90 ) * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), (( tempscrh -GryMod.EyeFinityScrW()*(218/1920) -(( LocalPlayer():EyeAngles().y + 90 )* 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920)),color_white)
+	draw.SimpleText( 'SE','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y + 135 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y + 135 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
+	draw.SimpleText( 'S', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +math.max( math.NormalizeAngle( LocalPlayer():EyeAngles().y + 180 ), math.NormalizeAngle( LocalPlayer():EyeAngles().y - 180 ) ) * 5 + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((math.max( math.NormalizeAngle( LocalPlayer():EyeAngles().y + 180 ), math.NormalizeAngle( LocalPlayer():EyeAngles().y - 180 ) ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
+	draw.SimpleText( 'SW','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +(( LocalPlayer():EyeAngles().y - 135 ) * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920)-((( LocalPlayer():EyeAngles().y - 135 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
+	draw.SimpleText( 'W', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y - 90 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y - 90 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
+	draw.SimpleText( 'NW','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y - 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y - 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
+	render.SetStencilEnable( false )
+end
+
+function GryMod.Stencils2()
+
+	local nbener 	= LocalPlayer():GetNWInt("GryEnergy")
 	local energybarpoly1 = { -- if we want to support eyefinity, we have to update the table each frames
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(136/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(436/1920), y = ScrH()-GryMod.EyeFinityScrW()*(144/1920) },
@@ -625,8 +668,44 @@ function GryMod.Stencils()
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(113.5/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(122/1920) }
 	}
+		render.ClearStencil()
 
-	local healthbarpoly1 = { -- if we want to support eyefinity, we have to update the table each frames
+		------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+		render.SetStencilEnable( true )
+		render.SetStencilWriteMask( 255 )
+		render.SetStencilTestMask( 255 )
+		render.SetStencilReferenceValue( 15 )
+
+		render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+		render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+		render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
+
+		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
+		surface.SetDrawColor( Color(255,255,255,255) )
+		render.SetBlend(0)
+		surface.DrawPoly( energybarpoly1 )
+		render.SetBlend(1)
+
+		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+		
+
+		surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
+		local hltoffset = math.Remap(nbener, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
+		surface.DrawRect( 
+			GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+			ScrH()-GryMod.EyeFinityScrW()*(144/1920) ,
+			GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+			GryMod.EyeFinityScrW()*(37/1920))
+
+		render.SetStencilEnable( false )
+end
+
+function GryMod.Stencils3()
+
+	local nbhlt 	= LocalPlayer():Health()
+
+		local healthbarpoly1 = { -- if we want to support eyefinity, we have to update the table each frames
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(112/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(102.5/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(81.5/1920) },
@@ -634,185 +713,135 @@ function GryMod.Stencils()
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(97/1920) }
 	}
 
-	//270 103
-	//228 100
-	//228 78
-	//270 80
+		render.ClearStencil()
+		render.SetStencilEnable( true )
+		render.SetStencilWriteMask( 255 )
+		render.SetStencilTestMask( 255 )
+		render.SetStencilReferenceValue( 15 )
 
-	//+32 for ener
-	local energybarpoly2 = { -- cut the bars
-		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(135.5/1920) },
-		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(228/1920), y = ScrH()-GryMod.EyeFinityScrW()*(133/1920) },
-		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(228/1920), y = ScrH()-GryMod.EyeFinityScrW()*(111/1920) },
-		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(113.5/1920) }
-	}
+		render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+		render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+		render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
 
-	local healthbarpoly2 = { -- cut the bars
+		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
+		surface.SetDrawColor( Color(255,255,255,255) ) 
+		render.SetBlend(0)
+		surface.DrawPoly( healthbarpoly1 )
+		render.SetBlend(1)
+		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+		
+
+		surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
+		local hltoffset = math.Remap(nbhlt, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
+		surface.DrawRect( 
+			GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+			ScrH()-GryMod.EyeFinityScrW()*(113/1920) ,
+			GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+			GryMod.EyeFinityScrW()*(37/1920))
+
+		render.SetStencilEnable( false )
+end
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function GryMod.Stencils4()
+
+		//270 103
+		//228 100
+		//228 78
+		//270 80
+
+		//+32 for ener
+
+	local nbhlt 	= LocalPlayer():Health()
+		local healthbarpoly2 = { -- cut the bars
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(102/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(228/1920), y = ScrH()-GryMod.EyeFinityScrW()*(99.5/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(228/1920), y = ScrH()-GryMod.EyeFinityScrW()*(78.5/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(81/1920) }
 	}
 
+
+
+	render.ClearStencil()
+	render.SetStencilEnable( true )
+	render.SetStencilWriteMask( 255 )
+	render.SetStencilTestMask( 255 )
+	render.SetStencilReferenceValue( 15 )
+
+	render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+	render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+	render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
+
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
+	surface.SetDrawColor( Color(255,255,255,255) ) 
+
+	render.SetBlend(0)
+	surface.DrawPoly( healthbarpoly2 )
+	render.SetBlend(1)
+
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+	
+
+	if nbhlt > 20 then 
+		surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
+	else
+		surface.SetDrawColor(Color(240,23,27,alpha_ch[1]))
+	end
+	local hltoffset = math.Remap(nbhlt, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
+	surface.DrawRect( 
+		GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+		ScrH()-GryMod.EyeFinityScrW()*(113/1920) ,
+		GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+		GryMod.EyeFinityScrW()*(37/1920))
+
+	render.SetStencilEnable( false )
+end
+	------------------------------------------
+
+
+function GryMod.Stencils5()
+
+		local energybarpoly2 = { -- cut the bars
+		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(135.5/1920) },
+		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(228/1920), y = ScrH()-GryMod.EyeFinityScrW()*(133/1920) },
+		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(228/1920), y = ScrH()-GryMod.EyeFinityScrW()*(111/1920) },
+		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(113.5/1920) }
+	}
+
 	local nbener 	= LocalPlayer():GetNWInt("GryEnergy")
-	local nbhlt 	= LocalPlayer():Health()
 
 
+	render.ClearStencil()
+	render.SetStencilEnable( true )
+	render.SetStencilWriteMask( 1 )
+	render.SetStencilTestMask( 1 )
+	render.SetStencilReferenceValue( 1 )
 
+	render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+	render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+	render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
 
------------------------------------------------ // HOTFIX vvvv
-        render.ClearStencil()
-        render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 42 )
-        render.SetStencilTestMask( 42 )
-        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-        render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 42 )
-		render.SetStencilEnable( false )
------------------------------------------------ // HOTFIX ^^^^
-        render.ClearStencil()
-        render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 42 )
-        render.SetStencilTestMask( 42 )
- 
-        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-        render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
-       
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
-        surface.DrawPoly( compassmask )
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
+	surface.SetDrawColor( Color(255,255,255,255) ) 
+	render.SetBlend(0)
+	surface.DrawPoly( energybarpoly2 )
+	render.SetBlend(1)
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+	
 
-       
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 42 )
-			draw.SimpleText( 'N', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int + (LocalPlayer():EyeAngles().y * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((LocalPlayer():EyeAngles().y * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))
-			draw.SimpleText( 'NE','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y + 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y + 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
-			draw.SimpleText( 'E', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +(( LocalPlayer():EyeAngles().y + 90 ) * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), (( tempscrh -GryMod.EyeFinityScrW()*(218/1920) -(( LocalPlayer():EyeAngles().y + 90 )* 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920)))
-			draw.SimpleText( 'SE','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y + 135 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y + 135 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
-			draw.SimpleText( 'S', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +math.max( math.NormalizeAngle( LocalPlayer():EyeAngles().y + 180 ), math.NormalizeAngle( LocalPlayer():EyeAngles().y - 180 ) ) * 5 + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((math.max( math.NormalizeAngle( LocalPlayer():EyeAngles().y + 180 ), math.NormalizeAngle( LocalPlayer():EyeAngles().y - 180 ) ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
-			draw.SimpleText( 'SW','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  +(( LocalPlayer():EyeAngles().y - 135 ) * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920)-((( LocalPlayer():EyeAngles().y - 135 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
-			draw.SimpleText( 'W', 'ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y - 90 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y - 90 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
-			draw.SimpleText( 'NW','ScoreboardText',  GryMod.EyeFinityScrW()*(0.0104166666666667)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer():EyeAngles().y - 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer():EyeAngles().y - 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))))
-		render.SetStencilEnable( false )
+	if nbener >20 then 
+		surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
+	else
+		surface.SetDrawColor(Color(240,23,27,alpha_ch[1]))
+	end
+	local hltoffset = math.Remap(nbener, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
+	surface.DrawRect( 
+		GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+		ScrH()-GryMod.EyeFinityScrW()*(144/1920) ,
+		GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
+		GryMod.EyeFinityScrW()*(37/1920))
 
-
-		------------------------------------------------------------------------------------------------------------------------------------------------------------
-		render.ClearStencil()
-        render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 42 )
-        render.SetStencilTestMask( 42 )
- 
-        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-        render.SetStencilZFailOperation( STENCILOPERATION_ZERO )
-       
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
-        surface.DrawPoly( energybarpoly1 )
-
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 42 )
-        	
-	        surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
-			local hltoffset = math.Remap(nbener, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
-			surface.DrawRect( 
-				GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				ScrH()-GryMod.EyeFinityScrW()*(144/1920) ,
-				GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				GryMod.EyeFinityScrW()*(37/1920))
-
-        render.SetStencilEnable( false )
-
-        ---------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-	 render.ClearStencil()
-        render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 42 )
-        render.SetStencilTestMask( 42 )
- 
-        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-        render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
-       
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
-        surface.DrawPoly( healthbarpoly1 )
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 42 )
-
-	        surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
-			local hltoffset = math.Remap(nbhlt, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
-			surface.DrawRect( 
-				GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				ScrH()-GryMod.EyeFinityScrW()*(113/1920) ,
-				GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				GryMod.EyeFinityScrW()*(37/1920))
-
-        render.SetStencilEnable( false )
-
----------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-		render.ClearStencil()
-        render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 42 )
-        render.SetStencilTestMask( 42 )
- 
-        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-        render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
-       
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
-        surface.DrawPoly( healthbarpoly2 )
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 42 )
-
-        if nbhlt > 20 then 
-	        surface.SetDrawColor(Color(116,194,27,alpha_ch[1]))
-		else
-			surface.SetDrawColor(Color(240,23,27,alpha_ch[1]))
-		end
-			local hltoffset = math.Remap(nbhlt, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
-			surface.DrawRect( 
-				GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				ScrH()-GryMod.EyeFinityScrW()*(113/1920) ,
-				GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				GryMod.EyeFinityScrW()*(37/1920))
-
-        render.SetStencilEnable( false )
-------------------------------------------
-
-		render.ClearStencil()
-        render.SetStencilEnable( true )
-        render.SetStencilWriteMask( 42 )
-        render.SetStencilTestMask( 42 )
- 
-        render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-        render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-        render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
-       
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
-        surface.DrawPoly( energybarpoly2 )
-        render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
-        render.SetStencilReferenceValue( 42 )
-
-        	if nbener >20 then 
-	       		surface.SetDrawColor(Color(20,150,230,alpha_ch[1]))
-	       	else
-	       		surface.SetDrawColor(Color(240,23,27,alpha_ch[1]))
-	       	end
-			local hltoffset = math.Remap(nbener, 0, 100,0, GryMod.EyeFinityScrW()*(219/1920))
-			surface.DrawRect( 
-				GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920)+(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				ScrH()-GryMod.EyeFinityScrW()*(144/1920) ,
-				GryMod.EyeFinityScrW()*(219/1920)-(GryMod.EyeFinityScrW()*(219/1920)-hltoffset),
-				GryMod.EyeFinityScrW()*(37/1920))
-
-        render.SetStencilEnable( false )
-
-
+	render.SetStencilEnable( false )
 end
 
 
@@ -823,13 +852,13 @@ end
 
 net.Receive("gry_jump", function()
 	surface.PlaySound( "suit/strenghtjump.wav" )
-end)
+	end)
 
 net.Receive("cloak_stop", function()
 	LocalPlayer():GetViewModel():SetMaterial("")
 	LocalPlayer():GetHands():SetMaterial("")
 
-end)
+	end)
 
 
 net.Receive("gry_spawn", function()	-- Wow much swag
@@ -838,44 +867,44 @@ net.Receive("gry_spawn", function()	-- Wow much swag
 		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 5);
 		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 4.2);
 		jesus = 4646434346 -- MAGIC
-	
-
-
-
-print[[
 
 
 
 
-   ,.........,         ...............,    ,........`  ..      .,                   
-   @@@@@@@@@@@@      ,@@@@@@@@@@@@@@@@@@   @@@@@@@@@; `@@@   ,@@@                   
-   @@@@@@@@@@@@@    '@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@' `@@@@ :@@@@                   
-              @@@  @@@+     @@         @@             `@#@@@@@@@@                   
-               @@@@@@,      @@        `@@             `@+`@@@@ @@                   
-   @@@@@@@@@@   @@@@`       @@    `@@@@@#  @@@@@@@@@; `@+  @@  @@                   
-   @@@@@@@@@@  '@@@@:       @@    `@@@@@   @@@@@@@@@; `@+      @@                   
-              +@@;#@@'      @@     @@#                `@+      @@                   
-             +@@:  +@@#     @@      @@@               `@+      @@                   
-   @@@@@@@@@@@@,    ;@@@    @@       #@@@@@@@@@@@@@@@@@@+      @@                   
-   @@@@@@@@@@@.      ,@@@   @@        +@@@@@@@@@@@@@@@@@+      @@                   
-   ..........`        `@@@  ..         ..................      .,                   
-                        @@@                                                         
-                         @@@                                                        
-                          @@@`                                                      
-                           @@@@@@@@@@@@@@@@@@@@@@@@@@.    .@@@@@@@#`@@@@;           
-                            @@@@@@@@@@@@@@@@@@@@@@@@@@,    .@@@@@@@#`@@@@;          
-                                                    @@@.         '@@#  @@@;         
-                                '@@    @@+,,,,:  @@# @@@.   .@@.  +@@   @@@         
-                                ;@@    @@@@@@@   @@+  @@@,  `@@`  ;@@   +@@         
-                                ;@@    @@@@@@    @@+`` @@@. `@@`  ;@@   +@@         
-                                ;@@    @@;       @@@@@@ @@@.`@@`  ;@@   +@@         
-                                ;@@    @@;       @@@@@@@ @@@,@@`  ;@@   +@@         
-                                ;@@    @@#++++:  @@+      @@@@@`  ;@@   +@@         
-                                ;@@    @@@@@@@@: @@+       @@@@`  ;@@   +@@         
-                                ,::    :::::::::`;::        ;::`  ,:;   ::;         
-																					
-				
-				
+		print[[
+
+
+
+
+		,.........,         ...............,    ,........`  ..      .,                   
+		@@@@@@@@@@@@      ,@@@@@@@@@@@@@@@@@@   @@@@@@@@@; `@@@   ,@@@                   
+		@@@@@@@@@@@@@    '@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@' `@@@@ :@@@@                   
+		@@@  @@@+     @@         @@             `@#@@@@@@@@                   
+		@@@@@@,      @@        `@@             `@+`@@@@ @@                   
+		@@@@@@@@@@   @@@@`       @@    `@@@@@#  @@@@@@@@@; `@+  @@  @@                   
+		@@@@@@@@@@  '@@@@:       @@    `@@@@@   @@@@@@@@@; `@+      @@                   
+		+@@;#@@'      @@     @@#                `@+      @@                   
+		+@@:  +@@#     @@      @@@               `@+      @@                   
+		@@@@@@@@@@@@,    ;@@@    @@       #@@@@@@@@@@@@@@@@@@+      @@                   
+		@@@@@@@@@@@.      ,@@@   @@        +@@@@@@@@@@@@@@@@@+      @@                   
+		..........`        `@@@  ..         ..................      .,                   
+		@@@                                                         
+		@@@                                                        
+		@@@`                                                      
+		@@@@@@@@@@@@@@@@@@@@@@@@@@.    .@@@@@@@#`@@@@;           
+		@@@@@@@@@@@@@@@@@@@@@@@@@@,    .@@@@@@@#`@@@@;          
+		@@@.         '@@#  @@@;         
+		'@@    @@+,,,,:  @@# @@@.   .@@.  +@@   @@@         
+		;@@    @@@@@@@   @@+  @@@,  `@@`  ;@@   +@@         
+		;@@    @@@@@@    @@+`` @@@. `@@`  ;@@   +@@         
+		;@@    @@;       @@@@@@ @@@.`@@`  ;@@   +@@         
+		;@@    @@;       @@@@@@@ @@@,@@`  ;@@   +@@         
+		;@@    @@#++++:  @@+      @@@@@`  ;@@   +@@         
+		;@@    @@@@@@@@: @@+       @@@@`  ;@@   +@@         
+		,::    :::::::::`;::        ;::`  ,:;   ::;         
+
+
+
 		///////////////////////////////////////
 		////////////GryNet Systems/////////////
 		////////////ExtReM-Team.com////////////
@@ -888,36 +917,36 @@ print[[
 		/////////////HELP-FAQ//////////////////
 		/// How to open the menu ? -> Bind a///
 		/// key to +crysishud (guide on the ///
-		/// workshop page)                  ///
-		///          -------------          ///
-		/// Wow such lags. -> That's not a  ///
-		/// question and buy a new PC       ///
-		///          -------------          ///
-		/// I found a bug -> That's still   ///
-		/// not a question, make an issue   ///
-		/// ion github                      ///
-		///                                 ///
-		///                                 ///
-		/////////////THANKS////////////////////
-		/// Carl Mcgee : Working on         ///
-		/// GryEngine models/map            ///
-		///          -------------          ///
-		/// Vuthakral Darastrix : Ideas and ///
-		/// his work on the materials       ///
-		///          -------------          ///
-		/// The community : For the ideas   ///
-		/// AND the support !               ///
-		///          -------------          ///
-		/// Kids : For spamming me on steam ///
-		///                                 ///
-		///////////////////////////////////////
-		///////////////////////////////////////
+			/// workshop page)                  ///
+///          -------------          ///
+/// Wow such lags. -> That's not a  ///
+/// question and buy a new PC       ///
+///          -------------          ///
+/// I found a bug -> That's still   ///
+/// not a question, make an issue   ///
+/// ion github                      ///
+///                                 ///
+///                                 ///
+/////////////THANKS////////////////////
+/// Carl Mcgee : Working on         ///
+/// GryEngine models/map            ///
+///          -------------          ///
+/// Vuthakral Darastrix : Ideas and ///
+/// his work on the materials       ///
+///          -------------          ///
+/// The community : For the ideas   ///
+/// AND the support !               ///
+///          -------------          ///
+/// Kids : For spamming me on steam ///
+///                                 ///
+///////////////////////////////////////
+///////////////////////////////////////
 
 
 
-		]]
-		end
-			
+]]
+end
+
 end)
 
 
@@ -927,25 +956,25 @@ end)
 local MOUSE_CHECK_DIST = 95
 local MOUSE_CUR_DIST = 0
 function GryMod.RadialThinklel() -- Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
-if !GRYOPEN then return end
+	if !GRYOPEN then return end
 	if math.Dist( gui.MouseX(), gui.MouseY(), GryMod.EyeFinityScrW()/2, tempscrh/2  ) > 150 then
 		if gui.MouseX() > ((GryMod.EyeFinityScrW()/2) + MOUSE_CHECK_DIST) then -- 
 			posx = (gui.MouseX()-(gui.MouseX()-((GryMod.EyeFinityScrW()/2) + MOUSE_CHECK_DIST)))		
 		elseif gui.MouseX() < ((GryMod.EyeFinityScrW()/2) - MOUSE_CHECK_DIST) then
 			posx = (gui.MouseX()-(gui.MouseX()-((GryMod.EyeFinityScrW()/2) - MOUSE_CHECK_DIST)))
-		else posx = gui.MouseX()
-	end
-		
-		
-	if gui.MouseY() > ((tempscrh/2) + MOUSE_CHECK_DIST) then
-			posy = (gui.MouseY()-(gui.MouseY()-((tempscrh/2) + MOUSE_CHECK_DIST)))		
-		elseif gui.MouseY() < ((tempscrh/2) - MOUSE_CHECK_DIST) then
-			posy = (gui.MouseY()-(gui.MouseY()-((tempscrh/2) - MOUSE_CHECK_DIST)))
-		else posy = gui.MouseY()
-	end
-	gui.SetMousePos(posx, posy)
-	end
-end
+			else posx = gui.MouseX()
+			end
+
+
+			if gui.MouseY() > ((tempscrh/2) + MOUSE_CHECK_DIST) then
+				posy = (gui.MouseY()-(gui.MouseY()-((tempscrh/2) + MOUSE_CHECK_DIST)))		
+			elseif gui.MouseY() < ((tempscrh/2) - MOUSE_CHECK_DIST) then
+				posy = (gui.MouseY()-(gui.MouseY()-((tempscrh/2) - MOUSE_CHECK_DIST)))
+				else posy = gui.MouseY()
+				end
+				gui.SetMousePos(posx, posy)
+			end
+		end
 
 
  local hidethings = { -- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
@@ -960,7 +989,7 @@ function HUDShouldDraw(name)
 	end
 end
 
-if(util.__TraceLine) then return end -- I know i'm a terrible person
+--[[if(util.__TraceLine) then return end -- I know i'm a terrible person
 util.__TraceLine = util.TraceLine;
 
 function util.TraceLine(...) -- Aka, if i'm looking at you and you're cloaked, then i can't see your name, ikr this is dangerous to do that, i'll fix it later
@@ -973,15 +1002,19 @@ function util.TraceLine(...) -- Aka, if i'm looking at you and you're cloaked, t
 			end
 		end
 		return t;
-end
+end--]]
 
 	
-hook.Add( "HUDPaint", "GRYHUD", 				GryMod.CRYHUD )
-hook.Add( "KeyPress","AttackDetection", 		GryMod.CloackAttack )
-hook.Add( "KeyPress", "BinocularZoomIn", 		GryMod.BinocularZoomIn )
-hook.Add( "KeyRelease", "BinocularZoomOut",	 	GryMod.BinocularZoomOut )
-hook.Add( "Think", "SuitBreathUnderwater", 		GryMod.SuitBreathUnderwater )
-hook.Add( "HUDPaint", "HUDBASECRY", 			GryMod.hudbase ) 
-hook.Add( "HUDPaint", "GryMod stencils", 		GryMod.Stencils)
-hook.Add( "Think", "HueHue fix normal shit", 	GryMod.RadialThinklel)
-hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+	hook.Add( "HUDPaint", "GRYHUD", 				GryMod.CRYHUD )
+	hook.Add( "KeyPress","AttackDetection", 		GryMod.CloackAttack )
+	hook.Add( "KeyPress", "BinocularZoomIn", 		GryMod.BinocularZoomIn )
+	hook.Add( "KeyRelease", "BinocularZoomOut",	 	GryMod.BinocularZoomOut )
+	hook.Add( "Think", "SuitBreathUnderwater", 		GryMod.SuitBreathUnderwater )
+	hook.Add( "HUDPaint", "HUDBASECRY", 			GryMod.hudbase ) 
+	hook.Add( "Think", "HueHue fix normal shit", 	GryMod.RadialThinklel)
+	hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+	hook.Add( "HUDPaint", "GryMod stencils1", 		GryMod.Stencils1)
+	hook.Add( "HUDPaint", "GryMod stencils2", 		GryMod.Stencils2)
+	hook.Add( "HUDPaint", "GryMod stencils3", 		GryMod.Stencils3)
+	hook.Add( "HUDPaint", "GryMod stencils4", 		GryMod.Stencils4)
+	hook.Add( "HUDPaint", "GryMod stencils5", 		GryMod.Stencils5)

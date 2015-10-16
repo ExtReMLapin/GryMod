@@ -1,5 +1,3 @@
-if not GryMod then GryMod = {} end
-
 function surface.ScreenScale( size )
 	return size * ( ScrH() / 480.0 )
 end
@@ -45,3 +43,4 @@ function GryMod.grenadetetect()
 end
 
 hook.Add( "HUDPaint", "Nade detection", GryMod.grenadetetect )
+

@@ -1,5 +1,3 @@
-if not GryMod then GryMod = {} end
-
  function ScaleFormGFx_Proxy(address, x, y, time)
 	HTMLTest = vgui.Create( "HTML" )
 	HTMLTest:SetPos( ((ScrW()-x)/2),((ScrH()-y)/2) )

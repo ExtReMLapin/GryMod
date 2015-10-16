@@ -1,5 +1,3 @@
-if not GryMod then GryMod = {} end
-
 local function detectcible( player, key )
 	if key == IN_ATTACK then
 	local eyetrace = LocalPlayer():GetEyeTrace();
