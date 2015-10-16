@@ -864,8 +864,13 @@ net.Receive("cloak_stop", function()
 net.Receive("gry_spawn", function()	-- Wow much swag
 	ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) -- Rip cheap monitors
 	if gamemode.Get("sandbox") and jesus != 4646434346 then -- I know...
-		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 5);
-		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 4.2);
+		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 15);
+		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 13);
+		if not file.Exists("resource/fonts/Agency FB.ttf", "GAME") then 
+			GAMEMODE:AddNotify("You don't have the required Font fix, check console to get the download link!", NOTIFY_GENERIC, 20);
+		else
+			GAMEMODE:AddNotify("Font fix installed ( ͡° ͜ʖ ͡°)", NOTIFY_GENERIC, 10);
+		end
 		jesus = 4646434346 -- MAGIC
 
 
@@ -875,33 +880,23 @@ net.Receive("gry_spawn", function()	-- Wow much swag
 
 
 
+	MMMMMMMMMMM        MMMMMMMMMMMMMMMM,  MMMMMMMMMM  MM     MM:                  
+	MMMMMMMMMMMMM    MMMMMMMMMMMMMMMMMMM  MMMMMMMMMM  MMMM MMMM:                  
+	           MMM MMM      MM         MM             MMMMMMM M:                  
+	MMMMMMMMM    MMM        MM    DMMMMM  MMMMMMMMMM  MM  N   M:                  
+	           MMM MMM      MM     MM=                MM      M:                  
+	7IIIIIIII8MM:   MMMM    MM      +MM7IIIIIIIIIIIIIIMM      M:                  
+	MMMMMMMMMMM       MMM   MM        MMMMMMMMMMMMMMMMMM      M:                  
+	                    MMM                                                       
+	                     IMMM                                                     
+	                       MMMMMMMMMMMMMMMMMMMMMMMMMZ    ,MMMMMMM MMMMM           
+	                                               MMM    ,     MMM  MMM          
+	                            MMM   ?MMMMMMM  MMM DMMM   MMM   MMM  ,MM         
+	     ExtReM-Team.com        MMM   ?MMMMMN   MMM   MMM  MMM   MMM   MM         
+	    By [ExtReM] Lapin       MMM   ?MM       MMMMMMM MMMMMM   MMM   MM         
+	                            MMM   ?MMMMMMM  MMM      NMMMM   MMM   MM         
+	                            MMN   ?MMMMMMMMOMMM        MMM   MMM   MM         
 
-		,.........,         ...............,    ,........`  ..      .,                   
-		@@@@@@@@@@@@      ,@@@@@@@@@@@@@@@@@@   @@@@@@@@@; `@@@   ,@@@                   
-		@@@@@@@@@@@@@    '@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@' `@@@@ :@@@@                   
-		@@@  @@@+     @@         @@             `@#@@@@@@@@                   
-		@@@@@@,      @@        `@@             `@+`@@@@ @@                   
-		@@@@@@@@@@   @@@@`       @@    `@@@@@#  @@@@@@@@@; `@+  @@  @@                   
-		@@@@@@@@@@  '@@@@:       @@    `@@@@@   @@@@@@@@@; `@+      @@                   
-		+@@;#@@'      @@     @@#                `@+      @@                   
-		+@@:  +@@#     @@      @@@               `@+      @@                   
-		@@@@@@@@@@@@,    ;@@@    @@       #@@@@@@@@@@@@@@@@@@+      @@                   
-		@@@@@@@@@@@.      ,@@@   @@        +@@@@@@@@@@@@@@@@@+      @@                   
-		..........`        `@@@  ..         ..................      .,                   
-		@@@                                                         
-		@@@                                                        
-		@@@`                                                      
-		@@@@@@@@@@@@@@@@@@@@@@@@@@.    .@@@@@@@#`@@@@;           
-		@@@@@@@@@@@@@@@@@@@@@@@@@@,    .@@@@@@@#`@@@@;          
-		@@@.         '@@#  @@@;         
-		'@@    @@+,,,,:  @@# @@@.   .@@.  +@@   @@@         
-		;@@    @@@@@@@   @@+  @@@,  `@@`  ;@@   +@@         
-		;@@    @@@@@@    @@+`` @@@. `@@`  ;@@   +@@         
-		;@@    @@;       @@@@@@ @@@.`@@`  ;@@   +@@         
-		;@@    @@;       @@@@@@@ @@@,@@`  ;@@   +@@         
-		;@@    @@#++++:  @@+      @@@@@`  ;@@   +@@         
-		;@@    @@@@@@@@: @@+       @@@@`  ;@@   +@@         
-		,::    :::::::::`;::        ;::`  ,:;   ::;         
 
 
 
@@ -917,30 +912,39 @@ net.Receive("gry_spawn", function()	-- Wow much swag
 		/////////////HELP-FAQ//////////////////
 		/// How to open the menu ? -> Bind a///
 		/// key to +crysishud (guide on the ///
-			/// workshop page)                  ///
-///          -------------          ///
-/// Wow such lags. -> That's not a  ///
-/// question and buy a new PC       ///
-///          -------------          ///
-/// I found a bug -> That's still   ///
-/// not a question, make an issue   ///
-/// ion github                      ///
-///                                 ///
-///                                 ///
-/////////////THANKS////////////////////
-/// Carl Mcgee : Working on         ///
-/// GryEngine models/map            ///
-///          -------------          ///
-/// Vuthakral Darastrix : Ideas and ///
-/// his work on the materials       ///
-///          -------------          ///
-/// The community : For the ideas   ///
-/// AND the support !               ///
-///          -------------          ///
-/// Kids : For spamming me on steam ///
-///                                 ///
-///////////////////////////////////////
-///////////////////////////////////////
+		/// workshop page)                  ///
+		///          -------------          ///
+		/// Wow such lags. -> That's not a  ///
+		/// question and buy a new PC       ///
+		///          -------------          ///
+		/// I found a bug -> That's still   ///
+		/// not a question, make an issue   ///
+		/// ion github/tell me the bugs in  ///
+		/// the comments m8                 ///
+		///                                 ///
+		//////////////FONT FIX/////////////////
+		///  The font fix will really       ///
+		///  improve how the hud looks, you ///
+		///  can downloadit here :          ///
+		///    https://goo.gl/n7u0zS        ///
+		///                                 ///
+		///   Then put it in :              ///
+		///   garrysmod/resource/fonts/     ///
+		///                                 ///
+		/////////////THANKS////////////////////
+		/// Carl Mcgee : Working on         ///
+		/// GryEngine models/map            ///
+		///          -------------          ///
+		/// Vuthakral Darastrix : Ideas and ///
+		/// his work on the materials       ///
+		///          -------------          ///
+		/// The community : For the ideas   ///
+		/// AND the support !               ///
+		///          -------------          ///
+		/// Kids : For spamming me on steam ///
+		///                                 ///
+		///////////////////////////////////////
+		///////////////////////////////////////
 
 
 
