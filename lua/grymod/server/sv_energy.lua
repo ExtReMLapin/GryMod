@@ -2,7 +2,7 @@ local hook =  hook;
 local umsg = umsg;
 local player = player;
 Regen_Status = true
-Regen_HealRamps = true
+Regen_HealRamps = false
 Regen_PerSect = false 
 local function Regen_PlayerHasSpawneda(ply)
 	ply.RDW = CurTime() + 0.1
@@ -12,7 +12,7 @@ end
 hook.Add("PlayerSpawn", "Player spawns AR", Regen_PlayerHasSpawneda)
 local function Regen_PlayerTakesDamagea(ply)
 	if (!ply:IsPlayer()) then return end
-	ply.RDW = CurTime() + (ply.RDW * 0 + 5) // ent.RDW * 0 + (CurTime() + 5)
+	ply.RDW = CurTime() + (ply.RDW * 0 + 2.5) // ent.RDW * 0 + (CurTime() + 5)
 	ply.HRAW = 1
 	ply.HRTW = 0
 end

@@ -3,6 +3,7 @@
 	local player = player;
 	hook.Add("EntityTakeDamage","Sahek",function( target, dmginfo )
 		if ( target:IsPlayer() ) then
+			if target:GetNWBool("Armor", true) then return end
 			umsg.Start( "shake_view" ); umsg.Entity(target) umsg.Bool(true) umsg.End();
 			timer.Simple(0.75,function() if target:IsValid() then
 				umsg.Start( "shake_view" );
@@ -15,7 +16,7 @@
 
 
 	Regen_Status = true
-	Regen_HealRamps = true
+	Regen_HealRamps = false
 	Regen_PerSect = false 
 
 	local function Regen_PlayerHasSpawned(ply)
@@ -26,6 +27,7 @@
 	hook.Add("PlayerSpawn", "Player spawnadads AR", Regen_PlayerHasSpawned)
 	local function Regen_PlayerTakesDamage(ent, inflictor, attacker, _, dmginfo)
 		if (!ent:IsPlayer())then return end
+		if ent:GetNWBool("Armor", true) then return end
 		ent.RD = CurTime() + (ent.RD * 0 + 5) // ent.RD * 0 + (CurTime() + 5)
 		ent.HRA = 1
 		ent.HRT = 0

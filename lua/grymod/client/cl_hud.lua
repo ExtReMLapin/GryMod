@@ -44,18 +44,20 @@ cvars.AddChangeCallback( "gry_xdist", function( convar_name, value_old, value_ne
 	end )
 
 
+local gry_icons = { Material( "gryarmor.png" ), Material( "gryspeed.png" ), Material( "grystrenght.png" ), Material( "grycloak.png"), Material( "grydrop.png")}
+
 
 local tempscrw = ScrW()
 local tempscrh = ScrH()
 
 local base = surface.GetTextureID( "cryhud/base" )
-local hlt = surface.GetTextureID( "cryhud/healthpr" )
-local enr = surface.GetTextureID( "cryhud/enr" )
 local compass = surface.GetTextureID( "cryhud/compass" )
 
 function meta:CanGryMod() 
 	return true -- return meta:Alive() ????
 end
+
+
 -- You can change it , for others admins mods , but you'll have to change it in example : 
 
 --[[  
@@ -124,31 +126,41 @@ function draw.BoxRotated(x, y, scalex, scaley, color, ang )
 end
 
 
-local grymodesuit = Material( "GryArmor.png" ) -- Init mode, you better not reload this files, else there will be a de-sync
+local grymodesuit = gry_icons[1] -- Init mode, you better not reload this files, else there will be a de-sync
 GryMod.Cloaked = false
 
 net.Receive( "cloak_start", function( length, client ) -- First network optimizations are here 
-	grymodesuit = Material( "GryCloak.png" )
+	grymodesuit = gry_icons[4]
 	GryMod.Cloaked = true
 	LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
 	LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
 	PlaySnd(Sound("suit/cloak.mp3"))
 	end)
 
+net.Receive("gry_jump", function() // hotfix
+	surface.PlaySound( "suit/strenghtjump.wav" )
+	end)
+
+net.Receive("cloak_stop", function()
+	LocalPlayer():GetViewModel():SetMaterial("")
+	LocalPlayer():GetHands():SetMaterial("")
+end)
+
+
 net.Receive( "armor_start", function( length, client )
-	grymodesuit = Material( "GryArmor.png" )
+	grymodesuit = gry_icons[1]
 	GryMod.Cloaked = false
 	PlaySnd(Sound("suit/armor.mp3"))
 	end)
 
 net.Receive( "speed_start", function( length, client )
-	grymodesuit = Material( "GrySpeed.png" )
+	grymodesuit = gry_icons[2]
 	GryMod.Cloaked = false
 	PlaySnd(Sound("suit/speed.mp3"))
 	end)
 
 net.Receive( "strenght_start", function( length, client )
-	grymodesuit = Material( "GryStrenght.png" )
+	grymodesuit = gry_icons[3]
 	GryMod.Cloaked = false
 	PlaySnd(Sound("suit/strength.mp3"))
 	end)
@@ -204,19 +216,19 @@ local nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_t
 
 local armormode = {}
 armormode["Armor"] = {}
-armormode["Armor"].material =  Material( "GryArmor.png" )
+armormode["Armor"].material =  gry_icons[1]
 armormode["Armor"].name = "Armor"
 armormode["Speed"] = {}
-armormode["Speed"].material = Material( "GrySpeed.png" )
+armormode["Speed"].material = gry_icons[2]
 armormode["Speed"].name = "Speed"
 armormode["Strenght"] = {}
-armormode["Strenght"].material = Material( "GryStrenght.png" )
+armormode["Strenght"].material = gry_icons[3]
 armormode["Strenght"].name = "Strenght"
 armormode["Cloak"] = {}
-armormode["Cloak"].material = Material( "GryCloak.png" )
+armormode["Cloak"].material = gry_icons[4]
 armormode["Cloak"].name = "Cloak"
 armormode["Drop"] = {}
-armormode["Drop"].material = Material( "GryDrop.png" )
+armormode["Drop"].material = gry_icons[5]
 armormode["Drop"].name = "Drop"
 
 local slots = {} --Standard slots, change these at will
@@ -417,6 +429,8 @@ end
 
 concommand.Add( "+crysishud", GryMod.CryOpenClose )
 concommand.Add( "-crysishud", GryMod.CryOpenClose )
+
+
 
 ----------------------------------------------------------------------------
 ----------------------------------------------------------------------------
@@ -851,15 +865,6 @@ end
 
 
 
-net.Receive("gry_jump", function()
-	surface.PlaySound( "suit/strenghtjump.wav" )
-	end)
-
-net.Receive("cloak_stop", function()
-	LocalPlayer():GetViewModel():SetMaterial("")
-	LocalPlayer():GetHands():SetMaterial("")
-
-	end)
 
 
 net.Receive("gry_spawn", function()	-- Wow much swag
@@ -1009,7 +1014,7 @@ function util.TraceLine(...) -- Aka, if i'm looking at you and you're cloaked, t
 		return t;
 end--]]
 
-	
+	hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 	hook.Add( "HUDPaint", "GRYHUD", 				GryMod.CRYHUD )
 	hook.Add( "KeyPress","AttackDetection", 		GryMod.CloackAttack )
 	hook.Add( "KeyPress", "BinocularZoomIn", 		GryMod.BinocularZoomIn )
@@ -1017,7 +1022,7 @@ end--]]
 	hook.Add( "Think", "SuitBreathUnderwater", 		GryMod.SuitBreathUnderwater )
 	hook.Add( "HUDPaint", "HUDBASECRY", 			GryMod.hudbase ) 
 	hook.Add( "Think", "HueHue fix normal shit", 	GryMod.RadialThinklel)
-	hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+
 	hook.Add( "HUDPaint", "GryMod stencils1", 		GryMod.Stencils1)
 	hook.Add( "HUDPaint", "GryMod stencils2", 		GryMod.Stencils2)
 	hook.Add( "HUDPaint", "GryMod stencils3", 		GryMod.Stencils3)

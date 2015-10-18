@@ -79,6 +79,7 @@ concommand.Add("Speed", GryMod.Speed)
 function GryMod.Cloak(ply)
 	if ply:Alive() then
 		ply:SetMaterial("cloak/organic")
+		ply:GetHands():SetMaterial("cloak/organic")
 		ply:SetWalkSpeed(200)
 		ply:SetRunSpeed(400)
 		--ply:EmitSound("suit/cloak.mp3", 100, 100)
