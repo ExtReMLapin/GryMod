@@ -25,11 +25,7 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 			hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 			hook.Add("HUDPaint", "Nade detection", GryMod.grenadetetect )
 			hook.Add("HUDPaint", "GryCross", GryMod.cross)
-			hook.Add( "HUDPaint", "GryMod stencils1", 		GryMod.Stencils1)
-			hook.Add( "HUDPaint", "GryMod stencils2", 		GryMod.Stencils2)
-			hook.Add( "HUDPaint", "GryMod stencils3", 		GryMod.Stencils3)
-			hook.Add( "HUDPaint", "GryMod stencils4", 		GryMod.Stencils4)
-			hook.Add( "HUDPaint", "GryMod stencils5", 		GryMod.Stencils5)
+
 
 	end
 	
@@ -40,11 +36,6 @@ Panel:AddControl("Label", {Text = "GryMod Config"})
 	
 	disabled1.DoClick = function()
 			hook.Remove( "HUDPaint", "HUDBASECRY")
-			hook.Remove( "HUDPaint", "GryMod stencils1")
-			hook.Remove( "HUDPaint", "GryMod stencils2") 
-			hook.Remove( "HUDPaint", "GryMod stencils3") 
-			hook.Remove( "HUDPaint", "GryMod stencils4") 
-			hook.Remove( "HUDPaint", "GryMod stencils5")
 			hook.Remove( "HUDShouldDraw", "How to: HUD Example HUD hider")
 			hook.Remove( "HUDPaint", "Nade detection")
 			hook.Remove( "HUDPaint", "GryCross")

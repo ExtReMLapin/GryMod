@@ -21,8 +21,6 @@ local util = util;
 local vgui = vgui;
 local gui = gui;
 local cam = cam;
-
-
 --Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
 --Yeah, fuck you, the guys with shitty monitors.
 local color_white = Color(255,255,255,255)
@@ -612,23 +610,12 @@ surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int 
 	end
 
 
-end
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-local function Shake( data )
-	if data:ReadEntity() == LocalPlayer() then
-		shaking = data:ReadBool()
-	end
-end
-
-usermessage.Hook( "shake_view", Shake );
-
-
-
-
-
-
-function GryMod.Stencils1()
 		local compassmask = { -- if we want to support eyefinity, we have to update the table each frames
 		{ x = -1*GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()*(072/1920), y = ScrH()-GryMod.EyeFinityScrW()*(215/1920) },
 		{ x = -1*GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()*(273/1920), y = ScrH()-GryMod.EyeFinityScrW()*(227/1920) },
@@ -645,13 +632,14 @@ function GryMod.Stencils1()
 
 	render.ClearStencil()
 	render.SetStencilEnable( true )
-	render.SetStencilWriteMask( 255 )
-	render.SetStencilTestMask( 255 )
+	render.SetStencilWriteMask( 245 )
+	render.SetStencilTestMask( 245 )
 	render.SetStencilReferenceValue( 15 )
 
-	render.SetStencilFailOperation( STENCILOPERATION_ZERO )
-	render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
-	render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
+		render.SetStencilFailOperation( STENCILOPERATION_ZERO )
+		render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
+		render.SetStencilZFailOperation( STENCILOPERATION_KEEP )
+
 
 	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
 	surface.SetDrawColor( Color(255,255,255,255) ) 
@@ -659,7 +647,8 @@ function GryMod.Stencils1()
 	surface.DrawPoly( compassmask )
 	render.SetBlend(1)
 
-	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
+	render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL)
+	
 	LocalPlayer_y = LocalPlayer():EyeAngles().y +6.256798
 	
 	draw.SimpleText( 'N', 'ScoreboardText',  GryMod.EyeFinityScrW()*(20/1920)- GryModXDistance_int + GryModXDistance2_int + (LocalPlayer_y * 3.32)+ GryMod.EyeFinityScrW()*(134/1920), tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((LocalPlayer_y * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920),color_white)
@@ -671,9 +660,15 @@ function GryMod.Stencils1()
 	draw.SimpleText( 'W', 'ScoreboardText',  GryMod.EyeFinityScrW()*(20/1920)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer_y - 90 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer_y - 90 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
 	draw.SimpleText( 'NW','ScoreboardText',  GryMod.EyeFinityScrW()*(20/1920)- GryModXDistance_int + GryModXDistance2_int  + (( LocalPlayer_y - 45 ) * 3.32) + GryMod.EyeFinityScrW()*(134/1920), (( tempscrh - GryMod.EyeFinityScrW()*(218/1920) -((( LocalPlayer_y - 45 ) * 3.32)/15)+GryMod.EyeFinityScrW()*(-5/1920))),color_white)
 	render.SetStencilEnable( false )
-end
 
-function GryMod.Stencils2()
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
 
 	local nbener 	= LocalPlayer():GetNWInt("GryEnergy")
 	local energybarpoly1 = { -- if we want to support eyefinity, we have to update the table each frames
@@ -683,14 +678,13 @@ function GryMod.Stencils2()
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(277/1920), y = ScrH()-GryMod.EyeFinityScrW()*(113.5/1920) },
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(446/1920), y = ScrH()-GryMod.EyeFinityScrW()*(122/1920) }
 	}
+
+	
 		render.ClearStencil()
-
-		------------------------------------------------------------------------------------------------------------------------------------------------------------
-
 		render.SetStencilEnable( true )
-		render.SetStencilWriteMask( 255 )
-		render.SetStencilTestMask( 255 )
-		render.SetStencilReferenceValue( 15 )
+		render.SetStencilWriteMask( 246 )
+		render.SetStencilTestMask( 246 )
+		render.SetStencilReferenceValue( 16 )
 
 		render.SetStencilFailOperation( STENCILOPERATION_ZERO )
 		render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -698,10 +692,10 @@ function GryMod.Stencils2()
 
 		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
 		surface.SetDrawColor( Color(255,255,255,255) )
-		render.SetBlend(0)
+		--render.SetBlend(0)
 		surface.DrawPoly( energybarpoly1 )
-		render.SetBlend(1)
-
+		--render.SetBlend(1)
+		
 		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
 		
 
@@ -714,9 +708,21 @@ function GryMod.Stencils2()
 			GryMod.EyeFinityScrW()*(37/1920))
 
 		render.SetStencilEnable( false )
-end
 
-function GryMod.Stencils3()
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 	local nbhlt 	= LocalPlayer():Health()
 
@@ -730,9 +736,9 @@ function GryMod.Stencils3()
 
 		render.ClearStencil()
 		render.SetStencilEnable( true )
-		render.SetStencilWriteMask( 255 )
-		render.SetStencilTestMask( 255 )
-		render.SetStencilReferenceValue( 15 )
+		render.SetStencilWriteMask( 247 )
+		render.SetStencilTestMask( 247 )
+		render.SetStencilReferenceValue( 17 )
 
 		render.SetStencilFailOperation( STENCILOPERATION_ZERO )
 		render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -740,9 +746,9 @@ function GryMod.Stencils3()
 
 		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_ALWAYS )
 		surface.SetDrawColor( Color(255,255,255,255) ) 
-		render.SetBlend(0)
+		--render.SetBlend(0)
 		surface.DrawPoly( healthbarpoly1 )
-		render.SetBlend(1)
+		--render.SetBlend(1)
 		render.SetStencilCompareFunction( STENCILCOMPARISONFUNCTION_EQUAL )
 		
 
@@ -755,10 +761,22 @@ function GryMod.Stencils3()
 			GryMod.EyeFinityScrW()*(37/1920))
 
 		render.SetStencilEnable( false )
-end
----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function GryMod.Stencils4()
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 		//270 103
 		//228 100
@@ -779,9 +797,9 @@ function GryMod.Stencils4()
 
 	render.ClearStencil()
 	render.SetStencilEnable( true )
-	render.SetStencilWriteMask( 255 )
-	render.SetStencilTestMask( 255 )
-	render.SetStencilReferenceValue( 15 )
+	render.SetStencilWriteMask( 248 )
+	render.SetStencilTestMask( 248 )
+	render.SetStencilReferenceValue( 18 )
 
 	render.SetStencilFailOperation( STENCILOPERATION_ZERO )
 	render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -810,11 +828,14 @@ function GryMod.Stencils4()
 		GryMod.EyeFinityScrW()*(37/1920))
 
 	render.SetStencilEnable( false )
-end
-	------------------------------------------
 
 
-function GryMod.Stencils5()
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 		local energybarpoly2 = { -- cut the bars
 		{ x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW()-GryMod.EyeFinityScrW()*(270/1920), y = ScrH()-GryMod.EyeFinityScrW()*(135.5/1920) },
@@ -828,9 +849,9 @@ function GryMod.Stencils5()
 
 	render.ClearStencil()
 	render.SetStencilEnable( true )
-	render.SetStencilWriteMask( 1 )
-	render.SetStencilTestMask( 1 )
-	render.SetStencilReferenceValue( 1 )
+	render.SetStencilWriteMask( 249 )
+	render.SetStencilTestMask( 249 )
+	render.SetStencilReferenceValue( 19 )
 
 	render.SetStencilFailOperation( STENCILOPERATION_ZERO )
 	render.SetStencilPassOperation( STENCILOPERATION_REPLACE )
@@ -857,7 +878,29 @@ function GryMod.Stencils5()
 		GryMod.EyeFinityScrW()*(37/1920))
 
 	render.SetStencilEnable( false )
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 end
+
+
+local function Shake( data )
+	if data:ReadEntity() == LocalPlayer() then
+		shaking = data:ReadBool()
+	end
+end
+
+usermessage.Hook( "shake_view", Shake );
+
+
+
+
+	------------------------------------------
 
 
 
@@ -1014,6 +1057,9 @@ function util.TraceLine(...) -- Aka, if i'm looking at you and you're cloaked, t
 		return t;
 end--]]
 
+
+	
+
 	hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 	hook.Add( "HUDPaint", "GRYHUD", 				GryMod.CRYHUD )
 	hook.Add( "KeyPress","AttackDetection", 		GryMod.CloackAttack )
@@ -1023,8 +1069,3 @@ end--]]
 	hook.Add( "HUDPaint", "HUDBASECRY", 			GryMod.hudbase ) 
 	hook.Add( "Think", "HueHue fix normal shit", 	GryMod.RadialThinklel)
 
-	hook.Add( "HUDPaint", "GryMod stencils1", 		GryMod.Stencils1)
-	hook.Add( "HUDPaint", "GryMod stencils2", 		GryMod.Stencils2)
-	hook.Add( "HUDPaint", "GryMod stencils3", 		GryMod.Stencils3)
-	hook.Add( "HUDPaint", "GryMod stencils4", 		GryMod.Stencils4)
-	hook.Add( "HUDPaint", "GryMod stencils5", 		GryMod.Stencils5)

@@ -1,17 +1,38 @@
-"Refract"
+"VertexLitGeneric"
+
+// VMT File compiled by Vuthakral
 {
 
+	"basemap" "cloak/organic"
+	"$bumpmap" "cloak/organic_ddndif"
+	"$cloakpassenabled" "1"
+	"$cloakfactor" "0.95"
 
- 	"$model" 1
- 	"$refractamount" ".015"
- 	"$bluramount" "0"
-	"$scale" "[1 1]"
- 	"$dudvmap" "cloak/organic"
- 	"$normalmap" "cloak/organic_ddn"
-	"$phongexponenttexture" "cloak/organic_ddndif"
-	"$bumpframe" "0"
-	"$translucent" "1"
+	"$FleshInteriorEnabled"	"1"
+	"$FleshInteriorTexture"	"cloak/organic"
+	"$FleshNormalTexture"	"cloak/organic_ddn"
+	"$FleshBorderTexture1D"	"cloak/organic_ddn"
+	"$FleshInteriorNoiseTexture"	"cloak/organic_ddn"
+//	"$FleshCubeTexture"          	"env_cubemap"
+	"$FleshBorderNoiseScale"	".1"
+	"$FleshBorderWidth"	".15"
+	"$FleshBorderSoftness"	"0.1"
+	"$FleshBorderTint"		"[.1 .1 1]"
+	"$FleshScrollSpeed"	"5"
+	"$FleshGlossBrightness"	"2.5"
+	"$FleshGlobalOpacity"	".1"
+	"$FleshDebugForceFleshOn"	"1"
 
-	"$forcerefract" 1
-	"$nofog" "1"
+	"$time"			"0"
+
+Proxies
+{
+	FleshInterior
+	{
+	}
+	CurrentTime
+	{
+		resultVar $time
+	}
+}
 }
