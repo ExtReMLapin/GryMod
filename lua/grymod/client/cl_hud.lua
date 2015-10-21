@@ -21,6 +21,11 @@ local util = util;
 local vgui = vgui;
 local gui = gui;
 local cam = cam;
+
+
+	hook.Remove( "HUDPaint", "HUDBASECRY") 
+
+
 --Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
 --Yeah, fuck you, the guys with shitty monitors.
 local color_white = Color(255,255,255,255)
@@ -520,8 +525,7 @@ GryMod.mathradar()
 
 local alpha_ch = { 200,255 }
 
-function GryMod.hudbase() -- WARNING : No-one i know understand my maths
--- Feel free to send me a "readable" version of that if you wants :V
+function GryMod.hudbase()
 
 
 if shaking == true then
@@ -598,15 +602,15 @@ surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int 
 	if LocalPlayer():GetActiveWeapon():IsValid() then -- Lets get ammo MOTHERFUCKER
 		if table.HasValue(nilweps, LocalPlayer():GetActiveWeapon():GetClass()) then 
 			draw.TextRotated("∞", "CrysisInfos",GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/8) + GryModXDistance_int + GryModXDistance2_int, tempscrh-(GryMod.EyeFinityScrW()/8.4),  Color(190, 195, 190,alpha_ch[2]), 3)
-			return end
-
+		else
 			local extra = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetPrimaryAmmoType())
 			local ammonum = LocalPlayer():GetActiveWeapon():Clip1()
 			local grenum = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetSecondaryAmmoType())
-		if (ammonum == -1) then  -- Because the ammo is  -1 with grenades
-			draw.TextRotated( extra .. "  ||  " .. grenum , "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh-(GryMod.EyeFinityScrW()/8.4),  Color(190, 195, 190,alpha_ch[2]), 3) else
-			draw.TextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum , "CrysisInfos",GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh-(GryMod.EyeFinityScrW()/8.4),  Color(190, 195, 190,alpha_ch[2]), 3)
-		end 
+			if (ammonum == -1) then  -- Because the ammo is  -1 with grenades
+				draw.TextRotated( extra .. "  ||  " .. grenum , "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh-(GryMod.EyeFinityScrW()/8.4),  Color(190, 195, 190,alpha_ch[2]), 3) else
+				draw.TextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum , "CrysisInfos",GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW()/7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh-(GryMod.EyeFinityScrW()/8.4),  Color(190, 195, 190,alpha_ch[2]), 3)
+			end 
+		end
 	end
 
 
@@ -632,8 +636,8 @@ surface.DrawTexturedRect(GryMod.EyeFinityScrW()*(10/1920) - GryModXDistance_int 
 
 	render.ClearStencil()
 	render.SetStencilEnable( true )
-	render.SetStencilWriteMask( 245 )
-	render.SetStencilTestMask( 245 )
+	render.SetStencilWriteMask( 15 )
+	render.SetStencilTestMask( 15 )
 	render.SetStencilReferenceValue( 15 )
 
 		render.SetStencilFailOperation( STENCILOPERATION_ZERO )
