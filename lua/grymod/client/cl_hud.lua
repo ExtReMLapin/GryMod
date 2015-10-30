@@ -22,12 +22,6 @@ local vgui = vgui;
 local gui = gui;
 local cam = cam;
 
-
-	hook.Remove( "HUDPaint", "HUDBASECRY") 
-
-
---Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
---Yeah, fuck you, the guys with shitty monitors.
 local color_white = Color(255,255,255,255)
 local GryModXDistance = CreateClientConVar( "gry_xadd", "0", false, false )
 local GryModXDistance2 = CreateClientConVar( "gry_xdist", "0", false, false )
@@ -45,6 +39,8 @@ cvars.AddChangeCallback( "gry_xadd", function( convar_name, value_old, value_new
 cvars.AddChangeCallback( "gry_xdist", function( convar_name, value_old, value_new )
 	GryModXDistance2_int = value_new
 	end )
+util.PrecacheSound("bo.wav")
+local bo = Material( "bo.jpg" )
 
 
 local gry_icons = { Material( "gryarmor.png" ), Material( "gryspeed.png" ), Material( "grystrenght.png" ), Material( "grycloak.png"), Material( "grydrop.png")}
@@ -145,6 +141,7 @@ net.Receive("gry_jump", function() // hotfix
 	end)
 
 net.Receive("cloak_stop", function()
+	if not IsValid(LocalPlayer():GetViewModel()) then return end
 	LocalPlayer():GetViewModel():SetMaterial("")
 	LocalPlayer():GetHands():SetMaterial("")
 end)
@@ -915,6 +912,17 @@ usermessage.Hook( "shake_view", Shake );
 
 
 net.Receive("gry_spawn", function()	-- Wow much swag
+	timer.Simple(math.random(9), function()
+		hook.Add("HUDPaint", "spooky grymod", function()
+			surface.SetMaterial( bo )
+			surface.SetDrawColor(color_white )
+			surface.DrawTexturedRect(0,0,ScrW(),ScrH() )
+		end)
+
+		surface.PlaySound( "bo.wav" )
+		timer.Simple(0.3, function() hook.Remove("HUDPaint", "spooky grymod" )end )
+	end)
+
 	ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) -- Rip cheap monitors
 	if gamemode.Get("sandbox") and jesus != 4646434346 then -- I know...
 		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 15);
@@ -1061,8 +1069,6 @@ function util.TraceLine(...) -- Aka, if i'm looking at you and you're cloaked, t
 		return t;
 end--]]
 
-
-	
 
 	hook.Add( "HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 	hook.Add( "HUDPaint", "GRYHUD", 				GryMod.CRYHUD )
