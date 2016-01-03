@@ -1,3 +1,5 @@
+do return end
+
 function surface.ScreenScale( size )
 	return size * ( ScrH() / 480.0 )
 end
@@ -6,13 +8,13 @@ GryMod.detectable = {} -- Feel Free to customize this
 GryMod.detectable[1] = {}
 GryMod.detectable[1].realname = "gmod_button"
 GryMod.detectable[1].drawname = "Button"
-GryMod.detectable[1].drawimage = "gui/arrow"
+GryMod.detectable[1].drawimage = surface.GetTextureID( "gui/arrow")
 GryMod.detectable[1].distance = 130
 GryMod.detectable[1].distancecolor = Color(255, 255, 255, 255)
 GryMod.detectable[2] = {}
 GryMod.detectable[2].realname = "npc_grenade_frag"
 GryMod.detectable[2].drawname = "Frag Grenade"
-GryMod.detectable[2].drawimage = "cryhud/cadre"
+GryMod.detectable[2].drawimage = surface.GetTextureID( "cryhud/cadre")
 GryMod.detectable[2].distance = 750
 GryMod.detectable[2].distancecolor = Color(220, 5, 5, 255)
 
@@ -29,7 +31,7 @@ function GryMod.grenadetetect()
 					if ( pos.visible ) then
 							local DISTANCE	= math.Round( LocalPlayer():GetPos():Distance( Entity:GetPos() )  )
 							if DISTANCE < projectile.distance then
-								surface.SetTexture( surface.GetTextureID( projectile.drawimage ) )
+								surface.SetTexture( projectile.drawimage )
 								surface.SetDrawColor( color_white )
 								local sizea = 50
 								surface.DrawTexturedRect(pos.x-(25)+(DISTANCE/80)  , pos.y-(25)+(DISTANCE/80) ,  50-(DISTANCE/40), 50-(DISTANCE/40))

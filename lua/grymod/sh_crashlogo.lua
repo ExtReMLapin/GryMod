@@ -74,12 +74,15 @@ hook.Add("Think" , "CrashReconnect" , function()
 	end
 end )
 
+if not CLIENT then return end
+
+local crashlogo = surface.GetTextureID( "cryhud/crash" )
+
 function CrashLogo() // Wow such coding skillz
-if IsCrashed() and !game.SinglePlayer() then 
-local	crashlogo = surface.GetTextureID( "cryhud/crash" )
-	surface.SetTexture( crashlogo )
-	surface.SetDrawColor(Color(255,255,255,255))
-	surface.DrawTexturedRect(ScrW()/2-50, ScrH()/2-50, 100, 100)
-end
+	if IsCrashed() and !game.SinglePlayer() then 
+		surface.SetTexture( crashlogo )
+		surface.SetDrawColor(Color(255,255,255,255))
+		surface.DrawTexturedRect(ScrW()/2-50, ScrH()/2-50, 100, 100)
+	end
 end
 hook.Add("HUDPaint", "DetectCrash", CrashLogo)
