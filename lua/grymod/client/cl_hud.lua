@@ -22,10 +22,6 @@ local vgui = vgui;
 local gui = gui;
 local cam = cam;
 
-
-	hook.Remove( "HUDPaint", "HUDBASECRY") 
-
-
 --Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
 --Yeah, fuck you, the guys with shitty monitors.
 local color_white = Color(255,255,255,255)

@@ -18,18 +18,8 @@ local function Regen_PlayerTakesDamagea(ply)
 end
 hook.Add("GryUseEnergy", "Regen Time Penalty After Damage", Regen_PlayerTakesDamagea)
 
-
-
-GryMod.plytbl = {}
-GryMod.plytbl = player.GetAll()
-timer.Create("PlyTblFast", 5, 0, function()
-	GryMod.plytbl = player.GetAll()
-end)
-
-
-
 local function Regen_Doa()
-	for _, ply in pairs (GryMod.plytbl) do
+	for _, ply in pairs(player.GetAll()) do
 			if not IsValid(ply) then return end
 			if ply:Alive() then
 				if Regen_PerSect == true then

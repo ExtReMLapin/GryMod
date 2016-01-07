@@ -34,11 +34,9 @@
 	end
 	hook.Add("EntityTakeDamage", "Regen Time Penalty After Daadadamage", Regen_PlayerTakesDamage)
 
-	GryMod.plytbl = GryMod.plytbl or player.GetAll()
-
 	local function Regen_Do()
 		if gry_Should_Regen then
-			for _, ply in pairs (GryMod.plytbl) do
+			for _, ply in pairs (player.GetAll()) do
 				if not IsValid(ply) then return end
 				if ply:Alive() then
 					if Regen_Status == true then

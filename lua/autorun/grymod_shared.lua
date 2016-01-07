@@ -1,7 +1,7 @@
 if not GryMod then GryMod = {} end
 
 GryMod.WSID = 153963150;
-GryMod.Workshop = false;
+GryMod.Workshop = true;
 
  function math.MapSimple(numb,endA,endB) -- i used the map() function in processing, i have no idea if there somthing similar here
 	return numb*(endB/endA)
@@ -20,12 +20,11 @@ if SERVER then
 
 
 
-	hook.Add( "InitPostEntity", "GryMod Init", function()
-		include("grymod/server/sv_energy.lua")
-		include("grymod/server/sv_health.lua")
-		include("grymod/server/sv_system.lua")
-		include("grymod/sh_crashlogo.lua")
-	end)
+
+	include("grymod/server/sv_energy.lua")
+	include("grymod/server/sv_health.lua")
+	include("grymod/server/sv_system.lua")
+	include("grymod/sh_crashlogo.lua")
 
 	if GryMod.Workshop == false then
 		resource.AddFile( "sound/cry_close.wav" )
@@ -93,16 +92,12 @@ end
 
 
 if CLIENT then
-	hook.Add( "InitPostEntity", "GryMod Init", function()
-		timer.Simple(1, function()
-			include( "grymod/client/cl_hud.lua" )
-			include( "grymod/client/cl_fonts.lua" )
-			include( "grymod/client/cl_grenade.lua" )
-			include( "grymod/client/cl_allycross.lua" )
-			include( "grymod/client/cl_nanoholo.lua" )
-			include( "grymod/client/cl_options.lua" )
-			include( "grymod/client/cl_Scaleform_GFx.lua" )
-			include( "grymod/sh_crashlogo.lua" )
-		end)
-	end)
+	include( "grymod/client/cl_hud.lua" )
+	include( "grymod/client/cl_fonts.lua" )
+	include( "grymod/client/cl_grenade.lua" )
+	include( "grymod/client/cl_allycross.lua" )
+	include( "grymod/client/cl_nanoholo.lua" )
+	include( "grymod/client/cl_options.lua" )
+	include( "grymod/client/cl_Scaleform_GFx.lua" )
+	include( "grymod/sh_crashlogo.lua" )
 end
