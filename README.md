@@ -40,7 +40,7 @@ If it says "Unknow command : +crysishud", reinstall it.
 Developers       
 -------------
 ##
->NW bools are less used as possible, here are they :
+>NW vars are less used as possible, here are they :
 
 * Strenght
 
