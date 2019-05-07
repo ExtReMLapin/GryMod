@@ -854,15 +854,11 @@ function GryMod.RadialThink()
 
 	if (hypotenus > MOUSE_CHECK_DIST) then
 		local distx = math.abs(ScrW() / 2 - gui.MouseX())
-		local disty = math.abs(ScrH() / 2 - gui.MouseY())
 		local angle = math.abs(math.acos(distx / hypotenus) * 180 / math.pi)
 		if (tostring(angle) == "nan" ) then
-			return 
+			return
 		end
-		
 		local newtriangle_hypotenus = MOUSE_CHECK_DIST
-
-
 		local multx = 1 -- change direction of x and y because we're not just working with a triangle now, you need to define the "orientation of the triangle"
 		local multy = 1
 
@@ -879,11 +875,7 @@ function GryMod.RadialThink()
 
 		gui.SetMousePos(ScrW() / 2 + newx, ScrH() / 2 + newy)
 	end
-end -- Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
-
-
-
-
+end
 
 
 local hidethings = {
