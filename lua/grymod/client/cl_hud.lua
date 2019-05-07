@@ -499,7 +499,7 @@ function GryMod.mathradar()
 end
 
 GryMod.mathradar()
-local alpha_ch = {200, 255}
+local alpha_ch = {0, 0}
 
 function GryMod.hudbase()
 
@@ -603,6 +603,9 @@ function GryMod.hudbase()
 
 	local nbener = LocalPlayer():GetNWInt("GryEnergy")
 	local nbhlt = LocalPlayer():Health()
+	local healthoffset = math.Remap(nbhlt, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
+	local energyoffset = math.Remap(nbener, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
+
 	render.ClearStencil()
 	render.SetStencilEnable(true)
 	render.SetStencilWriteMask(15)
@@ -618,14 +621,14 @@ function GryMod.hudbase()
 	render.SetBlend(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
 	LocalPlayer_y = LocalPlayer():EyeAngles().y + 6.256798
-	draw.SimpleText('N', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + (LocalPlayer_y * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((LocalPlayer_y * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920), color_white)
-	draw.SimpleText('NE', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y + 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText('E', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((LocalPlayer_y + 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920)), color_white)
-	draw.SimpleText('SE', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 135) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y + 135) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText('S', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + math.max(math.NormalizeAngle(LocalPlayer_y + 180), math.NormalizeAngle(LocalPlayer_y - 180)) * 5 + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((math.max(math.NormalizeAngle(LocalPlayer_y + 180), math.NormalizeAngle(LocalPlayer_y - 180)) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText('SW', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 135) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 135) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText('W', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText('NW', 'ScoreboardText', GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
+	draw.SimpleText("N", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + (LocalPlayer_y * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((LocalPlayer_y * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920), color_white)
+	draw.SimpleText("NE", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y + 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
+	draw.SimpleText("E", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((LocalPlayer_y + 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920)), color_white)
+	draw.SimpleText("SE", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 135) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y + 135) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
+	draw.SimpleText("S", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + math.max(math.NormalizeAngle(LocalPlayer_y + 180), math.NormalizeAngle(LocalPlayer_y - 180)) * 5 + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((math.max(math.NormalizeAngle(LocalPlayer_y + 180), math.NormalizeAngle(LocalPlayer_y - 180)) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
+	draw.SimpleText("SW", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 135) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 135) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
+	draw.SimpleText("W", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
+	draw.SimpleText("NW", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
 	render.SetStencilEnable(false)
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -719,8 +722,7 @@ function GryMod.hudbase()
 
 
 
-	local healthoffset = math.Remap(nbhlt, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
-	local energyoffset = math.Remap(nbener, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
+
 
 	render.ClearStencil()
 	render.SetStencilEnable(true)
@@ -826,10 +828,10 @@ function GryMod.hudbase()
 end
 
 
+local inited = false
 ------------------------------------------
 net.Receive("gry_spawn", function()
-	--ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) -- Rip cheap monitors
-	if gamemode.Get("sandbox") and jesus ~= 4646434346 then
+	if gamemode.Get("sandbox") and inited == false then
 		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 15)
 		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 13)
 
@@ -839,38 +841,50 @@ net.Receive("gry_spawn", function()
 			GAMEMODE:AddNotify("Font fix installed ( ͡° ͜ʖ ͡°)", NOTIFY_GENERIC, 10)
 		end
 
-		jesus = 4646434346 -- MAGIC
-	end -- I know...
-end) -- Wow much swag
+		inited = true
+	end
+end)
 
 ----------------FIX----------------
-local MOUSE_CHECK_DIST = 95
+local MOUSE_CHECK_DIST = 180
 
-function GryMod.RadialThinklel()
-	if not GRYOPEN then
-		return
-	end
+function GryMod.RadialThink()
+	if not GRYOPEN then return end
+	local hypotenus = math.Distance(gui.MouseX(), gui.MouseY(), ScrW() / 2, ScrH() / 2)
 
-	if math.Dist(gui.MouseX(), gui.MouseY(), GryMod.EyeFinityScrW() / 2, tempscrh / 2) > 150 then
-		if gui.MouseX() > ((GryMod.EyeFinityScrW() / 2) + MOUSE_CHECK_DIST) then
-			posx = (gui.MouseX() - (gui.MouseX() - ((GryMod.EyeFinityScrW() / 2) + MOUSE_CHECK_DIST)))
-		elseif gui.MouseX() < ((GryMod.EyeFinityScrW() / 2) - MOUSE_CHECK_DIST) then
-			posx = (gui.MouseX() - (gui.MouseX() - ((GryMod.EyeFinityScrW() / 2) - MOUSE_CHECK_DIST)))
-		else
-			posx = gui.MouseX()
-		end -- 
+	if (hypotenus > MOUSE_CHECK_DIST) then
+		local distx = math.abs(ScrW() / 2 - gui.MouseX())
+		local disty = math.abs(ScrH() / 2 - gui.MouseY())
+		local angle = math.abs(math.acos(distx / hypotenus) * 180 / math.pi)
+		if (tostring(angle) == "nan" ) then
+			return 
+		end
+		
+		local newtriangle_hypotenus = MOUSE_CHECK_DIST
 
-		if gui.MouseY() > ((tempscrh / 2) + MOUSE_CHECK_DIST) then
-			posy = (gui.MouseY() - (gui.MouseY() - ((tempscrh / 2) + MOUSE_CHECK_DIST)))
-		elseif gui.MouseY() < ((tempscrh / 2) - MOUSE_CHECK_DIST) then
-			posy = (gui.MouseY() - (gui.MouseY() - ((tempscrh / 2) - MOUSE_CHECK_DIST)))
-		else
-			posy = gui.MouseY()
+
+		local multx = 1 -- change direction of x and y because we're not just working with a triangle now, you need to define the "orientation of the triangle"
+		local multy = 1
+
+		if (gui.MouseX() < ScrW() / 2) then
+			multx = -1
 		end
 
-		gui.SetMousePos(posx, posy)
+		if (gui.MouseY() < ScrH() / 2) then
+			multy = -1
+		end
+
+		local newx = (math.cos(angle / (180 / math.pi)) * newtriangle_hypotenus) * multx
+		local newy = (math.sin(angle / (180 / math.pi)) * newtriangle_hypotenus) * multy
+
+		gui.SetMousePos(ScrW() / 2 + newx, ScrH() / 2 + newy)
 	end
 end -- Alternative to detect the movement of the mouse , here we are detecting the position and not the movment , its a way to prevent 'out of range so i can't select a mode'
+
+
+
+
+
 
 local hidethings = {
 	["CHudHealth"] = true,
@@ -892,4 +906,4 @@ hook.Add("KeyPress", "BinocularZoomIn", GryMod.BinocularZoomIn)
 hook.Add("KeyRelease", "BinocularZoomOut", GryMod.BinocularZoomOut)
 hook.Add("Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater)
 hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase)
-hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThinklel)
+hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThink)
