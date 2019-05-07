@@ -1,3 +1,5 @@
+do return end
+
 -- Fapadar made 95% of the code
 if SERVER then
 	concommand.Add("_ping", function(p, c, a)

@@ -3,7 +3,7 @@ local net = net
 local hook = hook
 local timer = timer
 local concommand = concommand
-local FindMetaTable = FindMetaTable
+
 -- fak u i comnt in frech 
 util.AddNetworkString("cloak_stop") -- Optimisation coté client + Anti bug
 util.AddNetworkString("cloak_start") -- Les util du cloak sont utilisés pour signaler le changement du material de Viewmodel
@@ -12,19 +12,21 @@ util.AddNetworkString("speed_start")
 util.AddNetworkString("strenght_start")
 util.AddNetworkString("gry_spawn")
 util.AddNetworkString("gry_jump")
-gry_Should_Regen = true
-gry_InfiniteArmor = false
+
+GryMod.Config = {ShouldRegen = true, InfiniteArmor = false }
+
+
 
 --CreateConVar( "GryMod", 1, false, false )
-function GryMod.Init_Suitmode(ply)
+
+
+hook.Add("PlayerSpawn", "GryModSpawn", function (ply)
 	GryMod.Armor(ply)
 	ply:SetNWInt("GryEnergy", 0)
 	ply.SP = false
 	net.Start("gry_spawn")
 	net.Send(ply)
-end
-
-hook.Add("PlayerSpawn", "GryModSpawn", GryMod.Init_Suitmode)
+end)
 
 function GryMod.Strenght(ply)
 	if ply:Alive() then
@@ -129,36 +131,36 @@ concommand.Add("Drop", GryMod.Drop)
 
 -- Starting energy system.
 function GryMod.IsMovingSpeed(ply, key)
-	if ply:Alive() then
-		if key == IN_SPEED then
-			ply.SP = true
-		end
+	if ply:Alive() and key == IN_SPEED then
+		ply.SP = true
 	end
 end
 
 hook.Add("KeyPress", "KeyPressedSpeedGry", GryMod.IsMovingSpeed)
 
 function GryMod.RIsMovingSpeed(ply, key)
-	if ply:Alive() then
-		if key == IN_SPEED then
-			--hook.Call("GryUseEnergyStop", ply, ply)
-			ply.SP = false
-		end
+	if ply:Alive() and key == IN_SPEED then
+		ply.SP = false
 	end
 end
 
 hook.Add("KeyRelease", "RKeyPressedSpeedGry", GryMod.RIsMovingSpeed)
 
 function GryMod.SuperJump(ply, key)
-	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") >= 40 and ply:OnGround() and not gry_InfiniteArmor then
-		if key == IN_JUMP then
-			ply:SetJumpPower(500)
-			hook.Call("GryUseEnergy", ply, ply)
-			ply:SetNWInt("GryEnergy", (ply:GetNWInt("GryEnergy") - 40))
-			ply.ps = true
-			net.Start("gry_jump")
-			net.Send(ply)
-		end
+	if  ply:Alive() and
+			ply:GetNWBool("Strenght", true) and
+			ply:GetNWInt("GryEnergy") >= 40 and
+			ply:OnGround() and
+			not GryMod.Config.InfiniteArmor and
+			key == IN_JUMP then
+
+
+		ply:SetJumpPower(500)
+		hook.Call("GryUseEnergy", ply, ply)
+		ply:SetNWInt("GryEnergy", ply:GetNWInt("GryEnergy") - 40)
+		ply.ps = true
+		net.Start("gry_jump")
+		net.Send(ply)	
 	end
 
 	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") < 40 and ply.ps == false then
@@ -180,7 +182,7 @@ hook.Add("KeyRelease", "keyreleasestrenghtgry", GryMod.RSuperJump)
 
 function GryMod.Speedsystem()
 	for k, v in pairs(player.GetAll()) do
-		if (v.SP == true) and v:GetNWBool("Speed", true) and not gry_InfiniteArmor then
+		if (v.SP == true) and v:GetNWBool("Speed", true) and not GryMod.Config.InfiniteArmor then
 			v:SetNWInt("GryEnergy", (v:GetNWInt("GryEnergy") - 1))
 			hook.Call("GryUseEnergy", v, v, v)
 		end
@@ -193,7 +195,7 @@ GryMod.Speedsystem()
 
 function GryMod.Cloaksystem()
 	for k, v in pairs(player.GetAll()) do
-		if v:GetNWBool("Cloak", true) and not gry_InfiniteArmor then
+		if v:GetNWBool("Cloak", true) and not GryMod.Config.InfiniteArmor then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
 			v:SetNWInt("GryEnergy", (v:GetNWInt("GryEnergy") - (0.092 + (0.001 * v:GetVelocity():Length()))))
 			hook.Call("GryUseEnergy", v, v, v)
@@ -238,13 +240,13 @@ hook.Add("GryUseEnergy", "SuitMod Auto", GryMod.FixEnergySuitMod)
 
 concommand.Add("gry_Armor", function(ply)
 	if ply:IsAdmin() then
-		gry_InfiniteArmor = not gry_InfiniteArmor
+		GryMod.Config.InfiniteArmor = not GryMod.Config.InfiniteArmor
 	end
 end)
 
 -- wew sush cedng skilz
 concommand.Add("gry_Health", function(ply)
 	if ply:IsAdmin() then
-		gry_Should_Regen = not gry_Should_Regen
+		GryMod.Config.ShouldRegen = not GryMod.Config.ShouldRegen
 	end
 end)

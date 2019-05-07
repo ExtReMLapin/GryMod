@@ -7,6 +7,7 @@ GryMod.Workshop = false
 GryMod.Modes = {ARMOR = 0, SPEED = 1, CLOAK = 2, STRENGTH = 3, DROP = 4}
 
 
+
 function math.MapSimple(numb, endA, endB)
 	return numb * (endB / endA)
 end -- i used the map() function in processing, i have no idea if there somthing similar here
