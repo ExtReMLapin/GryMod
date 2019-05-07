@@ -1,9 +1,9 @@
-local DrawMotionBlur = DrawMotionBlur; -- About 20% performance boost, for all the following vars
+-- About 20% performance boost, for all the following vars
 local FindMetaTable = FindMetaTable;
 local LocalPlayer = LocalPlayer
 local CurTime = CurTime;
 local IsValid = IsValid;
-local Entity = Entity;
+
 local pairs = pairs;
 local Color = Color;
 local print = print;
@@ -18,7 +18,6 @@ local hook = hook;
 local math = math;
 local draw = draw;
 local util = util;
-local vgui = vgui;
 local gui = gui;
 local cam = cam;
 
@@ -141,6 +140,7 @@ net.Receive("gry_jump", function() // hotfix
 	end)
 
 net.Receive("cloak_stop", function()
+	if !IsValid(LocalPlayer()) or !IsValid(LocalPlayer():GetViewModel()) then return end
 	LocalPlayer():GetViewModel():SetMaterial("")
 	LocalPlayer():GetHands():SetMaterial("")
 end)
@@ -911,7 +911,7 @@ usermessage.Hook( "shake_view", Shake );
 
 
 net.Receive("gry_spawn", function()	-- Wow much swag
-	ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) -- Rip cheap monitors
+	--ScaleFormGFx_Proxy("http://extrem-team.com/init.html", 1000, 700, 5) -- Rip cheap monitors
 	if gamemode.Get("sandbox") and jesus != 4646434346 then -- I know...
 		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 15);
 		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 13);

@@ -1,134 +1,121 @@
 concommand.Add("GryCredits", function()
-	local GryPopup = vgui.Create( "DFrame" )
-			GryPopup:SetSize( 1366+4, 768+27 )
-			GryPopup:Center()
-			GryPopup:SetBackgroundBlur( true )
-			GryPopup:MakePopup()
-			GryPopup:SetPaintShadow(true)
-	 
-	local CryDrawFrame = vgui.Create( "HTML", GryPopup )
-			CryDrawFrame:SetPos( 2, 25 )
-			CryDrawFrame:SetSize( 1366, 768 )
-			CryDrawFrame:OpenURL( "http://extrem-team.com/Credits.html" )
+	local GryPopup = vgui.Create("DFrame")
+	GryPopup:SetSize(1366 + 4, 768 + 27)
+	GryPopup:Center()
+	GryPopup:SetBackgroundBlur(true)
+	GryPopup:MakePopup()
+	GryPopup:SetPaintShadow(true)
+	local CryDrawFrame = vgui.Create("HTML", GryPopup)
+	CryDrawFrame:SetPos(2, 25)
+	CryDrawFrame:SetSize(1366, 768)
+	CryDrawFrame:OpenURL("http://extrem-team.com/Credits.html")
 end)
 
+function GryMod.GryOptionschute(Panel)
+	Panel:AddControl("Label", {
+		Text = "GryMod Config"
+	})
 
-function GryMod.GryOptionschute (Panel)
-Panel:AddControl("Label", {Text = "GryMod Config"})
+	enabled1 = vgui.Create("DButton", Panel)
+	enabled1:SetSize(250, 25)
+	enabled1:SetText("Enable Base HUD")
 
-	enabled1 = vgui.Create( "DButton", Panel )
-	enabled1:SetSize( 250, 25 )
-	enabled1:SetText( "Enable Base HUD" )
-	
 	enabled1.DoClick = function()
-			hook.Add("HUDPaint", "HUDBASECRY", 				GryMod.hudbase )
-			hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
-			hook.Add("HUDPaint", "Nade detection", GryMod.grenadetetect )
-			hook.Add("HUDPaint", "GryCross", GryMod.cross)
-
-
+		hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase)
+		hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+		hook.Add("HUDPaint", "Nade detection", GryMod.grenadetetect)
+		hook.Add("HUDPaint", "GryCross", GryMod.cross)
 	end
-	
-	
-	disabled1 = vgui.Create( "DButton", Panel )
-	disabled1:SetSize( 250, 25 )
-	disabled1:SetText( "Disable Base HUD" )
-	
+
+	disabled1 = vgui.Create("DButton", Panel)
+	disabled1:SetSize(250, 25)
+	disabled1:SetText("Disable Base HUD")
+
 	disabled1.DoClick = function()
-			hook.Remove( "HUDPaint", "HUDBASECRY")
-			hook.Remove( "HUDShouldDraw", "How to: HUD Example HUD hider")
-			hook.Remove( "HUDPaint", "Nade detection")
-			hook.Remove( "HUDPaint", "GryCross")
+		hook.Remove("HUDPaint", "HUDBASECRY")
+		hook.Remove("HUDShouldDraw", "How to: HUD Example HUD hider")
+		hook.Remove("HUDPaint", "Nade detection")
+		hook.Remove("HUDPaint", "GryCross")
 	end
- 
- 	
-	togglehealth = vgui.Create( "DButton", Panel )
-	togglehealth:SetSize( 250, 20 )
-	togglehealth:SetText( "[ADMIN] Toggle Health Regen" )
-	
+
+	togglehealth = vgui.Create("DButton", Panel)
+	togglehealth:SetSize(250, 20)
+	togglehealth:SetText("[ADMIN] Toggle Health Regen")
+
 	togglehealth.DoClick = function()
-		RunConsoleCommand( "gry_Health" )
+		RunConsoleCommand("gry_Health")
 	end
-	
-	
-	togglearmor = vgui.Create( "DButton", Panel )
-	togglearmor:SetSize( 250, 20 )
-	togglearmor:SetText( "[ADMIN] Toggle Infinite Armor" )
-	
+
+	togglearmor = vgui.Create("DButton", Panel)
+	togglearmor:SetSize(250, 20)
+	togglearmor:SetText("[ADMIN] Toggle Infinite Armor")
+
 	togglearmor.DoClick = function()
-		RunConsoleCommand( "gry_Armor" )
+		RunConsoleCommand("gry_Armor")
 	end
-	
-	
-	local NumSliderThingy = vgui.Create( "DNumSlider", Panel )
-		NumSliderThingy:SetPos( 25,150)
-		NumSliderThingy:SetSize( 250, 10 )
-		NumSliderThingy:SetText( "Mirror Distance" )
-		NumSliderThingy:SetMin( -5000 )
-		NumSliderThingy:SetMax( 5000 )
-		NumSliderThingy:SetDecimals( 0 )
-		NumSliderThingy:SetConVar( "gry_xadd" )
- 
-	local NumSliderThingy1 = vgui.Create( "DNumSlider", Panel )
-		NumSliderThingy1:SetPos( 25,180)
-		NumSliderThingy1:SetSize( 250, 10 ) 
-		NumSliderThingy1:SetText( "X Posision" )
-		NumSliderThingy1:SetMin( -5000 ) 
-		NumSliderThingy1:SetMax( 5000 ) 
-		NumSliderThingy1:SetDecimals( 0 ) 
-		NumSliderThingy1:SetConVar( "gry_xdist" )
- 
- 
- local CheckBoxThing = vgui.Create( "DCheckBoxLabel", Panel )
-		CheckBoxThing:SetPos( 25,195 )
-		CheckBoxThing:SetText( "Eyefinity" )
-		CheckBoxThing:SetConVar( "cl_Eyefinity" ) 
-		CheckBoxThing:SetValue( 0 )
-		CheckBoxThing:SizeToContents() 
-		
-	donate = vgui.Create( "DButton", Panel )
-	donate:SetSize( 250, 20 )
-	donate:SetText( "Donate items to the dev" )
-	
+
+	local NumSliderThingy = vgui.Create("DNumSlider", Panel)
+	NumSliderThingy:SetPos(25, 150)
+	NumSliderThingy:SetSize(250, 10)
+	NumSliderThingy:SetText("Mirror Distance")
+	NumSliderThingy:SetMin(-5000)
+	NumSliderThingy:SetMax(5000)
+	NumSliderThingy:SetDecimals(0)
+	NumSliderThingy:SetConVar("gry_xadd")
+	local NumSliderThingy1 = vgui.Create("DNumSlider", Panel)
+	NumSliderThingy1:SetPos(25, 180)
+	NumSliderThingy1:SetSize(250, 10)
+	NumSliderThingy1:SetText("X Posision")
+	NumSliderThingy1:SetMin(-5000)
+	NumSliderThingy1:SetMax(5000)
+	NumSliderThingy1:SetDecimals(0)
+	NumSliderThingy1:SetConVar("gry_xdist")
+	local CheckBoxThing = vgui.Create("DCheckBoxLabel", Panel)
+	CheckBoxThing:SetPos(25, 195)
+	CheckBoxThing:SetText("Eyefinity")
+	CheckBoxThing:SetConVar("cl_Eyefinity")
+	CheckBoxThing:SetValue(0)
+	CheckBoxThing:SizeToContents()
+	donate = vgui.Create("DButton", Panel)
+	donate:SetSize(250, 20)
+	donate:SetText("Donate items to the dev")
+
 	donate.DoClick = function()
-				SetClipboardText( "https://steamcommunity.com/tradeoffer/new/?partner=41186253&token=jQYiWt5M")
-				donate:SetSize(250,60)
-				donate:SetText("Link copied to clipboard,\npaste in in the web browser to send items ;)")
+		SetClipboardText("https://steamcommunity.com/tradeoffer/new/?partner=41186253&token=jQYiWt5M")
+		donate:SetSize(250, 60)
+		donate:SetText("Link copied to clipboard,\npaste in in the web browser to send items ;)")
 	end
 
-	donate2 = vgui.Create( "DButton", Panel )
-	donate2:SetSize( 250, 20 )
-	donate2:SetText( "Donate with PayPal" )
-	
+	donate2 = vgui.Create("DButton", Panel)
+	donate2:SetSize(250, 20)
+	donate2:SetText("Donate with PayPal")
+
 	donate2.DoClick = function()
-				SetClipboardText( "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=TEBSENKPGYD9A")
-				gui.OpenURL( "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=TEBSENKPGYD9A")
-				donate:SetSize(200,60)
-				donate:SetText("Link copied to clipboard,\npaste in in the web browser ;)")
-
+		SetClipboardText("https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=TEBSENKPGYD9A")
+		gui.OpenURL("https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=TEBSENKPGYD9A")
+		donate:SetSize(200, 60)
+		donate:SetText("Link copied to clipboard,\npaste in in the web browser ;)")
 	end
- 
 
+	Panel:AddItem(disabled1)
+	Panel:AddItem(enabled1)
+	Panel:AddItem(togglehealth)
+	Panel:AddItem(togglearmor)
+	Panel:AddItem(NumSliderThingy)
+	Panel:AddItem(NumSliderThingy1)
+	Panel:AddItem(CheckBoxThing)
+	Panel:AddItem(donate)
+	Panel:AddItem(donate2)
 
-Panel:AddItem(disabled1)
-Panel:AddItem(enabled1)
-Panel:AddItem(togglehealth)
-Panel:AddItem(togglearmor)
-
-Panel:AddItem(NumSliderThingy)
-Panel:AddItem(NumSliderThingy1)
-Panel:AddItem(CheckBoxThing)
-Panel:AddItem(donate)
-Panel:AddItem(donate2)
-
-
-
-
-
-Panel:AddControl("Button", {Label = "Credits", Text = "tel me who med dis mod plz", Command = "GryCredits"})
+	Panel:AddControl("Button", {
+		Label = "Credits",
+		Text = "tel me who med dis mod plz",
+		Command = "GryCredits"
+	})
 end
 
 function GryMod.GryOptionschuteOptionmenu()
-	spawnmenu.AddToolMenuOption( "Options", "GryMod", "Config", "Config it !", "test1", "test23", GryMod.GryOptionschute )
+	spawnmenu.AddToolMenuOption("Options", "GryMod", "Config", "Config it !", "test1", "test23", GryMod.GryOptionschute)
 end
+
 hook.Add("PopulateToolMenu", "PopulateToolMenu", GryMod.GryOptionschuteOptionmenu)
