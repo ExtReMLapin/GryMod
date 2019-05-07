@@ -30,7 +30,7 @@ local hook = hook
 	hook.Add("EntityTakeDamage", "Regen Time Penalty After Daadadamage", Regen_PlayerTakesDamage)
 
 	local function Regen_Do()
-		if gry_Should_Regen then
+		if GryMod.Config.ShouldRegen then
 			for _, ply in pairs(player.GetAll()) do
 				if not IsValid(ply) then
 					return
