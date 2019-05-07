@@ -81,7 +81,7 @@ local crashlogo = surface.GetTextureID("cryhud/crash")
 function CrashLogo()
 	if IsCrashed() and not game.SinglePlayer() then
 		surface.SetTexture(crashlogo)
-		surface.SetDrawColor(Color(255, 255, 255, 255))
+		surface.SetDrawColor(color_white)
 		surface.DrawTexturedRect(ScrW() / 2 - 50, ScrH() / 2 - 50, 100, 100)
 	end
 end -- Wow such coding skillz

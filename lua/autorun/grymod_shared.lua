@@ -4,6 +4,8 @@ end
 
 GryMod.WSID = 153963150
 GryMod.Workshop = false
+GryMod.Modes = {ARMOR = 0, SPEED = 1, CLOAK = 2, STRENGTH = 3, DROP = 4}
+
 
 function math.MapSimple(numb, endA, endB)
 	return numb * (endB / endA)

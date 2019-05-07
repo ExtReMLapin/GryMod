@@ -24,7 +24,7 @@ local tx = surface.GetTextureID("cryhud/fcross")
 function GryMod.cross()
 	if AllyCrossDraw == true then
 		surface.SetTexture(tx)
-		surface.SetDrawColor(Color(255, 255, 255, 255))
+		surface.SetDrawColor(color_white)
 		surface.DrawTexturedRect(ScrW() / 2 - 15, ScrH() / 2 - 15, 30, 30)
 	end
 end
