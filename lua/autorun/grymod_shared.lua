@@ -19,10 +19,8 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_allycross.lua")
 	AddCSLuaFile("grymod/client/cl_nanoholo.lua")
 	AddCSLuaFile("grymod/client/cl_options.lua")
-	AddCSLuaFile("grymod/client/cl_Scaleform_GFx.lua")
 	AddCSLuaFile("grymod/sh_crashlogo.lua")
 	AddCSLuaFile()
-	include("grymod/server/sv_energy.lua")
 	include("grymod/server/sv_health.lua")
 	include("grymod/server/sv_system.lua")
 	include("grymod/sh_crashlogo.lua")
@@ -97,6 +95,5 @@ if CLIENT then
 	include("grymod/client/cl_allycross.lua")
 	include("grymod/client/cl_nanoholo.lua")
 	include("grymod/client/cl_options.lua")
-	include("grymod/client/cl_Scaleform_GFx.lua")
 	include("grymod/sh_crashlogo.lua")
 end

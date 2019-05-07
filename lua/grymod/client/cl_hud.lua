@@ -120,34 +120,41 @@ net.Receive("cloak_start", function(length, client)
 end) -- First network optimizations are here 
 
 net.Receive("gry_jump", function()
-	surface.PlaySound("suit/strenghtjump.wav")
-end) -- hotfix
+	PlaySnd("suit/strenghtjump.wav")
+end)
 
-net.Receive("cloak_stop", function()
+local function clearCloak()
+
 	if not IsValid(LocalPlayer()) or not IsValid(LocalPlayer():GetViewModel()) then
 		return
 	end
 
 	LocalPlayer():GetViewModel():SetMaterial("")
 	LocalPlayer():GetHands():SetMaterial("")
-end)
+
+end
 
 net.Receive("armor_start", function(length, client)
 	grymodesuit = gry_icons[1]
 	GryMod.Cloaked = false
 	PlaySnd(Sound("suit/armor.mp3"))
+	clearCloak()
 end)
 
 net.Receive("speed_start", function(length, client)
 	grymodesuit = gry_icons[2]
 	GryMod.Cloaked = false
 	PlaySnd(Sound("suit/speed.mp3"))
+	PlaySnd("suit/speedmode.wav")
+	clearCloak()
 end)
 
 net.Receive("strenght_start", function(length, client)
 	grymodesuit = gry_icons[3]
 	GryMod.Cloaked = false
-	PlaySnd(Sound("suit/strength.mp3"))
+	--PlaySnd(Sound("suit/strength.mp3"))
+	PlaySnd("suit/strenghtmode.wav")
+	clearCloak() 
 end)
 
 -- Originals sounds
@@ -213,7 +220,7 @@ end --Checks if the mouse is in the circle
 
 function GryMod.CRYHUD()
 	if (global_mul_goal ~= global_mul) then
-		global_mul = global_mul + (global_mul_goal - global_mul) * math.Clamp(FrameTimeExt() * 10, 0, 1) --I love mah math
+		global_mul = global_mul + (global_mul_goal - global_mul) * math.Clamp(FrameTime() * 10, 0, 1) --I love mah math
 	end
 
 	local numb = 1
@@ -309,7 +316,7 @@ function GryMod.CRYHUD()
 			crygray3 = 27
 		end
 
-		crydist[numb] = crydist[numb] + (crydistadd - crydist[numb]) * math.Clamp(FrameTimeExt() * 20, 0, 1)
+		crydist[numb] = crydist[numb] + (crydistadd - crydist[numb]) * math.Clamp(FrameTime() * 20, 0, 1)
 		local cryaddx, cryaddy = math.sin(math.rad(i)) * crydist[numb] * global_mul, math.cos(math.rad(i)) * crydist[numb] * global_mul
 		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 200) -- Color Button, yes  its weired
 		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 100 * global_mul, 100 * global_mul, i - 180)
@@ -351,7 +358,7 @@ function GryMod.CRYHUD()
 		PlaySnd(snd_h)
 		oldselected = selected
 	end
-end --Good luck figuring all this shit out
+end
 
 function GryMod.EnableMenu(b)
 	if (b and global_mul_goal == 0) then
@@ -421,39 +428,14 @@ function GryMod.CloackAttack(ply, key)
 	if key == IN_ATTACK and GryMod.Cloaked then
 		RunConsoleCommand("Armor")
 		RunConsoleCommand("ArmorFUUUUU")
-		surface.PlaySound(Armorm)
+		PlaySnd(Armorm)
 	end
 end
 
 function PlaySnd(snd)
-	if (soundconvar:GetBool()) then
-		surface.PlaySound(snd)
-	end
+	surface.PlaySound(snd)
 end
 
-function FrameTimeExt()
-	if (smoothconvar:GetBool()) then
-		return FrameTime()
-	else
-		return 1
-	end
-end
-
-function GryMod.BinocularZoomIn(player, key)
-	if (player:GetCanZoom() and key == IN_ZOOM) then
-		surface.PlaySound("interface_suit/binocularzoomin.wav")
-		LocalPlayer().ZSing = true
-		--ZoomScaleform()
-	end
-end
-
-function GryMod.BinocularZoomOut(player, key)
-	if (player:GetCanZoom() and key == IN_ZOOM) then
-		surface.PlaySound("interface_suit/binocularzoomout.wav")
-		LocalPlayer().ZSing = false
-		--DeZoomScaleform()
-	end
-end
 
 function SuitBreathUnderwater()
 	local UnderWater = Sound("suit/underwater.wav")
@@ -461,7 +443,7 @@ function SuitBreathUnderwater()
 	if (LocalPlayer():WaterLevel() >= 3) then
 		if (not LocalPlayer().m_bIsUsingSuitOxygen) then
 			LocalPlayer().m_bIsUsingSuitOxygen = true
-			surface.PlaySound(UnderWater)
+			PlaySnd(UnderWater)
 		end
 	else
 		LocalPlayer().m_bIsUsingSuitOxygen = false
@@ -894,8 +876,6 @@ end
 hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 hook.Add("HUDPaint", "GRYHUD", GryMod.CRYHUD)
 hook.Add("KeyPress", "AttackDetection", GryMod.CloackAttack)
-hook.Add("KeyPress", "BinocularZoomIn", GryMod.BinocularZoomIn)
-hook.Add("KeyRelease", "BinocularZoomOut", GryMod.BinocularZoomOut)
 hook.Add("Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater)
 hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase)
 hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThink)

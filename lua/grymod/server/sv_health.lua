@@ -1,108 +1,79 @@
-local hook = hook
-	local umsg = umsg
-	local player = player
-	Regen_Status = true
-	Regen_HealRamps = false
-	Regen_PerSect = false
+local health_regen_speed = 15; -- per sec
+local health_regen_delay = 3;
+local energy_regen_speed = 15
+local energy_regen_delay = 3;
 
-	local function Regen_PlayerHasSpawned(ply)
-		ply.RD = CurTime() + 0.1
-		ply.HRA = 1
-		ply.HRT = 0
+hook.Add("PlayerSpawn", "GryMod_ENER_HLT_VARS", function(ply)
+	ply.next_health_regen = CurTime()
+	ply.health_on_dmg = ply:Health()
+	ply.next_energy_regen = CurTime()
+	ply.energy_on_use = ply:GetNWInt("GryEnergy")
+end)
+
+-- need to be called AFTER the energy drain
+hook.Add("GryUseEnergy", "grymod energy usage", function(ply)
+	local amnt = ply:GetNWInt("GryEnergy")
+	ply.next_energy_regen = CurTime() + energy_regen_delay
+	ply.energy_on_use = amnt
+
+	if ply:GetNWBool("Speed") == true and GryMod.Config.speedEnergyDrain * FrameTime() > amnt then
+		ply:SetRunSpeed(400)
 	end
 
-	hook.Add("PlayerSpawn", "Player spawnadads AR", Regen_PlayerHasSpawned)
+end)
 
-	local function Regen_PlayerTakesDamage(ent, inflictor, attacker, _, dmginfo)
-		if (not ent:IsPlayer()) then
+
+
+
+
+hook.Add("EntityTakeDamage", "Grymod damage handeling", function (ply,  dmginfo)
+		if (not ply:IsPlayer()) then
 			return
 		end
+		local amt = dmginfo:GetDamage()
 
-		if ent:GetNWBool("Armor", true) then
-			return
+		if ply:GetNWBool("Armor", true) then
+			local energy =  ply:GetNWInt("GryEnergy")
+			if (amt > energy) then
+				ply:SetNWInt("GryEnergy", 0)
+				local diff = amt - energy
+				dmginfo:SetDamage(diff)
+			else
+				dmginfo:SetDamage(0)
+				ply:SetNWInt("GryEnergy", ply:GetNWInt("GryEnergy") - amt)
+			end
+			hook.Run("GryUseEnergy", ply)
+		end
+		ply.next_health_regen = CurTime() + health_regen_delay
+		ply.health_on_dmg = ply:Health() - amt
+
+end)
+
+
+hook.Add("Think", "GryMod health think", function()
+	for k, ply in pairs(player.GetAll()) do
+		if not ply:Alive() then continue end
+		if ply.next_health_regen and (ply.next_health_regen < CurTime()) then
+			if (ply:Health() >= ply:GetMaxHealth()) then
+				ply.next_health_regen = 0
+				
+			else
+				ply:SetHealth(math.min(ply:GetMaxHealth(), ply.health_on_dmg + (CurTime() - ply.next_health_regen) * health_regen_speed))
+			end
 		end
 
-		ent.RD = CurTime() + (ent.RD * 0 + 5) -- ent.RD * 0 + (CurTime() + 5)
-		ent.HRA = 1
-		ent.HRT = 0
-	end
+		local curenergy = ply:GetNWInt("GryEnergy")
 
-	hook.Add("EntityTakeDamage", "Regen Time Penalty After Daadadamage", Regen_PlayerTakesDamage)
-
-	local function Regen_Do()
-		if GryMod.Config.ShouldRegen then
-			for _, ply in pairs(player.GetAll()) do
-				if not IsValid(ply) then
-					return
-				end
-
-				if ply:Alive() then
-					if Regen_Status == true then
-						if Regen_PerSect == true then
-							local block
-
-							if ply:Health() > 100 * 0.75 then
-								block = 100
-							elseif ply:Health() > 100 * 0.5 then
-								block = 100 * 0.75
-							elseif ply:Health() > 25 then
-								block = 100 * 0.5
-							else
-								block = 25
-							end
-
-							if Regen_HealRamps == true then
-								if CurTime() >= ply.RD then
-									if (ply:Health() + ply.HRA) > block then
-										ply:SetHealth(block)
-									else
-										ply:SetHealth(math.min(ply:Health() + ply.HRA, block))
-										ply.RD = CurTime() + 0.1
-										ply.HRT = ply.HRT + 1
-									end
-								end
-
-								if ply.HRT >= 3 then
-									ply.HRA = ply.HRA + 1
-									ply.HRT = 0
-								end
-							else
-								if CurTime() >= ply.RD then
-									ply:SetHealth(math.min(ply:Health() + 1, block))
-									ply.RD = CurTime() + 0.1
-								end
-							end
-						else
-							if Regen_HealRamps == true then
-								if ply:Health() < 100 then
-									if CurTime() >= ply.RD then
-										if (ply:Health() + ply.HRA) > 100 then
-											ply:SetHealth(100)
-										else
-											ply:SetHealth(ply:Health() + ply.HRA)
-											ply.RD = CurTime() + 0.1
-											ply.HRT = ply.HRT + 1
-										end
-									end
-								end
-
-								if ply.HRT >= 3 then
-									ply.HRA = ply.HRA + 1
-									ply.HRT = 0
-								end
-							else
-								if ply:Health() < 100 then
-									if CurTime() >= ply.RD then
-										ply:SetHealth(ply:Health() + 1)
-										ply.RD = CurTime() + 0.1
-									end
-								end
-							end
-						end
-					end
+		if (ply.next_energy_regen and ply.next_energy_regen < CurTime()) then
+			if (curenergy >= 100) then
+				ply.next_energy_regen = 0
+				
+			else
+				ply:SetNWInt("GryEnergy", math.min(100, ply.energy_on_use + (CurTime() - ply.next_energy_regen) * energy_regen_speed))
+				if ply:GetNWBool("Speed") == true then
+					ply:SetRunSpeed(600)
 				end
 			end
 		end
 	end
-
-	hook.Add("Tick", "Player gets his health regeneratedadazda", Regen_Do)
+end)
