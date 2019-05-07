@@ -73,7 +73,7 @@ end
 --292 209
 --061 194
 --060 204
-function draw.TextRotated(text, font, x, y, color, ang)
+local function drawTextRotated(text, font, x, y, color, ang)
 	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
 	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
 	surface.SetFont(font)
@@ -94,7 +94,7 @@ function draw.TextRotated(text, font, x, y, color, ang)
 	render.PopFilterMin()
 end -- Just drawing lib, used one time or less, not really used
 
-function draw.BoxRotated(x, y, scalex, scaley, color, ang)
+local function drawBoxRotated(x, y, scalex, scaley, color, ang)
 	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
 	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
 	local m = Matrix()
@@ -548,9 +548,9 @@ function GryMod.hudbase()
 	--------------------------------------------------------------
 	---------------------- END RADAR -----------------------------
 	--------------------------------------------------------------
-	draw.TextRotated(LocalPlayer():GetAmmoCount("grenade"), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 9) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 11), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
-	draw.TextRotated(LocalPlayer():Health(), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 22), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
-	draw.TextRotated(math.Round(LocalPlayer():GetNWInt("GryEnergy")), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 16), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
+	drawTextRotated(LocalPlayer():GetAmmoCount("grenade"), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 9) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 11), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
+	drawTextRotated(LocalPlayer():Health(), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 22), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
+	drawTextRotated(math.Round(LocalPlayer():GetNWInt("GryEnergy")), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 16), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
 	local modeposw = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 13.1)
 	local modeposh = tempscrh - (GryMod.EyeFinityScrW() / 15.5)
 	surface.SetMaterial(grymodesuit)
@@ -559,7 +559,7 @@ function GryMod.hudbase()
 
 	if LocalPlayer():GetActiveWeapon():IsValid() then
 		if table.HasValue(nilweps, LocalPlayer():GetActiveWeapon():GetClass()) then
-			draw.TextRotated("∞", "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 8) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
+			drawTextRotated("∞", "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 8) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
 			-- Because the ammo is  -1 with grenades
 		else
 			local extra = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetPrimaryAmmoType())
@@ -567,9 +567,9 @@ function GryMod.hudbase()
 			local grenum = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetSecondaryAmmoType())
 
 			if (ammonum == -1) then
-				draw.TextRotated(extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
+				drawTextRotated(extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
 			else
-				draw.TextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
+				drawTextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
 			end
 		end
 	end -- Lets get ammo MOTHERFUCKER
@@ -846,7 +846,7 @@ net.Receive("gry_spawn", function()
 end)
 
 ----------------FIX----------------
-local MOUSE_CHECK_DIST = 180
+local MOUSE_CHECK_DIST = 160
 
 function GryMod.RadialThink()
 	if not GRYOPEN then return end
