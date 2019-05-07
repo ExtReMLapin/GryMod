@@ -14,19 +14,20 @@ util.AddNetworkString("gry_jump")
 GryMod.Config = {
 	ShouldRegen = true,
 	InfiniteArmor = false,
-	speedEnergyDrain = 25
+	speedEnergyDrain = 15,
+	cloakEnergyDrain = 3
 }
 
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
 	GryMod.Armor(ply)
-	ply:SetNWInt("GryEnergy", 100)
+	ply:SetNWFloat("GryEnergy", 100)
 	
 	net.Start("gry_spawn")
 	net.Send(ply)
 end)
 
-function GryMod.Strenght(ply)
+function GryMod.Strength(ply)
 	if ply:Alive() then
 		ply:SetWalkSpeed(200)
 		ply:SetRunSpeed(400)
@@ -45,7 +46,7 @@ function GryMod.Strenght(ply)
 	end
 end
 
-concommand.Add("Strength", GryMod.Strenght)
+concommand.Add("Strength", GryMod.Strength)
 
 function GryMod.Speed(ply)
 	if ply:Alive() then
@@ -110,7 +111,7 @@ end
 concommand.Add("Armor", GryMod.Armor)
 
 function GryMod.ArmorFUUUUU(ply)
-	ply:SetNWInt("GryEnergy", 0)
+	ply:SetNWFloat("GryEnergy", 0)
 end
 
 concommand.Add("ArmorFUUUUU", GryMod.ArmorFUUUUU)
@@ -125,16 +126,16 @@ concommand.Add("Drop", GryMod.Drop)
 
 
 function GryMod.SuperJump(ply, key)
-	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") >= 40 and ply:OnGround() and not GryMod.Config.InfiniteArmor and key == IN_JUMP then
+	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWFloat("GryEnergy") >= 40 and ply:OnGround() and not GryMod.Config.InfiniteArmor and key == IN_JUMP then
 		ply:SetJumpPower(500)
-		ply:SetNWInt("GryEnergy", ply:GetNWInt("GryEnergy") - 40)
+		ply:SetNWFloat("GryEnergy", ply:GetNWFloat("GryEnergy") - 40)
 		hook.Run("GryUseEnergy", ply)
 		ply.ps = true
 		net.Start("gry_jump")
 		net.Send(ply)
 	end
 
-	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWInt("GryEnergy") < 40 and ply.ps == false then
+	if ply:Alive() and ply:GetNWBool("Strenght", true) and ply:GetNWFloat("GryEnergy") < 40 and ply.ps == false then
 		ply:SetJumpPower(200)
 		ply.ps = true
 	end
@@ -151,47 +152,47 @@ end
 
 hook.Add("KeyRelease", "keyreleasestrenghtgry", GryMod.RSuperJump)
 
-function GryMod.Speedsystem()
+hook.Add("Think", "GrySpeedThink", function()
 	for k, v in pairs(player.GetAll()) do
 		local amnt_to_drain = GryMod.Config.speedEnergyDrain * FrameTime()
-		local amnt = v:GetNWInt("GryEnergy")
-		if v:IsSprinting() == true and v:GetNWBool("Speed", true) and not GryMod.Config.InfiniteArmor then
+		local amnt = v:GetNWFloat("GryEnergy")
+
+		if v:IsSprinting() == true and v:GetVelocity():LengthSqr() > 50  and v:GetNWBool("Speed", true) and not GryMod.Config.InfiniteArmor then
 			if amnt_to_drain > amnt then
-				ply:SetRunSpeed(400)
+				v:SetRunSpeed(400)
 			else
-				v:SetNWInt("GryEnergy", amnt - amnt_to_drain)
+
+				print(amnt - amnt_to_drain)
+				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
 			end
 		end
 	end
+end)
 
-	timer.Simple(0.1, GryMod.Speedsystem)
-end
 
-GryMod.Speedsystem()
-
-function GryMod.Cloaksystem()
+hook.Add("Think", "GryCloakThink", function()
 	for k, v in pairs(player.GetAll()) do
 		if v:GetNWBool("Cloak", true) and not GryMod.Config.InfiniteArmor then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
-			v:SetNWInt("GryEnergy", (v:GetNWInt("GryEnergy") - (0.092 + (0.001 * v:GetVelocity():Length()))))
-			hook.Run("GryUseEnergy", v)
+			local amnt = v:GetNWFloat("GryEnergy")
+			local amnt_to_drain = GryMod.Config.cloakEnergyDrain * FrameTime() * ((v:GetVelocity():Length()/100)+0.6)
+
+			print(GryMod.Config.cloakEnergyDrain, v:GetVelocity():Length(), GryMod.Config.cloakEnergyDrain * 1 * v:GetVelocity():Length())
+
+			if amnt_to_drain > amnt then
+				GryMod.Armor(v)
+			else
+				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain )
+				hook.Run("GryUseEnergy", v)
+			end
+
 		end
 	end
+end)
 
-	timer.Simple(0.1, GryMod.Cloaksystem)
-end
 
-GryMod.Cloaksystem()
 
-/*function GryMod.FixEnergySuitMod(ply)
-	if ply:GetNWInt("GryEnergy") <= 0 then
-		GryMod.Armor(ply)
-		ply:SetNWInt("GryEnergy", 0)
-	end
-end
-
-hook.Add("GryUseEnergy", "SuitMod Auto", GryMod.FixEnergySuitMod)*/
 
 concommand.Add("gry_Armor", function(ply)
 	if ply:IsAdmin() then

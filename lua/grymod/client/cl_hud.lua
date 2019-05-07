@@ -60,8 +60,8 @@ function meta:CanGryMod()
 end
 ]]
 function GryMod.EyeFinityScrW()
-	if tempscrw / tempscrh == 16 / 3 and EyeFinity:GetInt() > 0 then
-		return tempscrw / 3
+	if  EyeFinity:GetInt() > 0 then
+		return tempscrw * 3
 	else
 		return tempscrw
 	end
@@ -471,9 +471,9 @@ function GryMod.mathradar()
 		GryMod.rcr = 105 + raderpers
 		GryMod.rcg = 235 - raderpers * 1.5
 		GryMod.rcb = 100 - (raderpers / 1.8)
-		Gry_Danger0 = math.Min(math.MapSimple(table.Count(radarnpc) * 5, 20, 17), 17)
+		Gry_Danger0 = math.Min(math.MapSimple(table.Count(radarnpc) * 5, 20, 17), 17.9)
 		Gry_Danger1 = math.Min(math.MapSimple((table.Count(radarnpc) - 4) * 5, 20, 22), 22)
-		Gry_Danger2 = math.Min(math.MapSimple((table.Count(radarnpc) - 8) * 5, 20, 19), 19)
+		Gry_Danger2 = math.Min(math.MapSimple((table.Count(radarnpc) - 8) * 5, 20, 20), 20)
 		Gry_Danger3 = math.Min(math.MapSimple((table.Count(radarnpc) - 12) * 5, 20, 19), 19)
 	end
 
@@ -494,45 +494,49 @@ function GryMod.hudbase()
 
 	surface.SetTexture(base)
 	surface.SetDrawColor(Color(220, 235, 220, alpha_ch[1]))
-	surface.DrawTexturedRect(GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 4.06) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 5.19), ((GryMod.EyeFinityScrW()) / 4.26), ((GryMod.EyeFinityScrW()) / 4.26))
+	surface.DrawTexturedRect(GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 4.06) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 5.19), GryMod.EyeFinityScrW() / 4.26, GryMod.EyeFinityScrW() / 4.26)
 	surface.SetTexture(compass)
 	surface.SetDrawColor(Color(220, 235, 220, alpha_ch[1]))
-	surface.DrawTexturedRect(GryMod.EyeFinityScrW() * (10 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 7.111), (GryMod.EyeFinityScrW() * (290 / 1920)), (GryMod.EyeFinityScrW() * (290 / 1920)))
+	surface.DrawTexturedRect(GryMod.EyeFinityScrW() * (10 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 7.111), GryMod.EyeFinityScrW() * (290 / 1920), GryMod.EyeFinityScrW() * (290 / 1920))
 	------------------------------------------------/
 	---------------- START RADAR --------------------
 	------------------------------------------------/
-	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255)) -- Dear maths, you made me cry this time
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (135 / 1920) + (17 - (Gry_Danger0 - 17)), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920))
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (166 / 1920) + (22 - (Gry_Danger1 - 22)), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920))
+	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (100 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920))
+
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (185 / 1920) + (19 - (Gry_Danger2 - 19)), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920))
+	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (120.8 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920))
+
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (208 / 1920) + (19 - (Gry_Danger3 - 19)), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920))
+	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (145.5 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920))
+
+	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
+	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (168.4 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920))
+
 	surface.SetDrawColor(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255)
 	draw.NoTexture()
 
 	surface.DrawPoly({
 		{
 			x = GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int,
-			y = tempscrh - GryMod.EyeFinityScrW() * (101 / 1920)
+			y = tempscrh - GryMod.EyeFinityScrW() * (99.8 / 1920)
 		},
 		{
 			x = GryMod.EyeFinityScrW() * (77 / 1920) - GryModXDistance_int + GryModXDistance2_int,
-			y = tempscrh - GryMod.EyeFinityScrW() * (101 / 1920)
+			y = tempscrh - GryMod.EyeFinityScrW() * (100 / 1920)
 		},
 		{
 			x = GryMod.EyeFinityScrW() * (77 / 1920) - GryModXDistance_int + GryModXDistance2_int,
-			y = tempscrh - GryMod.EyeFinityScrW() * (91 / 1920)
+			y = tempscrh - GryMod.EyeFinityScrW() * (92 / 1920)
 		}
 	})
 
 	--------------------------------------------------------------
 	---------------------- END RADAR -----------------------------
 	--------------------------------------------------------------
-	drawTextRotated(LocalPlayer():GetAmmoCount("grenade"), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 9) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 11), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
+	drawTextRotated(LocalPlayer():GetAmmoCount("grenade"), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 9) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 11), Color(190, 195, 190, alpha_ch[2]), 1.2) -- Fixed in v2.3
 	drawTextRotated(LocalPlayer():Health(), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 22), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
-	drawTextRotated(math.Round(LocalPlayer():GetNWInt("GryEnergy")), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 16), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
+	drawTextRotated(math.Round(LocalPlayer():GetNWFloat("GryEnergy")), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 16), Color(190, 195, 190, alpha_ch[2]), 1.2) -- Fixed in v2.3
 	local modeposw = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 13.1)
 	local modeposh = tempscrh - (GryMod.EyeFinityScrW() / 15.5)
 	surface.SetMaterial(grymodesuit)
@@ -541,7 +545,7 @@ function GryMod.hudbase()
 
 	if LocalPlayer():GetActiveWeapon():IsValid() then
 		if table.HasValue(nilweps, LocalPlayer():GetActiveWeapon():GetClass()) then
-			drawTextRotated("∞", "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 8) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
+			drawTextRotated("∞", "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 8) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
 			-- Because the ammo is  -1 with grenades
 		else
 			local extra = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetPrimaryAmmoType())
@@ -549,9 +553,9 @@ function GryMod.hudbase()
 			local grenum = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetSecondaryAmmoType())
 
 			if (ammonum == -1) then
-				drawTextRotated(extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
+				drawTextRotated(extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
 			else
-				drawTextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 3)
+				drawTextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
 			end
 		end
 	end -- Lets get ammo MOTHERFUCKER
@@ -583,7 +587,7 @@ function GryMod.hudbase()
 		}
 	} -- if we want to support eyefinity, we have to update the table each frames
 
-	local nbener = LocalPlayer():GetNWInt("GryEnergy")
+	local nbener = LocalPlayer():GetNWFloat("GryEnergy")
 	local nbhlt = LocalPlayer():Health()
 	local healthoffset = math.Remap(nbhlt, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
 	local energyoffset = math.Remap(nbener, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
