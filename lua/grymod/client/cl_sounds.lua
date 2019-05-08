@@ -126,7 +126,6 @@ hook.Add("Think", "GryModSounds", function()
 		lastenergy = energy
 	end
 	if (lastenergy >= 20 and energy < 20) then
-		LocalPlayer():ChatPrint("nigger")
 		surface.PlaySound(Sound("suit/suit_energy_critical.mp3"))
 	end
 	lastenergy = energy
