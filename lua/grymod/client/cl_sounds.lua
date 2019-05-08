@@ -126,12 +126,12 @@ hook.Add("Think", "GryModSounds", function()
 		lastenergy = energy
 	end
 
-	if (lastenergy > 20 and energy < 20) then
+	if (lastenergy >= 20 and energy < 20) then
 		lastenergy = energy
 		surface.PlaySound(Sound("suit/suit_energy_critical.mp3"))
 	end
 
-	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 then
+	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 and LocalPlayer().NanosuitMode == GryMod.Modes.SPEED and energy > 1 then
 		if wasSprinting == false then
 			hook.Run("GryModStartSprinting")
 			wasSprinting = true
