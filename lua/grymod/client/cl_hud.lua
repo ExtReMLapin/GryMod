@@ -48,8 +48,6 @@ local compass = surface.GetTextureID("cryhud/compass")
 
 local healingSound
 
--- hackysound system
-sound.PlayFile("sound/suit/suit_medical_use_new.mp3", "noblock", function(soundchannel, error, str ) healingSound = soundchannel soundchannel:Pause() end)
 
 function meta:CanGryMod()
 	return self:Alive()
@@ -57,33 +55,6 @@ end
 
 
 
-net.Receive("gry_stop_health_regen",function ()
-	if not IsValid(healingSound) then return end
-	local overtime = CurTime() + 1
-	hook.Add("Think", "GryModSoundhealthregenfadeaway", function()
-		if not IsValid(healingSound) then
-			hook.Remove("Think", "GryModSoundhealthregenfadeaway")
-			return
-		end
-		healingSound:SetVolume(1 - (CurTime() - overtime) - 1) -- it fades away
-		if CurTime() > overtime then
-			healingSound:Pause()
-			healingSound:SetTime(0)
-			healingSound:SetVolume(1)
-			hook.Remove("Think", "GryModSoundhealthregenfadeaway")
-		end
-
-	end)
-
-
-
-end)
-
-net.Receive("gry_start_health_regen",function ()
-	LocalPlayer():ChatPrint("start")
-	if not IsValid(healingSound) then return end
-	healingSound:Play()
-end)
 
 -- You can change it , for others admins mods , but you'll have to change it in example : 
 --[[  
@@ -136,21 +107,7 @@ local function drawBoxRotated(x, y, scalex, scaley, color, ang)
 end
 
 local grymodesuit = gry_icons[1] -- Init mode, you better not reload this file, else there will be a de-sync
--- Originals sounds
-util.PrecacheSound("suit/speed.mp3") --I don't really know if it's changing something or not, i don't really care anyway
-util.PrecacheSound("suit/strength.mp3")
-util.PrecacheSound("suit/cloak.mp3")
-util.PrecacheSound("suit/armor.mp3")
-util.PrecacheSound("suit/armor.mp3")
-util.PrecacheSound("suit/ArmorMode.wav") -- Armor mode 
-util.PrecacheSound("suit/binocularzoom.wav") -- Binocular zoom 
-util.PrecacheSound("suit/binocularzoomout.wav") -- Zoom out 
-util.PrecacheSound("suit/binocular.wav") -- Binocular soond (When using the binocular) 
-util.PrecacheSound("suit/CloakMode.wav") -- Cloak Mode 
-util.PrecacheSound("suit/SpeedMode.wav") -- Speed mode 
-util.PrecacheSound("suit/speedmode.wav") -- Jump + strength mode 
-util.PrecacheSound("suit/strengthmode.wav") -- Strength Mode 
-util.PrecacheSound("suit/underwater.wav") -- 1
+
 local crytx = surface.GetTextureID("crysis_button")
 local crycircletx = surface.GetTextureID("crysis_circle")
 local cryarrowtx = surface.GetTextureID("crysis_arrow")
@@ -342,14 +299,14 @@ function GryMod.CRYHUD()
 	surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, 128 / 3, 32 / 3, math.deg(arrowang) + 180)
 
 	if (selected ~= oldselected and selected ~= 0) then
-		PlaySnd(snd_h)
+		surface.PlaySound(snd_h)
 		oldselected = selected
 	end
 end
 
 function GryMod.EnableMenu(b)
 	if (b and global_mul_goal == 0) then
-		PlaySnd(snd_o)
+		surface.PlaySound(snd_o)
 		GRYOPEN = true
 	end
 
@@ -367,30 +324,32 @@ function GryMod.EnableMenu(b)
 end
 
 net.Receive("gry_jump", function()
-	PlaySnd("suit/strengthjump.wav")
+	surface.PlaySound("suit/strengthjump.mp3")
 end)
 
 function meta:SetNanosuitMode(mode, networked)
 	if (mode == LocalPlayer().NanosuitMode) then return end
 	if mode == GryMod.Modes.ARMOR then
-		PlaySnd(Sound("suit/armor.mp3"))
+		surface.PlaySound(Sound("suit/suit_maximum_armor.mp3"))
+		surface.PlaySound(Sound("suit/suit_armor_108.mp3"))
 	end
 
 	if mode == GryMod.Modes.SPEED then
-		PlaySnd(Sound("suit/speed.mp3"))
-		PlaySnd(Sound("suit/speedmode.wav"))
+		surface.PlaySound(Sound("suit/suit_maximum_speed.mp3"))
+		surface.PlaySound(Sound("suit/suit_speed_activate_07_good.wa.mp3"))
 	end
 
 	if mode == GryMod.Modes.STRENGTH then
-		PlaySnd(Sound("suit/strength.mp3"))
-		PlaySnd(Sound("suit/strengthmode.wav"))
+		surface.PlaySound(Sound("suit/suit_maximum_strength.mp3"))
+		surface.PlaySound(Sound("suit/strengthmode.mp3"))
 	end
 
 	if mode == GryMod.Modes.CLOAK then
 		if IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 			LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
 			LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
-			PlaySnd(Sound("suit/cloak.mp3"))
+			surface.PlaySound(Sound("suit/suit_modification_engaged.mp3"))
+			surface.PlaySound(Sound("suit/suit_cloak_chameleon_101_r.mp3"))
 		end
 	elseif IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 		LocalPlayer():GetViewModel():SetMaterial("")
@@ -435,13 +394,13 @@ end)
 function GryMod.CryOpenClose(ply, command, args)
 	if (command ~= "+crysishud") then
 		if (GryMod.MouseInCircle(cryx, cryy)) then
-			PlaySnd(snd_s)
+			surface.PlaySound(snd_s)
 			if slots[selected] then
 				LocalPlayer():SetNanosuitMode(slots[selected].id, true)
 			end
 
 		elseif (global_mul_goal == 1) then
-			PlaySnd(snd_c)
+			surface.PlaySound(snd_c)
 		end
 	end
 
@@ -464,9 +423,9 @@ function GryMod.CloackAttack(ply, key)
 	end
 end
 
-function PlaySnd(snd)
-	surface.PlaySound(snd)
-end
+
+
+
 
 function GryMod.mathradar()
 	radarnpc = {}
@@ -829,6 +788,8 @@ net.Receive("gry_spawn", function()
 	end
 end)
 
+
+
 ----------------FIX----------------
 local MOUSE_CHECK_DIST = 160
 
@@ -865,6 +826,12 @@ function GryMod.RadialThink()
 	end
 end
 
+
+
+
+
+
+
 local hidethings = {
 	["CHudHealth"] = true,
 	["CHudBattery"] = true,
@@ -872,7 +839,6 @@ local hidethings = {
 	["CHudSecondaryAmmo"] = true
 }
 
--- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
 function HUDShouldDraw(name)
 	if (hidethings[name]) then
 		return false

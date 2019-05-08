@@ -47,6 +47,15 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
 		local energy = ply:GetNWFloat("GryEnergy")
 
+		if (energy > 0 and dmginfo:IsBulletDamage()) then
+			net.Start("gry_armor_hit_sound")
+			net.Send(ply)
+
+
+
+		end
+
+
 		if (amt > energy) then
 			ply:SetNWFloat("GryEnergy", 0)
 			local diff = amt - energy

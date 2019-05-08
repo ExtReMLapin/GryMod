@@ -3,6 +3,7 @@ util.AddNetworkString("gry_spawn")
 util.AddNetworkString("gry_jump")
 util.AddNetworkString("gry_drop")
 util.AddNetworkString("gry_empty_energy")
+util.AddNetworkString("gry_armor_hit_sound")
 
 GryMod.Config = {
 	ShouldRegen = true,
@@ -119,7 +120,7 @@ hook.Add("Think", "GrySpeedThink", function()
 		local amnt_to_drain = GryMod.Config.speedEnergyDrain * FrameTime()
 		local amnt = v:GetNWFloat("GryEnergy")
 
-		if v:IsSprinting() == true and v:GetVelocity():LengthSqr() > 50  and (v:IsOnGround() or v:WaterLevel() > 1) and v.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor then
+		if v:IsSprinting() == true and v:GetVelocity():LengthSqr() > 170000  and (v:IsOnGround() or v:WaterLevel() > 1) and v.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor then
 			if amnt_to_drain > amnt then
 				v:SetRunSpeed(400)
 			else
