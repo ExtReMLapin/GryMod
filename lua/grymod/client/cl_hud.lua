@@ -26,9 +26,11 @@ local GryModXDistance2 = CreateClientConVar("gry_xdist", "0", false, false)
 local GryModXDistance_int = GryModXDistance:GetInt()
 local GryModXDistance2_int = GryModXDistance2:GetInt()
 local EyeFinity = CreateClientConVar("cl_Eyefinity", "0", false, false)
-
 local GRYOPEN = false
 local meta = FindMetaTable("Player")
+GryMod.rcr = 105
+GryMod.rcg = 235
+GryMod.rcb = 100
 
 cvars.AddChangeCallback("gry_xadd", function(convar_name, value_old, value_new)
 	GryModXDistance_int = value_new
@@ -38,15 +40,14 @@ cvars.AddChangeCallback("gry_xdist", function(convar_name, value_old, value_new)
 	GryModXDistance2_int = value_new
 end)
 
-local gry_icons = {Material("gryarmor.png"), Material("gryspeed.png"), Material("grystrenght.png"), Material("grycloak.png"), Material("grydrop.png")}
+local gry_icons = {Material("gryarmor.png"), Material("gryspeed.png"), Material("grystrength.png"), Material("grycloak.png"), Material("grydrop.png")}
 local tempscrw = ScrW()
 local tempscrh = ScrH()
 local base = surface.GetTextureID("cryhud/base")
 local compass = surface.GetTextureID("cryhud/compass")
 
 function meta:CanGryMod()
-	-- return meta:Alive() ????
-	return true
+	return self:Alive()
 end
 
 -- You can change it , for others admins mods , but you'll have to change it in example : 
@@ -60,19 +61,13 @@ function meta:CanGryMod()
 end
 ]]
 function GryMod.EyeFinityScrW()
-	if  EyeFinity:GetInt() > 0 then
-		return tempscrw * 3
+	if EyeFinity:GetInt() > 0 then
+		return tempscrw / 3
 	else
 		return tempscrw
 	end
 end
 
-
---072 215
---273 227
---292 209
---061 194
---060 204
 local function drawTextRotated(text, font, x, y, color, ang)
 	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
 	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
@@ -92,8 +87,9 @@ local function drawTextRotated(text, font, x, y, color, ang)
 	cam.PopModelMatrix()
 	render.PopFilterMag()
 	render.PopFilterMin()
-end -- Just drawing lib, used one time or less, not really used
+end
 
+-- Just drawing lib, used one time or less, not really used
 local function drawBoxRotated(x, y, scalex, scaley, color, ang)
 	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
 	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
@@ -108,55 +104,7 @@ local function drawBoxRotated(x, y, scalex, scaley, color, ang)
 	render.PopFilterMin()
 end
 
-local grymodesuit = gry_icons[1] -- Init mode, you better not reload this files, else there will be a de-sync
-GryMod.Cloaked = false
-
-net.Receive("cloak_start", function(length, client)
-	grymodesuit = gry_icons[4]
-	GryMod.Cloaked = true
-	LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
-	LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
-	PlaySnd(Sound("suit/cloak.mp3"))
-end) -- First network optimizations are here 
-
-net.Receive("gry_jump", function()
-	PlaySnd("suit/strenghtjump.wav")
-end)
-
-local function clearCloak()
-
-	if not IsValid(LocalPlayer()) or not IsValid(LocalPlayer():GetViewModel()) then
-		return
-	end
-
-	LocalPlayer():GetViewModel():SetMaterial("")
-	LocalPlayer():GetHands():SetMaterial("")
-
-end
-
-net.Receive("armor_start", function(length, client)
-	grymodesuit = gry_icons[1]
-	GryMod.Cloaked = false
-	PlaySnd(Sound("suit/armor.mp3"))
-	clearCloak()
-end)
-
-net.Receive("speed_start", function(length, client)
-	grymodesuit = gry_icons[2]
-	GryMod.Cloaked = false
-	PlaySnd(Sound("suit/speed.mp3"))
-	PlaySnd("suit/speedmode.wav")
-	clearCloak()
-end)
-
-net.Receive("strenght_start", function(length, client)
-	grymodesuit = gry_icons[3]
-	GryMod.Cloaked = false
-	--PlaySnd(Sound("suit/strength.mp3"))
-	PlaySnd("suit/strenghtmode.wav")
-	clearCloak() 
-end)
-
+local grymodesuit = gry_icons[1] -- Init mode, you better not reload this file, else there will be a de-sync
 -- Originals sounds
 util.PrecacheSound("suit/speed.mp3") --I don't really know if it's changing something or not, i don't really care anyway
 util.PrecacheSound("suit/strength.mp3")
@@ -169,12 +117,9 @@ util.PrecacheSound("suit/binocularzoomout.wav") -- Zoom out
 util.PrecacheSound("suit/binocular.wav") -- Binocular soond (When using the binocular) 
 util.PrecacheSound("suit/CloakMode.wav") -- Cloak Mode 
 util.PrecacheSound("suit/SpeedMode.wav") -- Speed mode 
-util.PrecacheSound("suit/speedmode.wav") -- Jump + strenght mode 
-util.PrecacheSound("suit/strenghtmode.wav") -- Strenght Mode 
+util.PrecacheSound("suit/speedmode.wav") -- Jump + strength mode 
+util.PrecacheSound("suit/strengthmode.wav") -- Strength Mode 
 util.PrecacheSound("suit/underwater.wav") -- 1
-local Armorm = Sound("suit/armor.mp3")
-local soundconvar = CreateClientConVar("crysishud_enablesounds", 1, false, false) -- From original
-local smoothconvar = CreateClientConVar("crysishud_enabletransitions", 1, false, false)
 local crytx = surface.GetTextureID("crysis_button")
 local crycircletx = surface.GetTextureID("crysis_circle")
 local cryarrowtx = surface.GetTextureID("crysis_arrow")
@@ -213,11 +158,12 @@ slots[4] = armormode["Armor"]
 slots[5] = armormode["Drop"]
 
 function GryMod.MouseInCircle(x, y)
-	local centerdist = math.Dist(gui.MouseX(), gui.MouseY(), x, y)
+	local centerdist = math.Distance(gui.MouseX(), gui.MouseY(), x, y)
 
-	return (centerdist > 32 and centerdist < 200)
-end --Checks if the mouse is in the circle
+	return centerdist > 32 and centerdist < 200
+end
 
+--Checks if the mouse is in the circle
 function GryMod.CRYHUD()
 	if (global_mul_goal ~= global_mul) then
 		global_mul = global_mul + (global_mul_goal - global_mul) * math.Clamp(FrameTime() * 10, 0, 1) --I love mah math
@@ -242,12 +188,14 @@ function GryMod.CRYHUD()
 
 	if (global_mul == 0) then
 		return
-	end --Don't run if the menu ain't visible
+	end
 
+	--Don't run if the menu ain't visible
 	if (not GryMod.MouseInCircle(cryx, cryy)) then
 		selected = 0
-	end -- Aka if mouse is not in da circle , dont do anything
+	end
 
+	-- Aka if mouse is not in da circle , dont do anything
 	for i = 0 + cryadd / 2, 360 - cryadd / 2, cryadd do
 		-- No , i dont use "else"
 		-- NORMAL
@@ -259,20 +207,23 @@ function GryMod.CRYHUD()
 			crygraya1 = 255
 			crygraya2 = 192
 			crygraya3 = 80
-		end -- NORMAL	
+		end
 
+		-- NORMAL	
 		if not LocalPlayer():CanGryMod() then
 			crygraya1 = 240
 			crygraya2 = 27
 			crygraya3 = 27
-		end -- ROUGE
+		end
 
+		-- ROUGE
 		if (numb == selected and not LocalPlayer():CanGryMod()) then
 			crygraya1 = 240
 			crygraya2 = 27
 			crygraya3 = 27
-		end -- ROUGE
+		end
 
+		-- ROUGE
 		if (selected == 5 and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			crygraya1 = 240
 			crygraya2 = 27
@@ -286,29 +237,33 @@ function GryMod.CRYHUD()
 			crygray1 = 150
 			crygray2 = 200
 			crygray3 = 150
-		end -- NORMAL
+		end
 
+		-- NORMAL
 		if not LocalPlayer():CanGryMod() then
 			crydistadd = 96
 			crygray1 = 240
 			crygray2 = 23
 			crygray3 = 27
-		end -- ROUGE
+		end
 
+		-- ROUGE
 		if (numb == selected and LocalPlayer():CanGryMod()) then
 			crydistadd = crydistadd * 1.3
 			crygray1 = 100
 			crygray2 = 140
 			crygray3 = 100
-		end -- NORMAL
+		end
 
+		-- NORMAL
 		if (numb == selected and not LocalPlayer():CanGryMod()) then
 			crydistadd = 96
 			crygray1 = 240
 			crygray2 = 23
 			crygray3 = 27
-		end --   ROUGE
+		end
 
+		--   ROUGE
 		if (selected == 5 and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			crydistadd = 96
 			crygray1 = 240
@@ -336,8 +291,9 @@ function GryMod.CRYHUD()
 			circleb = 206
 			circlec = 183
 		end
-	end -- No , i wont use "else"
+	end
 
+	-- No , i wont use "else"
 	if not LocalPlayer():CanGryMod() then
 		circlea = 250
 		circleb = 23
@@ -379,40 +335,75 @@ function GryMod.EnableMenu(b)
 	end
 end
 
+net.Receive("gry_jump", function()
+	PlaySnd("suit/strengthjump.wav")
+end)
 
+function meta:SetNanosuitMode(mode, networked)
+	if mode == GryMod.Modes.ARMOR then
+		PlaySnd(Sound("suit/armor.mp3"))
+	end
 
+	if mode == GryMod.Modes.SPEED then
+		PlaySnd(Sound("suit/speed.mp3"))
+		PlaySnd(Sound("suit/speedmode.wav"))
+	end
+
+	if mode == GryMod.Modes.STRENGTH then
+		PlaySnd(Sound("suit/strength.mp3"))
+		PlaySnd(Sound("suit/strengthmode.wav"))
+	end
+
+	if mode == GryMod.Modes.CLOAK then
+		if IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
+			LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
+			LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
+			PlaySnd(Sound("suit/cloak.mp3"))
+		end
+	elseif IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
+		LocalPlayer():GetViewModel():SetMaterial("")
+
+		if IsValid(LocalPlayer():GetHands()) then
+			LocalPlayer():GetHands():SetMaterial("")
+		end
+	end
+
+	if mode == GryMod.Modes.DROP then
+		net.Start("gry_drop")
+		net.SendToServer()
+	else
+		if networked then
+			net.Start("gry_nanosuit_mode_change")
+			net.WriteUInt(mode, 3)
+			net.SendToServer()
+		end
+
+		LocalPlayer().NanosuitMode = mode
+		grymodesuit = slots[selected].material
+	end -- it's not a real mode so don't change anything
+end
+
+net.Receive("gry_nanosuit_mode_change", function()
+	if not IsValid(LocalPlayer()) or not LocalPlayer():Alive() then
+		return
+	end
+
+	local mode = net.ReadUInt(3)
+	LocalPlayer():SetNanosuitMode(mode, false)
+end)
 
 function GryMod.CryOpenClose(ply, command, args)
 	if (command ~= "+crysishud") then
 		if (GryMod.MouseInCircle(cryx, cryy)) then
 			PlaySnd(snd_s)
-
-			if (slots[selected]) and (slots[selected].id) == GryMod.Modes.ARMOR then
-				RunConsoleCommand("Armor")
-			end
-
-			if (slots[selected]) and (slots[selected].id) == GryMod.Modes.SPEED then
-				RunConsoleCommand("Speed")
-			end
-
-			if (slots[selected]) and (slots[selected].id) == GryMod.Modes.CLOAK then
-				RunConsoleCommand("Cloak")
-			end
-
-			if (slots[selected]) and (slots[selected].id) == GryMod.Modes.STRENGTH then
-				RunConsoleCommand("Strength")
-			end
-
-			if (slots[selected]) and (slots[selected].id) == GryMod.Modes.DROP then
-				RunConsoleCommand("Drop")
-			end
+			LocalPlayer():SetNanosuitMode(slots[selected].id, true)
 		elseif (global_mul_goal == 1) then
 			PlaySnd(snd_c)
 		end
 	end
 
 	GryMod.EnableMenu(command == "+crysishud") --Enable menu if it's +crysishud, disable otherwise
-end -- 1.0 update : Sounds are played by server -- Message to me in 2014 : Played by the server ? WHY THE DUCK DID I DO THAT ?! 
+end
 
 concommand.Add("+crysishud", GryMod.CryOpenClose)
 concommand.Add("-crysishud", GryMod.CryOpenClose)
@@ -425,30 +416,14 @@ concommand.Add("-crysishud", GryMod.CryOpenClose)
 ----------------------------------------------------------------------------
 ----------------------------------------------------------------------------
 function GryMod.CloackAttack(ply, key)
-	if key == IN_ATTACK and GryMod.Cloaked then
-		RunConsoleCommand("Armor")
-		RunConsoleCommand("ArmorFUUUUU")
-		PlaySnd(Armorm)
+	if key == IN_ATTACK and LocalPlayer().NanosuitMode == GryMod.Modes.CLOAK then
+		LocalPlayer():SetNanosuitMode(GryMod.Modes.ARMOR)
 	end
 end
 
 function PlaySnd(snd)
 	surface.PlaySound(snd)
 end
-
-
-function SuitBreathUnderwater()
-	local UnderWater = Sound("suit/underwater.wav")
-
-	if (LocalPlayer():WaterLevel() >= 3) then
-		if (not LocalPlayer().m_bIsUsingSuitOxygen) then
-			LocalPlayer().m_bIsUsingSuitOxygen = true
-			PlaySnd(UnderWater)
-		end
-	else
-		LocalPlayer().m_bIsUsingSuitOxygen = false
-	end -- A bit useless
-end -- Not made by me
 
 function GryMod.mathradar()
 	radarnpc = {}
@@ -484,14 +459,11 @@ GryMod.mathradar()
 local alpha_ch = {0, 0}
 
 function GryMod.hudbase()
-
-		alpha_ch[1] = 200
-		alpha_ch[2] = 255
-		r_ch = 0
-		g_ch = 0
-		b_ch = 0
-
-
+	alpha_ch[1] = 200
+	alpha_ch[2] = 255
+	r_ch = 0
+	g_ch = 0
+	b_ch = 0
 	surface.SetTexture(base)
 	surface.SetDrawColor(Color(220, 235, 220, alpha_ch[1]))
 	surface.DrawTexturedRect(GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 4.06) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 5.19), GryMod.EyeFinityScrW() / 4.26, GryMod.EyeFinityScrW() / 4.26)
@@ -503,16 +475,12 @@ function GryMod.hudbase()
 	------------------------------------------------/
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
 	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (100 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920))
-
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
 	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (120.8 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920))
-
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
 	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (145.5 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920))
-
 	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
 	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (168.4 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920))
-
 	surface.SetDrawColor(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255)
 	draw.NoTexture()
 
@@ -558,8 +526,9 @@ function GryMod.hudbase()
 				drawTextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
 			end
 		end
-	end -- Lets get ammo MOTHERFUCKER
+	end
 
+	-- Lets get ammo MOTHERFUCKER
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -585,13 +554,13 @@ function GryMod.hudbase()
 			x = -1 * GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() * (060 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (204 / 1920)
 		}
-	} -- if we want to support eyefinity, we have to update the table each frames
+	}
 
+	-- if we want to support eyefinity, we have to update the table each frames
 	local nbener = LocalPlayer():GetNWFloat("GryEnergy")
 	local nbhlt = LocalPlayer():Health()
 	local healthoffset = math.Remap(nbhlt, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
 	local energyoffset = math.Remap(nbener, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
-
 	render.ClearStencil()
 	render.SetStencilEnable(true)
 	render.SetStencilWriteMask(15)
@@ -616,12 +585,12 @@ function GryMod.hudbase()
 	draw.SimpleText("W", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
 	draw.SimpleText("NW", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
 	render.SetStencilEnable(false)
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	local energybarpoly1 = { -- energy left
+	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	local energybarpoly1 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (136 / 1920)
@@ -642,9 +611,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (122 / 1920)
 		}
-	}
+	} -- energy left
 
-	local energybarpoly2 = { -- energy right
+	local energybarpoly2 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (135.5 / 1920)
@@ -661,9 +630,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (113.5 / 1920)
 		}
-	}
+	} -- energy right
 
-	local healthbarpoly1 = { -- health left
+	local healthbarpoly1 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (112 / 1920)
@@ -684,9 +653,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (97 / 1920)
 		}
-	}
+	} -- health left
 
-	local healthbarpoly2 = { -- health right
+	local healthbarpoly2 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (102 / 1920)
@@ -703,12 +672,7 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (81 / 1920)
 		}
-	}
-
-
-
-
-
+	} -- health right
 
 	render.ClearStencil()
 	render.SetStencilEnable(true)
@@ -725,13 +689,10 @@ function GryMod.hudbase()
 	--render.SetBlend(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
 	surface.SetDrawColor(Color(20, 150, 230, alpha_ch[1]))
-	
 	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - energyoffset), ScrH() - GryMod.EyeFinityScrW() * (144 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - energyoffset), GryMod.EyeFinityScrW() * (37 / 1920))
 	render.SetStencilEnable(false)
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
 	render.ClearStencil()
 	render.SetStencilEnable(true)
 	render.SetStencilWriteMask(247)
@@ -747,12 +708,10 @@ function GryMod.hudbase()
 	--render.SetBlend(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
 	surface.SetDrawColor(Color(116, 194, 27, alpha_ch[1]))
-
 	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), ScrH() - GryMod.EyeFinityScrW() * (113 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), GryMod.EyeFinityScrW() * (37 / 1920))
 	render.SetStencilEnable(false)
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 	render.ClearStencil()
 	render.SetStencilEnable(true)
 	render.SetStencilWriteMask(248)
@@ -774,16 +733,12 @@ function GryMod.hudbase()
 		surface.SetDrawColor(Color(240, 23, 27, alpha_ch[1]))
 	end
 
-
 	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), ScrH() - GryMod.EyeFinityScrW() * (113 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), GryMod.EyeFinityScrW() * (37 / 1920))
 	render.SetStencilEnable(false)
-
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
 	render.ClearStencil()
 	render.SetStencilEnable(true)
 	render.SetStencilWriteMask(249)
@@ -813,8 +768,8 @@ function GryMod.hudbase()
 	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 end
 
-
 local inited = false
+
 ------------------------------------------
 net.Receive("gry_spawn", function()
 	if gamemode.Get("sandbox") and inited == false then
@@ -835,15 +790,20 @@ end)
 local MOUSE_CHECK_DIST = 160
 
 function GryMod.RadialThink()
-	if not GRYOPEN then return end
+	if not GRYOPEN then
+		return
+	end
+
 	local hypotenus = math.Distance(gui.MouseX(), gui.MouseY(), ScrW() / 2, ScrH() / 2)
 
 	if (hypotenus > MOUSE_CHECK_DIST) then
 		local distx = math.abs(ScrW() / 2 - gui.MouseX())
 		local angle = math.abs(math.acos(distx / hypotenus) * 180 / math.pi)
-		if (tostring(angle) == "nan" ) then
+
+		if (tostring(angle) == "nan") then
 			return
 		end
+
 		local newtriangle_hypotenus = MOUSE_CHECK_DIST
 		local multx = 1 -- change direction of x and y because we're not just working with a triangle now, you need to define the "orientation of the triangle"
 		local multy = 1
@@ -858,19 +818,18 @@ function GryMod.RadialThink()
 
 		local newx = (math.cos(angle / (180 / math.pi)) * newtriangle_hypotenus) * multx
 		local newy = (math.sin(angle / (180 / math.pi)) * newtriangle_hypotenus) * multy
-
 		gui.SetMousePos(ScrW() / 2 + newx, ScrH() / 2 + newy)
 	end
 end
-
 
 local hidethings = {
 	["CHudHealth"] = true,
 	["CHudBattery"] = true,
 	["CHudAmmo"] = true,
 	["CHudSecondaryAmmo"] = true
-} -- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
+}
 
+-- Yeah, i know its from original Gmod wiki , what do you think you think i will use something else ? Dont be dumb.
 function HUDShouldDraw(name)
 	if (hidethings[name]) then
 		return false
