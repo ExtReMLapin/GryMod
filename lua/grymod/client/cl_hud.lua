@@ -46,18 +46,49 @@ local tempscrh = ScrH()
 local base = surface.GetTextureID("cryhud/base")
 local compass = surface.GetTextureID("cryhud/compass")
 
+local healingSound
+
+-- hackysound system
+sound.PlayFile("sound/suit/suit_medical_use_new.mp3", "noblock", function(soundchannel, error, str ) healingSound = soundchannel soundchannel:Pause() end)
+
 function meta:CanGryMod()
 	return self:Alive()
 end
 
+
+
+net.Receive("gry_stop_health_regen",function ()
+	if not IsValid(healingSound) then return end
+	local overtime = CurTime() + 1
+	hook.Add("Think", "GryModSoundhealthregenfadeaway", function()
+		if not IsValid(healingSound) then
+			hook.Remove("Think", "GryModSoundhealthregenfadeaway")
+			return
+		end
+		healingSound:SetVolume(1 - (CurTime() - overtime) - 1) -- it fades away
+		if CurTime() > overtime then
+			healingSound:Pause()
+			healingSound:SetTime(0)
+			healingSound:SetVolume(1)
+			hook.Remove("Think", "GryModSoundhealthregenfadeaway")
+		end
+
+	end)
+
+
+
+end)
+
+net.Receive("gry_start_health_regen",function ()
+	LocalPlayer():ChatPrint("start")
+	if not IsValid(healingSound) then return end
+	healingSound:Play()
+end)
+
 -- You can change it , for others admins mods , but you'll have to change it in example : 
 --[[  
 function meta:CanGryMod() 
-	if LocalPlayer():IsAdmin() or LocalPlayer():IsVip() then 
-		return true 
-	else 
-		return false 
-	end
+	return self:IsAdmin() or self:IsVip() 
 end
 ]]
 function GryMod.EyeFinityScrW()
@@ -340,6 +371,7 @@ net.Receive("gry_jump", function()
 end)
 
 function meta:SetNanosuitMode(mode, networked)
+	if (mode == LocalPlayer().NanosuitMode) then return end
 	if mode == GryMod.Modes.ARMOR then
 		PlaySnd(Sound("suit/armor.mp3"))
 	end
@@ -379,7 +411,15 @@ function meta:SetNanosuitMode(mode, networked)
 		end
 
 		LocalPlayer().NanosuitMode = mode
-		grymodesuit = slots[selected].material
+		
+
+		for k, v in pairs(armormode) do
+			if v.id == mode then
+				grymodesuit = v.material
+				break
+			end
+
+		end
 	end -- it's not a real mode so don't change anything
 end
 
@@ -396,7 +436,10 @@ function GryMod.CryOpenClose(ply, command, args)
 	if (command ~= "+crysishud") then
 		if (GryMod.MouseInCircle(cryx, cryy)) then
 			PlaySnd(snd_s)
-			LocalPlayer():SetNanosuitMode(slots[selected].id, true)
+			if slots[selected] then
+				LocalPlayer():SetNanosuitMode(slots[selected].id, true)
+			end
+
 		elseif (global_mul_goal == 1) then
 			PlaySnd(snd_c)
 		end

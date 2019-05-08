@@ -119,11 +119,10 @@ hook.Add("Think", "GrySpeedThink", function()
 		local amnt_to_drain = GryMod.Config.speedEnergyDrain * FrameTime()
 		local amnt = v:GetNWFloat("GryEnergy")
 
-		if v:IsSprinting() == true and v:GetVelocity():LengthSqr() > 50 and v.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor then
+		if v:IsSprinting() == true and v:GetVelocity():LengthSqr() > 50  and (v:IsOnGround() or v:WaterLevel() > 1) and v.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor then
 			if amnt_to_drain > amnt then
 				v:SetRunSpeed(400)
 			else
-				print(amnt - amnt_to_drain)
 				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
 			end
@@ -137,7 +136,6 @@ hook.Add("Think", "GryCloakThink", function()
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
 			local amnt = v:GetNWFloat("GryEnergy")
 			local amnt_to_drain = GryMod.Config.cloakEnergyDrain * FrameTime() * (v:GetVelocity():Length() / 100 + 0.6)
-			print(GryMod.Config.cloakEnergyDrain, v:GetVelocity():Length(), GryMod.Config.cloakEnergyDrain * 1 * v:GetVelocity():Length())
 
 			if amnt_to_drain > amnt then
 				v:SetNanosuitMode(GryMod.Modes.ARMOR, true)

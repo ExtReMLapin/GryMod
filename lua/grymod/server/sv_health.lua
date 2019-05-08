@@ -1,11 +1,16 @@
-local health_regen_speed = 7 -- per sec
+local health_regen_speed = 17 -- per sec
 local health_regen_delay = 3
-local energy_regen_speed = 15
-local energy_regen_delay = 3
+local energy_regen_speed = 7
+local energy_regen_delay = 5
+
+util.AddNetworkString("gry_start_health_regen")
+util.AddNetworkString("gry_stop_health_regen")
 
 hook.Add("PlayerSpawn", "GryMod_ENER_HLT_VARS", function(ply)
 	ply.next_health_regen = CurTime()
 	ply.health_on_dmg = ply:Health()
+	ply.should_heath_regen = false
+
 	ply.next_energy_regen = CurTime()
 	ply.energy_on_use = ply:GetNWFloat("GryEnergy")
 end)
@@ -20,6 +25,17 @@ hook.Add("GryUseEnergy", "grymod energy usage", function(ply)
 		ply:SetRunSpeed(400)
 	end
 end)
+
+
+hook.Add("PlayerDeath","grymod death stop healing sound", function (ply)
+	if (ply.should_heath_regen) then
+		ply.should_heath_regen = false
+		net.Start("gry_stop_health_regen")
+		net.Send(ply)
+	end
+	ply.next_health_regen = 0
+end)
+
 
 hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 	if (not ply:IsPlayer()) then
@@ -38,13 +54,22 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		else
 			dmginfo:SetDamage(0)
 			ply:SetNWFloat("GryEnergy", ply:GetNWFloat("GryEnergy") - amt)
+			hook.Run("GryUseEnergy", ply)
+			return
 		end
 
 		hook.Run("GryUseEnergy", ply)
 	end
 
+
 	ply.next_health_regen = CurTime() + health_regen_delay
-	ply.health_on_dmg = ply:Health() - amt
+	
+	if (ply.should_heath_regen == true) then
+		ply.should_heath_regen = false
+		net.Start("gry_stop_health_regen")
+		net.Send(ply)
+	end
+	ply.health_on_dmg = ply:Health() - dmginfo:GetDamage()
 end)
 
 hook.Add("Think", "GryMod health think", function()
@@ -52,9 +77,21 @@ hook.Add("Think", "GryMod health think", function()
 		if not ply:Alive() then continue end
 
 		if ply.next_health_regen and (ply.next_health_regen < CurTime()) then
+
+
 			if (ply:Health() >= ply:GetMaxHealth()) then
+				if (ply.should_heath_regen) then
+					ply.should_heath_regen = false
+					net.Start("gry_stop_health_regen")
+					net.Send(ply)
+				end
 				ply.next_health_regen = 0
 			else
+				if not ply.should_heath_regen then
+					net.Start("gry_start_health_regen")
+					net.Send(ply)
+					ply.should_heath_regen = true
+				end
 				ply:SetHealth(math.min(ply:GetMaxHealth(), ply.health_on_dmg + (CurTime() - ply.next_health_regen) * health_regen_speed))
 			end
 		end
