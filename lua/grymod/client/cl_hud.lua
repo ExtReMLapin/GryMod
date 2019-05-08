@@ -46,7 +46,6 @@ local tempscrh = ScrH()
 local base = surface.GetTextureID("cryhud/base")
 local compass = surface.GetTextureID("cryhud/compass")
 
-local healingSound
 
 
 function meta:CanGryMod()
@@ -145,13 +144,23 @@ slots[3] = armormode["Speed"]
 slots[4] = armormode["Armor"]
 slots[5] = armormode["Drop"]
 
+
+local iconsposfix = {
+{5,8}, -- cloak
+{7,3}, -- strength
+{0,-2}, -- speed
+{-6,3}, -- armor
+{-3,12}, -- drop
+}
+
 function GryMod.MouseInCircle(x, y)
 	local centerdist = math.Distance(gui.MouseX(), gui.MouseY(), x, y)
 
-	return centerdist > 32 and centerdist < 200
+	return centerdist > 50 and centerdist < 220
 end
 
 --Checks if the mouse is in the circle
+local w = 90
 function GryMod.CRYHUD()
 	if (global_mul_goal ~= global_mul) then
 		global_mul = global_mul + (global_mul_goal - global_mul) * math.Clamp(FrameTime() * 10, 0, 1) --I love mah math
@@ -185,34 +194,20 @@ function GryMod.CRYHUD()
 
 	-- Aka if mouse is not in da circle , dont do anything
 	for i = 0 + cryadd / 2, 360 - cryadd / 2, cryadd do
-		-- No , i dont use "else"
-		-- NORMAL
-		local crygraya1 = 90
-		local crygraya2 = 130
-		local crygraya3 = 90
+
+
+		-- Current selected mode
+		local crygraya1 = 131
+		local crygraya2 = 176
+		local crygraya3 = 131
+		local crygraya4 = 250
 
 		if (numb == selected and LocalPlayer():CanGryMod()) then
 			crygraya1 = 255
 			crygraya2 = 192
 			crygraya3 = 80
-		end
-
-		-- NORMAL	
-		if not LocalPlayer():CanGryMod() then
-			crygraya1 = 240
-			crygraya2 = 27
-			crygraya3 = 27
-		end
-
-		-- ROUGE
-		if (numb == selected and not LocalPlayer():CanGryMod()) then
-			crygraya1 = 240
-			crygraya2 = 27
-			crygraya3 = 27
-		end
-
-		-- ROUGE
-		if (selected == 5 and not IsValid(LocalPlayer():GetActiveWeapon())) then
+			crygraya4 = 225
+		elseif not LocalPlayer():CanGryMod() or (numb == selected and not LocalPlayer():CanGryMod()) or (selected == 5 and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			crygraya1 = 240
 			crygraya2 = 27
 			crygraya3 = 27
@@ -220,11 +215,12 @@ function GryMod.CRYHUD()
 
 		surface.SetTexture(crytx)
 
+		-- Arrows
 		if LocalPlayer():CanGryMod() then
-			crydistadd = 96
-			crygray1 = 150
-			crygray2 = 200
-			crygray3 = 150
+			crydistadd = 128
+			crygray1 = 255
+			crygray2 = 255
+			crygray3 = 255
 		end
 
 		-- NORMAL
@@ -237,10 +233,7 @@ function GryMod.CRYHUD()
 
 		-- ROUGE
 		if (numb == selected and LocalPlayer():CanGryMod()) then
-			crydistadd = crydistadd * 1.3
-			crygray1 = 100
-			crygray2 = 140
-			crygray3 = 100
+			crydistadd = crydistadd * 1.15
 		end
 
 		-- NORMAL
@@ -261,11 +254,14 @@ function GryMod.CRYHUD()
 
 		crydist[numb] = crydist[numb] + (crydistadd - crydist[numb]) * math.Clamp(FrameTime() * 20, 0, 1)
 		local cryaddx, cryaddy = math.sin(math.rad(i)) * crydist[numb] * global_mul, math.cos(math.rad(i)) * crydist[numb] * global_mul
-		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 200) -- Color Button, yes  its weired
-		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 100 * global_mul, 100 * global_mul, i - 180)
+		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 255) -- Color Button, yes  its weired
+		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 128 * global_mul, 128 * global_mul, i - 180)
 		surface.SetMaterial(slots[numb].material)
-		surface.SetDrawColor(Color(crygraya1, crygraya2, crygraya3, global_mul * 250))
-		surface.DrawTexturedRect(cryx + cryaddx - 35, cryy + cryaddy - 35 + 8, 70, 70)
+		surface.SetDrawColor(Color(crygraya1, crygraya2, crygraya3, global_mul * crygraya4))
+		
+		
+
+		surface.DrawTexturedRect(cryx + cryaddx - w/2 + iconsposfix[numb][1], cryy + cryaddy - w/2 + iconsposfix[numb][2], w, w)
 		numb = numb + 1
 	end
 
@@ -288,15 +284,23 @@ function GryMod.CRYHUD()
 		circlec = 27
 	end
 
-	surface.SetTexture(crycircletx)
-	surface.SetDrawColor(circlea, circleb, circlec, global_mul * 230)
-	surface.DrawTexturedRectRotated(cryx, cryy, 128 * global_mul, 128 * global_mul, math.fmod(CurTime() * -16, 360))
-	surface.SetTexture(cryarrowtx)
-	surface.SetDrawColor(150, 155, 150, global_mul * 255)
-	local arrowang = math.pi * 2 - cursorang + math.pi / 2
-	local arrowdist = 47 * global_mul
-	local arrowx, arrowy = math.sin(arrowang) * arrowdist, math.cos(arrowang) * arrowdist
-	surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, 128 / 3, 32 / 3, math.deg(arrowang) + 180)
+	
+		surface.SetTexture(crycircletx)
+		surface.SetDrawColor(circlea, circleb, circlec, global_mul * 230)
+		surface.DrawTexturedRectRotated(cryx, cryy, 128 * global_mul, 128 * global_mul, math.fmod(CurTime() * -16, 360))
+	
+	if GryMod.MouseInCircle(cryx, cryy) then
+		surface.SetTexture(cryarrowtx)
+		if LocalPlayer():CanGryMod() then
+			surface.SetDrawColor(150, 155, 150, global_mul * 255)
+		else
+			surface.SetDrawColor(255, 23, 27, global_mul * 255)
+		end
+		local arrowang = math.pi * 2 - cursorang + math.pi / 2
+		local arrowdist = 68 * global_mul
+		local arrowx, arrowy = math.sin(arrowang) * arrowdist, math.cos(arrowang) * arrowdist
+		surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, 64 , 32 , math.deg(arrowang) + 180)
+	end
 
 	if (selected ~= oldselected and selected ~= 0) then
 		surface.PlaySound(snd_h)
@@ -306,7 +310,11 @@ end
 
 function GryMod.EnableMenu(b)
 	if (b and global_mul_goal == 0) then
-		surface.PlaySound(snd_o)
+		if LocalPlayer():CanGryMod() then
+			surface.PlaySound(snd_o)
+		else
+			surface.PlaySound(snd_e)
+		end
 		GRYOPEN = true
 	end
 
@@ -392,7 +400,10 @@ net.Receive("gry_nanosuit_mode_change", function()
 end)
 
 function GryMod.CryOpenClose(ply, command, args)
-	if (command ~= "+crysishud") then
+
+
+
+	if (LocalPlayer():CanGryMod() and command ~= "+crysishud") then
 		if (GryMod.MouseInCircle(cryx, cryy)) then
 			surface.PlaySound(snd_s)
 			if slots[selected] then
@@ -419,7 +430,9 @@ concommand.Add("-crysishud", GryMod.CryOpenClose)
 ----------------------------------------------------------------------------
 function GryMod.CloackAttack(ply, key)
 	if key == IN_ATTACK and LocalPlayer().NanosuitMode == GryMod.Modes.CLOAK then
-		LocalPlayer():SetNanosuitMode(GryMod.Modes.ARMOR)
+		LocalPlayer():SetNanosuitMode(GryMod.Modes.ARMOR, true)
+		net.Start("gry_empty_energy")
+		net.SendToServer() -- too lazy to fight cheaters
 	end
 end
 

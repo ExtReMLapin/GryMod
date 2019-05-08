@@ -1,6 +1,4 @@
-do
-	return
-end
+
 
 function surface.ScreenScale(size)
 	return size * (ScrH() / 480.0)
