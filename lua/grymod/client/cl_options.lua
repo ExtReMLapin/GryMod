@@ -64,7 +64,7 @@ function GryMod.GryOptionschute(Panel)
 	CheckBoxThing:SetConVar("cl_Eyefinity")
 	CheckBoxThing:SetValue(0)
 	CheckBoxThing:SizeToContents()
-	
+
 
 	Panel:AddItem(disabled1)
 	Panel:AddItem(enabled1)
@@ -74,12 +74,6 @@ function GryMod.GryOptionschute(Panel)
 	Panel:AddItem(NumSliderThingy1)
 	Panel:AddItem(CheckBoxThing)
 
-
-	Panel:AddControl("Button", {
-		Label = "Credits",
-		Text = "tel me who med dis mod plz",
-		Command = "GryCredits"
-	})
 end
 
 function GryMod.GryOptionschuteOptionmenu()
