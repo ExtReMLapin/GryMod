@@ -115,23 +115,28 @@ slots[3] = armormode["Speed"]
 slots[4] = armormode["Armor"]
 slots[5] = armormode["Drop"]
 
+local function px(x)
+	return ScrW() * (x / 2560)
+end
+
+
 
 local iconsposfix = {
-{5,8}, -- cloak
-{7,3}, -- strength
-{0,-2}, -- speed
-{-6,3}, -- armor
-{-3,12}, -- drop
+{px(5),px(8)}, -- cloak
+{px(7),px(3)}, -- strength
+{px(0),px(-2)}, -- speed
+{px(-6),px(3)}, -- armor
+{px(-3),px(12)}, -- drop
 }
 
 function GryMod.MouseInCircle(x, y)
 	local centerdist = math.Distance(gui.MouseX(), gui.MouseY(), x, y)
 
-	return centerdist > 50 and centerdist < 220
+	return centerdist > px(50) and centerdist < px(220)
 end
 
 --Checks if the mouse is in the circle
-local w = 90
+local w = px(90)
 
 -- fow how many seconds you show the grid orange thing effect on buttons after being selected
 local timeshowselected = 0.25
@@ -193,7 +198,7 @@ function GryMod.CRYHUD()
 
 		-- Arrows
 		if LocalPlayer():CanGryMod() then
-			crydistadd = 128
+			crydistadd = px(128)
 			crygray1 = 255
 			crygray2 = 255
 			crygray3 = 255
@@ -201,7 +206,7 @@ function GryMod.CRYHUD()
 
 		-- NORMAL
 		if not LocalPlayer():CanGryMod() then
-			crydistadd = 128
+			crydistadd = px(128)
 			crygray1 = 240
 			crygray2 = 23
 			crygray3 = 27
@@ -214,7 +219,7 @@ function GryMod.CRYHUD()
 
 		--   ROUGE
 		if (slots[numb].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
-			crydistadd = 128
+			crydistadd = px(128)
 			crygray1 = 240
 			crygray2 = 23
 			crygray3 = 27
@@ -223,7 +228,7 @@ function GryMod.CRYHUD()
 		crydist[numb] = crydist[numb] + (crydistadd - crydist[numb]) * math.Clamp(FrameTime() * 20, 0, 1)
 		local cryaddx, cryaddy = math.sin(math.rad(i)) * crydist[numb] * global_mul, math.cos(math.rad(i)) * crydist[numb] * global_mul
 		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 255) -- button color
-		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 128 * global_mul, 128 * global_mul, i - 180)
+		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, px(128) * global_mul, px(128) * global_mul, i - 180)
 
 
 		surface.SetMaterial(slots[numb].material)
@@ -244,7 +249,7 @@ function GryMod.CRYHUD()
 			end
 			surface.SetTexture(crytx_grid)
 			surface.SetDrawColor(255, 206, 75, global_mul * 255 * alpha) -- button color
-			surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 128 * global_mul, 128 * global_mul, i - 180)
+			surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, px(128) * global_mul, px(128) * global_mul, i - 180)
 		end
 
 
@@ -276,7 +281,7 @@ function GryMod.CRYHUD()
 
 	surface.SetTexture(crycircletx)
 	surface.SetDrawColor(circlea, circleb, circlec, global_mul * 200)
-	surface.DrawTexturedRectRotated(cryx, cryy, 128 * global_mul, 128 * global_mul, math.fmod(CurTime() * -16, 360))
+	surface.DrawTexturedRectRotated(cryx, cryy, px(128) * global_mul, px(128) * global_mul, math.fmod(CurTime() * -16, 360))
 
 	if GryMod.MouseInCircle(cryx, cryy) then
 		surface.SetTexture(cryarrowtx)
@@ -286,9 +291,9 @@ function GryMod.CRYHUD()
 			surface.SetDrawColor(255, 23, 27, global_mul * 255)
 		end
 		local arrowang = math.pi * 2 - cursorang + math.pi / 2
-		local arrowdist = 68 * global_mul
+		local arrowdist = px(68) * global_mul
 		local arrowx, arrowy = math.sin(arrowang) * arrowdist, math.cos(arrowang) * arrowdist
-		surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, 64 , 32 , math.deg(arrowang) + 180)
+		surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, px(64) , px(32) , math.deg(arrowang) + 180)
 	end
 
 	if (selected ~= oldselected and selected ~= 0 and LocalPlayer():CanGryMod()) then
@@ -464,6 +469,8 @@ function GryMod.mathradar()
 
 	timer.Simple(0.1, GryMod.mathradar)
 end
+
+
 
 GryMod.mathradar()
 local alpha_ch = {0, 0}
@@ -799,7 +806,7 @@ end)
 
 
 ----------------FIX----------------
-local MOUSE_CHECK_DIST = 160
+local MOUSE_CHECK_DIST = px(160)
 
 function GryMod.RadialThink()
 	if not GRYOPEN then
