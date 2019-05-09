@@ -9,9 +9,9 @@ Crysis for Garry's Mod
            
 **YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
 **YOU ARE NOT ALLOWED TO MAKE MONEY USING THIS MOD**
-**This project is abandonned, if you want peoples to play it, feel free to make a pull request fixing all the shit**
 
-The code is garbage because it's the very first project i worked on
+
+The code is kindda garbage because it's the very first project i worked on
            
            
 > **Features:**
@@ -22,7 +22,6 @@ The code is garbage because it's the very first project i worked on
 > - Eyefinity support
 > - Auto resizing support (Different monitors format and different sizes, so it will not look like shit)
 > - Pseudo-Vectorized textures
-> - ScaleForm GFx like animations styles (Suit init etc...)
 
            
 How it Works 
@@ -44,41 +43,12 @@ If it says "Unknow command : +crysishud", reinstall it.
          
 Developers       
 -------------
-##
->NW vars are less used as possible, here are they :
-
-* Strenght
-
-* Armor
-
-* Speed
-
-* Cloak
 
 ##
->Here is the NW Int
+>Here is the NW Float
 
 * GryEnergy (0-100)
 
-
-##
-
->Network Strings (aka the net. things)
-
-
-* cloak_stop // used to prevent the usage of NW bools, because fuck off that's why
-
-* cloak_start
-
-* armor_start
-
-* speed_start
-
-* strenght_start
-
-* gry_spawn
-
-* gry_jump // used to fix problems, you won't need it
 
 
 
@@ -100,3 +70,4 @@ Vuthakral Darastrix : Ideas and his work on the scar materials
 
 Dlaor : The original quick-menu
 
+Sven Dixon :  Designed the original crysis interface suite
