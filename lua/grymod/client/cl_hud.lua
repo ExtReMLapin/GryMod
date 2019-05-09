@@ -108,6 +108,7 @@ end
 local grymodesuit = gry_icons[1] -- Init mode, you better not reload this file, else there will be a de-sync
 
 local crytx = surface.GetTextureID("crysis_button")
+local crytx_grid = surface.GetTextureID("crysis_button_grid")
 local crycircletx = surface.GetTextureID("crysis_circle")
 local cryarrowtx = surface.GetTextureID("crysis_arrow")
 local global_mul, global_mul_goal = 0, 0 --The global multiplier, if this is 0 the menu is hidden, 1 and it's fully visible, between 0 and 1 for transition
@@ -125,18 +126,23 @@ local armormode = {}
 armormode["Armor"] = {}
 armormode["Armor"].material = gry_icons[1]
 armormode["Armor"].id = GryMod.Modes.ARMOR
+armormode["Armor"].selectedtime = 0
 armormode["Speed"] = {}
 armormode["Speed"].material = gry_icons[2]
 armormode["Speed"].id = GryMod.Modes.SPEED
+armormode["Speed"].selectedtime = 0
 armormode["Strength"] = {}
 armormode["Strength"].material = gry_icons[3]
 armormode["Strength"].id = GryMod.Modes.STRENGTH
+armormode["Strength"].selectedtime = 0
 armormode["Cloak"] = {}
 armormode["Cloak"].material = gry_icons[4]
 armormode["Cloak"].id = GryMod.Modes.CLOAK
+armormode["Cloak"].selectedtime = 0
 armormode["Drop"] = {}
 armormode["Drop"].material = gry_icons[5]
 armormode["Drop"].id = GryMod.Modes.DROP
+armormode["Drop"].selectedtime = 0
 local slots = {} --Standard slots, change these at will
 slots[1] = armormode["Cloak"]
 slots[2] = armormode["Strength"]
@@ -161,6 +167,8 @@ end
 
 --Checks if the mouse is in the circle
 local w = 90
+
+
 function GryMod.CRYHUD()
 	if (global_mul_goal ~= global_mul) then
 		global_mul = global_mul + (global_mul_goal - global_mul) * math.Clamp(FrameTime() * 10, 0, 1) --I love mah math
@@ -254,26 +262,48 @@ function GryMod.CRYHUD()
 
 		crydist[numb] = crydist[numb] + (crydistadd - crydist[numb]) * math.Clamp(FrameTime() * 20, 0, 1)
 		local cryaddx, cryaddy = math.sin(math.rad(i)) * crydist[numb] * global_mul, math.cos(math.rad(i)) * crydist[numb] * global_mul
-		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 255) -- Color Button, yes  its weired
+		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 255) -- button color
 		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 128 * global_mul, 128 * global_mul, i - 180)
+
+
 		surface.SetMaterial(slots[numb].material)
 		surface.SetDrawColor(Color(crygraya1, crygraya2, crygraya3, global_mul * crygraya4))
-		
-		
 
-		surface.DrawTexturedRect(cryx + cryaddx - w/2 + iconsposfix[numb][1], cryy + cryaddy - w/2 + iconsposfix[numb][2], w, w)
+		surface.DrawTexturedRect(cryx + cryaddx - w / 2 + iconsposfix[numb][1], cryy + cryaddy - w / 2 + iconsposfix[numb][2], w, w)
+
+
+		local timeSelected = CurTime() - slots[numb].selectedtime
+		local timeshowselected = 0.25
+		if (timeSelected < timeshowselected) then
+			local alpha = 0;
+			 --first half
+			if (timeSelected <= timeshowselected / 2 ) then
+				alpha = math.Remap(timeSelected, 0, timeshowselected / 2, 0, 0.5)
+			else
+				alpha = math.Remap(timeSelected, timeshowselected / 2,timeshowselected , 0.5,0)
+			end
+			
+			surface.SetTexture(crytx_grid)
+			surface.SetDrawColor(255, 206, 75, global_mul * 255 * alpha) -- button color
+			surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 128 * global_mul, 128 * global_mul, i - 180)
+		end
+
+
+
 		numb = numb + 1
 	end
 
 	if LocalPlayer():CanGryMod() then
-		circlea = 127
-		circleb = 156
-		circlec = 133
+
 
 		if selected > 0 then
 			circlea = 177
 			circleb = 206
 			circlec = 183
+		else
+			circlea = 127
+			circleb = 156
+			circlec = 133
 		end
 	end
 
@@ -303,6 +333,7 @@ function GryMod.CRYHUD()
 	end
 
 	if (selected ~= oldselected and selected ~= 0) then
+		slots[selected].selectedtime = CurTime()
 		surface.PlaySound(snd_h)
 		oldselected = selected
 	end
