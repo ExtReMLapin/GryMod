@@ -1,24 +1,3 @@
--- About 20% performance boost, for all the following vars
-local FindMetaTable = FindMetaTable
-local LocalPlayer = LocalPlayer
-local CurTime = CurTime
-local IsValid = IsValid
-local pairs = pairs
-local Color = Color
-local ScrW = ScrW
-local ScrH = ScrH
-local concommand = concommand
-local surface = surface
-local render = render
-local timer = timer
-local ents = ents
-local hook = hook
-local math = math
-local draw = draw
-local util = util
-local gui = gui
-local cam = cam
---Warning : The second part of the code (the non-quick-menu-part) is 60% brain fuck because of all the fucking retards with their WW2 Monitor which only support 800x600
 --Yeah, fuck you, the guys with shitty monitors.
 local color_white = color_white
 local GryModXDistance = CreateClientConVar("gry_xadd", "0", false, false)
@@ -90,20 +69,6 @@ local function drawTextRotated(text, font, x, y, color, ang)
 	render.PopFilterMin()
 end
 
--- Just drawing lib, used one time or less, not really used
-local function drawBoxRotated(x, y, scalex, scaley, color, ang)
-	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
-	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
-	local m = Matrix()
-	m:SetAngles(Angle(0, ang, 0))
-	m:SetTranslation(Vector(x, y, 0))
-	cam.PushModelMatrix(m)
-	surface.SetDrawColor(color)
-	surface.DrawRect(0, 0, scalex, scaley)
-	cam.PopModelMatrix()
-	render.PopFilterMag()
-	render.PopFilterMin()
-end
 
 local grymodesuit = gry_icons[1] -- Init mode, you better not reload this file, else there will be a de-sync
 
@@ -168,6 +133,8 @@ end
 --Checks if the mouse is in the circle
 local w = 90
 
+-- fow how many seconds you show the grid orange thing effect on buttons after being selected
+local timeshowselected = 0.25
 
 function GryMod.CRYHUD()
 	if (global_mul_goal ~= global_mul) then
@@ -215,7 +182,8 @@ function GryMod.CRYHUD()
 			crygraya2 = 192
 			crygraya3 = 80
 			crygraya4 = 225
-		elseif not LocalPlayer():CanGryMod() or (numb == selected and not LocalPlayer():CanGryMod()) or (selected == 5 and not IsValid(LocalPlayer():GetActiveWeapon())) then
+		end
+		if not LocalPlayer():CanGryMod() or (numb == selected and not LocalPlayer():CanGryMod()) or (slots[numb].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			crygraya1 = 240
 			crygraya2 = 27
 			crygraya3 = 27
@@ -233,7 +201,7 @@ function GryMod.CRYHUD()
 
 		-- NORMAL
 		if not LocalPlayer():CanGryMod() then
-			crydistadd = 96
+			crydistadd = 128
 			crygray1 = 240
 			crygray2 = 23
 			crygray3 = 27
@@ -244,17 +212,9 @@ function GryMod.CRYHUD()
 			crydistadd = crydistadd * 1.15
 		end
 
-		-- NORMAL
-		if (numb == selected and not LocalPlayer():CanGryMod()) then
-			crydistadd = 96
-			crygray1 = 240
-			crygray2 = 23
-			crygray3 = 27
-		end
-
 		--   ROUGE
-		if (selected == 5 and not IsValid(LocalPlayer():GetActiveWeapon())) then
-			crydistadd = 96
+		if (slots[numb].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
+			crydistadd = 128
 			crygray1 = 240
 			crygray2 = 23
 			crygray3 = 27
@@ -273,7 +233,7 @@ function GryMod.CRYHUD()
 
 
 		local timeSelected = CurTime() - slots[numb].selectedtime
-		local timeshowselected = 0.25
+		
 		if (timeSelected < timeshowselected) then
 			local alpha = 0;
 			 --first half
@@ -282,7 +242,6 @@ function GryMod.CRYHUD()
 			else
 				alpha = math.Remap(timeSelected, timeshowselected / 2,timeshowselected , 0.5,0)
 			end
-			
 			surface.SetTexture(crytx_grid)
 			surface.SetDrawColor(255, 206, 75, global_mul * 255 * alpha) -- button color
 			surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, 128 * global_mul, 128 * global_mul, i - 180)
@@ -301,9 +260,9 @@ function GryMod.CRYHUD()
 			circleb = 206
 			circlec = 183
 		else
-			circlea = 127
-			circleb = 156
-			circlec = 133
+			circlea = 255
+			circleb = 255
+			circlec = 255
 		end
 	end
 
@@ -314,11 +273,11 @@ function GryMod.CRYHUD()
 		circlec = 27
 	end
 
-	
-		surface.SetTexture(crycircletx)
-		surface.SetDrawColor(circlea, circleb, circlec, global_mul * 230)
-		surface.DrawTexturedRectRotated(cryx, cryy, 128 * global_mul, 128 * global_mul, math.fmod(CurTime() * -16, 360))
-	
+
+	surface.SetTexture(crycircletx)
+	surface.SetDrawColor(circlea, circleb, circlec, global_mul * 200)
+	surface.DrawTexturedRectRotated(cryx, cryy, 128 * global_mul, 128 * global_mul, math.fmod(CurTime() * -16, 360))
+
 	if GryMod.MouseInCircle(cryx, cryy) then
 		surface.SetTexture(cryarrowtx)
 		if LocalPlayer():CanGryMod() then
@@ -332,10 +291,15 @@ function GryMod.CRYHUD()
 		surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, 64 , 32 , math.deg(arrowang) + 180)
 	end
 
-	if (selected ~= oldselected and selected ~= 0) then
-		slots[selected].selectedtime = CurTime()
+	if (selected ~= oldselected and selected ~= 0 and LocalPlayer():CanGryMod()) then
+
 		surface.PlaySound(snd_h)
-		oldselected = selected
+		if (slots[selected].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
+			oldselected = selected
+		else
+			slots[selected].selectedtime = CurTime()
+			oldselected = selected
+		end
 	end
 end
 
