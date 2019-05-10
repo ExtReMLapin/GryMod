@@ -149,7 +149,7 @@ hook.Add("Think", "GryModSounds", function()
 
 	if speedLoopGround != nil then
 		local distanceFromGround = LocalPlayer():GetPos():Distance(tr.HitPos)
-		local volume = math.Remap(distanceFromGround, 0, 120, 1, 0)
+		local volume = math.Max(math.Remap(distanceFromGround, 0, 300, 1, 0),0)
 		speedLoopGround:SetVolume(volume)
 	end
 
