@@ -68,7 +68,7 @@ local speedLoopUnderwater;
 sound.PlayFile("sound/suit/servo_speed_loop_01c.mp3", "noblock noplay",
 	function(soundchannel, error, str )
 		speedLoopGround = soundchannel
-		soundchannel:EnableLooping()
+		soundchannel:EnableLooping(true)
 		soundchannel:SetVolume(0.5)
 
 	end)
@@ -76,7 +76,7 @@ sound.PlayFile("sound/suit/servo_speed_loop_01c.mp3", "noblock noplay",
 sound.PlayFile("sound/suit/servo_speed_loop_01_underwater.mp3", "noblock noplay",
 	function(soundchannel, error, str )
 	speedLoopUnderwater = soundchannel
-	soundchannel:EnableLooping()
+	soundchannel:EnableLooping(true)
 	soundchannel:SetVolume(0.5)
 end)
 
@@ -142,6 +142,16 @@ hook.Add("Think", "GryModSounds", function()
 	end
 
 	-- if we get from water to air or to air from water, swap the two sounds
+	local tr = util.TraceLine( {
+	start = LocalPlayer():GetPos(),
+	endpos = LocalPlayer():EyePos() + Vector(0,0,-50000000),
+} )
+
+	if speedLoopGround != nil then
+		local distanceFromGround = LocalPlayer():GetPos():Distance(tr.HitPos)
+		local volume = math.Remap(distanceFromGround, 0, 120, 1, 0)
+		speedLoopGround:SetVolume(volume)
+	end
 
 	if (wasUnderwater and LocalPlayer():WaterLevel() < 3) then
 		wasUnderwater = false
