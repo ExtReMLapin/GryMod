@@ -120,7 +120,6 @@ local function px(x)
 end
 
 
-
 local iconsposfix = {
 {px(5),px(8)}, -- cloak
 {px(7),px(3)}, -- strength
@@ -238,7 +237,7 @@ function GryMod.CRYHUD()
 
 
 		local timeSelected = CurTime() - slots[numb].selectedtime
-		
+	
 		if (timeSelected < timeshowselected) then
 			local alpha = 0;
 			 --first half
@@ -438,7 +437,10 @@ end
 
 
 
-
+local Gry_Danger0 = 0;
+local Gry_Danger1 = 0;
+local Gry_Danger2 = 0;
+local Gry_Danger3 = 0;
 
 function GryMod.mathradar()
 	radarnpc = {}
@@ -457,7 +459,6 @@ function GryMod.mathradar()
 		end
 
 		raderpers = math.Min(math.MapSimple(table.Count(radarnpc), 20, 150), 150) -- For the color
-		levelEnemies = math.Min(math.MapSimple(table.Count(radarnpc), 20, 100), 100) -- For the API/Level of the texture
 		GryMod.rcr = 105 + raderpers
 		GryMod.rcg = 235 - raderpers * 1.5
 		GryMod.rcb = 100 - (raderpers / 1.8)
@@ -840,11 +841,6 @@ function GryMod.RadialThink()
 		gui.SetMousePos(ScrW() / 2 + newx, ScrH() / 2 + newy)
 	end
 end
-
-
-
-
-
 
 
 local hidethings = {
