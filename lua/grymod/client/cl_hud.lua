@@ -1,4 +1,3 @@
---Yeah, fuck you, the guys with shitty monitors.
 local color_white = color_white
 local GryModXDistance = CreateClientConVar("gry_xadd", "0", false, false)
 local GryModXDistance2 = CreateClientConVar("gry_xdist", "0", false, false)
@@ -25,14 +24,9 @@ local tempscrh = ScrH()
 local base = surface.GetTextureID("cryhud/base")
 local compass = surface.GetTextureID("cryhud/compass")
 
-
-
 function meta:CanGryMod()
 	return self:Alive()
 end
-
-
-
 
 -- You can change it , for others admins mods , but you'll have to change it in example : 
 --[[  
@@ -69,9 +63,7 @@ local function drawTextRotated(text, font, x, y, color, ang)
 	render.PopFilterMin()
 end
 
-
 local grymodesuit = gry_icons[1] -- Init mode, you better not reload this file, else there will be a de-sync
-
 local crytx = surface.GetTextureID("crysis_button")
 local crytx_grid = surface.GetTextureID("crysis_button_grid")
 local crycircletx = surface.GetTextureID("crysis_circle")
@@ -119,15 +111,13 @@ local function px(x)
 	return ScrW() * (x / 2560)
 end
 
+local iconsposfix = {{px(5), px(8)}, {px(7), px(3)}, {px(0), px(-2)}, {px(-6), px(3)}, {px(-3), px(12)}}
 
-local iconsposfix = {
-{px(5),px(8)}, -- cloak
-{px(7),px(3)}, -- strength
-{px(0),px(-2)}, -- speed
-{px(-6),px(3)}, -- armor
-{px(-3),px(12)}, -- drop
-}
-
+-- cloak
+-- strength
+-- speed
+-- armor
+-- drop
 function GryMod.MouseInCircle(x, y)
 	local centerdist = math.Distance(gui.MouseX(), gui.MouseY(), x, y)
 
@@ -136,7 +126,6 @@ end
 
 --Checks if the mouse is in the circle
 local w = px(90)
-
 -- fow how many seconds you show the grid orange thing effect on buttons after being selected
 local timeshowselected = 0.25
 
@@ -173,8 +162,6 @@ function GryMod.CRYHUD()
 
 	-- Aka if mouse is not in da circle , dont do anything
 	for i = 0 + cryadd / 2, 360 - cryadd / 2, cryadd do
-
-
 		-- Current selected mode
 		local crygraya1 = 131
 		local crygraya2 = 176
@@ -187,6 +174,7 @@ function GryMod.CRYHUD()
 			crygraya3 = 80
 			crygraya4 = 225
 		end
+
 		if not LocalPlayer():CanGryMod() or (numb == selected and not LocalPlayer():CanGryMod()) or (slots[numb].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			crygraya1 = 240
 			crygraya2 = 27
@@ -228,37 +216,30 @@ function GryMod.CRYHUD()
 		local cryaddx, cryaddy = math.sin(math.rad(i)) * crydist[numb] * global_mul, math.cos(math.rad(i)) * crydist[numb] * global_mul
 		surface.SetDrawColor(crygray1, crygray2, crygray3, global_mul * 255) -- button color
 		surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, px(128) * global_mul, px(128) * global_mul, i - 180)
-
-
 		surface.SetMaterial(slots[numb].material)
 		surface.SetDrawColor(Color(crygraya1, crygraya2, crygraya3, global_mul * crygraya4))
-
 		surface.DrawTexturedRect(cryx + cryaddx - w / 2 + iconsposfix[numb][1], cryy + cryaddy - w / 2 + iconsposfix[numb][2], w, w)
-
-
 		local timeSelected = CurTime() - slots[numb].selectedtime
-	
+
 		if (timeSelected < timeshowselected) then
-			local alpha = 0;
-			 --first half
-			if (timeSelected <= timeshowselected / 2 ) then
+			local alpha = 0
+
+			--first half
+			if (timeSelected <= timeshowselected / 2) then
 				alpha = math.Remap(timeSelected, 0, timeshowselected / 2, 0, 0.5)
 			else
-				alpha = math.Remap(timeSelected, timeshowselected / 2,timeshowselected , 0.5,0)
+				alpha = math.Remap(timeSelected, timeshowselected / 2, timeshowselected, 0.5, 0)
 			end
+
 			surface.SetTexture(crytx_grid)
 			surface.SetDrawColor(255, 206, 75, global_mul * 255 * alpha) -- button color
 			surface.DrawTexturedRectRotated(cryx + cryaddx, cryy + cryaddy, px(128) * global_mul, px(128) * global_mul, i - 180)
 		end
 
-
-
 		numb = numb + 1
 	end
 
 	if LocalPlayer():CanGryMod() then
-
-
 		if selected > 0 then
 			circlea = 177
 			circleb = 206
@@ -277,27 +258,28 @@ function GryMod.CRYHUD()
 		circlec = 27
 	end
 
-
 	surface.SetTexture(crycircletx)
 	surface.SetDrawColor(circlea, circleb, circlec, global_mul * 200)
 	surface.DrawTexturedRectRotated(cryx, cryy, px(128) * global_mul, px(128) * global_mul, math.fmod(CurTime() * -16, 360))
 
 	if GryMod.MouseInCircle(cryx, cryy) then
 		surface.SetTexture(cryarrowtx)
+
 		if LocalPlayer():CanGryMod() then
 			surface.SetDrawColor(150, 155, 150, global_mul * 255)
 		else
 			surface.SetDrawColor(255, 23, 27, global_mul * 255)
 		end
+
 		local arrowang = math.pi * 2 - cursorang + math.pi / 2
 		local arrowdist = px(68) * global_mul
 		local arrowx, arrowy = math.sin(arrowang) * arrowdist, math.cos(arrowang) * arrowdist
-		surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, px(64) , px(32) , math.deg(arrowang) + 180)
+		surface.DrawTexturedRectRotated(cryx + arrowx, cryy + arrowy, px(64), px(32), math.deg(arrowang) + 180)
 	end
 
 	if (selected ~= oldselected and selected ~= 0 and LocalPlayer():CanGryMod()) then
-
 		surface.PlaySound(snd_h)
+
 		if (slots[selected].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			oldselected = selected
 		else
@@ -308,13 +290,14 @@ function GryMod.CRYHUD()
 end
 
 function GryMod.EnableMenu(b)
+	GRYOPEN = b
+
 	if (b and global_mul_goal == 0) then
 		if LocalPlayer():CanGryMod() then
 			surface.PlaySound(snd_o)
 		else
 			surface.PlaySound(snd_e)
 		end
-		GRYOPEN = true
 	end
 
 	gui.EnableScreenClicker(b)
@@ -324,10 +307,6 @@ function GryMod.EnableMenu(b)
 	else
 		global_mul_goal = 0
 	end
-
-	if not b then
-		GRYOPEN = false
-	end
 end
 
 net.Receive("gry_jump", function()
@@ -335,7 +314,10 @@ net.Receive("gry_jump", function()
 end)
 
 function meta:SetNanosuitMode(mode, networked)
-	if (mode == LocalPlayer().NanosuitMode) then return end
+	if (mode == LocalPlayer().NanosuitMode) then
+		return
+	end
+
 	if mode == GryMod.Modes.ARMOR then
 		surface.PlaySound(Sound("suit/suit_maximum_armor.mp3"))
 		surface.PlaySound(Sound("suit/suit_armor_108.mp3"))
@@ -377,16 +359,15 @@ function meta:SetNanosuitMode(mode, networked)
 		end
 
 		LocalPlayer().NanosuitMode = mode
-		
 
 		for k, v in pairs(armormode) do
 			if v.id == mode then
 				grymodesuit = v.material
 				break
 			end
-
 		end
-	end -- it's not a real mode so don't change anything
+	end
+	-- it's not a real mode so don't change anything
 end
 
 net.Receive("gry_nanosuit_mode_change", function()
@@ -399,16 +380,13 @@ net.Receive("gry_nanosuit_mode_change", function()
 end)
 
 function GryMod.CryOpenClose(ply, command, args)
-
-
-
 	if (LocalPlayer():CanGryMod() and command ~= "+crysishud") then
 		if (GryMod.MouseInCircle(cryx, cryy)) then
 			surface.PlaySound(snd_s)
+
 			if slots[selected] then
 				LocalPlayer():SetNanosuitMode(slots[selected].id, true)
 			end
-
 		elseif (global_mul_goal == 1) then
 			surface.PlaySound(snd_c)
 		end
@@ -435,12 +413,10 @@ function GryMod.CloackAttack(ply, key)
 	end
 end
 
-
-
-local Gry_Danger0 = 0;
-local Gry_Danger1 = 0;
-local Gry_Danger2 = 0;
-local Gry_Danger3 = 0;
+local Gry_Danger0 = 0
+local Gry_Danger1 = 0
+local Gry_Danger2 = 0
+local Gry_Danger3 = 0
 
 function GryMod.mathradar()
 	radarnpc = {}
@@ -470,8 +446,6 @@ function GryMod.mathradar()
 
 	timer.Simple(0.1, GryMod.mathradar)
 end
-
-
 
 GryMod.mathradar()
 local alpha_ch = {0, 0}
@@ -629,8 +603,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (122 / 1920)
 		}
-	} -- energy left
+	}
 
+	-- energy left
 	local energybarpoly2 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
@@ -648,8 +623,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (113.5 / 1920)
 		}
-	} -- energy right
+	}
 
+	-- energy right
 	local healthbarpoly1 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
@@ -671,8 +647,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (97 / 1920)
 		}
-	} -- health left
+	}
 
+	-- health left
 	local healthbarpoly2 = {
 		{
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
@@ -690,8 +667,9 @@ function GryMod.hudbase()
 			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
 			y = ScrH() - GryMod.EyeFinityScrW() * (81 / 1920)
 		}
-	} -- health right
+	}
 
+	-- health right
 	render.ClearStencil()
 	render.SetStencilEnable(true)
 	render.SetStencilWriteMask(246)
@@ -804,8 +782,6 @@ net.Receive("gry_spawn", function()
 	end
 end)
 
-
-
 ----------------FIX----------------
 local MOUSE_CHECK_DIST = px(160)
 
@@ -841,7 +817,6 @@ function GryMod.RadialThink()
 		gui.SetMousePos(ScrW() / 2 + newx, ScrH() / 2 + newy)
 	end
 end
-
 
 local hidethings = {
 	["CHudHealth"] = true,
