@@ -45,7 +45,7 @@ Developers
 -------------
 
 ##
->Here is the NW Float
+>Here is the only NW Var used (it's a float)
 
 * GryEnergy (0-100)
 
@@ -62,11 +62,11 @@ Developers
   Credits     
 ======
 
-Lapin : Lua code, HUD materials and some others shitz
+Lapin : Lua code, HUD materials and some others stuff
 
 Carl Mcgee : Working on GryEngine models-map 
 
-Vuthakral Darastrix : Ideas and his work on the scar materials  
+Vuthakral Darastrix : Ideas and his work on the scar materials (now unused)
 
 Dlaor : The original quick-menu
 
