@@ -1,10 +1,10 @@
 GryMod
 
-[workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=153963150)
+[Workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=153963150)
 
-===================
+----------
+
 Crysis for Garry's Mod
-
 ----------
            
 **YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
@@ -41,7 +41,7 @@ If it says "Unknow command : +crysishud", reinstall it.
     
          
          
-Developers       
+Developers      
 -------------
 
 ##
@@ -59,8 +59,8 @@ Developers
   
 		
 		
-  Credits     
-======
+Credits    
+----------
 
 Lapin : Lua code, HUD materials and some others stuff
 
