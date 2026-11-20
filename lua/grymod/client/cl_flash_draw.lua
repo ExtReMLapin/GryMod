@@ -1,0 +1,425 @@
+-- Draws the display list of a Flash clip (see cl_flash.lua) with the atlas bitmaps converted by tools/flash2lua.
+--
+-- Shapes are textured quads whose corners go through the accumulated 2D matrix of the clips above them
+-- (Flash matrices: x' = a*x + c*y + tx, y' = b*x + d*y + ty), so rotation, skew and scale are exact. Quads
+-- sharing a material are batched into one mesh. Colour transforms become the vertex colour (exact for the white
+-- shapes the colour-set clips tint). Clip layers (masks) are drawn into the stencil. A clip with a blend mode
+-- (the HUD uses "add") is drawn as a group, as Flash does: its content is composed normally in a render
+-- target, then that image is added to what is below.
+
+local Flash = GryMod.Flash
+
+local BLEND_ADD = 8
+
+-- Debug switch: draw every blend mode as a normal alpha blend (FFDec's renderer does not honour them).
+Flash.IgnoreBlendModes = false
+
+-- Where the atlas PNG files are looked up. The addon ships them as materials/grymod/flash/*.png; tests
+-- running a branch that is not mounted as an addon can point this at a folder of the game's data directory.
+Flash.AtlasMaterialPath = function(path)
+	return path
+end
+
+local atlasMaterials = {}
+local whiteMaterial = Material("vgui/white")
+
+local function atlasMaterial(path)
+	local material = atlasMaterials[path]
+
+	if not material then
+		material = Material(Flash.AtlasMaterialPath(path), "nocull smooth mips")
+		-- Flash blends translucent shapes in gamma space; the engine blends in linear space (washed-out, brighter
+		-- translucent panels) unless the shader writes the colour as it is.
+		material:SetInt("$linearwrite", 1)
+		material:Recompute()
+		atlasMaterials[path] = material
+	end
+
+	return material
+end
+
+function Flash.ClearMaterialCache()
+	atlasMaterials = {}
+end
+
+-- Quad batch: flat array of 8 numbers x, y, u, v ... per vertex are too many calls; keep 4 vertices of
+-- (x, y, u, v, r, g, b, a) per quad.
+local batch = {}
+local batchCount = 0 -- numbers used
+local batchMaterial, batchBlend
+local position = Vector()
+
+local groupDepth = 0 -- > 0 while drawing the content of a group into its render target
+
+local function flush()
+	if batchCount == 0 then
+		return
+	end
+
+	local additive = batchBlend == BLEND_ADD
+
+	render.SetMaterial(batchMaterial)
+
+	if additive then
+		render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE, BLENDFUNC_ADD)
+	elseif groupDepth > 0 then
+		-- keep the alpha of what is drawn in the (initially transparent) group image
+		render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
+	end
+
+	mesh.Begin(MATERIAL_QUADS, batchCount / 32)
+
+	for i = 1, batchCount, 8 do
+		position:SetUnpacked(batch[i], batch[i + 1], 0)
+		mesh.Position(position)
+		mesh.TexCoord(0, batch[i + 2], batch[i + 3])
+		mesh.Color(batch[i + 4], batch[i + 5], batch[i + 6], batch[i + 7])
+		mesh.AdvanceVertex()
+	end
+
+	mesh.End()
+
+	if additive or groupDepth > 0 then
+		render.OverrideBlend(false)
+	end
+
+	batchCount = 0
+end
+
+local function vertex(x, y, u, v, r, g, b, a)
+	local n = batchCount
+	batch[n + 1] = x
+	batch[n + 2] = y
+	batch[n + 3] = u
+	batch[n + 4] = v
+	batch[n + 5] = r
+	batch[n + 6] = g
+	batch[n + 7] = b
+	batch[n + 8] = a
+	batchCount = n + 8
+end
+
+local function clamp255(value)
+	if value < 0 then
+		return 0
+	end
+
+	if value > 1 then
+		return 255
+	end
+
+	return value * 255
+end
+
+-- Measuring pass: drawShape only widens these bounds (screen pixels) instead of drawing.
+local measuring = false
+local minX, minY, maxX, maxY = 0, 0, 0, 0
+
+local function drawShape(movie, shape, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	if measuring then
+		local x0, y0 = shape.ox, shape.oy
+		local x1, y1 = x0 + shape.dw, y0 + shape.dh
+
+		for corner = 0, 3 do
+			local x = (corner == 1 or corner == 2) and x1 or x0
+			local y = corner >= 2 and y1 or y0
+			local sx, sy = a * x + c * y + tx, b * x + d * y + ty
+
+			if sx < minX then minX = sx end
+			if sx > maxX then maxX = sx end
+			if sy < minY then minY = sy end
+			if sy > maxY then maxY = sy end
+		end
+
+		return
+	end
+
+	local material = atlasMaterial(movie.atlases[shape.a])
+
+	if material ~= batchMaterial or blend ~= batchBlend then
+		flush()
+		batchMaterial = material
+		batchBlend = blend
+	end
+
+	local atlasW, atlasH = material:Width(), material:Height()
+	local u0, v0 = shape.x / atlasW, shape.y / atlasH
+	local u1, v1 = (shape.x + shape.w) / atlasW, (shape.y + shape.h) / atlasH
+
+	-- colour of a white shape under the accumulated colour transform
+	local r, g, bl, al = clamp255(mr + ar / 255), clamp255(mg + ag / 255), clamp255(mb + ab / 255), clamp255(ma + aa / 255)
+
+	local x0, y0 = shape.ox, shape.oy
+	local x1, y1 = x0 + shape.dw, y0 + shape.dh
+
+	vertex(a * x0 + c * y0 + tx, b * x0 + d * y0 + ty, u0, v0, r, g, bl, al)
+	vertex(a * x1 + c * y0 + tx, b * x1 + d * y0 + ty, u1, v0, r, g, bl, al)
+	vertex(a * x1 + c * y1 + tx, b * x1 + d * y1 + ty, u1, v1, r, g, bl, al)
+	vertex(a * x0 + c * y1 + tx, b * x0 + d * y1 + ty, u0, v1, r, g, bl, al)
+end
+
+-- The outline of a mask entry in stage pixels as {x1, y1, x2, y2, ...}, or nil when it has none.
+local function maskOutline(movie, entry)
+	local definition = movie.chars[entry.id]
+
+	if not definition or not definition.p then
+		return nil
+	end
+
+	if definition.k == "morph" and definition.pe and entry.ratio then
+		local t = entry.ratio / 65535
+		local outline = {}
+
+		for i = 1, #definition.p do
+			outline[i] = definition.p[i] + (definition.pe[i] - definition.p[i]) * t
+		end
+
+		return outline
+	end
+
+	return definition.p
+end
+
+local function beginMask(movie, entry, a, b, c, d, tx, ty)
+	local outline = maskOutline(movie, entry)
+
+	if not outline then
+		return false
+	end
+
+	flush()
+
+	local ma, mb, mc, md, mtx, mty = entry.m[1], entry.m[2], entry.m[3], entry.m[4], entry.m[5], entry.m[6]
+	-- compose the entry matrix under the accumulated one
+	local ea = a * ma + c * mb
+	local eb = b * ma + d * mb
+	local ec = a * mc + c * md
+	local ed = b * mc + d * md
+	local etx = a * mtx + c * mty + tx
+	local ety = b * mtx + d * mty + ty
+
+	render.ClearStencil()
+	render.SetStencilEnable(true)
+	render.SetStencilWriteMask(255)
+	render.SetStencilTestMask(255)
+	render.SetStencilReferenceValue(1)
+	render.SetStencilCompareFunction(STENCIL_ALWAYS)
+	render.SetStencilPassOperation(STENCIL_REPLACE)
+	render.SetStencilFailOperation(STENCIL_KEEP)
+	render.SetStencilZFailOperation(STENCIL_KEEP)
+	render.OverrideColorWriteEnable(true, false)
+	render.SetMaterial(whiteMaterial)
+
+	local points = #outline / 2
+	mesh.Begin(MATERIAL_TRIANGLES, points - 2)
+
+	for i = 2, points - 1 do
+		for corner = 0, 2 do
+			local k = corner == 0 and 1 or i + corner - 1
+			local x, y = outline[k * 2 - 1], outline[k * 2]
+			position:SetUnpacked(ea * x + ec * y + etx, eb * x + ed * y + ety, 0)
+			mesh.Position(position)
+			mesh.Color(255, 255, 255, 255)
+			mesh.AdvanceVertex()
+		end
+	end
+
+	mesh.End()
+	render.OverrideColorWriteEnable(false)
+	render.SetStencilCompareFunction(STENCIL_EQUAL)
+	render.SetStencilPassOperation(STENCIL_KEEP)
+
+	return true
+end
+
+local function endMask()
+	flush()
+	render.SetStencilEnable(false)
+end
+
+local drawEntries
+
+local groupTargets = {}
+local groupMaterials = {}
+
+local function powerOfTwo(n)
+	local p = 64
+
+	while p < n do
+		p = p * 2
+	end
+
+	return p
+end
+
+local function groupTarget(width, height, depth)
+	local name = "grymod_flash_f" .. depth .. "_" .. width .. "x" .. height
+	local target = groupTargets[name]
+
+	if not target then
+		-- a float format: 8-bit render targets are decoded as sRGB when sampled, which would darken the image
+		target = GetRenderTargetEx(name, width, height, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_SEPARATE, 0, 0, IMAGE_FORMAT_RGBA16161616F)
+		groupTargets[name] = target
+	end
+
+	return target
+end
+
+local function groupMaterial(target)
+	local name = target:GetName()
+	local material = groupMaterials[name]
+
+	if not material then
+		material = CreateMaterial("grymod_flash_m3_" .. name, "UnlitGeneric", {
+			["$basetexture"] = name,
+			["$vertexcolor"] = 1,
+			["$vertexalpha"] = 1,
+			["$linearwrite"] = 1,
+			["$nocull"] = 1,
+			["$ignorez"] = 1
+		})
+		groupMaterials[name] = material
+	end
+
+	return material
+end
+
+local MAX_GROUP = 4096
+
+-- Draws the clip of `entry` as one image composed with `blend` (see the header).
+local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	measuring = true
+	minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+	drawEntries(entry.clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	measuring = false
+
+	if minX > maxX then
+		return
+	end
+
+	local x0, y0 = math.floor(minX) - 1, math.floor(minY) - 1
+	local width, height = math.ceil(maxX) + 1 - x0, math.ceil(maxY) + 1 - y0
+	local textureW, textureH = powerOfTwo(width), powerOfTwo(height)
+
+	if textureW > MAX_GROUP or textureH > MAX_GROUP then
+		return
+	end
+
+	flush()
+
+	local target = groupTarget(textureW, textureH, groupDepth)
+	render.PushRenderTarget(target)
+	render.Clear(0, 0, 0, 0, true, true, true)
+	cam.Start2D()
+	groupDepth = groupDepth + 1
+	drawEntries(entry.clip, a, b, c, d, tx - x0, ty - y0, mr, mg, mb, ma, ar, ag, ab, aa)
+	flush()
+	groupDepth = groupDepth - 1
+	cam.End2D()
+	render.PopRenderTarget()
+
+	-- The image holds colours already multiplied by their alpha: "add" adds them, any other mode is a normal over.
+	render.SetMaterial(groupMaterial(target))
+
+	if blend == BLEND_ADD then
+		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE, BLENDFUNC_ADD)
+	else
+		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
+	end
+
+	local u1, v1 = width / textureW, height / textureH
+	mesh.Begin(MATERIAL_QUADS, 1)
+
+	for corner = 0, 3 do
+		local right = corner == 1 or corner == 2
+		local bottom = corner >= 2
+		position:SetUnpacked(right and x0 + width or x0, bottom and y0 + height or y0, 0)
+		mesh.Position(position)
+		mesh.TexCoord(0, right and u1 or 0, bottom and v1 or 0)
+		mesh.Color(255, 255, 255, 255)
+		mesh.AdvanceVertex()
+	end
+
+	mesh.End()
+	render.OverrideBlend(false)
+end
+
+function Flash.ClearGroupCache()
+	groupTargets = {}
+	groupMaterials = {}
+end
+
+function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	local movie = clip.movie
+	local entries = clip:Entries()
+	local maskUntil
+
+	for i = 1, #entries do
+		local entry = entries[i]
+
+		if maskUntil and entry.depth > maskUntil then
+			endMask()
+			maskUntil = nil
+		end
+
+		if entry.clipDepth then
+			if maskUntil then
+				endMask()
+				maskUntil = nil
+			end
+
+			if not measuring and beginMask(movie, entry, a, b, c, d, tx, ty) then
+				maskUntil = entry.clipDepth
+			end
+		else
+			local m = entry.m
+			local ea = a * m[1] + c * m[2]
+			local eb = b * m[1] + d * m[2]
+			local ec = a * m[3] + c * m[4]
+			local ed = b * m[3] + d * m[4]
+			local etx = a * m[5] + c * m[6] + tx
+			local ety = b * m[5] + d * m[6] + ty
+
+			-- colour transform: the entry's applies first, the accumulated one after it
+			local cx = entry.cx
+			local nmr, nmg, nmb, nma, nar, nag, nab, naa = mr, mg, mb, ma, ar, ag, ab, aa
+
+			if cx then
+				nmr, nmg, nmb, nma = mr * cx[1], mg * cx[2], mb * cx[3], ma * cx[4]
+				nar, nag, nab, naa = mr * cx[5] + ar, mg * cx[6] + ag, mb * cx[7] + ab, ma * cx[8] + aa
+			end
+
+			local blend = not Flash.IgnoreBlendModes and entry.blend
+
+			if blend == 1 then
+				blend = nil
+			end
+
+			if entry.clip then
+				if entry.clip.visible then
+					if blend and not measuring then
+						drawGroup(entry, blend, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa)
+					else
+						drawEntries(entry.clip, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa)
+					end
+				end
+			elseif entry.kind == "shape" then
+				drawShape(movie, movie.chars[entry.id], ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
+			end
+		end
+	end
+
+	if maskUntil then
+		endMask()
+	end
+end
+
+-- Draws `clip` with the stage origin at (x, y) on the screen and `scale` screen pixels per stage pixel.
+function Flash.Draw(clip, x, y, scale)
+	batchCount = 0
+	batchMaterial = nil
+	batchBlend = nil
+
+	drawEntries(clip, scale, 0, 0, scale, x, y, 1, 1, 1, 1, 0, 0, 0, 0)
+	flush()
+end

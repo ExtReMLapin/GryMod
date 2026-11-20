@@ -19,6 +19,20 @@ MAX_SIDE = 1024  # largest shape bitmap; bigger ones (backdrops) are downscaled
 ATLAS_WIDTH = 2048
 
 
+def _srgb_encode_table():
+    """The engine decodes PNG textures as sRGB when it samples them, but Flash blends the plain 0-255
+    values. Storing the sRGB-encoded colour makes the shader see the original one (error <= 1-2 levels)."""
+    table = np.zeros(256, dtype=np.uint8)
+    for v in range(256):
+        x = v / 255
+        y = 12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055
+        table[v] = int(round(255 * y))
+    return table
+
+
+SRGB_ENCODE = _srgb_encode_table()
+
+
 def _next_pow2(n):
     p = 1
     while p < n:
@@ -127,6 +141,7 @@ def rasterize_movie(movie, swf_path, out_dir, ffdec, zoom=4, max_atlas=4096, pre
             rects[cid] = {"atlas": f"{prefix}_{atlas + 1}.png", "x": x, "y": y, "w": w, "h": h,
                           "ox": x0, "oy": y0, "dw": x1 - x0, "dh": y1 - y0}
         for index, sheet in enumerate(sheets):
+            sheet[:, :, :3] = SRGB_ENCODE[sheet[:, :, :3]]
             Image.fromarray(sheet, "RGBA").save(
                 os.path.join(out_dir, f"{prefix}_{index + 1}.png"), optimize=True)
     return rects

@@ -30,7 +30,13 @@ function Flash.Load(name)
 		return movies[name]
 	end
 
-	local ok, data = pcall(include, "grymod/flash/" .. name .. ".lua")
+	local path = "grymod/flash/" .. name .. ".lua"
+
+	if not file.Exists(path, "LUA") then
+		return nil
+	end
+
+	local ok, data = pcall(include, path)
 
 	if ok and istable(data) then
 		movies[name] = data

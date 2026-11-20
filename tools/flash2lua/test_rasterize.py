@@ -67,6 +67,23 @@ class RasterizeTest(unittest.TestCase):
         self.assertTrue(opaque, "the shape has opaque pixels")
         self.assertEqual(opaque[0][:3], (255, 255, 255))
 
+    def test_atlas_colours_are_srgb_encoded(self):
+        """The engine decodes PNG textures as sRGB when it samples them; the atlas stores the encoded colour so
+        that the shader sees the original one (Flash blends the plain 0-255 values)."""
+        def encode(v):
+            x = v / 255
+            return round(255 * (12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055))
+
+        r = self.rects[32]  # fills (204, 102, 51) and (255, 0, 0)
+        atlas = Image.open(os.path.join(self.out, r["atlas"])).convert("RGBA")
+        colours = {}
+        for p in atlas.crop((r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])).getdata():
+            if p[3] == 255:
+                colours[p[:3]] = colours.get(p[:3], 0) + 1
+        self.assertIn((encode(204), encode(102), encode(51)), colours)
+        self.assertIn((255, 0, 0), colours)
+        self.assertNotIn((204, 102, 51), colours)
+
     def test_transparent_pixels_carry_the_neighbour_colour(self):
         """Bilinear filtering must not pull black from transparent pixels into the edge."""
         r = self.rects[100]
