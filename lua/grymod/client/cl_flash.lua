@@ -61,7 +61,7 @@ local function clampFrame(frame, count)
 	return frame
 end
 
-local function newClip(movie, definition, id)
+local function newClip(movie, definition, id, theme)
 	local clip = setmetatable({
 		movie = movie,
 		id = id,
@@ -77,7 +77,8 @@ local function newClip(movie, definition, id)
 		names = {},
 		count = 0,
 		sorted = nil,
-		jumps = 0
+		jumps = 0,
+		theme = theme
 	}, Clip)
 
 	clip:_goto(1)
@@ -86,19 +87,20 @@ local function newClip(movie, definition, id)
 	return clip
 end
 
--- A clip made from sprite `id` of the movie, or nil when the id is not a sprite.
-function Flash.NewClip(movie, id)
+-- A clip made from sprite `id` of the movie, or nil when the id is not a sprite. `theme` = {Line = {r, g, b},
+-- Over = ..., Text = ...}: the colours the colour-set scripts of the HUD movies copy onto their children.
+function Flash.NewClip(movie, id, theme)
 	local definition = movie.chars[id]
 
 	if not definition or definition.k ~= "sprite" then
 		return nil
 	end
 
-	return newClip(movie, definition, id)
+	return newClip(movie, definition, id, theme)
 end
 
--- The movie's main timeline as a clip.
-function Flash.NewRoot(movie)
+-- The movie's main timeline as a clip (theme: see NewClip).
+function Flash.NewRoot(movie, theme)
 	local labels = {}
 
 	for index, frame in ipairs(movie.root) do
@@ -107,7 +109,7 @@ function Flash.NewRoot(movie)
 		end
 	end
 
-	return newClip(movie, {n = #movie.root, labels = labels, frames = movie.root}, 0)
+	return newClip(movie, {n = #movie.root, labels = labels, frames = movie.root}, 0, theme)
 end
 
 function Clip:_remove(depth)
@@ -146,8 +148,9 @@ function Clip:_add(depth, id, op, inherit)
 	}
 
 	if definition.k == "sprite" then
-		entry.clip = newClip(self.movie, definition, id)
+		entry.clip = newClip(self.movie, definition, id, self.theme)
 		entry.clip.parent = self
+		entry.clip.entry = entry
 	elseif definition.k == "text" then
 		entry.text = definition.t or ""
 	end
@@ -247,6 +250,21 @@ function Clip:_jump(frame)
 	self.jumps = self.jumps - 1
 end
 
+-- Flash's Color.setRGB on a child: replaces its colour by the theme colour (multiplier 0, colour added), the
+-- alpha terms stay as they are.
+function Clip:_colorChild(themeName, childName)
+	local rgb = self.theme and self.theme[themeName]
+	local entry = rgb and self.names[childName]
+
+	if not entry then
+		return
+	end
+
+	local old = entry.cx
+
+	entry.cx = {0, 0, 0, old and old[4] or 1, rgb[1], rgb[2], rgb[3], old and old[8] or 0}
+end
+
 function Clip:_runActions()
 	local frame = self.frames[self.frame]
 	local actions = frame and frame.a
@@ -265,6 +283,8 @@ function Clip:_runActions()
 			self.playing = true
 		elseif what == "goto" then
 			self:_jump(action[2])
+		elseif what == "color" then
+			self:_colorChild(action[2], action[3])
 		elseif what == "gotol" then
 			local target = self.labels[action[2]]
 

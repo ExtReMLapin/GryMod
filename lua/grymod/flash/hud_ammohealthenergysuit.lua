@@ -18,7 +18,7 @@ return {
 		{{d=1,c=10,m={1,0,0,1,0,0}}}
 	}},
 	[12]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=11,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=11,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[13]={k="sprite",n=20,labels={},frames={
 		{{d=1,c=12,m={1.29997,0,0,1.29997,-3.25,1.45},bl=8}},
@@ -154,7 +154,7 @@ return {
 		{{d=1,c=20,m={1,0,0,1,0,0}}}
 	}},
 	[22]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=21,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=21,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[23]={k="sprite",n=20,labels={},frames={
 		{{d=1,c=22,m={1.19998,0,0,1.19998,0,0},bl=8}},
@@ -286,28 +286,28 @@ return {
 		{{d=2,c=26,m={1,0,0,1,0,0}}}
 	}},
 	[28]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=27,n="Colorset",m={1.00079,0,0,1,0.15,0.1},cx={1,1,1,0.5,0,0,0,0}},a={{"x"}}}
+		{{d=1,c=27,n="Colorset",m={1.00079,0,0,1,0.15,0.1},cx={1,1,1,0.5,0,0,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[29]={k="shape",a=1,x=405,y=1722,w=239,h=255,ox=0,oy=0,dw=59.6,dh=63.65,p={0,18.4,29.9,0,59.6,18.15,59.6,43.95,30,63.65,0,44.15}},
 	[30]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=29,m={1,0,0,1,0,0}}}
 	}},
 	[31]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=30,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=30,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[32]={k="shape",a=1,x=1,y=1,w=767,h=1024,ox=-149,oy=-180.55,dw=295.5,dh=394.55},
 	[33]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=32,m={1,0,0,1,0,0}}}
 	}},
 	[34]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=33,n="Colorset",m={0.119827,0.00628662,0,0.119995,6.5,-3.4},bl=8},a={{"x"}}}
+		{{d=1,c=33,n="Colorset",m={0.119827,0.00628662,0,0.119995,6.5,-3.4},bl=8},a={{"color","Line","Colorset"}}}
 	}},
 	[35]={k="shape",a=1,x=648,y=1722,w=142,h=190,ox=0,oy=0,dw=35.4,dh=47.35},
 	[36]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=35,m={1,0,0,1,0,0}}}
 	}},
 	[37]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=36,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"x"}}}
+		{{d=1,c=36,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[38]={k="sprite",n=49,labels={["flickering"]=21,["malfunction"]=33,["malfunctionOn"]=42,["normal"]=1,["reboot"]=43},frames={
 		{{d=1,c=31,m={1,0,0,1,403.45,281.55}},{d=3,c=34,m={1,0,0,1,426.4,316.15}},{d=5,c=37,m={1,0,0,1,415.05,291.05}},l="normal",a={{"play"}}},
@@ -365,14 +365,14 @@ return {
 		{{d=1,c=39,m={1,0,0,1,0,0}}}
 	}},
 	[41]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=40,n="Colorset",m={0.599182,0.0314026,0,0.600006,-12.25,-17.15},bl=8},a={{"x"}}}
+		{{d=1,c=40,n="Colorset",m={0.599182,0.0314026,0,0.600006,-12.25,-17.15},bl=8},a={{"color","Line","Colorset"}}}
 	}},
 	[42]={k="shape",a=1,x=1,y=2340,w=150,h=78,ox=0,oy=0,dw=37.4,dh=19.5},
 	[43]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=42,m={1,0,0,1,0,0}}}
 	}},
 	[44]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=43,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"x"}}}
+		{{d=1,c=43,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[45]={k="sprite",n=49,labels={["flickering"]=21,["malfunction"]=33,["malfunctionOn"]=42,["normal"]=1,["reboot"]=43},frames={
 		{{d=1,c=31,m={1,0,0,1,403.45,279.65}},{d=3,c=41,m={1,0,0,1,426.4,316.15}},{d=5,c=44,m={1,0,0,1,414.7,300.45}},l="normal",a={{"play"}}},
@@ -430,7 +430,7 @@ return {
 		{{d=1,c=46,m={1,0,0,1,0,0}}}
 	}},
 	[48]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=47,n="Colorset",m={0.299988,0,0,0.299988,13.4,17.8}},a={{"x"}}}
+		{{d=1,c=47,n="Colorset",m={0.299988,0,0,0.299988,13.4,17.8}},a={{"color","Line","Colorset"}}}
 	}},
 	[49]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=48,n="Colorset",m={1.09848,0.0575714,0,1.09999,-8.95,-21.7},bl=8}}
@@ -440,7 +440,7 @@ return {
 		{{d=1,c=50,m={1,0,0,1,0,0}}}
 	}},
 	[52]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=51,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"x"}}}
+		{{d=1,c=51,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[53]={k="sprite",n=49,labels={["flickering"]=21,["malfunction"]=33,["malfunctionOn"]=42,["normal"]=1,["reboot"]=43},frames={
 		{{d=1,c=31,m={1,0,0,1,403.45,281.55}},{d=3,c=49,m={1,0,0,1,426.4,316.15}},{d=5,c=52,m={1,0,0,1,417.2,293.55}},l="normal",a={{"play"}}},
@@ -498,7 +498,7 @@ return {
 		{{d=1,c=54,m={1,0,0,1,0,0}}}
 	}},
 	[56]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=55,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=55,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[57]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=56,m={1.09999,0,0,1.09999,-9.45,-20.4},bl=8}}
@@ -508,7 +508,7 @@ return {
 		{{d=1,c=58,m={1,0,0,1,0,0}}}
 	}},
 	[60]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=59,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"x"}}}
+		{{d=1,c=59,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[61]={k="sprite",n=49,labels={["flickering"]=21,["malfunction"]=33,["malfunctionOn"]=42,["normal"]=1,["reboot"]=43},frames={
 		{{d=1,c=31,m={1,0,0,1,401.8,285.15}},{d=3,c=57,m={1,0,0,1,426.4,316.15}},{d=5,c=60,m={1,0,0,1,417.75,302.6}},l="normal",a={{"play"}}},
@@ -578,7 +578,7 @@ return {
 		{{d=1,c=64,n="EnergyText1",m={1,0,0,1,-1.8,0.75}},{d=2,c=65,n="EnergyText2",m={1,0,0,1,6.85,0.85}},{d=3,c=66,n="EnergyText3",m={1,0,0,1,15.4,0.75}},{d=4,c=67,n="HealthText1",m={1,0,0,1,-1.8,19.2}},{d=5,c=68,n="HealthText2",m={1,0,0,1,6.85,19.3}},{d=6,c=69,n="HealthText3",m={1,0,0,1,15.4,19.2}}}
 	}},
 	[71]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=70,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=70,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
 	[72]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=71,n="HealthEnergy",m={1,0,0,1,122.95,75.95}}}
@@ -651,7 +651,7 @@ return {
 		{{d=1,c=74,n="MagAmmo",m={1,0,0,1,9.9,3.65}},{d=2,c=75,n="GrenadeAmmo",m={1,0,0,1,2.2,36.45}},a={{"x"}}}
 	}},
 	[77]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=76,n="Colorset",m={1,0,0,1,0,-1.8}},a={{"x"}}}
+		{{d=1,c=76,n="Colorset",m={1,0,0,1,0,-1.8}},a={{"color","Text","Colorset"}}}
 	}},
 	[78]={k="text",ox=-2,oy=-2,w=21.3,h=31.95,fh=24,t="3",col={255,255,255,255},al=1,f=63},
 	[79]={k="sprite",n=1,labels={},frames={
@@ -662,7 +662,7 @@ return {
 		{{d=1,c=80,n="NumberText",m={1,0,0,1,2,2}}}
 	}},
 	[82]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=81,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=81,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[83]={k="sprite",n=6,labels={},frames={
 		{{d=1,c=82,n="Set",m={1.10001,0,0,1.10001,-7.3,-1.55},cx={0,0,0,1,255,0,0,0}},a={{"play"}}},
@@ -693,20 +693,20 @@ return {
 		{{d=1,c=89,n="NumberText",m={1,0,0,1,-4.25,2}}}
 	}},
 	[91]={k="sprite",n=4,labels={["green"]=1,["lowgreen"]=2,["lowred"]=4,["red"]=3},frames={
-		{{d=1,c=79,n="NumberText",m={1,0,0,1,0,0},bl=8},{d=3,c=83,n="NumberText_blink",m={1,0,0,1,0,0}},l="green",a={{"x"},{"x"}}},
-		{{rm=1},{rm=3},{d=1,c=85,n="NumberText",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0},r=1,bl=8},l="lowgreen",a={{"x"}}},
+		{{d=1,c=79,n="NumberText",m={1,0,0,1,0,0},bl=8},{d=3,c=83,n="NumberText_blink",m={1,0,0,1,0,0}},l="green",a={{"x"},{"color","Text","NumberText"},{"stop"}}},
+		{{rm=1},{rm=3},{d=1,c=85,n="NumberText",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0},r=1,bl=8},l="lowgreen",a={{"color","Text","NumberText"},{"stop"}}},
 		{{rm=1},{d=1,c=87,n="NumberText",m={1,0,0,1,0,0},cx={0,0,0,1,255,0,0,0},r=2,bl=8},{d=3,c=88,n="NumberText_blink",m={1,0,0,1,0,0},r=2},l="red",a={{"x"}}},
 		{{rm=1},{rm=3},{d=1,c=90,n="NumberText",m={1,0,0,1,0,0},cx={0,0,0,0.5,255,0,0,0},r=3,bl=8},l="lowred",a={{"x"}}}
 	}},
 	[92]={k="sprite",n=4,labels={["green"]=1,["lowgreen"]=2,["lowred"]=4,["red"]=3},frames={
-		{{d=1,c=79,n="NumberText",m={1,0,0,1,0,0},bl=8},{d=3,c=83,n="NumberText_blink",m={1,0,0,1,0,0}},l="green",a={{"x"},{"x"}}},
-		{{rm=1},{rm=3},{d=1,c=85,n="NumberText",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0},r=1,bl=8},l="lowgreen",a={{"x"}}},
+		{{d=1,c=79,n="NumberText",m={1,0,0,1,0,0},bl=8},{d=3,c=83,n="NumberText_blink",m={1,0,0,1,0,0}},l="green",a={{"x"},{"color","Text","NumberText"},{"stop"}}},
+		{{rm=1},{rm=3},{d=1,c=85,n="NumberText",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0},r=1,bl=8},l="lowgreen",a={{"color","Text","NumberText"},{"stop"}}},
 		{{rm=1},{d=1,c=87,n="NumberText",m={1,0,0,1,0,0},cx={0,0,0,1,255,0,0,0},r=2,bl=8},{d=3,c=88,n="NumberText_blink",m={1,0,0,1,0,0},r=2},l="red",a={{"x"}}},
 		{{rm=1},{rm=3},{d=1,c=90,n="NumberText",m={1,0,0,1,0,0},cx={0,0,0,0.5,255,0,0,0},r=3,bl=8},l="lowred",a={{"x"}}}
 	}},
 	[93]={k="sprite",n=4,labels={["green"]=1,["lowgreen"]=2,["lowred"]=4,["red"]=3},frames={
-		{{d=1,c=79,n="NumberText",m={1,0,0,1,0,0},bl=8},{d=3,c=83,n="NumberText_blink",m={1,0,0,1,-0.5,-0.3}},l="green",a={{"x"},{"x"}}},
-		{{rm=1},{rm=3},{d=1,c=85,n="NumberText",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0},r=1,bl=8},l="lowgreen",a={{"x"}}},
+		{{d=1,c=79,n="NumberText",m={1,0,0,1,0,0},bl=8},{d=3,c=83,n="NumberText_blink",m={1,0,0,1,-0.5,-0.3}},l="green",a={{"x"},{"color","Text","NumberText"},{"stop"}}},
+		{{rm=1},{rm=3},{d=1,c=85,n="NumberText",m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0},r=1,bl=8},l="lowgreen",a={{"color","Text","NumberText"},{"stop"}}},
 		{{rm=1},{d=1,c=87,n="NumberText",m={1,0,0,1,0,0},cx={0,0,0,1,255,0,0,0},r=2,bl=8},{d=3,c=88,n="NumberText_blink",m={1,0,0,1,0,0},r=2},l="red",a={{"x"}}},
 		{{rm=1},{rm=3},{d=1,c=90,n="NumberText",m={1,0,0,1,0,0},cx={0,0,0,0.5,255,0,0,0},r=3,bl=8},l="lowred",a={{"x"}}}
 	}},
@@ -718,7 +718,7 @@ return {
 		{{d=1,c=95,m={1,0,0,1,0,0}}}
 	}},
 	[97]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=96,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=96,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
 	[98]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=97,n="Icon",m={1,0,0,1,-1.35,-29.9}}}
@@ -732,7 +732,7 @@ return {
 		{{d=1,c=100,m={1,0,0,1,0,0}}}
 	}},
 	[102]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=101,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=101,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[103]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -754,7 +754,7 @@ return {
 		{{d=1,c=105,m={1,0,0,1,6.6,7.6}}}
 	}},
 	[107]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=106,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=106,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[108]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -773,7 +773,7 @@ return {
 		{{d=1,c=109,m={1,0,0,1,0,0}}}
 	}},
 	[111]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=110,n="Colorset",m={1.19998,0,0,1.19998,-8.4,-9.8}},a={{"x"}}}
+		{{d=1,c=110,n="Colorset",m={1.19998,0,0,1.19998,-8.4,-9.8}},a={{"color","Line","Colorset"}}}
 	}},
 	[112]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -792,7 +792,7 @@ return {
 		{{d=1,c=113,m={1,0,0,1,0,0}}}
 	}},
 	[115]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=114,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=114,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[116]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -817,7 +817,7 @@ return {
 		{{d=1,c=118,m={1,0,0,1,0,0}}}
 	}},
 	[120]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=119,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=119,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[121]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -836,7 +836,7 @@ return {
 		{{d=1,c=122,m={1,0,0,1,0,0}}}
 	}},
 	[124]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=123,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=123,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[125]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -855,7 +855,7 @@ return {
 		{{d=1,c=126,m={1,0,0,1,0,0}}}
 	}},
 	[128]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=127,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=127,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[129]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -874,7 +874,7 @@ return {
 		{{d=1,c=130,m={1,0,0,1,0,0}}}
 	}},
 	[132]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=131,n="Colorset",m={1,0,0,1,-23.6,-8.55}},a={{"x"}}}
+		{{d=1,c=131,n="Colorset",m={1,0,0,1,-23.6,-8.55}},a={{"color","Line","Colorset"}}}
 	}},
 	[133]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -893,7 +893,7 @@ return {
 		{{d=1,c=134,m={1,0,0,1,0,0}}}
 	}},
 	[136]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=135,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=135,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[137]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -912,7 +912,7 @@ return {
 		{{d=1,c=138,m={1,0,0,1,0,0}}}
 	}},
 	[140]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=139,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=139,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[141]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -931,7 +931,7 @@ return {
 		{{d=1,c=142,m={1,0,0,1,0,0}}}
 	}},
 	[144]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=143,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=143,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[145]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -946,7 +946,7 @@ return {
 		{{d=1,mv=true,cx={1,1,1,1,0,0,0,0}},a={{"goto",1}}}
 	}},
 	[146]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=96,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=96,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[147]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=146,n="Icon",m={1,0,0,1,-1.35,-29.9}}}
@@ -968,7 +968,7 @@ return {
 		{{d=1,c=149,m={1,0,0,1,0,0}}}
 	}},
 	[151]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=150,n="Colorset",m={1.7,0,0,1.7,0,0}},a={{"x"}}}
+		{{d=1,c=150,n="Colorset",m={1.7,0,0,1.7,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[152]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -987,7 +987,7 @@ return {
 		{{d=1,c=153,m={1,0,0,1,0,0}}}
 	}},
 	[155]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=154,n="Colorset",m={1.70001,0,0,1.70001,0,0}},a={{"x"}}}
+		{{d=1,c=154,n="Colorset",m={1.70001,0,0,1.70001,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[156]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1018,7 +1018,7 @@ return {
 		{{d=1,c=158,m={1,0,0,1,0,0}}}
 	}},
 	[160]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=159,n="Colorset",m={1,0,0,1,-1.9,0.1}},a={{"x"}}}
+		{{d=1,c=159,n="Colorset",m={1,0,0,1,-1.9,0.1}},a={{"color","Line","Colorset"}}}
 	}},
 	[161]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1037,7 +1037,7 @@ return {
 		{{d=1,c=162,m={1,0,0,1,0,0}}}
 	}},
 	[164]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=163,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=163,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[165]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1056,7 +1056,7 @@ return {
 		{{d=1,c=166,m={1,0,0,1,0,0}}}
 	}},
 	[168]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=167,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=167,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[169]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1075,7 +1075,7 @@ return {
 		{{d=1,c=170,m={1,0,0,1,0,0}}}
 	}},
 	[172]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=171,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=171,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[173]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1094,7 +1094,7 @@ return {
 		{{d=1,c=174,m={1,0,0,1,0,0}}}
 	}},
 	[176]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=175,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=175,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[177]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1113,7 +1113,7 @@ return {
 		{{d=1,c=178,m={1,0,0,1,0,0}}}
 	}},
 	[180]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=179,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=179,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[181]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1132,7 +1132,7 @@ return {
 		{{d=1,c=182,m={1,0,0,1,0,0}}}
 	}},
 	[184]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=183,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=183,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[185]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1151,7 +1151,7 @@ return {
 		{{d=1,c=186,m={1,0,0,1,0,0}}}
 	}},
 	[188]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=187,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=187,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[189]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1170,7 +1170,7 @@ return {
 		{{d=1,c=190,m={1,0,0,1,0,0}}}
 	}},
 	[192]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=191,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=191,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[193]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1189,7 +1189,7 @@ return {
 		{{d=2,c=194,m={1,0,0,1,0,0}}}
 	}},
 	[196]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=195,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=195,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[197]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1208,7 +1208,7 @@ return {
 		{{d=1,c=198,m={1,0,0,1,0,0}}}
 	}},
 	[200]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=199,n="Colorset",m={1,0,0,1,-15.55,-8.9}},a={{"x"}}}
+		{{d=1,c=199,n="Colorset",m={1,0,0,1,-15.55,-8.9}},a={{"color","Line","Colorset"}}}
 	}},
 	[201]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1227,7 +1227,7 @@ return {
 		{{d=2,c=202,m={1,0,0,1,0,0}}}
 	}},
 	[204]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=203,n="Colorset",m={0.699997,0,0,0.699997,10.85,9.5}},a={{"x"}}}
+		{{d=1,c=203,n="Colorset",m={0.699997,0,0,0.699997,10.85,9.5}},a={{"color","Line","Colorset"}}}
 	}},
 	[205]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1246,13 +1246,13 @@ return {
 		{{d=1,c=206,m={1,0,0,1,-0.9,-3.55}}}
 	}},
 	[208]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=207,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=207,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[209]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=206,m={1,0,0,1,0,0}}}
 	}},
 	[210]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=209,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=209,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[211]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1271,7 +1271,7 @@ return {
 		{{d=1,c=212,m={1,0,0,1,0,0}}}
 	}},
 	[214]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=213,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=213,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[215]={k="sprite",n=10,labels={["play"]=2},frames={
 		{a={{"stop"}}},
@@ -1317,14 +1317,14 @@ return {
 		{{d=1,c=217,m={1,0,0,1,0,0}}}
 	}},
 	[219]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=218,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.300781,0,0,0,0}},a={{"x"}}}
+		{{d=1,c=218,n="Colorset",m={1,0,0,1,0,0},cx={1,1,1,0.300781,0,0,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[220]={k="shape",a=1,x=1326,y=2476,w=480,h=32,ox=0,oy=0,dw=120,dh=8,p={120,8,0,8,0,0,120,0}},
 	[221]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=220,m={1,0,0,1,0,0}}}
 	}},
 	[222]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=221,n="Colorset",m={1,0,0,1,0,0.8},bl=8},a={{"x"}}}
+		{{d=1,c=221,n="Colorset",m={1,0,0,1,0,0.8},bl=8},a={{"color","Line","Colorset"}}}
 	}},
 	[223]={k="sprite",n=101,labels={["end"]=101},frames={
 		{{d=1,c=219,m={1,0,0,1,8.5,-12.25}},a={{"stop"}}},
@@ -1534,7 +1534,7 @@ return {
 		{{d=1,c=228,n="MisAmmo",m={1,0,0,1,-26.95,30.8}},{d=2,c=229,n="GunAmmo",m={1,0,0,1,-27.3,-0.2}}}
 	}},
 	[231]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=230,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=230,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
 	[232]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=231,n="MagAmmo",m={1,0,0,1,54.5,0}},{d=3,c=98,n="PrimaryInfinityIcon",m={0.899994,0,0,0.899994,87.8,31.8},bl=8},{d=5,c=98,n="SecondaryInfinityIcon",m={0.899994,0,0,0.899994,88.05,61.85},bl=8}}
@@ -1544,13 +1544,13 @@ return {
 		{{d=1,c=233,m={1,0,0,1,0,0}}}
 	}},
 	[235]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=234,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=234,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[236]={k="sprite",n=5,labels={["Gauss"]=4,["Gunner"]=3,["Missle"]=2,["mounted"]=5},frames={
 		{a={{"stop"}}},
-		{{d=1,c=235,n="Colorset",m={1,0,0,1,-6.75,-9.4},r=1},l="Missle",a={{"x"}}},
-		{{rm=1},{d=1,c=128,n="Colorset",m={1.2,0,0,1.2,-10.45,-17.8},r=2,bl=8},l="Gunner",a={{"x"}}},
-		{{rm=1},{d=1,c=195,n="Colorset",m={1.2,0,0,1.2,1.3,-19.4},r=3},l="Gauss",a={{"x"}}},
+		{{d=1,c=235,n="Colorset",m={1,0,0,1,-6.75,-9.4},r=1},l="Missle",a={{"color","Line","Colorset"},{"stop"}}},
+		{{rm=1},{d=1,c=128,n="Colorset",m={1.2,0,0,1.2,-10.45,-17.8},r=2,bl=8},l="Gunner",a={{"color","Line","Colorset"},{"stop"}}},
+		{{rm=1},{d=1,c=195,n="Colorset",m={1.2,0,0,1.2,1.3,-19.4},r=3},l="Gauss",a={{"color","Line","Colorset"},{"stop"}}},
 		{{rm=1},{d=1,c=208,m={1.20001,0,0,1.20001,-10.15,-10.2},r=4},l="mounted",a={{"stop"}}}
 	}},
 	[237]={k="sprite",n=14,labels={},frames={
@@ -1864,19 +1864,19 @@ return {
 		{{d=1,c=242,m={1,0,0,1,0,0}}}
 	}},
 	[244]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=243,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=243,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Line","Colorset"}}}
 	}},
 	[245]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=242,m={1,0,0,1,0,0}}}
 	}},
 	[246]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=245,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=245,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Over","Colorset"}}}
 	}},
 	[247]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=242,m={1,0,0,1,0,0}}}
 	}},
 	[248]={k="sprite",n=1,labels={},frames={
-		{{d=1,c=247,n="Colorset",m={1,0,0,1,0,0}},a={{"x"}}}
+		{{d=1,c=247,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}}
 	},
 	root={

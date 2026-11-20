@@ -17,7 +17,9 @@ Format (`return {...}`):
   op                 place  {d=depth, c=char, mv=true, n=name, m={a,b,c,d,tx,ty}, cx={rm,gm,bm,am,ra,ga,ba,aa},
                              r=ratio, cd=clip depth, bl=blend mode}
                      remove {rm=depth}
-  action             {"play"} {"stop"} {"goto", frame} {"gotol", label} {"x"} (anything else, not decoded)
+  action             {"play"} {"stop"} {"goto", frame} {"gotol", label} {"color", theme, target} {"x"} (anything
+                     else, not decoded). "color": copy the theme colour (Line, Over or Text) onto the child
+                     clip named target ("" = the clip itself), the colour-set scripts of the HUD movies.
 """
 
 
@@ -64,6 +66,8 @@ def _action(action):
         return '{"x"}'
     if action["do"] in ("play", "stop"):
         return '{"%s"}' % action["do"]
+    if action["do"] == "color":
+        return '{"color",%s,%s}' % (_str(action["theme"]), _str(action["target"] or ""))
     if "label" in action:
         return '{"gotol",%s}' % _str(action["label"])
     return '{"goto",%d}' % action["frame"]

@@ -17,7 +17,9 @@ class EmitLuaTest(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp()
         xml = os.path.join(cls.tmp, "hud.xml")
         swfmodel.swf_to_xml(FFDEC, SWF, xml)
-        cls.movie = swfmodel.parse_swf_xml(xml)
+        scripts = os.path.join(cls.tmp, "scripts")
+        swfmodel.export_scripts(FFDEC, SWF, scripts)
+        cls.movie = swfmodel.parse_swf_xml(xml, scripts)
         cls.rects = rasterize.rasterize_movie(cls.movie, SWF, os.path.join(cls.tmp, "atlas"), FFDEC, prefix="ahes")
         cls.text = emit_lua.emit_lua(cls.movie, cls.rects, "grymod/flash/ahes")
         cls.data = lua_literal.parse(cls.text)
@@ -71,6 +73,10 @@ class EmitLuaTest(unittest.TestCase):
         text = self.data["chars"][64]
         self.assertEqual((text["k"], text["t"], text["fh"]), ("text", "0", 18))
         self.assertEqual(text["col"][1], 255)
+
+    def test_colour_actions_are_emitted(self):
+        first = self.data["chars"][102]["frames"][1]
+        self.assertEqual([first["a"][1][1], first["a"][1][2], first["a"][1][3]], ["color", "Line", "Colorset"])
 
     def test_polygons_are_emitted_for_masks(self):
         self.assertEqual([self.data["chars"][15]["p"][i] for i in range(1, 9)],

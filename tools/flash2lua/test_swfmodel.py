@@ -45,7 +45,9 @@ class SwfModelTest(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp()
         xml = os.path.join(cls.tmp, "hud.xml")
         swfmodel.swf_to_xml(FFDEC, SWF, xml)
-        cls.movie = swfmodel.parse_swf_xml(xml)
+        scripts = os.path.join(cls.tmp, "scripts")
+        swfmodel.export_scripts(FFDEC, SWF, scripts)
+        cls.movie = swfmodel.parse_swf_xml(xml, scripts)
 
     def test_stage_is_1024x768_30fps(self):
         self.assertEqual(self.movie.width_px, 1024)
@@ -122,6 +124,20 @@ class SwfModelTest(unittest.TestCase):
         px = lambda *v: tuple(c / 20 for c in v)
         self.assertEqual(morph.polygon, [px(2673, -73), px(2687, -73), px(2687, 303), px(2673, 303)])
         self.assertEqual(morph.end_polygon, [px(30, -58), px(2790, -58), px(2790, 318), px(30, 318)])
+
+    def test_colour_scripts_become_actions(self):
+        # sprite 102 sets the colour of its Colorset child from the Line theme colour when it starts
+        actions = self.movie.characters[102].timeline.frames[0].actions
+        self.assertIn({"do": "color", "theme": "Line", "target": "Colorset"}, actions)
+
+    def test_digit_scripts_colour_the_number_and_stop(self):
+        actions = self.movie.characters[91].timeline.frames[0].actions
+        self.assertIn({"do": "color", "theme": "Text", "target": "NumberText"}, actions)
+        self.assertIn({"do": "stop"}, actions)
+
+    def test_other_scripts_stay_unsupported(self):
+        root_actions = self.movie.root.frames[0].actions
+        self.assertTrue(all("unsupported" in a for a in root_actions))
 
     def test_imported_font_is_recorded(self):
         self.assertEqual(self.movie.imports[63], ("HUD_Font_LocFont.swf", "Font_Body"))

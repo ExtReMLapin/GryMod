@@ -170,6 +170,56 @@ return {
 			end
 		},
 		{
+			name = "a colour action tints the named child with the theme colour",
+			func = function(state)
+				local m = movie()
+				m.chars[8] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Colorset"}, a = {{"color", "Line", "Colorset"}}}}}
+				local clip = GryMod.Flash.NewClip(m, 8, {Line = {10, 20, 30}})
+				local cx = clip:Child("Colorset") and clip:EntryAt(1).cx
+				expect(cx).to.exist()
+				-- setRGB: the colour is replaced (multiplier 0, added colour), the alpha untouched
+				expect(cx[1]).to.equal(0)
+				expect(cx[4]).to.equal(1)
+				expect(cx[5]).to.equal(10)
+				expect(cx[6]).to.equal(20)
+				expect(cx[7]).to.equal(30)
+			end
+		},
+		{
+			name = "a colour action keeps the alpha of the child's colour transform",
+			func = function(state)
+				local m = movie()
+				m.chars[8] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Colorset", cx = {1, 1, 1, 0.5, 0, 0, 0, 0}}, a = {{"color", "Over", "Colorset"}}}}}
+				local clip = GryMod.Flash.NewClip(m, 8, {Over = {1, 2, 3}})
+				expect(clip:EntryAt(1).cx[4]).to.equal(0.5)
+				expect(clip:EntryAt(1).cx[5]).to.equal(1) -- and it was tinted
+			end
+		},
+		{
+			name = "a colour action without that theme colour leaves the child alone",
+			func = function(state)
+				local m = movie()
+				m.chars[8] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Colorset"}, a = {{"color", "Text", "Colorset"}}}}}
+				local clip = GryMod.Flash.NewClip(m, 8, {Line = {1, 2, 3}})
+				expect(clip:EntryAt(1).cx).to.beNil()
+				local noTheme = GryMod.Flash.NewClip(m, 8)
+				expect(noTheme:EntryAt(1).cx).to.beNil()
+			end
+		},
+		{
+			name = "children inherit the theme, and the colour action runs again when the frame changes",
+			func = function(state)
+				local m = movie()
+				m.chars[8] = {k = "sprite", n = 2, labels = {}, frames = {{{d = 1, c = 1, n = "Colorset"}, a = {{"color", "Line", "Colorset"}, {"stop"}}}, {{d = 1, mv = true, cx = {1, 1, 1, 1, 0, 0, 0, 0}}, a = {{"color", "Line", "Colorset"}, {"stop"}}}}}
+				m.chars[9] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 8, n = "Part"}}}}
+				local root = GryMod.Flash.NewClip(m, 9, {Line = {7, 8, 9}})
+				local part = root:Child("Part")
+				expect(part:EntryAt(1).cx[5]).to.equal(7)
+				part:GotoAndStop(2) -- the move operation replaced the transform; the script colours it again
+				expect(part:EntryAt(1).cx[5]).to.equal(7)
+			end
+		},
+		{
 			name = "loading a missing movie gives nil",
 			func = function(state)
 				expect(GryMod.Flash.Load("no_such_movie")).to.beNil()

@@ -38,7 +38,9 @@ def convert_movie(pak_path, movie_name, ffdec, lua_dir, materials_dir, localized
         swf = _extract_swf(pak_path, movie_name, tmp)
         xml = os.path.join(tmp, name + ".xml")
         swfmodel.swf_to_xml(ffdec, swf, xml)
-        movie = swfmodel.parse_swf_xml(xml)
+        scripts = os.path.join(tmp, "scripts")
+        swfmodel.export_scripts(ffdec, swf, scripts)
+        movie = swfmodel.parse_swf_xml(xml, scripts)
         rects = rasterize.rasterize_movie(movie, swf, materials_dir, ffdec, prefix=name)
         fonts = {}
         used = {c.font_id for c in movie.characters.values() if c.kind == "text" and c.font_id}

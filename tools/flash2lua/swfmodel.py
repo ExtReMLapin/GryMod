@@ -4,6 +4,8 @@ Only what the GryMod HUD player needs is kept: character dictionary (shapes, spr
 bitmaps, morph shapes, fonts) and the sprite timelines (display-list operations per frame,
 frame labels, the few frame actions the HUD uses). Lengths are converted from twips to pixels.
 """
+import os
+import re
 import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -65,6 +67,38 @@ def swf_to_xml(ffdec, swf_path, xml_path):
     """Run FFDec's CLI to dump a SWF/GFX file as XML."""
     subprocess.run([ffdec, "-swf2xml", swf_path, xml_path], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def export_scripts(ffdec, swf_path, out_dir):
+    """Export the ActionScript source of every frame script (FFDec), used to recognise the colour scripts."""
+    subprocess.run([ffdec, "-export", "script", out_dir, swf_path], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+_COLOR_SCRIPT = re.compile(
+    r"var color1 = new Color\(_root\.(Line|Over|Text)\.Colorset\);\s*"
+    r"var color2 = new Color\(this(?:\.(\w+))?\);\s*"
+    r"color2\.setRGB\(color1\.getRGB\(\)\);")
+
+
+def classify_script(text):
+    """The few frame scripts that follow a fixed pattern become actions: a colour-set script copies the
+    theme colour (Line, Over or Text) onto a child clip. Returns None for anything else."""
+    match = _COLOR_SCRIPT.search(text)
+    if not match:
+        return None
+    actions = [{"do": "color", "theme": match.group(1), "target": match.group(2)}]
+    if re.search(r"\bstop\(\);", text[match.end():]):
+        actions.append({"do": "stop"})
+    return actions
+
+
+def _script_file(scripts_dir, sprite_id, frame_number, index):
+    folder = os.path.join(scripts_dir, "scripts") if os.path.isdir(os.path.join(scripts_dir, "scripts")) else scripts_dir
+    if sprite_id is not None:
+        folder = os.path.join(folder, f"DefineSprite_{sprite_id}")
+    name = "DoAction.as" if index == 1 else f"DoAction_{index}.as"
+    return os.path.join(folder, f"frame_{frame_number}", name)
 
 
 def _f(elem, name, default=0.0):
@@ -183,9 +217,10 @@ def _place_op(item):
     }
 
 
-def _timeline(sub_tags):
+def _timeline(sub_tags, scripts_dir=None, sprite_id=None):
     timeline = Timeline()
     frame = Frame()
+    scripts_in_frame = 0
     for item in sub_tags:
         kind = item.get("type")
         if kind in PLACE_TAGS:
@@ -195,10 +230,18 @@ def _timeline(sub_tags):
         elif kind == "FrameLabelTag":
             frame.label = item.get("name")
         elif kind == "DoActionTag":
-            frame.actions.extend(decode_actions(item.get("actionBytes") or ""))
+            scripts_in_frame += 1
+            actions = decode_actions(item.get("actionBytes") or "")
+            if scripts_dir and actions and "unsupported" in actions[0]:
+                path = _script_file(scripts_dir, sprite_id, len(timeline.frames) + 1, scripts_in_frame)
+                if os.path.exists(path):
+                    with open(path, encoding="utf8") as source:
+                        actions = classify_script(source.read()) or actions
+            frame.actions.extend(actions)
         elif kind == "ShowFrameTag":
             timeline.frames.append(frame)
             frame = Frame()
+            scripts_in_frame = 0
     return timeline
 
 
@@ -209,7 +252,7 @@ def _color(elem):
             int(elem.get("alpha", 255)))
 
 
-def _read_character(item, movie):
+def _read_character(item, movie, scripts_dir=None):
     kind = item.get("type")
     if kind in SHAPE_TAGS:
         cid = int(item.get("shapeId"))
@@ -217,7 +260,7 @@ def _read_character(item, movie):
                                           polygon=_polygon(item.find("shapes")))
     elif kind == "DefineSpriteTag":
         cid = int(item.get("spriteId"))
-        movie.characters[cid] = Character(cid, "sprite", timeline=_timeline(item.find("subTags")))
+        movie.characters[cid] = Character(cid, "sprite", timeline=_timeline(item.find("subTags"), scripts_dir, cid))
     elif kind == "DefineEditTextTag":
         cid = int(item.get("characterID"))
         movie.characters[cid] = Character(
@@ -248,7 +291,7 @@ def _read_character(item, movie):
             movie.exports[name.text] = int(tag.text)
 
 
-def parse_swf_xml(path):
+def parse_swf_xml(path, scripts_dir=None):
     root = ET.parse(path).getroot()
     movie = Movie(frame_rate=float(root.get("frameRate", "0")))
     display = root.find("displayRect")
@@ -257,9 +300,9 @@ def parse_swf_xml(path):
         movie.height_px = int(round((_f(display, "Ymax") - _f(display, "Ymin")) / TWIPS))
     tags = root.find("tags")
     for item in tags:
-        _read_character(item, movie)
+        _read_character(item, movie, scripts_dir)
     # The root timeline is every top-level placement/remove/label/action tag.
     top_level = [i for i in tags if i.get("type") in PLACE_TAGS + (
         "RemoveObject2Tag", "RemoveObjectTag", "FrameLabelTag", "DoActionTag", "ShowFrameTag")]
-    movie.root = _timeline(top_level)
+    movie.root = _timeline(top_level, scripts_dir, None)
     return movie
