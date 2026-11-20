@@ -315,6 +315,32 @@ return {
 			end
 		},
 		{
+			name = "SetY moves a clip vertically and SetScale scales it in percent, each keeping the rest of the matrix",
+			func = function(state)
+				local outer = GryMod.Flash.NewClip(movie(), 7)
+				local mover = outer:Child("Mover")
+				mover:SetX(30)
+				mover:SetY(12)
+				local m = mover.entry.m
+				expect(m[5]).to.equal(30)
+				expect(m[6]).to.equal(12)
+				mover:SetScale(50, 25)
+				m = mover.entry.m
+				expect(math.abs(m[1] - 0.5) < 1e-9).to.beTrue()
+				expect(math.abs(m[4] - 0.25) < 1e-9).to.beTrue()
+				expect(m[5]).to.equal(30) -- the position stays
+				expect(m[6]).to.equal(12)
+				-- a rotation already there is kept
+				mover:SetRotation(90)
+				mover:SetScale(100, 100)
+				m = mover.entry.m
+				expect(math.abs(m[2] - 1) < 1e-9).to.beTrue()
+				local before = outer.version
+				mover:SetScale(100, 100)
+				expect(outer.version).to.equal(before)
+			end
+		},
+		{
 			name = "a child action sends gotoAndPlay or gotoAndStop to the child clip with that name",
 			func = function(state)
 				local m = movie()

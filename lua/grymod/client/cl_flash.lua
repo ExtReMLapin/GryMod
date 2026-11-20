@@ -276,6 +276,47 @@ function Clip:SetX(x)
 	end
 end
 
+-- Flash's _y: moves this clip vertically.
+function Clip:SetY(y)
+	local entry = self.entry
+
+	if not entry or entry.m[6] == y then
+		return
+	end
+
+	local m = entry.m
+	entry.m = {m[1], m[2], m[3], m[4], m[5], y}
+
+	if self.parent then
+		self.parent:_touch()
+	end
+end
+
+-- Flash's _xscale and _yscale (percent): the size of this clip, its rotation and position stay.
+function Clip:SetScale(percentX, percentY)
+	local entry = self.entry
+
+	if not entry or percentX ~= percentX or percentY ~= percentY then
+		return
+	end
+
+	local m = entry.m
+	local angle = math.atan2(m[2], m[1])
+	local sx, sy = percentX / 100, percentY / 100
+	local sin, cos = math.sin(angle), math.cos(angle)
+	local a, b, c, d = sx * cos, sx * sin, -sy * sin, sy * cos
+
+	if math.abs(m[1] - a) < 1e-9 and math.abs(m[2] - b) < 1e-9 and math.abs(m[3] - c) < 1e-9 and math.abs(m[4] - d) < 1e-9 then
+		return
+	end
+
+	entry.m = {a, b, c, d, m[5], m[6]}
+
+	if self.parent then
+		self.parent:_touch()
+	end
+end
+
 -- Flash's _rotation: turns this clip by an angle in degrees (clockwise on screen), keeping its scale and its
 -- position (the rotation part of its placement matrix is replaced).
 function Clip:SetRotation(degrees)
