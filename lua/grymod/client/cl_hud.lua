@@ -559,6 +559,9 @@ local function buildLayout(W, H, xa, xd)
 	}
 	L.letterX = W * (20 / 1920) - xa + xd
 	L.letterXAdd = W * (134 / 1920)
+	-- pixels per degree of yaw: the compass picture grows with the screen, the letters must travel with it
+	-- (it was 3.32 pixels at every resolution, so the picture showed twice the headings in 4K)
+	L.degPx = W * (3.32 / 1920)
 	L.letterY = H - W * (218 / 1920)
 	L.letterYAdd = W * (-5 / 1920)
 
@@ -578,6 +581,8 @@ local function buildLayout(W, H, xa, xd)
 	return L
 end
 
+GryMod.BuildHudLayout = buildLayout
+
 -- The layout for the current screen and settings: the same table until one of them changes
 function GryMod.GetHudLayout()
 	local w, h = ScrW(), ScrH()
@@ -592,22 +597,19 @@ end
 
 -- Position of one compass letter (1 = N, 2 = NE ... 8 = NW) for a player yaw
 local compassLetters = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
-local compassOffsets = {0, 45, 90, 135, false, -135, -90, -45}
+local compassOffsets = {0, 45, 90, 135, 180, -135, -90, -45}
 
 local function compassPosition(L, index, yaw)
-	local ly = yaw + 6.256798
-	local v
+	-- The heading of the letter relative to the player, wrapped into -180..180. Every letter needs the
+	-- wrap, not only the south one: without it SW and SE left on one side and came back on the other as
+	-- the engine's yaw went from 180 to -180.
+	local v = math.NormalizeAngle(yaw + 6.256798 + compassOffsets[index])
 
-	if compassOffsets[index] then
-		v = ly + compassOffsets[index]
-	else
-		-- south wraps around +-180
-		v = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
-	end
-
-	-- every letter moves by 3.32 pixels per degree (south used to use 5, so it ran 50 % faster than the rest)
-	return L.letterX + (v * 3.32) + L.letterXAdd, L.letterY - ((v * 3.32) / 15) + L.letterYAdd
+	-- every letter moves by the same distance per degree (south used to run 50 % faster than the rest)
+	return L.letterX + (v * L.degPx) + L.letterXAdd, L.letterY - ((v * L.degPx) / 15) + L.letterYAdd
 end
+
+GryMod.CompassPositionIn = compassPosition
 
 function GryMod.CompassPosition(index, yaw)
 	return compassPosition(GryMod.GetHudLayout(), index, yaw)

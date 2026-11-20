@@ -213,27 +213,71 @@ return {
 				local W, H = ScrW(), ScrH()
 				local xa, xd = 30, -20
 				local tol = 0.000001
-				local offsets = {N = 0, NE = 45, E = 90, SE = 135, SW = -135, W = -90, NW = -45}
+				local degPx = W * (3.32 / 1920) -- pixels per degree: proportional to the screen, like the compass picture
+				local offsets = {N = 0, NE = 45, E = 90, SE = 135, S = 180, SW = -135, W = -90, NW = -45}
 				local order = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
 
 				for _, yaw in ipairs({-170, -33.3, 0, 12.5, 90, 179}) do
 					local ly = yaw + 6.256798
 
 					for index, letter in ipairs(order) do
-						local x, y
-						if letter == "S" then
-							local m = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
-							x = W * (20 / 1920) - xa + xd + (m * 3.32) + W * (134 / 1920)
-							y = H - W * (218 / 1920) - ((m * 3.32) / 15) + W * (-5 / 1920)
-						else
-							local v = ly + offsets[letter]
-							x = W * (20 / 1920) - xa + xd + (v * 3.32) + W * (134 / 1920)
-							y = H - W * (218 / 1920) - ((v * 3.32) / 15) + W * (-5 / 1920)
-						end
+						-- the heading of the letter relative to the player, wrapped into -180..180
+						local v = math.NormalizeAngle(ly + offsets[letter])
+						local x = W * (20 / 1920) - xa + xd + (v * degPx) + W * (134 / 1920)
+						local y = H - W * (218 / 1920) - ((v * degPx) / 15) + W * (-5 / 1920)
 						local gx, gy = GryMod.CompassPosition(index, yaw)
 						expect(gx).to.aboutEqual(x, tol)
 						expect(gy).to.aboutEqual(y, tol)
 					end
+				end
+			end
+		},
+		{
+			name = "a compass letter does not jump when the yaw goes from 180 to -180",
+			func = function(state)
+				GetConVar("gry_xadd"):SetInt(0)
+				GetConVar("gry_xdist"):SetInt(0)
+
+				-- the engine reports the yaw between -180 and 180: the letters must not depend on the turn
+				for index = 1, 8 do
+					for _, yaw in ipairs({-179.9, -170, -90, -45, 0, 12.5, 45, 90, 135, 179.9}) do
+						local x1, y1 = GryMod.CompassPosition(index, yaw)
+						local x2, y2 = GryMod.CompassPosition(index, yaw + 360)
+						expect(x2).to.aboutEqual(x1, 0.000001)
+						expect(y2).to.aboutEqual(y1, 0.000001)
+					end
+
+					-- turning 0.2 degree across the seam moves the letter by 0.2 degree
+					local degPx = ScrW() * (3.32 / 1920)
+					local before = GryMod.CompassPosition(index, 179.9)
+					local after = GryMod.CompassPosition(index, -179.9)
+					expect(after - before).to.aboutEqual(0.2 * degPx, 0.000001)
+				end
+			end
+		},
+		{
+			name = "the compass shows the same headings whatever the resolution",
+			func = function(state)
+				local function window(W)
+					local L = GryMod.BuildHudLayout(W, math.floor(W * 9 / 16), 0, 0)
+					local minX, maxX = math.huge, -math.huge
+
+					for _, p in ipairs(L.maskPoly) do
+						minX, maxX = math.min(minX, p.x), math.max(maxX, p.x)
+					end
+
+					return (maxX - minX) / L.degPx, L
+				end
+
+				local reference = window(1920)
+
+				for _, W in ipairs({1280, 2560, 3840}) do
+					local degrees, L = window(W)
+					expect(degrees).to.aboutEqual(reference, 0.0001)
+					-- 45 degrees between two neighbouring letters is the same share of the picture
+					local nx = GryMod.CompassPositionIn(L, 1, 0)
+					local nex = GryMod.CompassPositionIn(L, 2, 0)
+					expect(nex - nx).to.aboutEqual(45 * L.degPx, 0.0001)
 				end
 			end
 		},
@@ -253,14 +297,14 @@ return {
 
 					for index = 1, 8 do
 						local x2 = GryMod.CompassPosition(index, yaw + 1)
-						expect(x2 - x1[index]).to.aboutEqual(3.32, 0.0001)
+						expect(x2 - x1[index]).to.aboutEqual(ScrW() * (3.32 / 1920), 0.0001)
 					end
 				end
 
 				-- and across the seam, south goes on at the same speed
 				local before = GryMod.CompassPosition(5, 179)
 				local after = GryMod.CompassPosition(5, -179.5)
-				expect(math.abs(after - before)).to.aboutEqual(3.32 * 1.5, 0.0001)
+				expect(after - before).to.aboutEqual(ScrW() * (3.32 / 1920) * 1.5, 0.0001)
 			end
 		},
 		{
