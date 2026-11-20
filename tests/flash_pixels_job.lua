@@ -6,6 +6,7 @@
 -- not mounted as an addon has no materials folder in the game's search path.
 -- The result is written under garrysmod/data/ (out). Optional args: width, height (1024x768), scale (1), bg,
 -- sprite, frame, x, y (draw one sprite of the movie alone instead of the whole movie),
+-- texts = {{path = "Root.Texts.HealthEnergy.Colorset", name = "HealthText1", text = "1"}, ...},
 -- drawX, drawY (shift of the stage origin in pixels), atlasSuffix, ignoreBlend (draw additive sprites as normal blends: FFDec's reference render does not honour blend modes).
 
 local movieName = args.movie or "hud_ammohealthenergysuit"
@@ -33,6 +34,12 @@ end
 
 local movie = Flash.Load(movieName)
 local root
+local function setTexts(clip)
+	for _, t in ipairs(args.texts or {}) do
+		local target = clip:Find(t.path)
+		assert(target and target:SetText(t.name, t.text), "no text field " .. t.path .. "." .. t.name)
+	end
+end
 
 if args.sprite then
 	-- one sprite of the movie alone, at (args.x, args.y) of the stage, on the frame args.frame
@@ -46,6 +53,8 @@ if args.sprite then
 else
 	root = Flash.NewRoot(movie)
 end
+
+setTexts(root)
 
 local rt = GetRenderTarget("grymod_flash_px_" .. width .. "x" .. height, width, height)
 local finished, failure

@@ -58,6 +58,7 @@ class Movie:
     root: Timeline = field(default_factory=Timeline)
     characters: dict = field(default_factory=dict)
     exports: dict = field(default_factory=dict)
+    imports: dict = field(default_factory=dict)  # character id -> (swf url, exported name)
 
 
 def swf_to_xml(ffdec, swf_path, xml_path):
@@ -239,6 +240,9 @@ def _read_character(item, movie):
     elif kind in ("DefineFont3Tag", "DefineFont2Tag"):
         cid = int(item.get("fontID"))
         movie.characters[cid] = Character(cid, "font", name=(item.get("fontName") or "").strip("\0"))
+    elif kind in ("ImportAssetsTag", "ImportAssets2Tag"):
+        for tag, name in zip(item.find("tags"), item.find("names")):
+            movie.imports[int(tag.text)] = (item.get("url"), name.text)
     elif kind == "ExportAssetsTag":
         for tag, name in zip(item.find("tags"), item.find("names")):
             movie.exports[name.text] = int(tag.text)

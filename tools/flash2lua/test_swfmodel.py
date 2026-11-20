@@ -123,6 +123,9 @@ class SwfModelTest(unittest.TestCase):
         self.assertEqual(morph.polygon, [px(2673, -73), px(2687, -73), px(2687, 303), px(2673, 303)])
         self.assertEqual(morph.end_polygon, [px(30, -58), px(2790, -58), px(2790, 318), px(30, 318)])
 
+    def test_imported_font_is_recorded(self):
+        self.assertEqual(self.movie.imports[63], ("HUD_Font_LocFont.swf", "Font_Body"))
+
     def test_edit_text_fields(self):
         text = self.movie.characters[64]
         self.assertEqual(text.kind, "text")

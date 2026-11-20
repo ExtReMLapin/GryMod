@@ -148,6 +148,8 @@ function Clip:_add(depth, id, op, inherit)
 	if definition.k == "sprite" then
 		entry.clip = newClip(self.movie, definition, id)
 		entry.clip.parent = self
+	elseif definition.k == "text" then
+		entry.text = definition.t or ""
 	end
 
 	self.list[depth] = entry
@@ -395,3 +397,66 @@ function Clip:CurrentLabel()
 
 	return frame and frame.l
 end
+
+-- Sets the text of the text field with this instance name (at this level). Returns whether it was found.
+function Clip:SetText(name, text)
+	local entry = self.names[name]
+
+	if not entry or entry.kind ~= "text" then
+		return false
+	end
+
+	entry.text = text == nil and "" or tostring(text)
+
+	return true
+end
+
+-- The child clip (or field) at a dotted path of instance names, e.g. "Root.Texts.HealthEnergy", or nil.
+function Clip:Find(path)
+	local current = self
+
+	for name in string.gmatch(path, "[^.]+") do
+		if not current or not current.Child then
+			return nil
+		end
+
+		current = current:Child(name)
+
+		if current == nil then
+			return nil
+		end
+	end
+
+	return current
+end
+
+local TEXT_MARGIN = 2 -- Flash keeps 2 pixels between a text field's border and its text
+
+-- Where the text starts inside its field: returns x (from the field's left), the baseline (from its top)
+-- and the text width, all in stage pixels. Characters the font does not have count for nothing.
+function Flash.LayoutText(font, field, text)
+	local scale = field.fh / font.em
+	local glyphs = font.g
+	local width = 0
+
+	for i = 1, #text do
+		local glyph = glyphs[string.byte(text, i)]
+
+		if glyph then
+			width = width + glyph.adv * scale
+		end
+	end
+
+	local x
+
+	if field.al == 2 then
+		x = (field.w - width) / 2
+	elseif field.al == 1 then
+		x = field.w - TEXT_MARGIN - width
+	else
+		x = TEXT_MARGIN
+	end
+
+	return x, TEXT_MARGIN + font.asc * scale, width
+end
+

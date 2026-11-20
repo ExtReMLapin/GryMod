@@ -115,26 +115,24 @@ end
 local measuring = false
 local minX, minY, maxX, maxY = 0, 0, 0, 0
 
-local function drawShape(movie, shape, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+-- One textured rectangle: the atlas rectangle (sx, sy, sw, sh) drawn over the local rectangle (x0, y0)-(x1, y1).
+local function drawQuad(movie, atlas, sx, sy, sw, sh, x0, y0, x1, y1, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
 	if measuring then
-		local x0, y0 = shape.ox, shape.oy
-		local x1, y1 = x0 + shape.dw, y0 + shape.dh
-
 		for corner = 0, 3 do
 			local x = (corner == 1 or corner == 2) and x1 or x0
 			local y = corner >= 2 and y1 or y0
-			local sx, sy = a * x + c * y + tx, b * x + d * y + ty
+			local px, py = a * x + c * y + tx, b * x + d * y + ty
 
-			if sx < minX then minX = sx end
-			if sx > maxX then maxX = sx end
-			if sy < minY then minY = sy end
-			if sy > maxY then maxY = sy end
+			if px < minX then minX = px end
+			if px > maxX then maxX = px end
+			if py < minY then minY = py end
+			if py > maxY then maxY = py end
 		end
 
 		return
 	end
 
-	local material = atlasMaterial(movie.atlases[shape.a])
+	local material = atlasMaterial(movie.atlases[atlas])
 
 	if material ~= batchMaterial or blend ~= batchBlend then
 		flush()
@@ -143,19 +141,54 @@ local function drawShape(movie, shape, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	end
 
 	local atlasW, atlasH = material:Width(), material:Height()
-	local u0, v0 = shape.x / atlasW, shape.y / atlasH
-	local u1, v1 = (shape.x + shape.w) / atlasW, (shape.y + shape.h) / atlasH
+	local u0, v0 = sx / atlasW, sy / atlasH
+	local u1, v1 = (sx + sw) / atlasW, (sy + sh) / atlasH
 
 	-- colour of a white shape under the accumulated colour transform
 	local r, g, bl, al = clamp255(mr + ar / 255), clamp255(mg + ag / 255), clamp255(mb + ab / 255), clamp255(ma + aa / 255)
-
-	local x0, y0 = shape.ox, shape.oy
-	local x1, y1 = x0 + shape.dw, y0 + shape.dh
 
 	vertex(a * x0 + c * y0 + tx, b * x0 + d * y0 + ty, u0, v0, r, g, bl, al)
 	vertex(a * x1 + c * y0 + tx, b * x1 + d * y0 + ty, u1, v0, r, g, bl, al)
 	vertex(a * x1 + c * y1 + tx, b * x1 + d * y1 + ty, u1, v1, r, g, bl, al)
 	vertex(a * x0 + c * y1 + tx, b * x0 + d * y1 + ty, u0, v1, r, g, bl, al)
+end
+
+local function drawShape(movie, shape, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	drawQuad(movie, shape.a, shape.x, shape.y, shape.w, shape.h, shape.ox, shape.oy, shape.ox + shape.dw, shape.oy + shape.dh,
+		a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+end
+
+-- A text field: one quad per glyph from the font atlas, tinted by the field's own colour.
+local function drawText(movie, field, text, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	local font = movie.fonts and movie.fonts[field.f]
+
+	if not font or text == "" then
+		return
+	end
+
+	local x, baseline, _ = Flash.LayoutText(font, field, text)
+	x = field.ox + x
+	baseline = field.oy + baseline
+
+	local scale = field.fh / font.em
+	local color = field.col
+	mr, mg, mb, ma = mr * color[1] / 255, mg * color[2] / 255, mb * color[3] / 255, ma * color[4] / 255
+	local glyphs = font.g
+
+	for i = 1, #text do
+		local glyph = glyphs[string.byte(text, i)]
+
+		if glyph then
+			if glyph.w > 0 then
+				local gx, gy = x + glyph.ox * scale, baseline + glyph.oy * scale
+
+				drawQuad(movie, font.a, glyph.x, glyph.y, glyph.w, glyph.h, gx, gy, gx + glyph.w * scale, gy + glyph.h * scale,
+					a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+			end
+
+			x = x + glyph.adv * scale
+		end
+	end
 end
 
 -- The outline of a mask entry in stage pixels as {x1, y1, x2, y2, ...}, or nil when it has none.
@@ -405,6 +438,8 @@ function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
 				end
 			elseif entry.kind == "shape" then
 				drawShape(movie, movie.chars[entry.id], ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
+			elseif entry.kind == "text" then
+				drawText(movie, movie.chars[entry.id], entry.text, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
 			end
 		end
 	end

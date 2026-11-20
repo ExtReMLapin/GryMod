@@ -81,6 +81,18 @@ class EmitLuaTest(unittest.TestCase):
         self.assertEqual(len(morph["pe"]), 8)
         self.assertNotIn("p", self.data["chars"][100])
 
+    def test_fonts_are_emitted_with_their_atlas(self):
+        font = {"atlas": "ahes_font.png", "em": 128, "asc": 136, "desc": 20,
+                "glyphs": {48: {"x": 3, "y": 4, "w": 60, "h": 90, "ox": 2, "oy": -95, "adv": 74.0},
+                           32: {"x": 0, "y": 0, "w": 0, "h": 0, "ox": 0, "oy": 0, "adv": 30.0}}}
+        text = emit_lua.emit_lua(self.movie, self.rects, "grymod/flash", {63: font})
+        data = lua_literal.parse(text)
+        emitted = data["fonts"][63]
+        self.assertEqual((emitted["em"], emitted["asc"], emitted["desc"]), (128, 136, 20))
+        self.assertTrue(data["atlases"][emitted["a"]].endswith("ahes_font.png"))
+        self.assertEqual(emitted["g"][48]["adv"], 74)
+        self.assertEqual(emitted["g"][48]["oy"], -95)
+
     def test_file_size_is_reasonable(self):
         self.assertLess(len(self.text.encode("utf8")), 1_000_000)
 
