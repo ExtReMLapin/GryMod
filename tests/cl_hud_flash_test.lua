@@ -417,6 +417,36 @@ return {
 			end
 		},
 		{
+			name = "the colour themes are the four the original game offers, from its integer colour values",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				-- hud_colorLine / hud_colorOver / hud_colorText as 0xRRGGBB integers read from the game
+				expect(M.ColourFromInt(4481854)[1]).to.equal(68)
+				expect(M.ColourFromInt(4481854)[2]).to.equal(99)
+				expect(M.ColourFromInt(4481854)[3]).to.equal(62)
+				expect(M.Themes.blue.Line[1]).to.equal(77)
+				expect(M.Themes.blue.Line[2]).to.equal(131)
+				expect(M.Themes.blue.Line[3]).to.equal(179)
+				expect(M.Themes.blue.Over[2]).to.equal(156)
+				expect(M.Themes.blue.Text[3]).to.equal(185)
+				expect(M.Themes.default.Text[1]).to.equal(188)
+				expect(M.Themes.white.Text[1]).to.equal(255)
+				expect(M.Themes.orange.Line[1]).to.equal(192)
+			end
+		},
+		{
+			name = "choosing a theme changes the colours of the next HUD, an unknown name gives the blue one",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local saved = GetConVar("gry_hud_theme"):GetString()
+				M.SetTheme("default")
+				expect(M.Theme.Line[1]).to.equal(68)
+				M.SetTheme("nothing")
+				expect(M.Theme.Line[1]).to.equal(77)
+				M.SetTheme(saved)
+			end
+		},
+		{
 			name = "a missing movie gives no HUD instead of an error",
 			func = function(state)
 				expect(GryMod.FlashHUD.New(nil)).to.beNil()

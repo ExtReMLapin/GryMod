@@ -15,6 +15,16 @@ function GryMod.GryOptionschute(Panel)
 		}
 	})
 	Panel:CheckBox("Suit sounds", "gry_sounds")
+	Panel:AddControl("ComboBox", {
+		Label = "Crysis HUD colours",
+		MenuButton = 0,
+		Options = {
+			["Blue"] = {gry_hud_theme = "blue"},
+			["Crysis default (green)"] = {gry_hud_theme = "default"},
+			["White"] = {gry_hud_theme = "white"},
+			["Orange"] = {gry_hud_theme = "orange"}
+		}
+	})
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)
 

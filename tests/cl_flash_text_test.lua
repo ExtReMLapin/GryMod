@@ -24,6 +24,18 @@ return {
 	groupName = "GryMod Flash text",
 	cases = {
 		{
+			name = "a replaced colour (multiplier 0) is drawn from the white twin of the atlas, the others from the atlas",
+			func = function(state)
+				local F = GryMod.Flash
+				local movie = {atlases = {"grymod/flash/a_1.png", "grymod/flash/a_font.png"}, white = {[1] = true}}
+				expect(F.AtlasPathFor(movie, 1, 0, 0, 0)).to.equal("grymod/flash/a_1_w.png")
+				expect(F.AtlasPathFor(movie, 1, 1, 1, 1)).to.equal("grymod/flash/a_1.png")
+				expect(F.AtlasPathFor(movie, 1, 0.5, 0, 0)).to.equal("grymod/flash/a_1.png")
+				expect(F.AtlasPathFor(movie, 2, 0, 0, 0)).to.equal("grymod/flash/a_font.png") -- glyphs are white already
+				expect(F.AtlasPathFor({atlases = {"x.png"}}, 1, 0, 0, 0)).to.equal("x.png") -- a movie without twins
+			end
+		},
+		{
 			name = "a text field starts with its initial text",
 			func = function(state)
 				local root = GryMod.Flash.NewRoot(movie())

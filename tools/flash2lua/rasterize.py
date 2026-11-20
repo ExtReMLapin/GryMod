@@ -141,6 +141,11 @@ def rasterize_movie(movie, swf_path, out_dir, ffdec, zoom=4, max_atlas=4096, pre
             rects[cid] = {"atlas": f"{prefix}_{atlas + 1}.png", "x": x, "y": y, "w": w, "h": h,
                           "ox": x0, "oy": y0, "dw": x1 - x0, "dh": y1 - y0}
         for index, sheet in enumerate(sheets):
+            # the all-white twin, for shapes whose colour a colour-set clip replaces (see emit_lua `white`)
+            silhouette = sheet.copy()
+            silhouette[:, :, :3] = 255
+            Image.fromarray(silhouette, "RGBA").save(
+                os.path.join(out_dir, f"{prefix}_{index + 1}_w.png"), optimize=True)
             sheet[:, :, :3] = SRGB_ENCODE[sheet[:, :, :3]]
             Image.fromarray(sheet, "RGBA").save(
                 os.path.join(out_dir, f"{prefix}_{index + 1}.png"), optimize=True)

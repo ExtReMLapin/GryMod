@@ -42,6 +42,29 @@ function Flash.ClearMaterialCache()
 	atlasMaterials = {}
 end
 
+local whitePaths = {}
+
+-- Which atlas file draws shapes of `atlas` under the accumulated colour multipliers (mr, mg, mb). A colour-set
+-- clip replaces the colour of its shapes (Flash's Color.setRGB: multiplier 0, colour added), whatever colour
+-- the artwork gave them; the engine can only multiply the texture, so those shapes come from the all-white
+-- twin of the atlas and the added colour becomes the vertex colour.
+function Flash.AtlasPathFor(movie, atlas, mr, mg, mb)
+	local path = movie.atlases[atlas]
+
+	if movie.white and movie.white[atlas] and mr + mg + mb < 0.001 then
+		local twin = whitePaths[path]
+
+		if not twin then
+			twin = path:gsub("%.png$", "_w.png")
+			whitePaths[path] = twin
+		end
+
+		return twin
+	end
+
+	return path
+end
+
 -- Triangle batch: 8 numbers (x, y, u, v, r, g, b, a) per vertex, 3 vertices per triangle.
 local batch = {}
 local batchCount = 0 -- numbers used
@@ -198,7 +221,7 @@ local function drawQuad(movie, atlas, sx, sy, sw, sh, x0, y0, x1, y1, a, b, c, d
 		return
 	end
 
-	local material = atlasMaterial(movie.atlases[atlas])
+	local material = atlasMaterial(Flash.AtlasPathFor(movie, atlas, mr, mg, mb))
 
 	if material ~= batchMaterial or blend ~= batchBlend then
 		flush()

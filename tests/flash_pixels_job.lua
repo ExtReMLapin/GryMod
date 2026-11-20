@@ -7,7 +7,7 @@
 -- The result is written under garrysmod/data/ (out). Optional args: width, height (1024x768), scale (1), bg,
 -- twice (draw a second time and save out_2.png: it must be identical, from the group caches),
 -- radar = {bearing, fov, stealth} (the compass panel), advance (seconds of timeline to play before drawing the HUD),
--- hud = {health, energy, mode, ammo = {mag, reserve, size, grenades}} (the Crysis HUD with values),
+-- hud = {health, energy, mode, fireMode, ammo = {mag, reserve, size, grenades}} (the Crysis HUD with values),
 -- sprite, frame, x, y (draw one sprite of the movie alone instead of the whole movie),
 -- texts = {{path = "Root.Texts.HealthEnergy.Colorset", name = "HealthText1", text = "1"}, ...},
 -- drawX, drawY (shift of the stage origin in pixels), atlasSuffix, ignoreBlend (draw additive sprites as normal blends: FFDec's reference render does not honour blend modes).
@@ -51,7 +51,7 @@ if args.hud then
 	hud:SetEnergy(args.hud.energy or 101)
 	hud:SetMode(args.hud.mode or "Armor")
 	local a = args.hud.ammo or {31, 71, 40, 7}
-	hud:SetAmmo(a[1], a[2], a[3], a[4], "explosivegrenade", "Auto")
+	hud:SetAmmo(a[1], a[2], a[3], a[4], "explosivegrenade", args.hud.fireMode or "Auto")
 	root = hud.root
 
 	if args.advance then

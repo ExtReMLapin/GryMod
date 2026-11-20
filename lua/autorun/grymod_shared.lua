@@ -38,6 +38,8 @@ if SERVER then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_font.png")
 	resource.AddFile("materials/grymod/flash/hud_radarcompassstealth_1.png")
 	resource.AddFile("materials/grymod/flash/hud_radarcompassstealth_font.png")
+	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1_w.png")
+	resource.AddFile("materials/grymod/flash/hud_radarcompassstealth_1_w.png")
 	resource.AddFile("materials/gryarmor.png")
 	resource.AddFile("materials/grycloak.png")
 	resource.AddFile("materials/grydrop.png")

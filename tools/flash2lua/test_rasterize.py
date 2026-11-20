@@ -84,6 +84,18 @@ class RasterizeTest(unittest.TestCase):
         self.assertIn((255, 0, 0), colours)
         self.assertNotIn((204, 102, 51), colours)
 
+    def test_every_atlas_has_a_white_silhouette_twin(self):
+        """A colour-set clip replaces the colour of its shapes (Flash's Color.setRGB: multiplier 0, colour added):
+        the engine can only multiply the texture, so those shapes are drawn from an all-white copy."""
+        for name in {r["atlas"] for r in self.rects.values()}:
+            colour = Image.open(os.path.join(self.out, name)).convert("RGBA")
+            white = Image.open(os.path.join(self.out, name.replace(".png", "_w.png"))).convert("RGBA")
+            self.assertEqual(colour.size, white.size)
+            for c, w in zip(colour.getdata(), white.getdata()):
+                self.assertEqual(c[3], w[3])
+                if w[3] > 0:
+                    self.assertEqual(w[:3], (255, 255, 255))
+
     def test_transparent_pixels_carry_the_neighbour_colour(self):
         """Bilinear filtering must not pull black from transparent pixels into the edge."""
         r = self.rects[100]

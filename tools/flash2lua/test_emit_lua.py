@@ -78,6 +78,14 @@ class EmitLuaTest(unittest.TestCase):
         first = self.data["chars"][102]["frames"][1]
         self.assertEqual([first["a"][1][1], first["a"][1][2], first["a"][1][3]], ["color", "Line", "Colorset"])
 
+    def test_shape_atlases_are_flagged_as_having_a_white_twin_and_font_atlases_not(self):
+        self.assertTrue(self.data["white"][1])
+        font = {"atlas": "ahes_font.png", "em": 128, "asc": 136, "desc": 20,
+                "glyphs": {48: {"x": 3, "y": 4, "w": 60, "h": 90, "ox": 2, "oy": -95, "adv": 74.0}}}
+        data = lua_literal.parse(emit_lua.emit_lua(self.movie, self.rects, "grymod/flash", {63: font}))
+        index = data["fonts"][63]["a"]
+        self.assertNotIn(index, data["white"])
+
     def test_polygons_are_emitted_for_masks(self):
         self.assertEqual([self.data["chars"][15]["p"][i] for i in range(1, 9)],
                          [29 / 20, -58 / 20, 29 / 20, 318 / 20, 2829 / 20, 318 / 20, 2829 / 20, -58 / 20])

@@ -13,13 +13,26 @@ GryMod.FlashHUD = Module
 
 Module.MOVIE = "hud_ammohealthenergysuit"
 
--- The theme colours the movie's colour-set clips copy (the original sets them from the game's HUD colour
--- settings; these are the blue-green ones of the retail game).
-Module.Theme = {
-	Line = {150, 205, 230},
-	Over = {170, 220, 240},
-	Text = {200, 235, 250}
+-- The theme colours the movie's colour-set clips copy: hud_colorLine (outlines and icons), hud_colorOver
+-- (active indicators) and hud_colorText (digits and letters). The game keeps them as 0xRRGGBB integers and hands
+-- them to the movie unchanged; these are the four sets its options menu offers (read from the demo's
+-- Options movie), "default" being the game's own default.
+function Module.ColourFromInt(value)
+	return {math.floor(value / 65536) % 256, math.floor(value / 256) % 256, value % 256}
+end
+
+local function theme(line, over, text)
+	return {Line = Module.ColourFromInt(line), Over = Module.ColourFromInt(over), Text = Module.ColourFromInt(text)}
+end
+
+Module.Themes = {
+	blue = theme(5079987, 5938225, 7906489),
+	default = theme(4481854, 14125840, 12386209),
+	white = theme(13553087, 9942506, 16777215),
+	orange = theme(12612932, 16761744, 15108923)
 }
+
+Module.Theme = Module.Themes.blue
 
 local HUD = {}
 HUD.__index = HUD
@@ -352,6 +365,14 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 
 local styleConVar = CreateClientConVar("gry_hud_style", "classic", true, false)
+local themeConVar = CreateClientConVar("gry_hud_theme", "blue", true, false)
+
+-- Chooses the colours (blue, default, white, orange) of the HUD drawn from now on.
+function Module.SetTheme(name)
+	Module.Theme = Module.Themes[name] or Module.Themes.blue
+end
+
+Module.SetTheme(themeConVar:GetString())
 
 local MODE_NAME = {
 	[GryMod.Modes.ARMOR] = "Armor",
@@ -654,6 +675,11 @@ function Module.Paint()
 	end
 end
 
+-- Drops the HUD so that the next frame builds a new one (a new theme, for instance).
+function Module.Reset()
+	hud, panel = nil, nil
+end
+
 -- Adds or removes the paint hook; returns whether this style is the one being drawn.
 function Module.Apply(enabled)
 	local active = enabled and Module.Enabled()
@@ -667,6 +693,14 @@ function Module.Apply(enabled)
 
 	return active
 end
+
+cvars.AddChangeCallback("gry_hud_theme", function(_, _, value)
+	Module.SetTheme(value)
+
+	if GryMod.ApplyHUD then
+		Module.Reset()
+	end
+end, "GryModHUDTheme")
 
 cvars.AddChangeCallback("gry_hud_style", function()
 	if GryMod.ApplyHUD then
