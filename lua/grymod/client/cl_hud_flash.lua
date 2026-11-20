@@ -415,6 +415,101 @@ function Module.AddFireModeResolver(fn)
 	end
 end
 
+-- Readers for the weapon bases that keep their fire mode in their own fields (read from their source code).
+-- A safety catch shows the single shot icon: the weapon is not an automatic one at that moment.
+
+-- ARC9: GetCurrentFiremode() is the Mode number: below 0 automatic, 0 safety, 1 semi, above 1 a burst.
+Module.AddFireModeResolver(function(weapon)
+	if weapon.ARC9 ~= true or not weapon.GetCurrentFiremode then
+		return nil
+	end
+
+	if weapon.GetUBGL and weapon:GetUBGL() then
+		return "Grenade"
+	end
+
+	local mode = weapon:GetCurrentFiremode()
+
+	if mode < 0 then
+		return "Auto"
+	end
+
+	return mode > 1 and "Burst" or "Single"
+end)
+
+-- ArcCW: GetCurrentFiremode() is a table whose Mode is the other way round: 2 or more automatic, 1 semi,
+-- 0 safety, negative a burst.
+Module.AddFireModeResolver(function(weapon)
+	if weapon.ArcCW ~= true or not weapon.GetCurrentFiremode then
+		return nil
+	end
+
+	if weapon.GetInUBGL and weapon:GetInUBGL() then
+		return "Grenade"
+	end
+
+	local current = weapon:GetCurrentFiremode()
+	local mode = current and current.Mode or 1
+
+	if mode >= 2 then
+		return "Auto"
+	end
+
+	return mode < 0 and "Burst" or "Single"
+end)
+
+-- A mode kept as a string ("auto", "3burst", "Automatic", "Safe"...): TFA, CW 2.0 and FA:S 2.0.
+local function modeFromName(name)
+	if not isstring(name) then
+		return "Single"
+	end
+
+	name = string.lower(name)
+
+	if string.find(name, "burst", 1, true) then
+		return "Burst"
+	end
+
+	if string.find(name, "auto", 1, true) then
+		return "Auto"
+	end
+
+	return "Single"
+end
+
+-- TFA: GetFireMode() is an index into FireModes, a list of names.
+Module.AddFireModeResolver(function(weapon)
+	if weapon.IsTFAWeapon ~= true or not weapon.GetFireMode or not weapon.FireModes then
+		return nil
+	end
+
+	return modeFromName(weapon.FireModes[weapon:GetFireMode()])
+end)
+
+-- M9K: GetAutomatic(); its shotguns have their own base.
+local M9K_BASES = {bobs_gun_base = true, bobs_scoped_base = true, bobs_shotty_base = true}
+
+Module.AddFireModeResolver(function(weapon)
+	if not M9K_BASES[weapon.Base] or not weapon.GetAutomatic then
+		return nil
+	end
+
+	if weapon.Base == "bobs_shotty_base" then
+		return "Shotgun"
+	end
+
+	return weapon:GetAutomatic() and "Auto" or "Single"
+end)
+
+-- CW 2.0 and FA:S 2.0: FireMode is a string the server sends when the player changes it (nil until it arrives).
+Module.AddFireModeResolver(function(weapon)
+	if weapon.CW20Weapon ~= true and weapon.IsFAS2Weapon ~= true then
+		return nil
+	end
+
+	return modeFromName(weapon.FireMode)
+end)
+
 -- The icon for what the player holds: a stock weapon's own icon, else what a registered base says, else the
 -- generic SWEP rule (Primary.Automatic: automatic, otherwise one shot at a time).
 function Module.FireModeFor(weapon)

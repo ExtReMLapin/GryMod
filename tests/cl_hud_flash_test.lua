@@ -283,6 +283,91 @@ return {
 			end
 		},
 		{
+			name = "ARC9: Mode below 0 is automatic, 0 and 1 single shot, above 1 a burst, the grenade launcher shows grenades",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function gun(mode, launcher)
+					return {ARC9 = true, GetClass = function() return "arc9_x" end, Primary = {Automatic = true},
+						GetCurrentFiremode = function() return mode end, GetUBGL = function() return launcher end}
+				end
+
+				expect(M.FireModeFor(gun(-1))).to.equal("Auto")
+				expect(M.FireModeFor(gun(1))).to.equal("Single")
+				expect(M.FireModeFor(gun(0))).to.equal("Single")
+				expect(M.FireModeFor(gun(3))).to.equal("Burst")
+				expect(M.FireModeFor(gun(-1, true))).to.equal("Grenade")
+			end
+		},
+		{
+			name = "ArcCW reads the opposite way: 2 or more is automatic, 1 single shot, negative a burst",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function gun(mode, launcher)
+					return {ArcCW = true, GetClass = function() return "arccw_x" end, Primary = {Automatic = true},
+						GetCurrentFiremode = function() return {Mode = mode} end, GetInUBGL = function() return launcher end}
+				end
+
+				expect(M.FireModeFor(gun(2))).to.equal("Auto")
+				expect(M.FireModeFor(gun(1))).to.equal("Single")
+				expect(M.FireModeFor(gun(0))).to.equal("Single")
+				expect(M.FireModeFor(gun(-3))).to.equal("Burst")
+				expect(M.FireModeFor(gun(2, true))).to.equal("Grenade")
+			end
+		},
+		{
+			name = "TFA reads the name of the current mode in its FireModes list",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function gun(index)
+					return {IsTFAWeapon = true, GetClass = function() return "tfa_x" end, Primary = {Automatic = false},
+						FireModes = {"Automatic", "3Burst", "Single", "Safe"}, GetFireMode = function() return index end}
+				end
+
+				expect(M.FireModeFor(gun(1))).to.equal("Auto")
+				expect(M.FireModeFor(gun(2))).to.equal("Burst")
+				expect(M.FireModeFor(gun(3))).to.equal("Single")
+				expect(M.FireModeFor(gun(4))).to.equal("Single") -- the safety
+				expect(M.FireModeFor(gun(99))).to.equal("Single") -- an index that is not in the list
+			end
+		},
+		{
+			name = "M9K: GetAutomatic says whether it fires automatically, its shotguns keep the shotgun icon",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function gun(base, automatic)
+					return {Base = base, GetClass = function() return "m9k_x" end, Primary = {Automatic = not automatic},
+						GetAutomatic = function() return automatic end}
+				end
+
+				expect(M.FireModeFor(gun("bobs_gun_base", true))).to.equal("Auto")
+				expect(M.FireModeFor(gun("bobs_gun_base", false))).to.equal("Single")
+				expect(M.FireModeFor(gun("bobs_scoped_base", true))).to.equal("Auto")
+				expect(M.FireModeFor(gun("bobs_shotty_base", false))).to.equal("Shotgun")
+			end
+		},
+		{
+			name = "CW 2.0 and FA:S 2.0 keep the mode as a string",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function cw(mode)
+					return {CW20Weapon = true, GetClass = function() return "cw_x" end, Primary = {Automatic = true}, FireMode = mode}
+				end
+
+				local function fas(mode)
+					return {IsFAS2Weapon = true, GetClass = function() return "fas2_x" end, Primary = {Automatic = true}, FireMode = mode}
+				end
+
+				for _, make in ipairs({cw, fas}) do
+					expect(M.FireModeFor(make("auto"))).to.equal("Auto")
+					expect(M.FireModeFor(make("semi"))).to.equal("Single")
+					expect(M.FireModeFor(make("3burst"))).to.equal("Burst")
+					expect(M.FireModeFor(make("bolt"))).to.equal("Single")
+					expect(M.FireModeFor(make("safe"))).to.equal("Single")
+					expect(M.FireModeFor(make(nil))).to.equal("Single") -- not received from the server yet
+				end
+			end
+		},
+		{
 			name = "a resolver that errors or answers with an unknown icon is ignored",
 			func = function(state)
 				local M = GryMod.FlashHUD
