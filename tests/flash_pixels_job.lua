@@ -5,6 +5,8 @@
 -- The atlas PNGs must be in garrysmod/data/grymod_dev/ (copy materials/grymod/flash/*.png there): a branch that is
 -- not mounted as an addon has no materials folder in the game's search path.
 -- The result is written under garrysmod/data/ (out). Optional args: width, height (1024x768), scale (1), bg,
+-- advance (seconds of timeline to play before drawing the HUD),
+-- hud = {health, energy, mode, ammo = {mag, reserve, size, grenades}} (the Crysis HUD with values),
 -- sprite, frame, x, y (draw one sprite of the movie alone instead of the whole movie),
 -- texts = {{path = "Root.Texts.HealthEnergy.Colorset", name = "HealthText1", text = "1"}, ...},
 -- drawX, drawY (shift of the stage origin in pixels), atlasSuffix, ignoreBlend (draw additive sprites as normal blends: FFDec's reference render does not honour blend modes).
@@ -41,7 +43,21 @@ local function setTexts(clip)
 	end
 end
 
-if args.sprite then
+if args.hud then
+	-- the Crysis HUD with values: hud = {health = 101, energy = 101, mode = "Armor", ammo = {mag, reserve, size, grenades}}
+	local hud = GryMod.FlashHUD.New(movie)
+	hud:SetHealth(args.hud.health or 101)
+	hud:SetEnergy(args.hud.energy or 101)
+	hud:SetMode(args.hud.mode or "Armor")
+	local a = args.hud.ammo or {31, 71, 40, 7}
+	hud:SetAmmo(a[1], a[2], a[3], a[4], "explosivegrenade", "Auto")
+	root = hud.root
+
+	if args.advance then
+		-- let the timelines play (the digits flash when they change)
+		for _ = 1, math.floor(args.advance * 30) do hud:Update(1 / 30) end
+	end
+elseif args.sprite then
 	-- one sprite of the movie alone, at (args.x, args.y) of the stage, on the frame args.frame
 	local single = {w = movie.w, h = movie.h, fps = movie.fps, atlases = movie.atlases, chars = movie.chars,
 		root = {{{d = 1, c = args.sprite, n = "S", m = {1, 0, 0, 1, args.x or 10, args.y or 10}}}}}

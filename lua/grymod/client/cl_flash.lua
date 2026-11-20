@@ -7,7 +7,8 @@
 
 GryMod = GryMod or {}
 
-local Flash = {}
+-- kept across a reload of this file, so the drawing functions that cl_flash_draw.lua added stay
+local Flash = GryMod.Flash or {}
 GryMod.Flash = Flash
 
 local Clip = {}

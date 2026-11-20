@@ -3,7 +3,8 @@
 -- Shapes are textured quads whose corners go through the accumulated 2D matrix of the clips above them
 -- (Flash matrices: x' = a*x + c*y + tx, y' = b*x + d*y + ty), so rotation, skew and scale are exact. Quads
 -- sharing a material are batched into one mesh. Colour transforms become the vertex colour (exact for the white
--- shapes the colour-set clips tint). Clip layers (masks) are drawn into the stencil. A clip with a blend mode
+-- shapes the colour-set clips tint). Clip layers (masks) clip each quad against the mask polygon (no stencil: it
+-- does not exist in every render target). A clip with a blend mode
 -- (the HUD uses "add") is drawn as a group, as Flash does: its content is composed normally in a render
 -- target, then that image is added to what is below.
 
@@ -21,7 +22,6 @@ Flash.AtlasMaterialPath = function(path)
 end
 
 local atlasMaterials = {}
-local whiteMaterial = Material("vgui/white")
 
 local function atlasMaterial(path)
 	local material = atlasMaterials[path]
@@ -42,8 +42,7 @@ function Flash.ClearMaterialCache()
 	atlasMaterials = {}
 end
 
--- Quad batch: flat array of 8 numbers x, y, u, v ... per vertex are too many calls; keep 4 vertices of
--- (x, y, u, v, r, g, b, a) per quad.
+-- Triangle batch: 8 numbers (x, y, u, v, r, g, b, a) per vertex, 3 vertices per triangle.
 local batch = {}
 local batchCount = 0 -- numbers used
 local batchMaterial, batchBlend
@@ -67,7 +66,7 @@ local function flush()
 		render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
 	end
 
-	mesh.Begin(MATERIAL_QUADS, batchCount / 32)
+	mesh.Begin(MATERIAL_TRIANGLES, batchCount / 24)
 
 	for i = 1, batchCount, 8 do
 		position:SetUnpacked(batch[i], batch[i + 1], 0)
@@ -115,6 +114,64 @@ end
 local measuring = false
 local minX, minY, maxX, maxY = 0, 0, 0, 0
 
+-- The active clip layer (mask): a convex polygon in screen coordinates, as x, y pairs.
+local maskPoints = {}
+local maskCount = 0 -- vertices, 0 = no mask
+local maskSign = 1
+local polyA, polyB = {}, {}
+
+-- Clips the polygon in polyA (n vertices of x, y, u, v) against the mask, appending the triangles to the batch.
+local function emitClipped(n, r, g, b, a)
+	local from, to = polyA, polyB
+
+	for edge = 1, maskCount do
+		local ax, ay = maskPoints[edge * 2 - 1], maskPoints[edge * 2]
+		local nextEdge = edge % maskCount + 1
+		local bx, by = maskPoints[nextEdge * 2 - 1], maskPoints[nextEdge * 2]
+		local ex, ey = bx - ax, by - ay
+		local count = 0
+
+		local previous = n
+		local px, py = from[previous * 4 - 3], from[previous * 4 - 2]
+		local previousSide = maskSign * (ex * (py - ay) - ey * (px - ax))
+
+		for i = 1, n do
+			local qx, qy = from[i * 4 - 3], from[i * 4 - 2]
+			local side = maskSign * (ex * (qy - ay) - ey * (qx - ax))
+
+			if (side >= 0) ~= (previousSide >= 0) then
+				local t = previousSide / (previousSide - side)
+				local o = count * 4
+				to[o + 1] = px + (qx - px) * t
+				to[o + 2] = py + (qy - py) * t
+				to[o + 3] = from[previous * 4 - 1] + (from[i * 4 - 1] - from[previous * 4 - 1]) * t
+				to[o + 4] = from[previous * 4] + (from[i * 4] - from[previous * 4]) * t
+				count = count + 1
+			end
+
+			if side >= 0 then
+				local o = count * 4
+				to[o + 1], to[o + 2], to[o + 3], to[o + 4] = qx, qy, from[i * 4 - 1], from[i * 4]
+				count = count + 1
+			end
+
+			previous, px, py, previousSide = i, qx, qy, side
+		end
+
+		from, to, n = to, from, count
+
+		if n < 3 then
+			return
+		end
+	end
+
+	for i = 2, n - 1 do
+		vertex(from[1], from[2], from[3], from[4], r, g, b, a)
+		vertex(from[i * 4 - 3], from[i * 4 - 2], from[i * 4 - 1], from[i * 4], r, g, b, a)
+		vertex(from[i * 4 + 1], from[i * 4 + 2], from[i * 4 + 3], from[i * 4 + 4], r, g, b, a)
+	end
+end
+
 -- One textured rectangle: the atlas rectangle (sx, sy, sw, sh) drawn over the local rectangle (x0, y0)-(x1, y1).
 local function drawQuad(movie, atlas, sx, sy, sw, sh, x0, y0, x1, y1, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
 	if measuring then
@@ -147,10 +204,27 @@ local function drawQuad(movie, atlas, sx, sy, sw, sh, x0, y0, x1, y1, a, b, c, d
 	-- colour of a white shape under the accumulated colour transform
 	local r, g, bl, al = clamp255(mr + ar / 255), clamp255(mg + ag / 255), clamp255(mb + ab / 255), clamp255(ma + aa / 255)
 
-	vertex(a * x0 + c * y0 + tx, b * x0 + d * y0 + ty, u0, v0, r, g, bl, al)
-	vertex(a * x1 + c * y0 + tx, b * x1 + d * y0 + ty, u1, v0, r, g, bl, al)
-	vertex(a * x1 + c * y1 + tx, b * x1 + d * y1 + ty, u1, v1, r, g, bl, al)
-	vertex(a * x0 + c * y1 + tx, b * x0 + d * y1 + ty, u0, v1, r, g, bl, al)
+	local ax, ay = a * x0 + c * y0 + tx, b * x0 + d * y0 + ty
+	local bx, by = a * x1 + c * y0 + tx, b * x1 + d * y0 + ty
+	local cx, cy = a * x1 + c * y1 + tx, b * x1 + d * y1 + ty
+	local dx, dy = a * x0 + c * y1 + tx, b * x0 + d * y1 + ty
+
+	if maskCount > 0 then
+		polyA[1], polyA[2], polyA[3], polyA[4] = ax, ay, u0, v0
+		polyA[5], polyA[6], polyA[7], polyA[8] = bx, by, u1, v0
+		polyA[9], polyA[10], polyA[11], polyA[12] = cx, cy, u1, v1
+		polyA[13], polyA[14], polyA[15], polyA[16] = dx, dy, u0, v1
+		emitClipped(4, r, g, bl, al)
+
+		return
+	end
+
+	vertex(ax, ay, u0, v0, r, g, bl, al)
+	vertex(bx, by, u1, v0, r, g, bl, al)
+	vertex(cx, cy, u1, v1, r, g, bl, al)
+	vertex(ax, ay, u0, v0, r, g, bl, al)
+	vertex(cx, cy, u1, v1, r, g, bl, al)
+	vertex(dx, dy, u0, v1, r, g, bl, al)
 end
 
 local function drawShape(movie, shape, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
@@ -220,54 +294,37 @@ local function beginMask(movie, entry, a, b, c, d, tx, ty)
 		return false
 	end
 
-	flush()
-
-	local ma, mb, mc, md, mtx, mty = entry.m[1], entry.m[2], entry.m[3], entry.m[4], entry.m[5], entry.m[6]
-	-- compose the entry matrix under the accumulated one
-	local ea = a * ma + c * mb
-	local eb = b * ma + d * mb
-	local ec = a * mc + c * md
-	local ed = b * mc + d * md
-	local etx = a * mtx + c * mty + tx
-	local ety = b * mtx + d * mty + ty
-
-	render.ClearStencil()
-	render.SetStencilEnable(true)
-	render.SetStencilWriteMask(255)
-	render.SetStencilTestMask(255)
-	render.SetStencilReferenceValue(1)
-	render.SetStencilCompareFunction(STENCIL_ALWAYS)
-	render.SetStencilPassOperation(STENCIL_REPLACE)
-	render.SetStencilFailOperation(STENCIL_KEEP)
-	render.SetStencilZFailOperation(STENCIL_KEEP)
-	render.OverrideColorWriteEnable(true, false)
-	render.SetMaterial(whiteMaterial)
+	local m = entry.m
+	-- the entry matrix under the accumulated one
+	local ea = a * m[1] + c * m[2]
+	local eb = b * m[1] + d * m[2]
+	local ec = a * m[3] + c * m[4]
+	local ed = b * m[3] + d * m[4]
+	local etx = a * m[5] + c * m[6] + tx
+	local ety = b * m[5] + d * m[6] + ty
 
 	local points = #outline / 2
-	mesh.Begin(MATERIAL_TRIANGLES, points - 2)
+	local area = 0
 
-	for i = 2, points - 1 do
-		for corner = 0, 2 do
-			local k = corner == 0 and 1 or i + corner - 1
-			local x, y = outline[k * 2 - 1], outline[k * 2]
-			position:SetUnpacked(ea * x + ec * y + etx, eb * x + ed * y + ety, 0)
-			mesh.Position(position)
-			mesh.Color(255, 255, 255, 255)
-			mesh.AdvanceVertex()
-		end
+	for i = 1, points do
+		local x, y = outline[i * 2 - 1], outline[i * 2]
+		maskPoints[i * 2 - 1] = ea * x + ec * y + etx
+		maskPoints[i * 2] = eb * x + ed * y + ety
 	end
 
-	mesh.End()
-	render.OverrideColorWriteEnable(false)
-	render.SetStencilCompareFunction(STENCIL_EQUAL)
-	render.SetStencilPassOperation(STENCIL_KEEP)
+	for i = 1, points do
+		local j = i % points + 1
+		area = area + maskPoints[i * 2 - 1] * maskPoints[j * 2] - maskPoints[j * 2 - 1] * maskPoints[i * 2]
+	end
+
+	maskSign = area >= 0 and 1 or -1
+	maskCount = points
 
 	return true
 end
 
 local function endMask()
-	flush()
-	render.SetStencilEnable(false)
+	maskCount = 0
 end
 
 local drawEntries
@@ -340,6 +397,9 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 
 	flush()
 
+	local outerMask = maskCount
+	maskCount = 0
+
 	local target = groupTarget(textureW, textureH, groupDepth)
 	render.PushRenderTarget(target)
 	render.Clear(0, 0, 0, 0, true, true, true)
@@ -350,6 +410,7 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	groupDepth = groupDepth - 1
 	cam.End2D()
 	render.PopRenderTarget()
+	maskCount = outerMask
 
 	-- The image holds colours already multiplied by their alpha: "add" adds them, any other mode is a normal over.
 	render.SetMaterial(groupMaterial(target))

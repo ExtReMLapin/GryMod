@@ -849,13 +849,25 @@ end
 -- The HUD (health, energy, ammo, radar, compass) can be turned off with gry_hud 0 or from the options
 -- menu; the quick menu and the suit abilities keep working. The choice is saved with the convar.
 local function applyHUD(enabled)
-	if enabled then
+	-- the Crysis style (cl_hud_flash.lua) replaces the classic HUD when it is selected and its movie exists
+	local crysis = GryMod.FlashHUD and GryMod.FlashHUD.Apply(enabled)
+
+	if enabled and not crysis then
 		hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase)
-		hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 	else
 		hook.Remove("HUDPaint", "HUDBASECRY")
+	end
+
+	if enabled then
+		hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+	else
 		hook.Remove("HUDShouldDraw", "How to: HUD Example HUD hider")
 	end
+end
+
+-- re-applies the settings (the style selector calls it)
+function GryMod.ApplyHUD()
+	applyHUD(HUDEnabled:GetBool())
 end
 
 function GryMod.SetHUDEnabled(enabled)
