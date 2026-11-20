@@ -1,4 +1,4 @@
--- Cost of the Crysis-style HUD against the classic one, to run as a gmod-mcp lua_job in the CLIENT realm
+-- Cost of the Crysis-style HUD, to run as a gmod-mcp lua_job in the CLIENT realm
 -- (needs a loaded map, the player alive and holding a weapon; launch the game uncapped, fps_max = 0):
 --   lua_job {realm = "client", path = ".../tests/perf_flash_job.lua", timeout_s = 120}
 -- The atlas materials must be reachable (see tests/flash_pixels_job.lua for the dev path override).
@@ -8,16 +8,12 @@
 local FRAMES = args and args.frames or 400
 
 local styles = {
-	{name = "classic", hookName = "HUDBASECRY"},
 	{name = "crysis", hookName = "GRYFLASHHUD"}
 }
 
-local style = GetConVar("gry_hud_style")
-local saved = style:GetString()
 local result = {}
 
 for _, s in ipairs(styles) do
-	style:SetString(s.name)
 	GryMod.ApplyHUD()
 	job:frames(20) -- the first frames create the clips and the materials
 
@@ -56,7 +52,6 @@ for _, s in ipairs(styles) do
 	}
 end
 
-style:SetString(saved)
 GryMod.ApplyHUD()
 
 return result

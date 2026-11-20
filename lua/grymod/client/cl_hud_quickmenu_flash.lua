@@ -341,9 +341,9 @@ local function play(path)
 	end
 end
 
--- Whether the quick menu of the Crysis style is the one in use (the old radial menu otherwise).
+-- Whether the quick menu can be drawn (its movie is there); it works with the HUD off too.
 function Menu.Enabled()
-	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and Flash.Load(Menu.MOVIE) ~= nil
+	return Flash.Load(Menu.MOVIE) ~= nil
 end
 
 function Menu.IsOpen()

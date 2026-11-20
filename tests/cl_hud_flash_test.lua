@@ -437,22 +437,15 @@ return {
 			end
 		},
 		{
-			name = "gry_hud_style switches the paint hook without duplicates and falls back to the classic HUD",
+			name = "gry_hud adds and removes the paint hook, without duplicates, and nothing is drawn without the movie",
 			func = function(state)
-				local style = GetConVar("gry_hud_style")
 				local hudOn = GetConVar("gry_hud"):GetString()
-				local saved = style:GetString()
 				GetConVar("gry_hud"):SetString("1")
-				style:SetString("crysis")
 				GryMod.ApplyHUD()
 				GryMod.ApplyHUD()
 				expect(hook.GetTable().HUDPaint["GRYFLASHHUD"]).to.exist()
-				expect(hook.GetTable().HUDPaint["HUDBASECRY"]).to.beNil()
-				style:SetString("classic")
-				GryMod.ApplyHUD()
+				GetConVar("gry_hud"):SetString("0")
 				expect(hook.GetTable().HUDPaint["GRYFLASHHUD"]).to.beNil()
-				expect(hook.GetTable().HUDPaint["HUDBASECRY"]).to.exist()
-				style:SetString(saved)
 				GetConVar("gry_hud"):SetString(hudOn)
 				GryMod.ApplyHUD()
 			end

@@ -6,14 +6,6 @@ function GryMod.GryOptionschute(Panel)
 	})
 
 	Panel:CheckBox("Draw the HUD (health, energy, ammo, radar)", "gry_hud")
-	Panel:AddControl("ComboBox", {
-		Label = "HUD style",
-		MenuButton = 0,
-		Options = {
-			["Classic"] = {gry_hud_style = "classic"},
-			["Crysis (original Scaleform movie)"] = {gry_hud_style = "crysis"}
-		}
-	})
 	Panel:CheckBox("Suit sounds", "gry_sounds")
 	-- the rules of the suit (server setting, for the host or an admin): the original game's numbers, or GryMod's earlier ones
 	Panel:AddControl("ComboBox", {

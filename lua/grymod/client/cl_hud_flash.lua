@@ -375,10 +375,9 @@ function HUD:Draw(x, y, scale)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
--- GryMod's values, and the paint hook (the "crysis" style of gry_hud_style; "classic" is the older HUD)
+-- GryMod's values, and the paint hook
 -- ---------------------------------------------------------------------------------------------------------
 
-local styleConVar = CreateClientConVar("gry_hud_style", "classic", true, false)
 local themeConVar = CreateClientConVar("gry_hud_theme", "blue", true, false)
 
 -- Chooses the colours (blue, default, white, orange) of the HUD drawn from now on.
@@ -632,8 +631,16 @@ function Module.MalfunctionFor(energy, current)
 	return 0
 end
 
+-- Whether the movie is there (the HUD and the other pieces need it).
+function Module.Available()
+	return Flash.Load(Module.MOVIE) ~= nil
+end
+
+-- Whether the HUD is on (gry_hud) and can be drawn.
 function Module.Enabled()
-	return styleConVar:GetString() == "crysis" and Flash.Load(Module.MOVIE) ~= nil
+	local convar = GetConVar("gry_hud")
+
+	return (not convar or convar:GetBool()) and Module.Available()
 end
 
 local hud, panel
@@ -750,7 +757,7 @@ end
 
 -- Adds or removes the paint hook; returns whether this style is the one being drawn.
 function Module.Apply(enabled)
-	local active = enabled and Module.Enabled()
+	local active = enabled and Module.Available()
 
 	if active then
 		hook.Add("HUDPaint", "GRYFLASHHUD", Module.Paint)
@@ -770,8 +777,3 @@ cvars.AddChangeCallback("gry_hud_theme", function(_, _, value)
 	end
 end, "GryModHUDTheme")
 
-cvars.AddChangeCallback("gry_hud_style", function()
-	if GryMod.ApplyHUD then
-		GryMod.ApplyHUD()
-	end
-end, "GryModHUDStyle")
