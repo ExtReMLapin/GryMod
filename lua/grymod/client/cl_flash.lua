@@ -302,6 +302,29 @@ function Clip:SetRotation(degrees)
 	end
 end
 
+-- Flash's _alpha: a percentage that replaces the alpha multiplier of this clip's colour transform (the colour
+-- terms stay).
+function Clip:SetAlpha(percent)
+	local entry = self.entry
+
+	if not entry or type(percent) ~= "number" or percent ~= percent then
+		return
+	end
+
+	local alpha = math.Clamp(percent, 0, 100) / 100
+	local cx = entry.cx or {1, 1, 1, 1, 0, 0, 0, 0}
+
+	if math.abs(cx[4] - alpha) < 1e-9 then
+		return
+	end
+
+	entry.cx = {cx[1], cx[2], cx[3], alpha, cx[5], cx[6], cx[7], cx[8]}
+
+	if self.parent then
+		self.parent:_touch()
+	end
+end
+
 function Clip:SetVisible(visible)
 	if self.visible ~= visible then
 		self.visible = visible

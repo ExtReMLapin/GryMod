@@ -610,6 +610,28 @@ function Module.AmmoFor(ply, weapon)
 	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode
 end
 
+-- The energy (0 to 100) at which the suit stops: the HUD malfunctions (red) while the bar is empty and reboots
+-- once it is back above RECOVER_AT. Between the two, and with no usable value, the state stays as it is.
+Module.RECOVER_AT = 10
+
+function Module.MalfunctionFor(energy, current)
+	current = current == 1 and 1 or 0
+
+	if type(energy) ~= "number" or energy ~= energy then
+		return current
+	end
+
+	if energy <= 0 then
+		return 1
+	end
+
+	if current == 1 and energy < Module.RECOVER_AT then
+		return 1
+	end
+
+	return 0
+end
+
 function Module.Enabled()
 	return styleConVar:GetString() == "crysis" and Flash.Load(Module.MOVIE) ~= nil
 end
@@ -632,6 +654,16 @@ local function feed(ply)
 	if fed.energy ~= energy then
 		fed.energy = energy
 		hud:SetEnergy(energy)
+	end
+
+	local status = Module.MalfunctionFor(ply:GetNWFloat("GryEnergy"), hud.status)
+
+	if status ~= hud.status then
+		hud:Destroy(status)
+
+		if panel then
+			panel:Destroy(status)
+		end
 	end
 
 	local mode = Module.ModeName(ply.NanosuitMode)

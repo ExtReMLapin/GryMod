@@ -34,7 +34,7 @@ function Radar.New(movie, theme)
 		return nil
 	end
 
-	local panel = setmetatable({root = root, main = main, heading = 0, stealth = 0, fov = 15}, Panel)
+	local panel = setmetatable({root = root, main = main, heading = 0, stealth = 0, fov = 15, status = 0}, Panel)
 	panel:_start()
 
 	return panel
@@ -66,10 +66,19 @@ function Panel:_resolve()
 	self.view = main:Child("RadarCompassStealth")
 	self.zone = self.root:Find("Root.Zone.Colorset")
 
+	-- setNoiseValue: while the panel malfunctions the noise shows (alpha value * 50 %) over the units
+	-- (alpha (1 - value) * 100 %); otherwise it is hidden and the units are at full strength
 	local noise = main:Child("Noise")
+	local units = main:Child("Units")
+	local value = self.status == 1 and Radar.NOISE_VALUE or 0
 
 	if noise then
-		noise:SetVisible(false)
+		noise:SetVisible(value > 0)
+		noise:SetAlpha(value * 50)
+	end
+
+	if units then
+		units:SetAlpha((1 - value) * 100)
 	end
 
 	local indicator = self.view and self.view:Child("Indicator")
@@ -79,6 +88,35 @@ function Panel:_resolve()
 	end
 
 	self.mainFrame = main:CurrentFrame()
+end
+
+-- The noise strength of a malfunction (the movie's destroy(1) sends 0.6).
+Radar.NOISE_VALUE = 0.6
+
+-- destroy(status): 0 normal (the movie plays "to_normal" and lands on its steady frames), 1 malfunction (the
+-- noise over the units, red until the next destroy(0)), 2 flickering.
+function Panel:Destroy(status)
+	self.status = status
+
+	if status == 1 then
+		self.main:GotoAndPlay("malfunction")
+		local noise = self.main:Child("Noise")
+
+		if noise then
+			noise:GotoAndPlay("loop")
+		end
+	elseif status == 2 then
+		self.main:GotoAndPlay("flickering")
+
+		if self.strip then
+			self.strip:GotoAndPlay("flickering")
+		end
+	else
+		self.main:GotoAndPlay("to_normal")
+	end
+
+	self:_resolve()
+	self:_refresh()
 end
 
 -- setCompassRotation: the strip's x for a bearing in degrees (0 = north, growing clockwise).

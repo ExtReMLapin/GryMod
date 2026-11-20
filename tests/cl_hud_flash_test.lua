@@ -193,6 +193,21 @@ return {
 			end
 		},
 		{
+			name = "an empty energy bar malfunctions the HUD, and it reboots once the energy is back above a tenth",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				expect(M.MalfunctionFor(0, 0)).to.equal(1)
+				expect(M.MalfunctionFor(-3, 0)).to.equal(1)
+				expect(M.MalfunctionFor(0.5, 1)).to.equal(1) -- stays down while the bar refills
+				expect(M.MalfunctionFor(9.9, 1)).to.equal(1)
+				expect(M.MalfunctionFor(10, 1)).to.equal(0)
+				expect(M.MalfunctionFor(0.5, 0)).to.equal(0) -- a low bar alone does not trigger it
+				expect(M.MalfunctionFor(100, 0)).to.equal(0)
+				expect(M.MalfunctionFor(nil, 0)).to.equal(0)
+				expect(M.MalfunctionFor(0 / 0, 1)).to.equal(1) -- no information: the state stays
+			end
+		},
+		{
 			name = "GryMod suit modes map to the movie's names (the parachute shows the armor icon)",
 			func = function(state)
 				local M = GryMod.FlashHUD

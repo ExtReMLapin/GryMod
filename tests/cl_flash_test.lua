@@ -296,6 +296,25 @@ return {
 			end
 		},
 		{
+			name = "SetAlpha is Flash's _alpha: a percentage that replaces the alpha multiplier and keeps the colour terms",
+			func = function(state)
+				local outer = GryMod.Flash.NewClip(movie(), 7)
+				local mover = outer:Child("Mover")
+				local before = outer.version
+				mover:SetAlpha(50)
+				local cx = mover.entry.cx
+				expect(math.abs(cx[4] - 0.5) < 1e-9).to.beTrue()
+				expect(cx[1]).to.equal(1)
+				expect(cx[5]).to.equal(0)
+				expect(outer.version > before).to.beTrue()
+				local again = outer.version
+				mover:SetAlpha(50)
+				expect(outer.version).to.equal(again)
+				mover:SetAlpha(100)
+				expect(math.abs(mover.entry.cx[4] - 1) < 1e-9).to.beTrue()
+			end
+		},
+		{
 			name = "a child action sends gotoAndPlay or gotoAndStop to the child clip with that name",
 			func = function(state)
 				local m = movie()

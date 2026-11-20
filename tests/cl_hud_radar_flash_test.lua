@@ -150,6 +150,46 @@ return {
 			end
 		},
 		{
+			name = "a malfunction plays the original animation, shows the noise over dimmed units and stays red",
+			func = function(state)
+				local panel = newPanel()
+				panel:Destroy(1)
+				expect(panel.main:CurrentLabel()).to.equal("malfunction")
+
+				for _ = 1, 90 do panel:Update(1 / 30) end
+
+				expect(panel.main:CurrentLabel()).to.equal("malfunctionOn")
+				expect(panel.main.playing).to.beFalse()
+				local noise = panel.main:Child("Noise")
+				expect(noise.visible).to.beTrue()
+				expect(math.abs(noise.entry.cx[4] - 0.3) < 0.001).to.beTrue() -- 0.6 * 50 %
+				expect(math.abs(panel.main:Child("Units").entry.cx[4] - 0.4) < 0.001).to.beTrue() -- (1 - 0.6) * 100 %
+				-- the values are still written while it is down
+				panel:SetStealth(0.5)
+				expect(panel.view:Child("StealthBar"):CurrentFrame()).to.equal(51)
+			end
+		},
+		{
+			name = "a reboot goes back to the steady frames with the noise off and the units at full strength",
+			func = function(state)
+				local panel = newPanel()
+				panel:Destroy(1)
+
+				for _ = 1, 60 do panel:Update(1 / 30) end
+
+				panel:Destroy(0)
+				-- "to_normal" is one frame whose script sends the movie back to its start, which then plays on to "on"
+				expect(panel.main.playing).to.beTrue()
+				expect(panel.main:CurrentLabel() ~= "malfunctionOn").to.beTrue()
+
+				for _ = 1, 90 do panel:Update(1 / 30) end
+
+				expect(panel.main:CurrentLabel()).to.equal("on")
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(math.abs(panel.main:Child("Units").entry.cx[4] - 1) < 0.001).to.beTrue()
+			end
+		},
+		{
 			name = "a missing movie gives no panel instead of an error",
 			func = function(state)
 				expect(GryMod.FlashRadar.New(nil)).to.beNil()
