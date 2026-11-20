@@ -276,6 +276,26 @@ return {
 			end
 		},
 		{
+			name = "SetRotation turns a clip like Flash's _rotation (clockwise degrees, scale kept) and bumps the version",
+			func = function(state)
+				local outer = GryMod.Flash.NewClip(movie(), 7)
+				local mover = outer:Child("Mover")
+				local before = outer.version
+				mover:SetRotation(90)
+				local m = mover.entry.m
+				expect(math.abs(m[1]) < 1e-9).to.beTrue()
+				expect(math.abs(m[2] - 1) < 1e-9).to.beTrue()
+				expect(math.abs(m[3] + 1) < 1e-9).to.beTrue()
+				expect(math.abs(m[4]) < 1e-9).to.beTrue()
+				expect(outer.version > before).to.beTrue()
+				-- the translation stays, and turning again to the same angle changes nothing
+				expect(m[5]).to.equal(0)
+				local again = outer.version
+				mover:SetRotation(90)
+				expect(outer.version).to.equal(again)
+			end
+		},
+		{
 			name = "a child action sends gotoAndPlay or gotoAndStop to the child clip with that name",
 			func = function(state)
 				local m = movie()

@@ -435,6 +435,17 @@ net.Receive("gry_nanosuit_mode_change", function()
 end)
 
 function GryMod.CryOpenClose(ply, command, args)
+	-- the Crysis style has its own quick menu, drawn from the original movie (cl_hud_quickmenu_flash.lua)
+	if GryMod.FlashMenu and GryMod.FlashMenu.Enabled() then
+		if command == "+crysishud" then
+			GryMod.FlashMenu.Begin()
+		else
+			GryMod.FlashMenu.Finish()
+		end
+
+		return
+	end
+
 	local cryx, cryy = GryMod.MenuCenter()
 
 	if (LocalPlayer():CanGryMod() and command ~= "+crysishud") then

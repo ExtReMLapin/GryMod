@@ -276,6 +276,32 @@ function Clip:SetX(x)
 	end
 end
 
+-- Flash's _rotation: turns this clip by an angle in degrees (clockwise on screen), keeping its scale and its
+-- position (the rotation part of its placement matrix is replaced).
+function Clip:SetRotation(degrees)
+	local entry = self.entry
+
+	if not entry or not (degrees == degrees) then
+		return
+	end
+
+	local m = entry.m
+	local sx, sy = math.sqrt(m[1] * m[1] + m[2] * m[2]), math.sqrt(m[3] * m[3] + m[4] * m[4])
+	local radians = math.rad(degrees)
+	local sin, cos = math.sin(radians), math.cos(radians)
+	local a, b, c, d = sx * cos, sx * sin, -sy * sin, sy * cos
+
+	if math.abs(m[1] - a) < 1e-9 and math.abs(m[2] - b) < 1e-9 and math.abs(m[3] - c) < 1e-9 and math.abs(m[4] - d) < 1e-9 then
+		return
+	end
+
+	entry.m = {a, b, c, d, m[5], m[6]}
+
+	if self.parent then
+		self.parent:_touch()
+	end
+end
+
 function Clip:SetVisible(visible)
 	if self.visible ~= visible then
 		self.visible = visible
