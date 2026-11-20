@@ -4,7 +4,7 @@
 local realRunConsoleCommand = RunConsoleCommand
 local realPlaySound = surface.PlaySound
 local savedConVars = {}
-local conVarNames = {"cl_Eyefinity", "gry_hud", "gry_sounds", "gry_xadd", "gry_xdist"}
+local conVarNames = {"gry_hud", "gry_sounds", "gry_xadd", "gry_xdist"}
 
 local function conVarOrNil(name)
 	return GetConVar(name)
@@ -42,7 +42,9 @@ return {
 			if cv then cv:SetString(value) end
 		end
 
-		LocalPlayer().NanosuitMode = GryMod.Modes.ARMOR
+		-- back to Armor, icon included (the early return of SetNanosuitMode needs a different mode first)
+		LocalPlayer().NanosuitMode = -1
+		GryMod.ApplyServerMode(GryMod.Modes.ARMOR)
 	end,
 	cases = {
 		{
@@ -67,18 +69,18 @@ return {
 			end
 		},
 		{
-			name = "opening the options panel does not reset Eyefinity",
+			name = "opening the options panel does not reset a setting",
 			func = function(state)
-				local eye = GetConVar("cl_Eyefinity")
-				eye:SetInt(1)
+				local sounds = GetConVar("gry_sounds")
+				sounds:SetInt(0)
 				local writes = {}
 				RunConsoleCommand = function(name, value)
 					writes[#writes + 1] = tostring(name):lower() .. "=" .. tostring(value)
 				end
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.GryOptionschute(state.panel)
-				expect(eye:GetInt()).to.equal(1)
-				expect(table.HasValue(writes, "cl_eyefinity=0")).to.beFalse()
+				expect(sounds:GetInt()).to.equal(0)
+				expect(table.HasValue(writes, "gry_sounds=1")).to.beFalse()
 			end
 		},
 		{
@@ -162,14 +164,91 @@ return {
 			end
 		},
 		{
-			name = "the quick menu is centred on the screen, or on the middle screen with Eyefinity",
+			name = "the HUD layout is computed once and rebuilt when a setting changes",
 			func = function(state)
-				GetConVar("cl_Eyefinity"):SetInt(0)
-				local x = GryMod.MenuCenter()
+				GetConVar("gry_xadd"):SetInt(0)
+				GetConVar("gry_xdist"):SetInt(0)
+				local first = GryMod.GetHudLayout()
+				expect(GryMod.GetHudLayout() == first).to.beTrue() -- same table: nothing allocated per frame
+				expect(first.W).to.equal(ScrW())
+
+				GetConVar("gry_xadd"):SetInt(30)
+				GetConVar("gry_xdist"):SetInt(-20)
+				local moved = GryMod.GetHudLayout()
+				expect(moved.xa).to.equal(30)
+				expect(moved.xd).to.equal(-20)
+				expect(moved == first).to.beFalse()
+			end
+		},
+		{
+			name = "the HUD layout gives the positions the original formulas gave",
+			func = function(state)
+				GetConVar("gry_xadd"):SetInt(30)
+				GetConVar("gry_xdist"):SetInt(-20)
+				local L = GryMod.GetHudLayout()
+				-- the original formulas, with the original names
+				local W, H = ScrW(), ScrH()
+				local xa, xd = 30, -20
+				local tol = 0.000001
+				expect(L.baseX).to.aboutEqual(W - (W / 4.06) + xa + xd, tol)
+				expect(L.baseY).to.aboutEqual(H - (W / 5.19), tol)
+				expect(L.compassX).to.aboutEqual(W * (10 / 1920) - xa + xd, tol)
+				expect(L.radarX).to.aboutEqual(W * (64 / 1920) - xa + xd, tol)
+				expect(L.radarY[3]).to.aboutEqual(H - W * (145.5 / 1920), tol)
+				expect(L.maskPoly[2].x).to.aboutEqual(-1 * xa + xd + W * (273 / 1920), tol)
+				expect(L.maskPoly[2].y).to.aboutEqual(H - W * (227 / 1920), tol)
+				expect(L.energyPoly1[3].x).to.aboutEqual(xa + xd + W - W * (277 / 1920), tol)
+				expect(L.energyPoly1[3].y).to.aboutEqual(H - W * (136 / 1920), tol)
+				expect(L.healthPoly1[5].y).to.aboutEqual(H - W * (97 / 1920), tol)
+				expect(L.healthPoly2[2].x).to.aboutEqual(xa + xd + W - W * (228 / 1920), tol)
+				expect(L.ammoX).to.aboutEqual(W - (W / 7.5) + xa + xd, tol)
+				expect(L.modeY).to.aboutEqual(H - (W / 15.5), tol)
+			end
+		},
+		{
+			name = "the compass letters sit where the original formulas put them",
+			func = function(state)
+				GetConVar("gry_xadd"):SetInt(30)
+				GetConVar("gry_xdist"):SetInt(-20)
+				local W, H = ScrW(), ScrH()
+				local xa, xd = 30, -20
+				local tol = 0.000001
+				local offsets = {N = 0, NE = 45, E = 90, SE = 135, SW = -135, W = -90, NW = -45}
+				local order = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+
+				for _, yaw in ipairs({-170, -33.3, 0, 12.5, 90, 179}) do
+					local ly = yaw + 6.256798
+
+					for index, letter in ipairs(order) do
+						local x, y
+						if letter == "S" then
+							local m = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
+							x = W * (20 / 1920) - xa + xd + m * 5 + W * (134 / 1920)
+							y = H - W * (218 / 1920) - ((m * 3.32) / 15) + W * (-5 / 1920)
+						else
+							local v = ly + offsets[letter]
+							x = W * (20 / 1920) - xa + xd + (v * 3.32) + W * (134 / 1920)
+							y = H - W * (218 / 1920) - ((v * 3.32) / 15) + W * (-5 / 1920)
+						end
+						local gx, gy = GryMod.CompassPosition(index, yaw)
+						expect(gx).to.aboutEqual(x, tol)
+						expect(gy).to.aboutEqual(y, tol)
+					end
+				end
+			end
+		},
+		{
+			name = "the quick menu is centred on the screen",
+			func = function(state)
+				local x, y = GryMod.MenuCenter()
 				expect(x).to.aboutEqual(ScrW() / 2, 0.01)
-				GetConVar("cl_Eyefinity"):SetInt(1)
-				x = GryMod.MenuCenter()
-				expect(x).to.aboutEqual(ScrW() / 6, 0.01)
+				expect(y).to.aboutEqual(ScrH() / 2, 0.01)
+			end
+		},
+		{
+			name = "the Eyefinity mode is gone",
+			func = function(state)
+				expect(GryMod.EyeFinityScrW).to.beNil()
 			end
 		},
 	}

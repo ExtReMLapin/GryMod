@@ -19,7 +19,6 @@ The code is kindda garbage because it's the very first project i worked on
 > - Crysis 1/Warhead like hud
 > - Crysis 1 suit modes (Strength, Speed, Armor, Cloak and shit)
 > - Crysis 1 energy system
-> - Eyefinity support
 > - Auto resizing support (Different monitors format and different sizes, so it will not look like shit)
 > - Pseudo-Vectorized textures
 
@@ -66,7 +65,7 @@ All of them are saved between sessions (Options > GryMod in the spawn menu, or t
 
 * `gry_hud 0` : hide the HUD (health, energy, ammo, radar, compass). The quick menu and the suit abilities keep working.
 * `gry_sounds 0` : mute the suit sounds.
-* `cl_Eyefinity`, `gry_xadd`, `gry_xdist` : Eyefinity and HUD position.
+* `gry_xadd`, `gry_xdist` : HUD position.
 * Admins: `gry_Health` toggles the health regeneration, `gry_Armor` toggles the infinite armor (also usable from the server console).
 
 

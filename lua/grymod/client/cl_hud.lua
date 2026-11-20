@@ -4,7 +4,6 @@ local GryModXDistance = CreateClientConVar("gry_xadd", "0", true, false)
 local GryModXDistance2 = CreateClientConVar("gry_xdist", "0", true, false)
 local GryModXDistance_int = GryModXDistance:GetInt()
 local GryModXDistance2_int = GryModXDistance2:GetInt()
-local EyeFinity = CreateClientConVar("cl_Eyefinity", "0", true, false)
 local HUDEnabled = CreateClientConVar("gry_hud", "1", true, false, "Draw the GryMod HUD (the quick menu and the suit abilities work without it)")
 local SoundsEnabled = CreateClientConVar("gry_sounds", "1", true, false, "Play the GryMod suit sounds")
 local GRYOPEN = false
@@ -50,41 +49,62 @@ function meta:CanGryMod()
 	return self:IsAdmin() or self:IsVip() 
 end
 ]]
--- Width of the area the HUD is drawn in (the middle screen with Eyefinity). Read live: the player can
--- change the resolution or the Eyefinity option while playing.
-function GryMod.EyeFinityScrW()
-	if EyeFinity:GetInt() > 0 then
-		return ScrW() / 3
-	else
-		return ScrW()
-	end
-end
-
 -- Centre of the quick menu
 function GryMod.MenuCenter()
-	return GryMod.EyeFinityScrW() / 2, ScrH() / 2
+	return ScrW() / 2, ScrH() / 2
 end
 
-local function drawTextRotated(text, font, x, y, color, ang)
-	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
-	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
-	surface.SetFont(font)
-	surface.SetTextColor(color)
+-- Text drawn at a small angle (1 to 1.2 degrees). Everything that only depends on the angle is computed
+-- once, and the matrix, vector and angle objects are reused: nothing is allocated per frame. The caller
+-- pushes the texture filters and sets the font and the text colour once for a group of texts.
+local rotations = {}
+
+local function rotation(ang)
+	local r = rotations[ang]
+
+	if not r then
+		local rad = -math.rad(ang)
+		local halvedPi = math.pi / 2
+		r = {
+			sinHalved = math.sin(rad + halvedPi),
+			sinRad = math.sin(rad),
+			cosHalved = math.cos(rad + halvedPi),
+			cosRad = math.cos(rad),
+			angle = Angle(0, ang, 0)
+		}
+		rotations[ang] = r
+	end
+
+	return r
+end
+
+local textMatrix, textTranslation = Matrix(), Vector(0, 0, 0)
+
+local function drawTextRotated(text, x, y, ang)
+	local r = rotation(ang)
 	surface.SetTextPos(0, 0)
 	local textWidth, textHeight = surface.GetTextSize(text)
-	local rad = -math.rad(ang)
-	local halvedPi = math.pi / 2
-	x = x - (math.sin(rad + halvedPi) * textWidth / 2 + math.sin(rad) * textHeight / 2)
-	y = y - (math.cos(rad + halvedPi) * textWidth / 2 + math.cos(rad) * textHeight / 2)
-	local m = Matrix()
-	m:SetAngles(Angle(0, ang, 0))
-	m:SetTranslation(Vector(x, y, 0))
-	cam.PushModelMatrix(m)
+	x = x - (r.sinHalved * textWidth / 2 + r.sinRad * textHeight / 2)
+	y = y - (r.cosHalved * textWidth / 2 + r.cosRad * textHeight / 2)
+	textMatrix:Identity()
+	textMatrix:SetAngles(r.angle)
+	textTranslation.x = x
+	textTranslation.y = y
+	textMatrix:SetTranslation(textTranslation)
+	cam.PushModelMatrix(textMatrix)
 	surface.DrawText(text)
 	cam.PopModelMatrix()
-	render.PopFilterMag()
-	render.PopFilterMin()
 end
+
+-- tostring() of the numbers shown in the HUD, kept: the same few values come back every frame
+local numberTexts = setmetatable({}, {
+	__index = function(t, n)
+		local s = tostring(n)
+		t[n] = s
+
+		return s
+	end
+})
 
 local grymodesuit = gry_icons[1] -- Init mode, you better not reload this file, else there will be a de-sync
 local crytx = surface.GetTextureID("crysis_button")
@@ -100,7 +120,7 @@ for i = 1, 5 do
 	crydist[i] = 0
 end
 
-local nilweps = {"weapon_physgun", "weapon_physcannon", "weapon_crowbar", "mod_tool"} -- Weapons with *infinite* ammo
+local nilweps = {weapon_physgun = true, weapon_physcannon = true, weapon_crowbar = true, mod_tool = true} -- Weapons with *infinite* ammo
 local armormode = {}
 armormode["Armor"] = {}
 armormode["Armor"].material = gry_icons[1]
@@ -450,10 +470,7 @@ function GryMod.CloackAttack(ply, key)
 	end
 end
 
-local Gry_Danger0 = 0
-local Gry_Danger1 = 0
-local Gry_Danger2 = 0
-local Gry_Danger3 = 0
+local Gry_Danger = {0, 0, 0, 0} -- heights of the four radar bars
 
 -- Heights of the four radar bars for a number of NPCs around the player. Each bar starts to grow
 -- 4 NPCs after the previous one; they used to go negative below that.
@@ -486,7 +503,7 @@ function GryMod.UpdateRadar()
 	GryMod.rcr = 105 + raderpers
 	GryMod.rcg = 235 - raderpers * 1.5
 	GryMod.rcb = 100 - (raderpers / 1.8)
-	Gry_Danger0, Gry_Danger1, Gry_Danger2, Gry_Danger3 = GryMod.RadarLevels(count)
+	Gry_Danger[1], Gry_Danger[2], Gry_Danger[3], Gry_Danger[4] = GryMod.RadarLevels(count)
 end
 
 -- One named timer: loading the file again replaces it instead of stacking another one
@@ -495,321 +512,268 @@ function GryMod.StartRadar()
 end
 
 GryMod.StartRadar()
-local alpha_ch = {0, 0}
+-- Everything the HUD draws that only depends on the screen size and the position offsets (rectangles,
+-- polygons, text positions) is computed here, once, and again only when one of them changes. The
+-- expressions are the ones the HUD used to evaluate every frame, in the same order, so the numbers are
+-- the same ones.
+local layout, layoutScrW, layoutScrH, layoutXa, layoutXd
 
-function GryMod.hudbase()
-	local tempscrh = ScrH()
-	alpha_ch[1] = 200
-	alpha_ch[2] = 255
-	r_ch = 0
-	g_ch = 0
-	b_ch = 0
-	surface.SetTexture(base)
-	surface.SetDrawColor(Color(220, 235, 220, alpha_ch[1]))
-	surface.DrawTexturedRect(GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 4.06) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 5.19), GryMod.EyeFinityScrW() / 4.26, GryMod.EyeFinityScrW() / 4.26)
-	surface.SetTexture(compass)
-	surface.SetDrawColor(Color(220, 235, 220, alpha_ch[1]))
-	surface.DrawTexturedRect(GryMod.EyeFinityScrW() * (10 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 7.111), GryMod.EyeFinityScrW() * (290 / 1920), GryMod.EyeFinityScrW() * (290 / 1920))
-	------------------------------------------------/
-	---------------- START RADAR --------------------
-	------------------------------------------------/
-	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (100 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger0 / 1920))
-	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (120.8 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger1 / 1920))
-	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (145.5 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger2 / 1920))
-	surface.SetDrawColor(Color(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255))
-	surface.DrawRect(GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int, tempscrh - GryMod.EyeFinityScrW() * (168.4 / 1920) - GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920), GryMod.EyeFinityScrW() * (13 / 1920), GryMod.EyeFinityScrW() * (Gry_Danger3 / 1920))
-	surface.SetDrawColor(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255)
-	draw.NoTexture()
+local function pt(x, y)
+	return {x = x, y = y}
+end
 
-	surface.DrawPoly({
-		{
-			x = GryMod.EyeFinityScrW() * (64 / 1920) - GryModXDistance_int + GryModXDistance2_int,
-			y = tempscrh - GryMod.EyeFinityScrW() * (99.8 / 1920)
-		},
-		{
-			x = GryMod.EyeFinityScrW() * (77 / 1920) - GryModXDistance_int + GryModXDistance2_int,
-			y = tempscrh - GryMod.EyeFinityScrW() * (100 / 1920)
-		},
-		{
-			x = GryMod.EyeFinityScrW() * (77 / 1920) - GryModXDistance_int + GryModXDistance2_int,
-			y = tempscrh - GryMod.EyeFinityScrW() * (92 / 1920)
-		}
-	})
+local function buildLayout(W, H, xa, xd)
+	local L = {W = W, H = H, xa = xa, xd = xd}
+	local full = W * (219 / 1920)
+	L.full = full
 
-	--------------------------------------------------------------
-	---------------------- END RADAR -----------------------------
-	--------------------------------------------------------------
-	drawTextRotated(LocalPlayer():GetAmmoCount("grenade"), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 9) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 11), Color(190, 195, 190, alpha_ch[2]), 1.2) -- Fixed in v2.3
-	drawTextRotated(LocalPlayer():Health(), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 22), Color(190, 195, 190, alpha_ch[2]), 1) -- Fixed in v2.3
-	drawTextRotated(math.Round(LocalPlayer():GetNWFloat("GryEnergy")), "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 10) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 16), Color(190, 195, 190, alpha_ch[2]), 1.2) -- Fixed in v2.3
-	local modeposw = GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 13.1)
-	local modeposh = tempscrh - (GryMod.EyeFinityScrW() / 15.5)
-	surface.SetMaterial(grymodesuit)
-	surface.SetDrawColor(Color(150, 195, 150, alpha_ch[2] - 100))
-	surface.DrawTexturedRect(modeposw + GryModXDistance_int + GryModXDistance2_int, modeposh, GryMod.EyeFinityScrW() * (100 / 1920), GryMod.EyeFinityScrW() * (100 / 1920))
+	L.baseX, L.baseY, L.baseS = W - (W / 4.06) + xa + xd, H - (W / 5.19), W / 4.26
+	L.compassX, L.compassY, L.compassS = W * (10 / 1920) - xa + xd, H - (W / 7.111), W * (290 / 1920)
 
-	if LocalPlayer():GetActiveWeapon():IsValid() then
-		if table.HasValue(nilweps, LocalPlayer():GetActiveWeapon():GetClass()) then
-			drawTextRotated("∞", "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 8) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
-			-- Because the ammo is  -1 with grenades
+	-- radar: four bars and a triangle
+	L.radarX = W * (64 / 1920) - xa + xd
+	L.radarW = W * (13 / 1920)
+	L.radarY = {H - W * (100 / 1920), H - W * (120.8 / 1920), H - W * (145.5 / 1920), H - W * (168.4 / 1920)}
+	L.radarPoly = {
+		pt(W * (64 / 1920) - xa + xd, H - W * (99.8 / 1920)),
+		pt(W * (77 / 1920) - xa + xd, H - W * (100 / 1920)),
+		pt(W * (77 / 1920) - xa + xd, H - W * (92 / 1920))
+	}
+
+	-- texts and icons
+	L.grenX, L.grenY = W - (W / 9) + xa + xd, H - (W / 11)
+	L.healthX, L.healthY = W - (W / 10) + xa + xd, H - (W / 22)
+	L.energyX, L.energyY = W - (W / 10) + xa + xd, H - (W / 16)
+	L.modeX, L.modeY, L.modeS = (W - (W / 13.1)) + xa + xd, H - (W / 15.5), W * (100 / 1920)
+	L.infinityX, L.infinityY = W - (W / 8) + xa + xd, H - (W / 8.4)
+	L.ammoX, L.ammoY = W - (W / 7.5) + xa + xd, H - (W / 8.4)
+
+	-- compass: the mask the letters are clipped to, and the terms of the letters' positions
+	local xs = -1 * xa + xd
+	L.maskPoly = {
+		pt(xs + W * (072 / 1920), H - W * (215 / 1920)),
+		pt(xs + W * (273 / 1920), H - W * (227 / 1920)),
+		pt(xs + W * (294 / 1920), H - W * (207 / 1920)),
+		pt(xs + W * (061 / 1920), H - W * (194 / 1920)),
+		pt(xs + W * (060 / 1920), H - W * (204 / 1920))
+	}
+	L.letterX = W * (20 / 1920) - xa + xd
+	L.letterXAdd = W * (134 / 1920)
+	L.letterY = H - W * (218 / 1920)
+	L.letterYAdd = W * (-5 / 1920)
+
+	-- energy and health bars: a polygon the bar is clipped to, and the bar itself
+	local xsum = xa + xd
+	local function barPt(c, ch)
+		return pt(xsum + W - W * (c / 1920), H - W * (ch / 1920))
+	end
+
+	L.energyPoly1 = {barPt(446, 136), barPt(436, 144), barPt(277, 136), barPt(277, 113.5), barPt(446, 122)}
+	L.energyPoly2 = {barPt(270, 135.5), barPt(228, 133), barPt(228, 111), barPt(270, 113.5)}
+	L.healthPoly1 = {barPt(446, 112), barPt(277, 102.5), barPt(277, 81.5), barPt(436, 91), barPt(446, 97)}
+	L.healthPoly2 = {barPt(270, 102), barPt(228, 99.5), barPt(228, 78.5), barPt(270, 81)}
+	L.barBaseX = xsum + W - W * (446 / 1920)
+	L.energyBarY, L.healthBarY, L.barH = H - W * (144 / 1920), H - W * (113 / 1920), W * (37 / 1920)
+
+	return L
+end
+
+-- The layout for the current screen and settings: the same table until one of them changes
+function GryMod.GetHudLayout()
+	local w, h = ScrW(), ScrH()
+
+	if not layout or w ~= layoutScrW or h ~= layoutScrH or GryModXDistance_int ~= layoutXa or GryModXDistance2_int ~= layoutXd then
+		layoutScrW, layoutScrH, layoutXa, layoutXd = w, h, GryModXDistance_int, GryModXDistance2_int
+		layout = buildLayout(w, h, GryModXDistance_int, GryModXDistance2_int)
+	end
+
+	return layout
+end
+
+-- Position of one compass letter (1 = N, 2 = NE ... 8 = NW) for a player yaw
+local compassLetters = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+local compassOffsets = {0, 45, 90, 135, false, -135, -90, -45}
+
+local function compassPosition(L, index, yaw)
+	local ly = yaw + 6.256798
+	local v
+
+	if compassOffsets[index] then
+		v = ly + compassOffsets[index]
+
+		return L.letterX + (v * 3.32) + L.letterXAdd, L.letterY - ((v * 3.32) / 15) + L.letterYAdd
+	end
+
+	-- south wraps around +-180
+	v = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
+
+	return L.letterX + v * 5 + L.letterXAdd, L.letterY - ((v * 3.32) / 15) + L.letterYAdd
+end
+
+function GryMod.CompassPosition(index, yaw)
+	return compassPosition(GryMod.GetHudLayout(), index, yaw)
+end
+
+local lastClip, lastExtra, lastGrenades, ammoText
+
+-- "clip | reserve || grenades" is only rebuilt when one of the numbers changes
+local function ammoLine(clip, extra, grenades)
+	if clip ~= lastClip or extra ~= lastExtra or grenades ~= lastGrenades then
+		lastClip, lastExtra, lastGrenades = clip, extra, grenades
+
+		if clip == -1 then
+			ammoText = extra .. "  ||  " .. grenades
 		else
-			local extra = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetPrimaryAmmoType())
-			local ammonum = LocalPlayer():GetActiveWeapon():Clip1()
-			local grenum = LocalPlayer():GetAmmoCount(LocalPlayer():GetActiveWeapon():GetSecondaryAmmoType())
-
-			if (ammonum == -1) then
-				drawTextRotated(extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
-			else
-				drawTextRotated(ammonum .. " | " .. extra .. "  ||  " .. grenum, "CrysisInfos", GryMod.EyeFinityScrW() - (GryMod.EyeFinityScrW() / 7.5) + GryModXDistance_int + GryModXDistance2_int, tempscrh - (GryMod.EyeFinityScrW() / 8.4), Color(190, 195, 190, alpha_ch[2]), 1.2)
-			end
+			ammoText = clip .. " | " .. extra .. "  ||  " .. grenades
 		end
 	end
 
-	-- Lets get ammo MOTHERFUCKER
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	local compassmask = {
-		{
-			x = -1 * GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() * (072 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (215 / 1920)
-		},
-		{
-			x = -1 * GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() * (273 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (227 / 1920)
-		},
-		{
-			x = -1 * GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() * (294 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (207 / 1920)
-		},
-		{
-			x = -1 * GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() * (061 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (194 / 1920)
-		},
-		{
-			x = -1 * GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() * (060 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (204 / 1920)
-		}
-	}
+	return ammoText
+end
 
-	-- if we want to support eyefinity, we have to update the table each frames
-	local nbener = LocalPlayer():GetNWFloat("GryEnergy")
-	local nbhlt = LocalPlayer():Health()
-	local healthoffset = math.Remap(nbhlt, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
-	local energyoffset = math.Remap(nbener, 0, 100, 0, GryMod.EyeFinityScrW() * (219 / 1920))
+function GryMod.hudbase()
+	local L = GryMod.GetHudLayout()
+	local ply = LocalPlayer()
+	surface.SetTexture(base)
+	surface.SetDrawColor(220, 235, 220, 200)
+	surface.DrawTexturedRect(L.baseX, L.baseY, L.baseS, L.baseS)
+	surface.SetTexture(compass)
+	surface.SetDrawColor(220, 235, 220, 200)
+	surface.DrawTexturedRect(L.compassX, L.compassY, L.compassS, L.compassS)
+	------------------------------------------------/
+	---------------- START RADAR --------------------
+	------------------------------------------------/
+	local W = L.W
+	surface.SetDrawColor(GryMod.rcr, GryMod.rcg, GryMod.rcb, 255)
+
+	for i = 1, 4 do
+		local height = W * (Gry_Danger[i] / 1920)
+		surface.DrawRect(L.radarX, L.radarY[i] - height, L.radarW, height)
+	end
+
+	draw.NoTexture()
+	surface.DrawPoly(L.radarPoly)
+	--------------------------------------------------------------
+	---------------------- END RADAR -----------------------------
+	--------------------------------------------------------------
+	render.PushFilterMag(TEXFILTER.ANISOTROPIC)
+	render.PushFilterMin(TEXFILTER.ANISOTROPIC)
+	surface.SetFont("CrysisInfos")
+	surface.SetTextColor(190, 195, 190, 255)
+	drawTextRotated(numberTexts[ply:GetAmmoCount("grenade")], L.grenX, L.grenY, 1.2)
+	drawTextRotated(numberTexts[ply:Health()], L.healthX, L.healthY, 1)
+	local nbener = ply:GetNWFloat("GryEnergy")
+	drawTextRotated(numberTexts[math.Round(nbener)], L.energyX, L.energyY, 1.2)
+	render.PopFilterMag()
+	render.PopFilterMin()
+	surface.SetMaterial(grymodesuit)
+	surface.SetDrawColor(150, 195, 150, 155)
+	surface.DrawTexturedRect(L.modeX, L.modeY, L.modeS, L.modeS)
+	local weapon = ply:GetActiveWeapon()
+
+	if weapon:IsValid() then
+		render.PushFilterMag(TEXFILTER.ANISOTROPIC)
+		render.PushFilterMin(TEXFILTER.ANISOTROPIC)
+		surface.SetFont("CrysisInfos")
+		surface.SetTextColor(190, 195, 190, 255)
+
+		if nilweps[weapon:GetClass()] then
+			drawTextRotated("∞", L.infinityX, L.infinityY, 1.2)
+			-- Because the ammo is  -1 with grenades
+		else
+			local extra = ply:GetAmmoCount(weapon:GetPrimaryAmmoType())
+			local grenum = ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
+			drawTextRotated(ammoLine(weapon:Clip1(), extra, grenum), L.ammoX, L.ammoY, 1.2)
+		end
+
+		render.PopFilterMag()
+		render.PopFilterMin()
+	end
+
+	-- The bars and the compass are clipped with the stencil buffer. It is cleared once, and every
+	-- clipped shape gets a reference value of its own (it used to be cleared before each one).
+	local nbhlt = ply:Health()
+	local healthoffset = (nbhlt / 100) * L.full -- math.Remap(nbhlt, 0, 100, 0, full)
+	local energyoffset = (nbener / 100) * L.full
+	local full = L.full
 	render.ClearStencil()
 	render.SetStencilEnable(true)
-	render.SetStencilWriteMask(15)
-	render.SetStencilTestMask(15)
-	render.SetStencilReferenceValue(15)
+	render.SetStencilWriteMask(255)
+	render.SetStencilTestMask(255)
 	render.SetStencilFailOperation(STENCILOPERATION_ZERO)
 	render.SetStencilPassOperation(STENCILOPERATION_REPLACE)
 	render.SetStencilZFailOperation(STENCILOPERATION_KEEP)
+
+	-- compass: letters only inside the mask
+	render.SetStencilReferenceValue(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_ALWAYS)
-	surface.SetDrawColor(color_white)
+	surface.SetDrawColor(255, 255, 255, 255)
 	render.SetBlend(0)
-	surface.DrawPoly(compassmask)
+	surface.DrawPoly(L.maskPoly)
 	render.SetBlend(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
-	LocalPlayer_y = LocalPlayer():EyeAngles().y + 6.256798
-	draw.SimpleText("N", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + (LocalPlayer_y * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((LocalPlayer_y * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920), color_white)
-	draw.SimpleText("NE", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y + 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText("E", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((LocalPlayer_y + 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920)), color_white)
-	draw.SimpleText("SE", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y + 135) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y + 135) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText("S", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + math.max(math.NormalizeAngle(LocalPlayer_y + 180), math.NormalizeAngle(LocalPlayer_y - 180)) * 5 + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - ((math.max(math.NormalizeAngle(LocalPlayer_y + 180), math.NormalizeAngle(LocalPlayer_y - 180)) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText("SW", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 135) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 135) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText("W", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 90) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 90) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	draw.SimpleText("NW", "ScoreboardText", GryMod.EyeFinityScrW() * (20 / 1920) - GryModXDistance_int + GryModXDistance2_int + ((LocalPlayer_y - 45) * 3.32) + GryMod.EyeFinityScrW() * (134 / 1920), ((tempscrh - GryMod.EyeFinityScrW() * (218 / 1920) - (((LocalPlayer_y - 45) * 3.32) / 15) + GryMod.EyeFinityScrW() * (-5 / 1920))), color_white)
-	render.SetStencilEnable(false)
+	local yaw = ply:EyeAngles().y
+	surface.SetFont("ScoreboardText")
+	surface.SetTextColor(255, 255, 255, 255)
 
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	local energybarpoly1 = {
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (136 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (436 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (144 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (277 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (136 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (277 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (113.5 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (122 / 1920)
-		}
-	}
+	for i = 1, 8 do
+		local x, y = compassPosition(L, i, yaw)
+		surface.SetTextPos(math.ceil(x), math.ceil(y))
+		surface.DrawText(compassLetters[i])
+	end
 
-	-- energy left
-	local energybarpoly2 = {
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (135.5 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (228 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (133 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (228 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (111 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (113.5 / 1920)
-		}
-	}
-
-	-- energy right
-	local healthbarpoly1 = {
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (112 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (277 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (102.5 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (277 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (81.5 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (436 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (91 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (97 / 1920)
-		}
-	}
-
-	-- health left
-	local healthbarpoly2 = {
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (102 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (228 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (99.5 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (228 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (78.5 / 1920)
-		},
-		{
-			x = GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (270 / 1920),
-			y = ScrH() - GryMod.EyeFinityScrW() * (81 / 1920)
-		}
-	}
-
-	-- health right
-	render.ClearStencil()
-	render.SetStencilEnable(true)
-	render.SetStencilWriteMask(246)
-	render.SetStencilTestMask(246)
-	render.SetStencilReferenceValue(16)
-	render.SetStencilFailOperation(STENCILOPERATION_ZERO)
-	render.SetStencilPassOperation(STENCILOPERATION_REPLACE)
-	render.SetStencilZFailOperation(STENCILOPERATION_KEEP)
+	-- energy, right part
+	render.SetStencilReferenceValue(2)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_ALWAYS)
-	surface.SetDrawColor(color_white)
-	--render.SetBlend(0)
-	surface.DrawPoly(energybarpoly1)
-	--render.SetBlend(1)
+	surface.SetDrawColor(255, 255, 255, 255)
+	surface.DrawPoly(L.energyPoly1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
-	surface.SetDrawColor(Color(20, 150, 230, alpha_ch[1]))
-	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - energyoffset), ScrH() - GryMod.EyeFinityScrW() * (144 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - energyoffset), GryMod.EyeFinityScrW() * (37 / 1920))
-	render.SetStencilEnable(false)
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	render.ClearStencil()
-	render.SetStencilEnable(true)
-	render.SetStencilWriteMask(247)
-	render.SetStencilTestMask(247)
-	render.SetStencilReferenceValue(17)
-	render.SetStencilFailOperation(STENCILOPERATION_ZERO)
-	render.SetStencilPassOperation(STENCILOPERATION_REPLACE)
-	render.SetStencilZFailOperation(STENCILOPERATION_KEEP)
+	surface.SetDrawColor(20, 150, 230, 200)
+	surface.DrawRect(L.barBaseX + (full - energyoffset), L.energyBarY, full - (full - energyoffset), L.barH)
+
+	-- health, right part
+	render.SetStencilReferenceValue(3)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_ALWAYS)
-	surface.SetDrawColor(color_white)
-	--render.SetBlend(0)
-	surface.DrawPoly(healthbarpoly1)
-	--render.SetBlend(1)
+	surface.SetDrawColor(255, 255, 255, 255)
+	surface.DrawPoly(L.healthPoly1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
-	surface.SetDrawColor(Color(116, 194, 27, alpha_ch[1]))
-	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), ScrH() - GryMod.EyeFinityScrW() * (113 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), GryMod.EyeFinityScrW() * (37 / 1920))
-	render.SetStencilEnable(false)
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	render.ClearStencil()
-	render.SetStencilEnable(true)
-	render.SetStencilWriteMask(248)
-	render.SetStencilTestMask(248)
-	render.SetStencilReferenceValue(18)
-	render.SetStencilFailOperation(STENCILOPERATION_ZERO)
-	render.SetStencilPassOperation(STENCILOPERATION_REPLACE)
-	render.SetStencilZFailOperation(STENCILOPERATION_KEEP)
+	surface.SetDrawColor(116, 194, 27, 200)
+	surface.DrawRect(L.barBaseX + (full - healthoffset), L.healthBarY, full - (full - healthoffset), L.barH)
+
+	-- health, left part: red under 20
+	render.SetStencilReferenceValue(4)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_ALWAYS)
-	surface.SetDrawColor(color_white)
+	surface.SetDrawColor(255, 255, 255, 255)
 	render.SetBlend(0)
-	surface.DrawPoly(healthbarpoly2)
+	surface.DrawPoly(L.healthPoly2)
 	render.SetBlend(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
 
 	if nbhlt > 20 then
-		surface.SetDrawColor(Color(116, 194, 27, alpha_ch[1]))
+		surface.SetDrawColor(116, 194, 27, 200)
 	else
-		surface.SetDrawColor(Color(240, 23, 27, alpha_ch[1]))
+		surface.SetDrawColor(240, 23, 27, 200)
 	end
 
-	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), ScrH() - GryMod.EyeFinityScrW() * (113 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - healthoffset), GryMod.EyeFinityScrW() * (37 / 1920))
-	render.SetStencilEnable(false)
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	render.ClearStencil()
-	render.SetStencilEnable(true)
-	render.SetStencilWriteMask(249)
-	render.SetStencilTestMask(249)
-	render.SetStencilReferenceValue(19)
-	render.SetStencilFailOperation(STENCILOPERATION_ZERO)
-	render.SetStencilPassOperation(STENCILOPERATION_REPLACE)
-	render.SetStencilZFailOperation(STENCILOPERATION_KEEP)
+	surface.DrawRect(L.barBaseX + (full - healthoffset), L.healthBarY, full - (full - healthoffset), L.barH)
+
+	-- energy, left part: red under 20
+	render.SetStencilReferenceValue(5)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_ALWAYS)
-	surface.SetDrawColor(color_white)
+	surface.SetDrawColor(255, 255, 255, 255)
 	render.SetBlend(0)
-	surface.DrawPoly(energybarpoly2)
+	surface.DrawPoly(L.energyPoly2)
 	render.SetBlend(1)
 	render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
 
 	if nbener > 20 then
-		surface.SetDrawColor(Color(20, 150, 230, alpha_ch[1]))
+		surface.SetDrawColor(20, 150, 230, 200)
 	else
-		surface.SetDrawColor(Color(240, 23, 27, alpha_ch[1]))
+		surface.SetDrawColor(240, 23, 27, 200)
 	end
 
-	surface.DrawRect(GryModXDistance_int + GryModXDistance2_int + GryMod.EyeFinityScrW() - GryMod.EyeFinityScrW() * (446 / 1920) + (GryMod.EyeFinityScrW() * (219 / 1920) - energyoffset), ScrH() - GryMod.EyeFinityScrW() * (144 / 1920), GryMod.EyeFinityScrW() * (219 / 1920) - (GryMod.EyeFinityScrW() * (219 / 1920) - energyoffset), GryMod.EyeFinityScrW() * (37 / 1920))
+	surface.DrawRect(L.barBaseX + (full - energyoffset), L.energyBarY, full - (full - energyoffset), L.barH)
 	render.SetStencilEnable(false)
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 end
 
 local inited = false
@@ -838,7 +802,7 @@ function GryMod.RadialThink()
 		return
 	end
 
-	-- the menu is centred on the middle screen with Eyefinity: keep the cursor around that centre
+	-- keep the cursor around the centre of the menu
 	local cx, cy = GryMod.MenuCenter()
 	local hypotenus = math.Distance(gui.MouseX(), gui.MouseY(), cx, cy)
 

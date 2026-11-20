@@ -7,7 +7,6 @@ function GryMod.GryOptionschute(Panel)
 
 	Panel:CheckBox("Draw the HUD (health, energy, ammo, radar)", "gry_hud")
 	Panel:CheckBox("Suit sounds", "gry_sounds")
-	Panel:CheckBox("Eyefinity", "cl_Eyefinity")
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)
 
