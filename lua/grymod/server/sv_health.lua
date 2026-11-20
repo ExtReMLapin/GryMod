@@ -44,6 +44,13 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 
 	local amt = dmginfo:GetDamage()
 
+	if ply.Nanosuit_mode == GryMod.Modes.ARMOR and GryMod.Config.InfiniteArmor then
+		-- the armor never runs out
+		dmginfo:SetDamage(0)
+
+		return
+	end
+
 	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
 		local energy = ply:GetNWFloat("GryEnergy")
 
@@ -85,7 +92,14 @@ hook.Add("Think", "GryMod health think", function()
 	for k, ply in pairs(player.GetAll()) do
 		if not ply:Alive() then continue end
 
-		if ply.next_health_regen and (ply.next_health_regen < CurTime()) then
+		if not GryMod.Config.ShouldRegen then
+			-- regeneration switched off (gry_Health): stop the healing sound if it was playing
+			if ply.should_heath_regen then
+				ply.should_heath_regen = false
+				net.Start("gry_stop_health_regen")
+				net.Send(ply)
+			end
+		elseif ply.next_health_regen and (ply.next_health_regen < CurTime()) then
 
 
 			if (ply:Health() >= ply:GetMaxHealth()) then
@@ -101,8 +115,17 @@ hook.Add("Think", "GryMod health think", function()
 					net.Send(ply)
 					ply.should_heath_regen = true
 				end
-				ply:SetHealth(math.min(ply:GetMaxHealth(), ply.health_on_dmg + (CurTime() - ply.next_health_regen) * health_regen_speed))
+				-- never lower the health: a medkit used during the delay must not be lost
+				local target = math.min(ply:GetMaxHealth(), ply.health_on_dmg + (CurTime() - ply.next_health_regen) * health_regen_speed)
+
+				if target > ply:Health() then
+					ply:SetHealth(target)
+				end
 			end
+		end
+
+		if GryMod.Config.InfiniteArmor then
+			ply:SetNWFloat("GryEnergy", 100)
 		end
 
 		local curenergy = ply:GetNWFloat("GryEnergy")

@@ -12,6 +12,14 @@ GryMod.Config = {
 	cloakEnergyDrain = 3
 }
 
+-- The only modes a client is allowed to ask for (DROP is not a real mode, it only drops the weapon)
+local selectableModes = {
+	[GryMod.Modes.ARMOR] = true,
+	[GryMod.Modes.SPEED] = true,
+	[GryMod.Modes.CLOAK] = true,
+	[GryMod.Modes.STRENGTH] = true
+}
+
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
 	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
@@ -22,14 +30,26 @@ end)
 
 local meta = FindMetaTable("Player")
 
-net.Receive("gry_nanosuit_mode_change", function(len, ply)
-	if not ply:Alive() then
+-- Applies a mode asked by a client, and tells the client the real mode when the request is refused,
+-- so both sides never stay out of sync.
+function GryMod.SetModeFromClient(ply, mode)
+	if not IsValid(ply) or not ply:Alive() then
 		return
 	end
 
-	-- cheeeetaaa
-	local mode = net.ReadUInt(3)
+	if not selectableModes[mode] then
+		net.Start("gry_nanosuit_mode_change")
+		net.WriteUInt(ply.Nanosuit_mode or GryMod.Modes.ARMOR, 3)
+		net.Send(ply)
+
+		return
+	end
+
 	ply:SetNanosuitMode(mode, false)
+end
+
+net.Receive("gry_nanosuit_mode_change", function(len, ply)
+	GryMod.SetModeFromClient(ply, net.ReadUInt(3)) -- cheeeetaaa: that is why the mode is checked
 end)
 
 function meta:SetNanosuitMode(mode, networked)
@@ -51,16 +71,23 @@ function meta:SetNanosuitMode(mode, networked)
 		self:SetJumpPower(200)
 	end
 
+	local hands = self:GetHands()
+
 	if (mode == GryMod.Modes.CLOAK) then
 		self:SetMaterial("cloak/organic")
-		self:GetHands():SetMaterial("cloak/organic")
+
+		-- some gamemodes do not give c_arms hands
+		if IsValid(hands) then
+			hands:SetMaterial("cloak/organic")
+		end
+
 		self:SetNoTarget(true)
 		self:DrawWorldModel(false)
 	else
 		self:SetMaterial("")
 
-		if (IsValid(self:GetHands())) then
-			self:GetHands():SetMaterial("")
+		if IsValid(hands) then
+			hands:SetMaterial("")
 		end
 
 		self:SetNoTarget(false)
@@ -80,6 +107,8 @@ end
 
 net.Receive("gry_empty_energy", function(len, ply)
 	ply:SetNWFloat("GryEnergy", 0)
+	-- count it as a use: otherwise the regeneration starts again from the energy of the last drain tick
+	hook.Run("GryUseEnergy", ply)
 end)
 
 net.Receive("gry_drop", function(len, ply)
@@ -89,16 +118,25 @@ net.Receive("gry_drop", function(len, ply)
 end)
 
 function GryMod.SuperJump(ply, key)
-	if ply:Alive() and ply.Nanosuit_mode == GryMod.Modes.STRENGTH and ply:GetNWFloat("GryEnergy") >= 40 and ply:OnGround() and not GryMod.Config.InfiniteArmor and key == IN_JUMP then
+	if key ~= IN_JUMP or not ply:Alive() or ply.Nanosuit_mode ~= GryMod.Modes.STRENGTH then
+		return
+	end
+
+	local energy = ply:GetNWFloat("GryEnergy")
+	local infinite = GryMod.Config.InfiniteArmor
+
+	if (infinite or energy >= 40) and ply:OnGround() then
 		ply:SetJumpPower(500)
-		ply:SetNWFloat("GryEnergy", ply:GetNWFloat("GryEnergy") - 40)
-		hook.Run("GryUseEnergy", ply)
+
+		if not infinite then
+			ply:SetNWFloat("GryEnergy", energy - 40)
+			hook.Run("GryUseEnergy", ply)
+		end
+
 		ply.ps = true
 		net.Start("gry_jump")
 		net.Send(ply)
-	end
-
-	if ply:Alive() and ply.Nanosuit_mode == GryMod.Modes.STRENGTH and ply:GetNWFloat("GryEnergy") < 40 and ply.ps == false then
+	elseif energy < 40 and not ply.ps then
 		ply:SetJumpPower(200)
 		ply.ps = true
 	end
@@ -148,14 +186,49 @@ hook.Add("Think", "GryCloakThink", function()
 	end
 end)
 
-concommand.Add("gry_Armor", function(ply)
-	if ply:IsAdmin() then
-		GryMod.Config.InfiniteArmor = not GryMod.Config.InfiniteArmor
+-- The server console has no player: it is allowed, like any admin
+local function mayConfigure(ply)
+	return not IsValid(ply) or ply:IsAdmin()
+end
+
+local function tell(ply, text)
+	print("[GryMod] " .. text)
+
+	if IsValid(ply) then
+		ply:ChatPrint("[GryMod] " .. text)
 	end
+end
+
+local function onOff(b)
+	return b and "on" or "off"
+end
+
+function GryMod.ToggleInfiniteArmor(ply)
+	if not mayConfigure(ply) then
+		return false
+	end
+
+	GryMod.Config.InfiniteArmor = not GryMod.Config.InfiniteArmor
+	tell(ply, "Infinite armor: " .. onOff(GryMod.Config.InfiniteArmor))
+
+	return true
+end
+
+function GryMod.ToggleHealthRegen(ply)
+	if not mayConfigure(ply) then
+		return false
+	end
+
+	GryMod.Config.ShouldRegen = not GryMod.Config.ShouldRegen
+	tell(ply, "Health regeneration: " .. onOff(GryMod.Config.ShouldRegen))
+
+	return true
+end
+
+concommand.Add("gry_Armor", function(ply)
+	GryMod.ToggleInfiniteArmor(ply)
 end)
 
 concommand.Add("gry_Health", function(ply)
-	if ply:IsAdmin() then
-		GryMod.Config.ShouldRegen = not GryMod.Config.ShouldRegen
-	end
+	GryMod.ToggleHealthRegen(ply)
 end)
