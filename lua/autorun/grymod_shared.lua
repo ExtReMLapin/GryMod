@@ -34,6 +34,10 @@ if SERVER then
 	include("grymod/server/sv_system.lua")
 
 	if GryMod.Workshop == false then
+	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.png")
+	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_font.png")
+	resource.AddFile("materials/grymod/flash/hud_radarcompassstealth_1.png")
+	resource.AddFile("materials/grymod/flash/hud_radarcompassstealth_font.png")
 	resource.AddFile("materials/gryarmor.png")
 	resource.AddFile("materials/grycloak.png")
 	resource.AddFile("materials/grydrop.png")

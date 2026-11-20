@@ -86,6 +86,10 @@ return {
 		{
 			name = "the HUD can be turned off and the choice is remembered",
 			func = function(state)
+				-- this is about the classic HUD, whatever style the player picked
+				local style = GetConVar("gry_hud_style")
+				local savedStyle = style:GetString()
+				style:SetString("classic")
 				GryMod.SetHUDEnabled(false)
 				expect(GetConVar("gry_hud"):GetBool()).to.beFalse()
 				expect(hook.GetTable().HUDPaint.HUDBASECRY).to.beNil()
@@ -97,6 +101,8 @@ return {
 				expect(GetConVar("gry_hud"):GetBool()).to.beTrue()
 				expect(hook.GetTable().HUDPaint.HUDBASECRY ~= nil).to.beTrue()
 				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"] ~= nil).to.beTrue()
+				style:SetString(savedStyle)
+				GryMod.ApplyHUD()
 			end
 		},
 		{

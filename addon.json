@@ -11,6 +11,8 @@
 		".git*",
 		".github/*",
 		"dev_resources/*",
+		"tools/*",
+		"docs/*",
 		"tests/*",
 		"LICENSE"
 	]

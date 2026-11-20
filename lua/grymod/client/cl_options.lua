@@ -6,6 +6,14 @@ function GryMod.GryOptionschute(Panel)
 	})
 
 	Panel:CheckBox("Draw the HUD (health, energy, ammo, radar)", "gry_hud")
+	Panel:AddControl("ComboBox", {
+		Label = "HUD style",
+		MenuButton = 0,
+		Options = {
+			["Classic"] = {gry_hud_style = "classic"},
+			["Crysis (original Scaleform movie)"] = {gry_hud_style = "crysis"}
+		}
+	})
 	Panel:CheckBox("Suit sounds", "gry_sounds")
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)

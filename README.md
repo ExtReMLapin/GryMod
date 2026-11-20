@@ -65,9 +65,27 @@ All of them are saved between sessions (Options > GryMod in the spawn menu, or t
 
 * `gry_hud 0` : hide the HUD (health, energy, ammo, radar, compass). The quick menu and the suit abilities keep working.
 * `gry_sounds 0` : mute the suit sounds.
+* `gry_hud_style` : `classic` (default) or `crysis`, the HUD redrawn from the original Crysis Scaleform movies (see below).
 * `gry_xadd`, `gry_xdist` : HUD position.
 * Admins: `gry_Health` toggles the health regeneration, `gry_Armor` toggles the infinite armor (also usable from the server console).
 
+
+The Crysis HUD
+-------------
+
+`gry_hud_style crysis` draws the ammo / health / energy / suit block and the compass panel from the Crysis
+Scaleform movies (`HUD_AmmoHealthEnergySuit`, `HUD_RadarCompassStealth`), with their own animations and the
+original ActionScript rules for the digits, the bars, the suit icon and the ammo colours. How it works:
+
+* `tools/flash2lua/` converts the movies once, offline (Python, [FFDec](https://github.com/jindrapetrik/jpexs-decompiler)
+  and the Crysis SP demo's `GameData.pak`): every shape becomes a picture in an atlas
+  (`materials/grymod/flash/*.png`) and every timeline becomes Lua data (`lua/grymod/flash/*.lua`).
+  `tools/flash2lua/README.md` says how to run it. The generated files are committed: the game does not need
+  the converter or the demo.
+* `lua/grymod/client/cl_flash.lua` plays the timelines (30 images per second, any frame rate),
+  `cl_flash_draw.lua` draws them, `cl_hud_flash.lua` and `cl_hud_radar_flash.lua` are the hand-ported
+  ActionScript and the link with GryMod's values.
+* The compass panel has no minimap picture and no enemy icons yet; its stealth bar shows how many NPCs are near.
 
 Tests
 -------------
@@ -88,6 +106,8 @@ Credits
 ----------
 
 Lapin : Lua code, HUD materials and some others stuff
+
+The Crysis-style HUD uses graphics and fonts taken from the Crysis Scaleform HUD files (Crytek / Electronic Arts).
 
 Carl Mcgee : Working on GryEngine models-map 
 
