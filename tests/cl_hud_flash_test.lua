@@ -481,6 +481,27 @@ return {
 			end
 		},
 		{
+			name = "a theme change rebuilds every piece of the interface, not only the HUD",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local others = {GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade}
+				local calls, saved = 0, {}
+
+				for i, module in ipairs(others) do
+					saved[i] = module.Reset
+					module.Reset = function() calls = calls + 1 end
+				end
+
+				M.ResetAll()
+
+				for i, module in ipairs(others) do
+					module.Reset = saved[i]
+				end
+
+				expect(calls).to.equal(3)
+			end
+		},
+		{
 			name = "a missing movie gives no HUD instead of an error",
 			func = function(state)
 				expect(GryMod.FlashHUD.New(nil)).to.beNil()

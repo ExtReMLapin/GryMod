@@ -254,6 +254,39 @@ return {
 			end
 		},
 		{
+			name = "pressing the key again while the menu is open does nothing more, and cancelling closes it without any mode change",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local ply = LocalPlayer()
+				local changes = 0
+				local real = FindMetaTable("Player").SetNanosuitMode
+				FindMetaTable("Player").SetNanosuitMode = function() changes = changes + 1 end
+
+				M.Reset()
+				expect(M.Begin()).to.beTrue()
+				expect(M.Begin()).to.beFalse() -- already open (a bind and gry_menu_key together)
+				expect(M.IsOpen()).to.beTrue()
+				M.Cancel()
+				expect(M.IsOpen()).to.beFalse()
+				expect(changes).to.equal(0)
+				M.Cancel() -- nothing to cancel: no error
+				FindMetaTable("Player").SetNanosuitMode = real
+				M.Reset()
+			end
+		},
+		{
+			name = "the menu must be cancelled when the player is dead or a game menu is up",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local alive = {Alive = function() return true end}
+				local dead = {Alive = function() return false end}
+				expect(M.ShouldCancel(alive, false)).to.beFalse()
+				expect(M.ShouldCancel(dead, false)).to.beTrue()
+				expect(M.ShouldCancel(alive, true)).to.beTrue()
+				expect(M.ShouldCancel(nil, false)).to.beTrue()
+			end
+		},
+		{
 			name = "a missing movie gives no menu instead of an error",
 			func = function(state)
 				expect(GryMod.FlashMenu.New(nil)).to.equal(nil)

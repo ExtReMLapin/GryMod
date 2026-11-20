@@ -183,11 +183,10 @@ end
 -- The HUD (health, energy, ammo, radar, compass) can be turned off with gry_hud 0 or from the options
 -- menu; the quick menu and the suit abilities keep working. The choice is saved with the convar.
 local function applyHUD(enabled)
-	if GryMod.FlashHUD then
-		GryMod.FlashHUD.Apply(enabled)
-	end
+	local drawn = GryMod.FlashHUD and GryMod.FlashHUD.Apply(enabled)
 
-	if enabled then
+	-- the vanilla HUD is only hidden when ours is really drawn (a missing movie must not leave no HUD at all)
+	if enabled and drawn then
 		hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
 	else
 		hook.Remove("HUDShouldDraw", "How to: HUD Example HUD hider")

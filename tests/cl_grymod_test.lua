@@ -101,6 +101,18 @@ return {
 			end
 		},
 		{
+			name = "the vanilla HUD stays when the Crysis HUD cannot be drawn (missing movie)",
+			func = function(state)
+				local realApply = GryMod.FlashHUD.Apply
+				GryMod.FlashHUD.Apply = function() return false end
+				GryMod.SetHUDEnabled(true)
+				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"]).to.beNil()
+				GryMod.FlashHUD.Apply = realApply
+				GryMod.SetHUDEnabled(true)
+				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"] ~= nil).to.beTrue()
+			end
+		},
+		{
 			name = "the radar update counts the NPCs near without error, for the stealth bar of the compass panel",
 			func = function(state)
 				GryMod.RadarCount = nil

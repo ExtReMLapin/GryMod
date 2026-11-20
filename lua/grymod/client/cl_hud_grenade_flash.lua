@@ -114,11 +114,15 @@ function Instance:_applyDistance(update)
 	local distance = self.icon:Child("Distance")
 
 	if distance then
-		distance:SetText("TargetDistance", string.format("%.2fM", self.metres))
+		local text = string.format("%.2fM", self.metres)
+		distance:SetText("TargetDistance", text)
 
-		if update then
+		-- the "update" animation plays when the shown distance changes, not at every frame
+		if update and text ~= self.distanceText then
 			distance:GotoAndPlay("update")
 		end
+
+		self.distanceText = text
 	end
 
 	local size = math.max(45, 100 - self.metres * 1.5)
@@ -173,18 +177,39 @@ local function enabled()
 	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled()
 end
 
+-- The grenades in the world are looked for five times a second; their positions are read every frame.
+local scanned = {}
+local nextScan = 0
+
+local function scan()
+	local now = RealTime()
+
+	if now < nextScan then
+		return
+	end
+
+	nextScan = now + 0.2
+	scanned = {}
+
+	for class in pairs(TYPES) do
+		for _, ent in ipairs(ents.FindByClass(class)) do
+			scanned[#scanned + 1] = ent
+		end
+	end
+end
+
 local function candidates(ply)
 	local list = {}
 	local eye = ply:EyePos()
 
-	for class in pairs(TYPES) do
-		for _, ent in ipairs(ents.FindByClass(class)) do
+	for _, ent in ipairs(scanned) do
+		if IsValid(ent) then
 			local point = ent:WorldSpaceCenter():ToScreen()
 			local owner = ent:GetOwner()
 
 			list[#list + 1] = {
 				ent = ent,
-				class = class,
+				class = ent:GetClass(),
 				metres = eye:Distance(ent:GetPos()) / 52.49,
 				onScreen = point.visible,
 				own = IsValid(owner) and owner == ply,
@@ -197,16 +222,18 @@ local function candidates(ply)
 end
 
 hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
-	if not enabled() then
-		return
-	end
-
 	local ply = LocalPlayer()
 
-	if not IsValid(ply) or not ply:Alive() then
+	-- dead, or the HUD is off: the warning goes away, and plays its opening again when it comes back
+	if not enabled() or not IsValid(ply) or not ply:Alive() then
+		if warning then
+			warning:Hide()
+		end
+
 		return
 	end
 
+	scan()
 	local best = Grenade.Pick(candidates(ply))
 
 	if not best then

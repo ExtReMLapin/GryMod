@@ -200,7 +200,6 @@ function Instance:Close()
 	end
 
 	self.closing = true
-	self.selected = "Center"
 	self.qm:GotoAndPlay("close")
 end
 
@@ -281,6 +280,8 @@ function Instance:_applyStates()
 	end
 
 	local circle = qm:Child("Circle")
+	-- the ring keeps its last state while the menu fades out
+	choice = self:Choice()
 
 	if self.malfunction == 1 then
 		if circle and circle:CurrentLabel() ~= "malfunction" then
@@ -364,6 +365,11 @@ end
 function Menu.Begin()
 	local ply = LocalPlayer()
 
+	-- already open (a bind and gry_menu_key together send the press twice)
+	if opened then
+		return false
+	end
+
 	if not IsValid(ply) or not ply:Alive() then
 		play(snd_error)
 
@@ -419,8 +425,38 @@ function Menu.Finish()
 	end
 end
 
+-- The menu closes without changing anything when the player dies or a game menu opens (the key release may never
+-- reach us then).
+function Menu.ShouldCancel(ply, gameUiVisible)
+	if not ply or not ply.Alive then
+		return true
+	end
+
+	return not ply:Alive() or gameUiVisible
+end
+
+function Menu.Cancel()
+	if not opened then
+		return
+	end
+
+	opened = false
+
+	if menu then
+		menu:Close()
+	end
+
+	play(snd_close)
+end
+
 hook.Add("CreateMove", "GRYQUICKMENU", function(cmd)
 	if not opened then
+		return
+	end
+
+	if Menu.ShouldCancel(LocalPlayer(), gui.IsGameUIVisible()) then
+		Menu.Cancel()
+
 		return
 	end
 

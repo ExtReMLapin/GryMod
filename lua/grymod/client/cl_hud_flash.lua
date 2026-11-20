@@ -769,11 +769,22 @@ function Module.Apply(enabled)
 	return active
 end
 
+-- Drops every piece of the interface so that the next frame builds them again (a new theme).
+function Module.ResetAll()
+	Module.Reset()
+
+	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade}) do
+		if module and module.Reset then
+			module.Reset()
+		end
+	end
+end
+
 cvars.AddChangeCallback("gry_hud_theme", function(_, _, value)
 	Module.SetTheme(value)
 
 	if GryMod.ApplyHUD then
-		Module.Reset()
+		Module.ResetAll()
 	end
 end, "GryModHUDTheme")
 

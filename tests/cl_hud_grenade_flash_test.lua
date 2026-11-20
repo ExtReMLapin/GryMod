@@ -50,6 +50,21 @@ return {
 			end
 		},
 		{
+			name = "the distance animation restarts only when the shown distance changes, not every frame",
+			func = function(state)
+				local w = newWarning()
+				w:Show()
+				run(w, 1.2)
+				w:SetDistance(10)
+				run(w, 0.2)
+				local frame = w.icon:Find("Distance"):CurrentFrame()
+				w:SetDistance(10)
+				expect(w.icon:Find("Distance"):CurrentFrame()).to.equal(frame)
+				w:SetDistance(10.004) -- the same text (10.00M)
+				expect(w.icon:Find("Distance"):CurrentFrame()).to.equal(frame)
+			end
+		},
+		{
 			name = "the grenade type is written in the text field",
 			func = function(state)
 				local w = newWarning()

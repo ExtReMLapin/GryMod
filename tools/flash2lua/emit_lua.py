@@ -35,7 +35,7 @@ def _num(value):
 
 
 def _str(value):
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\0", "\\0") + '"'
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\0", "\\000") + '"'
 
 
 def _list(values):

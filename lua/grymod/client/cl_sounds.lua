@@ -123,6 +123,14 @@ end)
 
 local lastenergy
 
+-- The servo loop of the speed sprint cuts out at a fifth of the bar under the original game's rules (the sprint
+-- itself goes on), at nothing under the classic ones.
+function GryMod.SprintLoopMinimum()
+	local mechanics = GetConVar("gry_mechanics")
+
+	return (mechanics and mechanics:GetString() ~= "classic") and 20 or 1
+end
+
 
 
 local wasSprinting = false
@@ -139,7 +147,7 @@ hook.Add("Think", "GryModSounds", function()
 		GryMod.PlaySound(Sound("suit/suit_energy_critical.mp3"))
 	end
 	lastenergy = energy
-	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 and LocalPlayer().NanosuitMode == GryMod.Modes.SPEED and energy > 1 then
+	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 and LocalPlayer().NanosuitMode == GryMod.Modes.SPEED and energy > GryMod.SprintLoopMinimum() then
 		if wasSprinting == false then
 			hook.Run("GryModStartSprinting")
 			wasSprinting = true

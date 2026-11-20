@@ -16,6 +16,19 @@ class EmitStringTest(unittest.TestCase):
         self.assertEqual(text, expected)
 
 
+class ScriptEdgeTest(unittest.TestCase):
+    def test_this_is_the_clip_itself_not_a_child(self):
+        from tools.flash2lua import scripts
+        self.assertEqual(scripts.classify_script('this.stop();'), [{"do": "stop"}])
+        self.assertEqual(scripts.classify_script('this.gotoAndStop("a");'), [{"do": "stop"}, {"do": "goto", "label": "a"}])
+        self.assertEqual(scripts.classify_script('Mover.gotoAndPlay("a");'),
+                         [{"do": "child", "name": "Mover", "play": True, "label": "a"}])
+
+    def test_a_nul_before_a_digit_cannot_be_read_as_another_byte(self):
+        text = emit_lua._str(chr(0) + "1")
+        self.assertEqual(text, '"' + chr(92) + "000" + '1"')
+
+
 class MovieNameTest(unittest.TestCase):
     def test_a_movie_name_cannot_leave_the_output_folders(self):
         for bad in ("../x", ".." + BACKSLASH + "x", "a/b", "", "x.swf", "x y"):
@@ -37,6 +50,10 @@ class HtmlTextTest(unittest.TestCase):
         self.assertEqual(swfmodel.parse_html_text('<p align="left"></p>'), ("", 0, None))
         self.assertEqual(swfmodel.parse_html_text("plain"), ("plain", None, None))
         self.assertEqual(swfmodel.parse_html_text(""), ("", None, None))
+
+    def test_paragraphs_are_separate_lines(self):
+        text, _, _ = swfmodel.parse_html_text("<p>one</p><p>two</p>")
+        self.assertEqual(text, "one" + chr(10) + "two")
 
     def test_a_line_break_tag_becomes_a_line_break(self):
         text, _, _ = swfmodel.parse_html_text("<p>one<br>two</p>")

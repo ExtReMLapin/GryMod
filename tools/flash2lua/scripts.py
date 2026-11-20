@@ -81,6 +81,8 @@ def classify_script(text):
         if not match:
             continue
         child, call, arg = match.group("child"), match.group("call"), match.group("arg")
+        if child == "this":
+            child = None
         if call == "stop":
             if child is None:
                 actions.append({"do": "stop"})

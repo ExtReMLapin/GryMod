@@ -257,7 +257,8 @@ def parse_html_text(html):
     if match:
         value = int(match.group(1), 16)
         color = ((value >> 16) & 255, (value >> 8) & 255, value & 255, 255)
-    text = re.sub(r"<br\s*/?>", chr(10), html, flags=re.IGNORECASE)
+    text = re.sub(r"</p>\s*<p", "</p>" + chr(10) + "<p", html, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", chr(10), text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]*>", "", text)
     return unescape(text), align, color
 
