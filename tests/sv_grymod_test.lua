@@ -35,6 +35,8 @@ return {
 		GryMod.Config = table.Copy(savedConfig)
 		GryMod.Config.ShouldRegen = true
 		GryMod.Config.InfiniteArmor = false
+		-- these tests pin the earlier numbers; the Crysis ones are in sv_mechanics_test.lua
+		GryMod.Config.Mechanics = "classic"
 	end,
 	afterEach = function(state)
 		if state.realGetHands then

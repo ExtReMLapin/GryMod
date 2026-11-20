@@ -37,6 +37,7 @@ if SERVER then
 	AddCSLuaFile("grymod/flash/hud_quickmenu.lua")
 	AddCSLuaFile("grymod/flash/hud_radarcompassstealth.lua")
 	AddCSLuaFile("grymod/flash/hud_ammohealthenergysuit.lua")
+	include("grymod/server/sv_mechanics.lua")
 	include("grymod/server/sv_health.lua")
 	include("grymod/server/sv_system.lua")
 

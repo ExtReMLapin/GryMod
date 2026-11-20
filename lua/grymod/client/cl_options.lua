@@ -15,6 +15,15 @@ function GryMod.GryOptionschute(Panel)
 		}
 	})
 	Panel:CheckBox("Suit sounds", "gry_sounds")
+	-- the rules of the suit (server setting, for the host or an admin): the original game's numbers, or GryMod's earlier ones
+	Panel:AddControl("ComboBox", {
+		Label = "Suit rules (server)",
+		MenuButton = 0,
+		Options = {
+			["Crysis (the original game's numbers)"] = {gry_mechanics = "crysis"},
+			["Classic GryMod"] = {gry_mechanics = "classic"}
+		}
+	})
 
 	-- the key of the quick menu (a `bind <key> +crysishud` in the console works too)
 	if GryMod.MenuKey then

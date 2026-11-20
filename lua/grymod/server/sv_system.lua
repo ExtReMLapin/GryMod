@@ -118,6 +118,19 @@ net.Receive("gry_drop", function(len, ply)
 end)
 
 function GryMod.SuperJump(ply, key)
+	if key == IN_JUMP and ply:Alive() and ply.Nanosuit_mode == GryMod.Modes.SPEED and ply:OnGround() and not GryMod.Config.InfiniteArmor then
+		-- a jump in speed mode costs a little energy in the original game
+		local speedCost = GryMod.Mech.JumpCost(GryMod.Modes.SPEED)
+		local available = ply:GetNWFloat("GryEnergy")
+
+		if speedCost > 0 and available >= speedCost then
+			ply:SetNWFloat("GryEnergy", available - speedCost)
+			hook.Run("GryUseEnergy", ply)
+		end
+
+		return
+	end
+
 	if key ~= IN_JUMP or not ply:Alive() or ply.Nanosuit_mode ~= GryMod.Modes.STRENGTH then
 		return
 	end
@@ -125,18 +138,20 @@ function GryMod.SuperJump(ply, key)
 	local energy = ply:GetNWFloat("GryEnergy")
 	local infinite = GryMod.Config.InfiniteArmor
 
-	if (infinite or energy >= 40) and ply:OnGround() then
+	local cost = GryMod.Mech.JumpCost(GryMod.Modes.STRENGTH)
+
+	if (infinite or energy >= cost) and ply:OnGround() then
 		ply:SetJumpPower(500)
 
 		if not infinite then
-			ply:SetNWFloat("GryEnergy", energy - 40)
+			ply:SetNWFloat("GryEnergy", energy - cost)
 			hook.Run("GryUseEnergy", ply)
 		end
 
 		ply.ps = true
 		net.Start("gry_jump")
 		net.Send(ply)
-	elseif energy < 40 and not ply.ps then
+	elseif energy < cost and not ply.ps then
 		ply:SetJumpPower(200)
 		ply.ps = true
 	end
@@ -155,11 +170,11 @@ hook.Add("KeyRelease", "keyreleasestrengthgry", GryMod.RSuperJump)
 
 hook.Add("Think", "GrySpeedThink", function()
 	for k, v in pairs(player.GetAll()) do
-		local amnt_to_drain = GryMod.Config.speedEnergyDrain * FrameTime()
 		local amnt = v:GetNWFloat("GryEnergy")
+		local amnt_to_drain = GryMod.Mech.SpeedDrain(amnt) * FrameTime()
 
 		if v:IsSprinting() == true and v:GetVelocity():LengthSqr() > 170000  and (v:IsOnGround() or v:WaterLevel() > 1) and v.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor then
-			if amnt_to_drain > amnt then
+			if amnt_to_drain > amnt or amnt <= 0 then
 				v:SetRunSpeed(400)
 			else
 				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
@@ -174,9 +189,9 @@ hook.Add("Think", "GryCloakThink", function()
 		if v.Nanosuit_mode == GryMod.Modes.CLOAK and not GryMod.Config.InfiniteArmor then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
 			local amnt = v:GetNWFloat("GryEnergy")
-			local amnt_to_drain = GryMod.Config.cloakEnergyDrain * FrameTime() * (v:GetVelocity():Length() / 100 + 0.6)
+			local amnt_to_drain = GryMod.Mech.CloakDrain(v:GetVelocity():Length()) * FrameTime()
 
-			if amnt_to_drain > amnt then
+			if amnt_to_drain > amnt or GryMod.Mech.CloakFailsAt(amnt) then
 				v:SetNanosuitMode(GryMod.Modes.ARMOR, true)
 			else
 				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
