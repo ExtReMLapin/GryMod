@@ -1,0 +1,59 @@
+# Publishing a GitHub release (tag vX.Y.Z) attaches a zip of the addon to the release, then uploads the
+# addon to the Steam Workshop (GryMod HUD, item 153963150).
+#
+# One-time setup (repository Settings > Secrets and variables > Actions):
+#   secrets  STEAM_USERNAME  Steam account that owns the Workshop item
+#            STEAM_VDF       base64 of SteamCMD's config/config.vdf after one interactive login
+#                            (steamcmd +login <user> +quit, Steam Guard code typed once), see
+#                            https://github.com/gmod-workshop/workshop-upload
+#            WORKSHOP_ID     153963150
+#   variable WORKSHOP_UPLOAD = true   switches the Workshop job on (it stays off until the secrets exist)
+#
+# The release notes become the Workshop change note. The action writes them into a VDF file without
+# escaping: do not use a double quote (") in them, it makes the upload fail. To retry a failed upload
+# without deleting anything: `gh release edit vX --draft=true`, then `--draft=false`.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the release zip
+        run: |
+          mkdir -p dist
+          git archive --format=zip --prefix=grymod/ -o "dist/grymod-${GITHUB_REF_NAME}.zip" "${GITHUB_REF_NAME}"
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/*.zip --clobber
+
+  workshop:
+    if: ${{ vars.WORKSHOP_UPLOAD == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The repository ships GryMod.Workshop = false: every file is then sent to the clients with
+      # resource.AddFile, even to the players who already have the Workshop item. The Workshop package
+      # must be the one where servers only ask clients to subscribe (resource.AddWorkshop).
+      - name: Build the Workshop flavour
+        run: |
+          sed -i 's/^GryMod\.Workshop = false/GryMod.Workshop = true/' lua/autorun/grymod_shared.lua
+          grep -q '^GryMod\.Workshop = true' lua/autorun/grymod_shared.lua
+      # addon.json "ignore" keeps tests, dev resources (psd, swf) and docs out of the .gma
+      - uses: gmod-workshop/workshop-upload@v1
+        with:
+          id: ${{ secrets.WORKSHOP_ID }}
+          username: ${{ secrets.STEAM_USERNAME }}
+          vdf: ${{ secrets.STEAM_VDF }}
+          # the v1 tag of the action has no markdown-changelog input: use changelog
+          changelog: ${{ github.event.release.body }}
+          # the action reads `folder` (its README still says `dir`, which it ignores)
+          folder: ./

@@ -59,6 +59,32 @@ Developers
   
 		
 		
+Settings
+-------------
+
+All of them are saved between sessions (Options > GryMod in the spawn menu, or the console):
+
+* `gry_hud 0` : hide the HUD (health, energy, ammo, radar, compass). The quick menu and the suit abilities keep working.
+* `gry_sounds 0` : mute the suit sounds.
+* `cl_Eyefinity`, `gry_xadd`, `gry_xdist` : Eyefinity and HUD position.
+* Admins: `gry_Health` toggles the health regeneration, `gry_Armor` toggles the infinite armor (also usable from the server console).
+
+
+Tests
+-------------
+
+`tests/` holds GLuaTest-format tests for the server and the client. They run in a real game with
+[gmod-mcp](https://github.com/ExtReMLapin/gmod-mcp): load a map in singleplayer, then
+`tests_run` with `realm=server` on `tests/sv_grymod_test.lua` and `realm=client` on `tests/cl_grymod_test.lua`.
+
+
+Releases
+-------------
+
+Publishing a GitHub release (tag `vX.Y.Z`) attaches a zip of the addon to it and uploads the addon to the
+Steam Workshop (`.github/workflows/release.yml`; the secrets it needs are listed at the top of that file).
+The release notes become the Workshop change note: no double quote (`"`) in them.
+
 Credits    
 ----------
 

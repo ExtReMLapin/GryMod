@@ -1,0 +1,17 @@
+{
+	"title": "GryMod HUD - Crysis HUD and nanosuit in Gmod",
+	"type": "tool",
+	"tags": [ "fun", "realism" ],
+	"ignore": [
+		"*.md",
+		"*.psd",
+		"*.swf",
+		"*.fla",
+		"*.as",
+		".git*",
+		".github/*",
+		"dev_resources/*",
+		"tests/*",
+		"LICENSE"
+	]
+}
