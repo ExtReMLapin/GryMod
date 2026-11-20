@@ -6,6 +6,7 @@ Writes lua/grymod/flash/<movie>.lua and materials/grymod/flash/<movie>_<n>.png (
 """
 import argparse
 import os
+import re
 import tempfile
 import zipfile
 
@@ -31,7 +32,15 @@ def _localized_pak(pak_path):
     return os.path.join(os.path.dirname(os.path.abspath(pak_path)), "Localized", "english.pak")
 
 
+def check_movie_name(movie_name):
+    """A movie name is used in file names: letters, digits and underscores only (no path, no extension)."""
+    if not re.fullmatch(r"[A-Za-z0-9_]+", movie_name or ""):
+        raise ValueError(f"not a movie name: {movie_name!r}")
+    return movie_name
+
+
 def convert_movie(pak_path, movie_name, ffdec, lua_dir, materials_dir, localized_pak=None):
+    check_movie_name(movie_name)
     name = movie_name.lower()
     os.makedirs(lua_dir, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:

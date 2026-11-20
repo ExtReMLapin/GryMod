@@ -74,6 +74,13 @@ class EmitLuaTest(unittest.TestCase):
         self.assertEqual((text["k"], text["t"], text["fh"]), ("text", "0", 18))
         self.assertEqual(text["col"][1], 255)
 
+    def test_stop_in_a_composite_script_is_kept(self):
+        """Root frame 1 is "stop(); _root.updateAmmoMode();": the stop must survive."""
+        first = self.data["chars"][241]["frames"][1]
+        self.assertEqual(first["a"][1][1], "stop")
+        malfunction_on = self.data["chars"][241]["frames"][45]
+        self.assertEqual(malfunction_on["a"][1][1], "stop")
+
     def test_colour_actions_are_emitted(self):
         first = self.data["chars"][102]["frames"][1]
         self.assertEqual([first["a"][1][1], first["a"][1][2], first["a"][1][3]], ["color", "Line", "Colorset"])
@@ -111,8 +118,6 @@ class EmitLuaTest(unittest.TestCase):
         self.assertLess(len(self.text.encode("utf8")), 1_000_000)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 @unittest.skipUnless(os.path.exists(FFDEC) and os.path.exists(SWF), "FFDec / demo SWF not available")
@@ -133,3 +138,7 @@ class EmitLuaRealRuntimeTest(unittest.TestCase):
         self.assertEqual(data["fps"], 30)
         self.assertEqual(data["chars"][38].n, len(movie.characters[38].timeline.frames))
         self.assertEqual(data["root"][1][1].n, "Root")
+
+
+if __name__ == "__main__":
+    unittest.main()

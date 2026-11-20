@@ -19,7 +19,9 @@ Format (`return {...}`):
   op                 place  {d=depth, c=char, mv=true, n=name, m={a,b,c,d,tx,ty}, cx={rm,gm,bm,am,ra,ga,ba,aa},
                              r=ratio, cd=clip depth, bl=blend mode}
                      remove {rm=depth}
-  action             {"play"} {"stop"} {"goto", frame} {"gotol", label} {"color", theme, target} {"x"} (anything
+  action             {"play"} {"stop"} {"goto", frame} {"gotol", label} {"color", theme, target}
+                     {"child", name, play, label|frame} (gotoAndPlay/Stop on the child clip with that instance name)
+                     {"x"} (anything
                      else, not decoded). "color": copy the theme colour (Line, Over or Text) onto the child
                      clip named target ("" = the clip itself), the colour-set scripts of the HUD movies.
 """
@@ -33,7 +35,7 @@ def _num(value):
 
 
 def _str(value):
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\n").replace("\r", "\r") + '"'
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\0", "\\0") + '"'
 
 
 def _list(values):

@@ -259,6 +259,44 @@ return {
 			end
 		},
 		{
+			name = "a time step that is NaN, negative or huge does not break the clock",
+			func = function(state)
+				local c = clip(3)
+				c:Advance(0 / 0)
+				expect(c.frac == c.frac).to.beTrue() -- not NaN
+				expect(c:CurrentFrame()).to.equal(1)
+				c:Advance(-5)
+				expect(c:CurrentFrame()).to.equal(1)
+				c:Advance(1e9) -- clamped to one second: it returns, and the clock still works afterwards
+				expect(c.frac == c.frac).to.beTrue()
+				c:GotoAndStop(1)
+				c:Play()
+				c:Advance(0.1)
+				expect(c:CurrentFrame()).to.equal(4)
+			end
+		},
+		{
+			name = "a child action sends gotoAndPlay or gotoAndStop to the child clip with that name",
+			func = function(state)
+				local m = movie()
+				-- clip 8 holds the child "Mover" (clip 2: frames intro / mid / fin); its frame 1 plays "fin"
+				m.chars[8] = {k = "sprite", n = 2, labels = {}, frames = {
+					{{d = 1, c = 2, n = "Mover"}, a = {{"child", "Mover", false, "intro"}}},
+					{a = {{"child", "Mover", true, 2}}}
+				}}
+				local clip = GryMod.Flash.NewClip(m, 8)
+				local mover = clip:Child("Mover")
+				expect(mover:CurrentLabel()).to.equal("intro")
+				expect(mover.playing).to.beFalse()
+				clip:Advance(1 / 30 + 0.001) -- the parent reaches frame 2 and starts the child on "mid", which then ticks on
+				expect(mover:CurrentLabel()).to.equal("fin")
+				expect(mover.playing).to.beTrue()
+				-- a name that is not there is ignored
+				m.chars[9] = {k = "sprite", n = 1, labels = {}, frames = {{a = {{"child", "Nobody", true, 1}}}}}
+				GryMod.Flash.NewClip(m, 9)
+			end
+		},
+		{
 			name = "loading a missing movie gives nil",
 			func = function(state)
 				expect(GryMod.Flash.Load("no_such_movie")).to.beNil()

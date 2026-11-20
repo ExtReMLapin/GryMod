@@ -135,9 +135,9 @@ class SwfModelTest(unittest.TestCase):
         self.assertIn({"do": "color", "theme": "Text", "target": "NumberText"}, actions)
         self.assertIn({"do": "stop"}, actions)
 
-    def test_other_scripts_stay_unsupported(self):
-        root_actions = self.movie.root.frames[0].actions
-        self.assertTrue(all("unsupported" in a for a in root_actions))
+    def test_the_root_script_keeps_only_its_top_level_stop(self):
+        """The root script is mostly function definitions and _root calls (ported by hand); only its stop() is an action."""
+        self.assertEqual(self.movie.root.frames[0].actions, [{"do": "stop"}])
 
     def test_imported_font_is_recorded(self):
         self.assertEqual(self.movie.imports[63], ("HUD_Font_LocFont.swf", "Font_Body"))

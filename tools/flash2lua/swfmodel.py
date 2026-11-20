@@ -11,6 +11,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Optional
 
+from tools.flash2lua import scripts
+
 TWIPS = 20.0
 PLACE_TAGS = ("PlaceObject2Tag", "PlaceObject3Tag")
 SHAPE_TAGS = ("DefineShapeTag", "DefineShape2Tag", "DefineShape3Tag", "DefineShape4Tag")
@@ -75,22 +77,7 @@ def export_scripts(ffdec, swf_path, out_dir):
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-_COLOR_SCRIPT = re.compile(
-    r"var color1 = new Color\(_root\.(Line|Over|Text)\.Colorset\);\s*"
-    r"var color2 = new Color\(this(?:\.(\w+))?\);\s*"
-    r"color2\.setRGB\(color1\.getRGB\(\)\);")
-
-
-def classify_script(text):
-    """The few frame scripts that follow a fixed pattern become actions: a colour-set script copies the
-    theme colour (Line, Over or Text) onto a child clip. Returns None for anything else."""
-    match = _COLOR_SCRIPT.search(text)
-    if not match:
-        return None
-    actions = [{"do": "color", "theme": match.group(1), "target": match.group(2)}]
-    if re.search(r"\bstop\(\);", text[match.end():]):
-        actions.append({"do": "stop"})
-    return actions
+classify_script = scripts.classify_script  # see scripts.py
 
 
 def _script_file(scripts_dir, sprite_id, frame_number, index):

@@ -176,9 +176,15 @@ function HUD:SetMode(mode)
 	end
 
 	self.mode = mode
+	local changed = self.icons:CurrentFrame() ~= frame
 	self.icons:GotoAndStop(frame)
 
 	if self.status == 1 then
+		-- only when the icon just changed: a refresh must not restart its animation at every frame
+		if not changed then
+			return
+		end
+
 		local icon = self.icons:Child(mode)
 
 		if icon then
@@ -194,6 +200,9 @@ local function setNumberClip(clip, value, colour)
 		return
 	end
 
+	-- the digit flashes when its value changes, not every time the clips are put back
+	local changed = clip.shownValue ~= value
+	clip.shownValue = value
 	clip:GotoAndStop(colour)
 
 	local text = clip:Child("NumberText")
@@ -204,7 +213,7 @@ local function setNumberClip(clip, value, colour)
 
 	local blink = clip:Child("NumberText_blink")
 
-	if blink then
+	if blink and changed then
 		blink:GotoAndPlay(2)
 
 		local set = blink:Find("Set.Colorset")
@@ -325,6 +334,11 @@ function HUD:Destroy(status)
 		self:_refresh()
 	else
 		self.main:GotoAndPlay(label)
+
+		-- frame 30 of the movie's root: the player HUD malfunctions too (its script does it for the current HUD)
+		if status == 1 and self.player then
+			self.player:GotoAndPlay("malfunction")
+		end
 
 		if status == 2 and self.player then
 			self.player:GotoAndPlay("flickering")

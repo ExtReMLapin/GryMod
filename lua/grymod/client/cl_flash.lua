@@ -332,6 +332,17 @@ function Clip:_runActions()
 			self:_jump(action[2])
 		elseif what == "color" then
 			self:_colorChild(action[2], action[3])
+		elseif what == "child" then
+			local child = self.names[action[2]]
+			child = child and child.clip
+
+			if child then
+				if action[3] then
+					child:GotoAndPlay(action[4])
+				else
+					child:GotoAndStop(action[4])
+				end
+			end
 		elseif what == "gotol" then
 			local target = self.labels[action[2]]
 
@@ -386,6 +397,13 @@ end
 
 -- Moves the clock of this clip and of all its children by `dt` seconds.
 function Clip:Advance(dt)
+	-- a time step that is NaN, negative or huge (a long freeze) must not poison the clock or spin for long
+	if not (dt > 0) then
+		dt = 0
+	elseif dt > 1 then
+		dt = 1
+	end
+
 	if self.playing and self.n > 1 then
 		self.frac = self.frac + dt * self.movie.fps
 

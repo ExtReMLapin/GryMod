@@ -167,6 +167,20 @@ return {
 			end
 		},
 		{
+			name = "a malfunction plays its animation and stays on the malfunction frames, the ammo block malfunctions too",
+			func = function(state)
+				local hud = newHud()
+				hud:Destroy(1)
+				expect(hud.root:Find("Root.Player"):CurrentLabel()).to.equal("malfunction")
+				for _ = 1, 90 do hud:Update(1 / 30) end -- 3 seconds
+				expect(hud.root:Find("Root"):CurrentLabel()).to.equal("malfunctionOn")
+				expect(hud.root:Find("Root").playing).to.beFalse()
+				-- and it stays there
+				for _ = 1, 30 do hud:Update(1 / 30) end
+				expect(hud.root:Find("Root"):CurrentLabel()).to.equal("malfunctionOn")
+			end
+		},
+		{
 			name = "a mode change during a malfunction leaves a single icon, in its malfunction animation",
 			func = function(state)
 				local hud = newHud()
