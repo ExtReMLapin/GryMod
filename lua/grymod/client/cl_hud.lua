@@ -1,9 +1,12 @@
 local color_white = color_white
-local GryModXDistance = CreateClientConVar("gry_xadd", "0", false, false)
-local GryModXDistance2 = CreateClientConVar("gry_xdist", "0", false, false)
+-- All the settings are saved between sessions (second argument)
+local GryModXDistance = CreateClientConVar("gry_xadd", "0", true, false)
+local GryModXDistance2 = CreateClientConVar("gry_xdist", "0", true, false)
 local GryModXDistance_int = GryModXDistance:GetInt()
 local GryModXDistance2_int = GryModXDistance2:GetInt()
-local EyeFinity = CreateClientConVar("cl_Eyefinity", "0", false, false)
+local EyeFinity = CreateClientConVar("cl_Eyefinity", "0", true, false)
+local HUDEnabled = CreateClientConVar("gry_hud", "1", true, false, "Draw the GryMod HUD (the quick menu and the suit abilities work without it)")
+local SoundsEnabled = CreateClientConVar("gry_sounds", "1", true, false, "Play the GryMod suit sounds")
 local GRYOPEN = false
 local meta = FindMetaTable("Player")
 GryMod.rcr = 105
@@ -11,16 +14,29 @@ GryMod.rcg = 235
 GryMod.rcb = 100
 
 cvars.AddChangeCallback("gry_xadd", function(convar_name, value_old, value_new)
-	GryModXDistance_int = value_new
+	GryModXDistance_int = tonumber(value_new) or 0
 end)
 
 cvars.AddChangeCallback("gry_xdist", function(convar_name, value_old, value_new)
-	GryModXDistance2_int = value_new
+	GryModXDistance2_int = tonumber(value_new) or 0
 end)
 
+-- Every GryMod sound goes through here, so players can switch them off (gry_sounds 0)
+function GryMod.PlaySound(path)
+	if not SoundsEnabled:GetBool() then
+		return false
+	end
+
+	surface.PlaySound(path)
+
+	return true
+end
+
+function GryMod.SoundsEnabled()
+	return SoundsEnabled:GetBool()
+end
+
 local gry_icons = {Material("gryarmor.png"), Material("gryspeed.png"), Material("grystrength.png"), Material("grycloak.png"), Material("grydrop.png")}
-local tempscrw = ScrW()
-local tempscrh = ScrH()
 local base = surface.GetTextureID("cryhud/base")
 local compass = surface.GetTextureID("cryhud/compass")
 
@@ -34,12 +50,19 @@ function meta:CanGryMod()
 	return self:IsAdmin() or self:IsVip() 
 end
 ]]
+-- Width of the area the HUD is drawn in (the middle screen with Eyefinity). Read live: the player can
+-- change the resolution or the Eyefinity option while playing.
 function GryMod.EyeFinityScrW()
 	if EyeFinity:GetInt() > 0 then
-		return tempscrw / 3
+		return ScrW() / 3
 	else
-		return tempscrw
+		return ScrW()
 	end
+end
+
+-- Centre of the quick menu
+function GryMod.MenuCenter()
+	return GryMod.EyeFinityScrW() / 2, ScrH() / 2
 end
 
 local function drawTextRotated(text, font, x, y, color, ang)
@@ -69,7 +92,6 @@ local crytx_grid = surface.GetTextureID("crysis_button_grid")
 local crycircletx = surface.GetTextureID("crysis_circle")
 local cryarrowtx = surface.GetTextureID("crysis_arrow")
 local global_mul, global_mul_goal = 0, 0 --The global multiplier, if this is 0 the menu is hidden, 1 and it's fully visible, between 0 and 1 for transition
-local cryx, cryy = GryMod.EyeFinityScrW() / 2, tempscrh / 2 --Changing this makes the menu appear in a different place
 local selected, oldselected = 0, 0 --Which slot is selected?
 local snd_o, snd_c, snd_s, snd_h, snd_e = Sound("cry_open.wav"), Sound("cry_close.wav"), Sound("cry_select.wav"), Sound("cry_hover.wav"), Sound("cry_error.wav")
 local crydist = {} --Distance to center for every slot
@@ -130,6 +152,8 @@ local w = px(90)
 local timeshowselected = 0.25
 
 function GryMod.CRYHUD()
+	local cryx, cryy = GryMod.MenuCenter()
+
 	if (global_mul_goal ~= global_mul) then
 		global_mul = global_mul + (global_mul_goal - global_mul) * math.Clamp(FrameTime() * 10, 0, 1) --I love mah math
 	end
@@ -278,7 +302,7 @@ function GryMod.CRYHUD()
 	end
 
 	if (selected ~= oldselected and selected ~= 0 and LocalPlayer():CanGryMod()) then
-		surface.PlaySound(snd_h)
+		GryMod.PlaySound(snd_h)
 
 		if (slots[selected].id == GryMod.Modes.DROP and not IsValid(LocalPlayer():GetActiveWeapon())) then
 			oldselected = selected
@@ -294,9 +318,9 @@ function GryMod.EnableMenu(b)
 
 	if (b and global_mul_goal == 0) then
 		if LocalPlayer():CanGryMod() then
-			surface.PlaySound(snd_o)
+			GryMod.PlaySound(snd_o)
 		else
-			surface.PlaySound(snd_e)
+			GryMod.PlaySound(snd_e)
 		end
 	end
 
@@ -310,7 +334,7 @@ function GryMod.EnableMenu(b)
 end
 
 net.Receive("gry_jump", function()
-	surface.PlaySound("suit/strengthjump.mp3")
+	GryMod.PlaySound("suit/strengthjump.mp3")
 end)
 
 function meta:SetNanosuitMode(mode, networked)
@@ -319,26 +343,31 @@ function meta:SetNanosuitMode(mode, networked)
 	end
 
 	if mode == GryMod.Modes.ARMOR then
-		surface.PlaySound(Sound("suit/suit_maximum_armor.mp3"))
-		surface.PlaySound(Sound("suit/suit_armor_108.mp3"))
+		GryMod.PlaySound(Sound("suit/suit_maximum_armor.mp3"))
+		GryMod.PlaySound(Sound("suit/suit_armor_108.mp3"))
 	end
 
 	if mode == GryMod.Modes.SPEED then
-		surface.PlaySound(Sound("suit/suit_maximum_speed.mp3"))
-		surface.PlaySound(Sound("suit/suit_speed_activate_07_good.wa.mp3"))
+		GryMod.PlaySound(Sound("suit/suit_maximum_speed.mp3"))
+		GryMod.PlaySound(Sound("suit/suit_speed_activate_07_good.wa.mp3"))
 	end
 
 	if mode == GryMod.Modes.STRENGTH then
-		surface.PlaySound(Sound("suit/suit_maximum_strength.mp3"))
-		surface.PlaySound(Sound("suit/strengthmode.mp3"))
+		GryMod.PlaySound(Sound("suit/suit_maximum_strength.mp3"))
+		GryMod.PlaySound(Sound("suit/strengthmode.mp3"))
 	end
 
 	if mode == GryMod.Modes.CLOAK then
 		if IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 			LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
-			LocalPlayer():GetHands():SetMaterial("cloak/organic") -- ask someone to fix that
-			surface.PlaySound(Sound("suit/suit_modification_engaged.mp3"))
-			surface.PlaySound(Sound("suit/suit_cloak_chameleon_101_r.mp3"))
+
+			-- some gamemodes do not give c_arms hands
+			if IsValid(LocalPlayer():GetHands()) then
+				LocalPlayer():GetHands():SetMaterial("cloak/organic")
+			end
+
+			GryMod.PlaySound(Sound("suit/suit_modification_engaged.mp3"))
+			GryMod.PlaySound(Sound("suit/suit_cloak_chameleon_101_r.mp3"))
 		end
 	elseif IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 		LocalPlayer():GetViewModel():SetMaterial("")
@@ -370,25 +399,33 @@ function meta:SetNanosuitMode(mode, networked)
 	-- it's not a real mode so don't change anything
 end
 
-net.Receive("gry_nanosuit_mode_change", function()
-	if not IsValid(LocalPlayer()) or not LocalPlayer():Alive() then
+-- The server decides the mode (at every respawn it goes back to Armor). This must not wait for the
+-- player to be alive on the client: the respawn message can arrive first, and a client that kept its old
+-- mode ignores the player picking that mode again, so the suit stayed in Armor with a Speed icon.
+function GryMod.ApplyServerMode(mode)
+	if not IsValid(LocalPlayer()) then
 		return
 	end
 
-	local mode = net.ReadUInt(3)
 	LocalPlayer():SetNanosuitMode(mode, false)
+end
+
+net.Receive("gry_nanosuit_mode_change", function()
+	GryMod.ApplyServerMode(net.ReadUInt(3))
 end)
 
 function GryMod.CryOpenClose(ply, command, args)
+	local cryx, cryy = GryMod.MenuCenter()
+
 	if (LocalPlayer():CanGryMod() and command ~= "+crysishud") then
 		if (GryMod.MouseInCircle(cryx, cryy)) then
-			surface.PlaySound(snd_s)
+			GryMod.PlaySound(snd_s)
 
 			if slots[selected] then
 				LocalPlayer():SetNanosuitMode(slots[selected].id, true)
 			end
 		elseif (global_mul_goal == 1) then
-			surface.PlaySound(snd_c)
+			GryMod.PlaySound(snd_c)
 		end
 	end
 
@@ -418,39 +455,50 @@ local Gry_Danger1 = 0
 local Gry_Danger2 = 0
 local Gry_Danger3 = 0
 
-function GryMod.mathradar()
-	radarnpc = {}
-
-	if IsValid(LocalPlayer()) then
-		for k, v in pairs(ents.FindInSphere(LocalPlayer():GetPos(), 1280)) do
-			if v:IsNPC() then
-				table.insert(radarnpc, v)
-			end
-		end
-
-		for k, v in pairs(radarnpc) do
-			if not table.HasValue(ents.FindInSphere(LocalPlayer():GetPos(), 1280), v) then
-				table.remove(radarnpc, k)
-			end
-		end
-
-		raderpers = math.Min(math.MapSimple(table.Count(radarnpc), 20, 150), 150) -- For the color
-		GryMod.rcr = 105 + raderpers
-		GryMod.rcg = 235 - raderpers * 1.5
-		GryMod.rcb = 100 - (raderpers / 1.8)
-		Gry_Danger0 = math.Min(math.MapSimple(table.Count(radarnpc) * 5, 20, 17), 17.9)
-		Gry_Danger1 = math.Min(math.MapSimple((table.Count(radarnpc) - 4) * 5, 20, 22), 22)
-		Gry_Danger2 = math.Min(math.MapSimple((table.Count(radarnpc) - 8) * 5, 20, 20), 20)
-		Gry_Danger3 = math.Min(math.MapSimple((table.Count(radarnpc) - 12) * 5, 20, 19), 19)
-	end
-
-	timer.Simple(0.1, GryMod.mathradar)
+-- Heights of the four radar bars for a number of NPCs around the player. Each bar starts to grow
+-- 4 NPCs after the previous one; they used to go negative below that.
+function GryMod.RadarLevels(count)
+	return math.Clamp(math.MapSimple(count * 5, 20, 17), 0, 17.9),
+		math.Clamp(math.MapSimple((count - 4) * 5, 20, 22), 0, 22),
+		math.Clamp(math.MapSimple((count - 8) * 5, 20, 20), 0, 20),
+		math.Clamp(math.MapSimple((count - 12) * 5, 20, 19), 0, 19)
 end
 
-GryMod.mathradar()
+function GryMod.CountNearbyNPCs()
+	local count = 0
+
+	for _, ent in ipairs(ents.FindInSphere(LocalPlayer():GetPos(), 1280)) do
+		if ent:IsNPC() then
+			count = count + 1
+		end
+	end
+
+	return count
+end
+
+function GryMod.UpdateRadar()
+	if not IsValid(LocalPlayer()) then
+		return
+	end
+
+	local count = GryMod.CountNearbyNPCs()
+	local raderpers = math.Min(math.MapSimple(count, 20, 150), 150) -- For the color
+	GryMod.rcr = 105 + raderpers
+	GryMod.rcg = 235 - raderpers * 1.5
+	GryMod.rcb = 100 - (raderpers / 1.8)
+	Gry_Danger0, Gry_Danger1, Gry_Danger2, Gry_Danger3 = GryMod.RadarLevels(count)
+end
+
+-- One named timer: loading the file again replaces it instead of stacking another one
+function GryMod.StartRadar()
+	timer.Create("GryModRadar", 0.1, 0, GryMod.UpdateRadar)
+end
+
+GryMod.StartRadar()
 local alpha_ch = {0, 0}
 
 function GryMod.hudbase()
+	local tempscrh = ScrH()
 	alpha_ch[1] = 200
 	alpha_ch[2] = 255
 	r_ch = 0
@@ -790,10 +838,12 @@ function GryMod.RadialThink()
 		return
 	end
 
-	local hypotenus = math.Distance(gui.MouseX(), gui.MouseY(), ScrW() / 2, ScrH() / 2)
+	-- the menu is centred on the middle screen with Eyefinity: keep the cursor around that centre
+	local cx, cy = GryMod.MenuCenter()
+	local hypotenus = math.Distance(gui.MouseX(), gui.MouseY(), cx, cy)
 
 	if (hypotenus > MOUSE_CHECK_DIST) then
-		local distx = math.abs(ScrW() / 2 - gui.MouseX())
+		local distx = math.abs(cx - gui.MouseX())
 		local angle = math.abs(math.acos(distx / hypotenus) * 180 / math.pi)
 
 		if (tostring(angle) == "nan") then
@@ -804,17 +854,17 @@ function GryMod.RadialThink()
 		local multx = 1 -- change direction of x and y because we're not just working with a triangle now, you need to define the "orientation of the triangle"
 		local multy = 1
 
-		if (gui.MouseX() < ScrW() / 2) then
+		if (gui.MouseX() < cx) then
 			multx = -1
 		end
 
-		if (gui.MouseY() < ScrH() / 2) then
+		if (gui.MouseY() < cy) then
 			multy = -1
 		end
 
 		local newx = (math.cos(angle / (180 / math.pi)) * newtriangle_hypotenus) * multx
 		local newy = (math.sin(angle / (180 / math.pi)) * newtriangle_hypotenus) * multy
-		gui.SetMousePos(ScrW() / 2 + newx, ScrH() / 2 + newy)
+		gui.SetMousePos(cx + newx, cy + newy)
 	end
 end
 
@@ -825,15 +875,35 @@ local hidethings = {
 	["CHudSecondaryAmmo"] = true
 }
 
-function HUDShouldDraw(name)
+local function HUDShouldDraw(name)
 	if (hidethings[name]) then
 		return false
 	end
 end
 
-hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+-- The HUD (health, energy, ammo, radar, compass) can be turned off with gry_hud 0 or from the options
+-- menu; the quick menu and the suit abilities keep working. The choice is saved with the convar.
+local function applyHUD(enabled)
+	if enabled then
+		hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase)
+		hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+	else
+		hook.Remove("HUDPaint", "HUDBASECRY")
+		hook.Remove("HUDShouldDraw", "How to: HUD Example HUD hider")
+	end
+end
+
+function GryMod.SetHUDEnabled(enabled)
+	HUDEnabled:SetBool(enabled)
+	applyHUD(enabled)
+end
+
+-- the options menu (or the console) changes the convar: follow it
+cvars.AddChangeCallback("gry_hud", function(convar_name, value_old, value_new)
+	applyHUD(tonumber(value_new) ~= 0)
+end, "GryModHUD")
+
 hook.Add("HUDPaint", "GRYHUD", GryMod.CRYHUD)
 hook.Add("KeyPress", "AttackDetection", GryMod.CloackAttack)
-hook.Add("Think", "SuitBreathUnderwater", GryMod.SuitBreathUnderwater)
-hook.Add("HUDPaint", "HUDBASECRY", GryMod.hudbase)
 hook.Add("Think", "HueHue fix normal shit", GryMod.RadialThink)
+GryMod.SetHUDEnabled(HUDEnabled:GetBool())

@@ -17,9 +17,9 @@ local armorHitSoundsUNDERWATER = {"suit/suit_bullet_impact_05.mp3",
 
 net.Receive("gry_armor_hit_sound",function()
 	if (LocalPlayer():WaterLevel() < 3) then
-		surface.PlaySound(Sound(table.Random(armorHitSoundsGROUND)))
+		GryMod.PlaySound(Sound(table.Random(armorHitSoundsGROUND)))
 	else
-		surface.PlaySound(Sound(table.Random(armorHitSoundsUNDERWATER)))
+		GryMod.PlaySound(Sound(table.Random(armorHitSoundsUNDERWATER)))
 	end
 end)
 
@@ -55,7 +55,10 @@ net.Receive("gry_stop_health_regen",function ()
 end)
 
 net.Receive("gry_start_health_regen",function ()
-	if not IsValid(healingSound) then return end
+	if not IsValid(healingSound) or not GryMod.SoundsEnabled() then return end
+	-- a fade-out still running would pause the sound again a moment after it starts
+	hook.Remove("Think", "GryModSoundhealthregenfadeaway")
+	healingSound:SetVolume(1)
 	healingSound:Play()
 end)
 
@@ -84,11 +87,14 @@ end)
 
 
 hook.Add("GryModStartSprinting", "sound", function()
-			if LocalPlayer():WaterLevel() < 3 then
-				speedLoopGround:Play()
-			else
-				speedLoopUnderwater:Play()
-			end
+	if not GryMod.SoundsEnabled() then return end
+
+	-- the channels are created asynchronously: they may not exist yet
+	local channel = LocalPlayer():WaterLevel() < 3 and speedLoopGround or speedLoopUnderwater
+
+	if IsValid(channel) then
+		channel:Play()
+	end
 end)
 
 local speedStopLastPlay = 0
@@ -97,17 +103,21 @@ hook.Add("GryModEndSprinting", "sound", function()
 	if LocalPlayer():WaterLevel() < 3  then
 		if (CurTime() - speedStopLastPlay > 0.7 ) then
 			speedStopLastPlay = CurTime()
-			surface.PlaySound(Sound("suit/servo_speed_stop_fp_2.mp3"))
+			GryMod.PlaySound(Sound("suit/servo_speed_stop_fp_2.mp3"))
 		end
-		speedLoopGround:Pause()
-		speedLoopGround:SetTime(0)
+		if IsValid(speedLoopGround) then
+			speedLoopGround:Pause()
+			speedLoopGround:SetTime(0)
+		end
 	else
 		if (CurTime() - speedStopLastPlay > 0.7 ) then
 			speedStopLastPlay = CurTime()
-			surface.PlaySound(Sound("suit/servo_speed_stop_01_underwater.mp3"))
+			GryMod.PlaySound(Sound("suit/servo_speed_stop_01_underwater.mp3"))
 		end
-		speedLoopUnderwater:Pause()
-		speedLoopUnderwater:SetTime(0)
+		if IsValid(speedLoopUnderwater) then
+			speedLoopUnderwater:Pause()
+			speedLoopUnderwater:SetTime(0)
+		end
 	end
 end)
 
@@ -126,7 +136,7 @@ hook.Add("Think", "GryModSounds", function()
 		lastenergy = energy
 	end
 	if (lastenergy >= 20 and energy < 20) then
-		surface.PlaySound(Sound("suit/suit_energy_critical.mp3"))
+		GryMod.PlaySound(Sound("suit/suit_energy_critical.mp3"))
 	end
 	lastenergy = energy
 	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 and LocalPlayer().NanosuitMode == GryMod.Modes.SPEED and energy > 1 then
@@ -141,21 +151,24 @@ hook.Add("Think", "GryModSounds", function()
 		end
 	end
 
-	-- if we get from water to air or to air from water, swap the two sounds
-	local tr = util.TraceLine( {
-	start = LocalPlayer():GetPos(),
-	endpos = LocalPlayer():EyePos() + Vector(0,0,-50000000),
-} )
-
-	if speedLoopGround != nil then
+	-- the ground loop fades out when the player leaves the ground: only needed (and only worth a long
+	-- trace every frame) while the loop is playing
+	if wasSprinting and IsValid(speedLoopGround) then
+		local tr = util.TraceLine( {
+		start = LocalPlayer():GetPos(),
+		endpos = LocalPlayer():EyePos() + Vector(0,0,-50000000),
+	} )
 		local distanceFromGround = LocalPlayer():GetPos():Distance(tr.HitPos)
 		local volume = math.Max(math.Remap(distanceFromGround, 0, 300, 1, 0),0)
 		speedLoopGround:SetVolume(volume)
 	end
 
+	-- if we get from water to air or to air from water, swap the two sounds
+	local bothLoops = IsValid(speedLoopGround) and IsValid(speedLoopUnderwater)
+
 	if (wasUnderwater and LocalPlayer():WaterLevel() < 3) then
 		wasUnderwater = false
-		if (wasSprinting) then
+		if (wasSprinting and bothLoops) then
 			speedLoopGround:SetTime(speedLoopUnderwater:GetTime())
 			speedLoopGround:Play()
 			speedLoopUnderwater:Pause()
@@ -163,7 +176,7 @@ hook.Add("Think", "GryModSounds", function()
 		end
 	elseif (not wasUnderwater and LocalPlayer():WaterLevel() == 3) then
 		wasUnderwater = true
-		if (wasSprinting) then
+		if (wasSprinting and bothLoops) then
 			speedLoopUnderwater:SetTime(speedLoopGround:GetTime())
 			speedLoopUnderwater:Play()
 			speedLoopGround:Pause()
