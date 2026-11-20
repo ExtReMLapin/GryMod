@@ -600,14 +600,13 @@ local function compassPosition(L, index, yaw)
 
 	if compassOffsets[index] then
 		v = ly + compassOffsets[index]
-
-		return L.letterX + (v * 3.32) + L.letterXAdd, L.letterY - ((v * 3.32) / 15) + L.letterYAdd
+	else
+		-- south wraps around +-180
+		v = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
 	end
 
-	-- south wraps around +-180
-	v = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
-
-	return L.letterX + v * 5 + L.letterXAdd, L.letterY - ((v * 3.32) / 15) + L.letterYAdd
+	-- every letter moves by 3.32 pixels per degree (south used to use 5, so it ran 50 % faster than the rest)
+	return L.letterX + (v * 3.32) + L.letterXAdd, L.letterY - ((v * 3.32) / 15) + L.letterYAdd
 end
 
 function GryMod.CompassPosition(index, yaw)

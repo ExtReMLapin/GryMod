@@ -223,7 +223,7 @@ return {
 						local x, y
 						if letter == "S" then
 							local m = math.max(math.NormalizeAngle(ly + 180), math.NormalizeAngle(ly - 180))
-							x = W * (20 / 1920) - xa + xd + m * 5 + W * (134 / 1920)
+							x = W * (20 / 1920) - xa + xd + (m * 3.32) + W * (134 / 1920)
 							y = H - W * (218 / 1920) - ((m * 3.32) / 15) + W * (-5 / 1920)
 						else
 							local v = ly + offsets[letter]
@@ -235,6 +235,32 @@ return {
 						expect(gy).to.aboutEqual(y, tol)
 					end
 				end
+			end
+		},
+		{
+			name = "every compass letter moves at the same speed when the player turns (south used to be 50 % faster)",
+			func = function(state)
+				GetConVar("gry_xadd"):SetInt(0)
+				GetConVar("gry_xdist"):SetInt(0)
+
+				-- away from the +-180 seam, one more degree of yaw moves every letter by the same distance
+				for _, yaw in ipairs({-150, -100, -40, 0, 30, 100, 150}) do
+					local x1 = {}
+
+					for index = 1, 8 do
+						x1[index] = GryMod.CompassPosition(index, yaw)
+					end
+
+					for index = 1, 8 do
+						local x2 = GryMod.CompassPosition(index, yaw + 1)
+						expect(x2 - x1[index]).to.aboutEqual(3.32, 0.0001)
+					end
+				end
+
+				-- and across the seam, south goes on at the same speed
+				local before = GryMod.CompassPosition(5, 179)
+				local after = GryMod.CompassPosition(5, -179.5)
+				expect(math.abs(after - before)).to.aboutEqual(3.32 * 1.5, 0.0001)
 			end
 		},
 		{
