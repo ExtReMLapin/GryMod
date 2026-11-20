@@ -368,6 +368,18 @@ return {
 			end
 		},
 		{
+			name = "a player without a weapon (the NULL entity) shows the no-gun icon instead of raising an error",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local ply = {GetAmmoCount = function() return 2 end}
+				local mag, reserve, size, grenades, mode = M.AmmoFor(ply, NULL)
+				expect(mag).to.equal(-1)
+				expect(grenades).to.equal(2)
+				expect(mode).to.equal("NoGun")
+				expect(M.FireModeFor(NULL)).to.equal("NoGun")
+			end
+		},
+		{
 			name = "a resolver that errors or answers with an unknown icon is ignored",
 			func = function(state)
 				local M = GryMod.FlashHUD

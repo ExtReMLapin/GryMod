@@ -533,7 +533,18 @@ end)
 
 -- The icon for what the player holds: a stock weapon's own icon, else what a registered base says, else the
 -- generic SWEP rule (Primary.Automatic: automatic, otherwise one shot at a time).
+-- Player:GetActiveWeapon() gives the NULL entity (not nil) when the player holds nothing.
+local function validWeapon(weapon)
+	if not weapon or (weapon.IsValid and not weapon:IsValid()) then
+		return nil
+	end
+
+	return weapon
+end
+
 function Module.FireModeFor(weapon)
+	weapon = validWeapon(weapon)
+
 	if not weapon then
 		return "NoGun"
 	end
@@ -563,6 +574,8 @@ end
 
 -- magazine, reserve, magazine size, grenades and fire mode icon of what the player holds. -1 = no ammo system.
 function Module.AmmoFor(ply, weapon)
+	weapon = validWeapon(weapon)
+
 	local grenades = ply:GetAmmoCount("Grenade")
 	local fireMode = Module.FireModeFor(weapon)
 
@@ -635,7 +648,7 @@ function Module.Paint()
 	local ply = LocalPlayer()
 
 	if not IsValid(ply) or not ply:Alive() then
-		hud, panel = nil, nil
+		Module.Reset()
 
 		return
 	end
@@ -675,8 +688,17 @@ function Module.Paint()
 	end
 end
 
--- Drops the HUD so that the next frame builds a new one (a new theme, for instance).
+-- Drops the HUD so that the next frame builds a new one (a new theme, a respawn...): the render targets of its
+-- groups go back to the pool instead of being kept for ever.
 function Module.Reset()
+	if hud then
+		Flash.ReleaseClip(hud.root)
+	end
+
+	if panel then
+		Flash.ReleaseClip(panel.root)
+	end
+
 	hud, panel = nil, nil
 end
 
@@ -688,7 +710,7 @@ function Module.Apply(enabled)
 		hook.Add("HUDPaint", "GRYFLASHHUD", Module.Paint)
 	else
 		hook.Remove("HUDPaint", "GRYFLASHHUD")
-		hud, panel = nil, nil
+		Module.Reset()
 	end
 
 	return active

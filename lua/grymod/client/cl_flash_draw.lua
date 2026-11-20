@@ -72,6 +72,7 @@ local batchMaterial, batchBlend
 local position = Vector()
 
 local groupDepth = 0 -- > 0 while drawing the content of a group into its render target
+local blendOverridden = false
 
 local function flush()
 	if batchCount == 0 then
@@ -83,9 +84,11 @@ local function flush()
 	render.SetMaterial(batchMaterial)
 
 	if additive then
+		blendOverridden = true
 		render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE, BLENDFUNC_ADD)
 	elseif groupDepth > 0 then
 		-- keep the alpha of what is drawn in the (initially transparent) group image
+		blendOverridden = true
 		render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
 	end
 
@@ -102,6 +105,7 @@ local function flush()
 	mesh.End()
 
 	if additive or groupDepth > 0 then
+		blendOverridden = false
 		render.OverrideBlend(false)
 	end
 
@@ -425,6 +429,10 @@ local function acquireTarget(width, height)
 end
 
 local function releaseTarget(cache)
+	if not cache.target or not cache.textureW or not cache.textureH then
+		return
+	end
+
 	local key = cache.textureW .. "x" .. cache.textureH
 	local pool = targetPool[key]
 
@@ -450,6 +458,24 @@ function Flash.ReleaseEntry(entry)
 			Flash.ReleaseEntry(child)
 		end
 	end
+end
+
+-- Gives back the images of every group in a clip's display list (a HUD that is dropped).
+function Flash.ReleaseClip(clip)
+	for _, entry in pairs(clip.list) do
+		Flash.ReleaseEntry(entry)
+	end
+end
+
+-- How many render targets wait in the pool (tests).
+function Flash.PoolSize()
+	local count = 0
+
+	for _, pool in pairs(targetPool) do
+		count = count + #pool
+	end
+
+	return count
 end
 
 local function groupMaterial(target)
@@ -479,8 +505,10 @@ local function compositeGroup(cache, blend)
 	render.SetMaterial(groupMaterial(cache.target))
 
 	if blend == BLEND_ADD then
+		blendOverridden = true
 		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE, BLENDFUNC_ADD)
 	else
+		blendOverridden = true
 		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
 	end
 
@@ -515,7 +543,8 @@ local function compositeGroup(cache, blend)
 		mesh.End()
 	end
 
-	render.OverrideBlend(false)
+	blendOverridden = false
+		render.OverrideBlend(false)
 end
 
 local function sameKey(cache, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
@@ -672,12 +701,57 @@ function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
 	end
 end
 
--- Draws `clip` with the stage origin at (x, y) on the screen and `scale` screen pixels per stage pixel.
+-- The state the drawing code keeps between calls (tests): measuring, the depth of the groups being drawn, the mask size.
+function Flash.DrawState()
+	return measuring, groupDepth, maskCount
+end
+
+-- After an error in the middle of a drawing: put back what the interrupted code had set (the measuring pass, the
+-- stack of group render targets, the blend override, the mask) so that the next frame starts clean.
+local function recover()
+	while groupDepth > 0 do
+		cam.End2D()
+		render.PopRenderTarget()
+		groupDepth = groupDepth - 1
+	end
+
+	if blendOverridden then
+		render.OverrideBlend(false)
+		blendOverridden = false
+	end
+
+	measuring = false
+	maskCount = 0
+	batchCount = 0
+	batchMaterial, batchBlend = nil, nil
+end
+
+local lastError
+
+-- Draws `clip` with the stage origin at (x, y) on the screen and `scale` screen pixels per stage pixel. Returns
+-- false when something went wrong: the error is printed once (not at every frame) and the state is put back.
 function Flash.Draw(clip, x, y, scale)
 	batchCount = 0
 	batchMaterial = nil
 	batchBlend = nil
 
-	drawEntries(clip, scale, 0, 0, scale, x, y, 1, 1, 1, 1, 0, 0, 0, 0)
-	flush()
+	local ok, err = pcall(function()
+		drawEntries(clip, scale, 0, 0, scale, x, y, 1, 1, 1, 1, 0, 0, 0, 0)
+		flush()
+	end)
+
+	if ok then
+		lastError = nil
+
+		return true
+	end
+
+	recover()
+
+	if err ~= lastError then
+		lastError = err
+		ErrorNoHalt("[GryMod] Flash drawing failed: " .. tostring(err) .. "\n")
+	end
+
+	return false
 end
