@@ -98,17 +98,17 @@ function HUD:_resolve()
 		local other = main:Child(name)
 
 		if other then
-			other.visible = false
+			other:SetVisible(false)
 		end
 	end
 
 	if self.player then
-		self.player.visible = true
+		self.player:SetVisible(true)
 
 		local overheat = self.player:Child("OverheatBar")
 
 		if overheat then
-			overheat.visible = false
+			overheat:SetVisible(false)
 		end
 	end
 
@@ -229,13 +229,13 @@ function HUD:_applyAmmo()
 		local icon = texts:Child("PrimaryInfinityIcon")
 
 		if icon then
-			icon.visible = infinite
+			icon:SetVisible(infinite)
 		end
 
 		local secondary = texts:Child("SecondaryInfinityIcon")
 
 		if secondary then
-			secondary.visible = false
+			secondary:SetVisible(false)
 		end
 	end
 
@@ -252,7 +252,7 @@ function HUD:_applyAmmo()
 		if infinite then
 			for _, clip in ipairs({one, two, three}) do
 				if clip then
-					clip.visible = false
+					clip:SetVisible(false)
 				end
 			end
 		else
@@ -268,9 +268,9 @@ function HUD:_applyAmmo()
 			setNumberClip(two, tens, (value > 9 and "" or "low") .. colour)
 			setNumberClip(three, ones, colour)
 
-			if one then one.visible = ammo.size > 100 end
-			if two then two.visible = ammo.size > 9 end
-			if three then three.visible = true end
+			if one then one:SetVisible(ammo.size > 100) end
+			if two then two:SetVisible(ammo.size > 9) end
+			if three then three:SetVisible(true) end
 		end
 	end
 

@@ -5,6 +5,7 @@
 -- The atlas PNGs must be in garrysmod/data/grymod_dev/ (copy materials/grymod/flash/*.png there): a branch that is
 -- not mounted as an addon has no materials folder in the game's search path.
 -- The result is written under garrysmod/data/ (out). Optional args: width, height (1024x768), scale (1), bg,
+-- twice (draw a second time and save out_2.png: it must be identical, from the group caches),
 -- advance (seconds of timeline to play before drawing the HUD),
 -- hud = {health, energy, mode, ammo = {mag, reserve, size, grenades}} (the Crysis HUD with values),
 -- sprite, frame, x, y (draw one sprite of the movie alone instead of the whole movie),
@@ -90,9 +91,20 @@ hook.Add("PostRender", "grymod_flash_px", function()
 		cam.End2D()
 
 		local data = render.Capture({format = "png", x = 0, y = 0, w = width, h = height, alpha = false})
-		render.PopRenderTarget()
 		file.CreateDir("grymod_dev")
 		file.Write(out, data)
+
+		if args.twice then
+			-- the second draw of the same clips must come from the cached group images and look the same
+			Flash.Stats.firstRenders = Flash.Stats.groupRenders
+			render.Clear(bg[1], bg[2], bg[3], 255, true, true)
+			cam.Start2D()
+			Flash.Draw(root, args.drawX or 0, args.drawY or 0, scale)
+			cam.End2D()
+			file.Write(out:gsub("%.png$", "_2.png"), render.Capture({format = "png", x = 0, y = 0, w = width, h = height, alpha = false}))
+		end
+
+		render.PopRenderTarget()
 	end)
 
 	finished = true
@@ -104,4 +116,4 @@ end)
 
 job:wait(function() return finished end, 10)
 
-return {out = out, drawn = Flash.Draw ~= nil, error = failure, size = file.Size(out, "DATA")}
+return {out = out, drawn = Flash.Draw ~= nil, error = failure, size = file.Size(out, "DATA"), stats = Flash.Stats}

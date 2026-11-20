@@ -329,8 +329,13 @@ end
 
 local drawEntries
 
-local groupTargets = {}
+-- Render targets for the images of groups, taken from a pool by size and given back when the entry that
+-- used one is removed from its display list (cl_flash.lua calls Flash.ReleaseEntry).
+local targetPool = {}
+local targetCount = 0
 local groupMaterials = {}
+
+Flash.Stats = {groupRenders = 0, groupReuses = 0}
 
 local function powerOfTwo(n)
 	local p = 64
@@ -342,17 +347,47 @@ local function powerOfTwo(n)
 	return p
 end
 
-local function groupTarget(width, height, depth)
-	local name = "grymod_flash_f" .. depth .. "_" .. width .. "x" .. height
-	local target = groupTargets[name]
+local function acquireTarget(width, height)
+	local key = width .. "x" .. height
+	local pool = targetPool[key]
 
-	if not target then
-		-- a float format: 8-bit render targets are decoded as sRGB when sampled, which would darken the image
-		target = GetRenderTargetEx(name, width, height, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_SEPARATE, 0, 0, IMAGE_FORMAT_RGBA16161616F)
-		groupTargets[name] = target
+	if pool and #pool > 0 then
+		return table.remove(pool)
 	end
 
-	return target
+	targetCount = targetCount + 1
+
+	-- a float format: 8-bit render targets are decoded as sRGB when sampled, which would darken the image
+	return GetRenderTargetEx("grymod_flash_p" .. targetCount .. "_" .. key, width, height, RT_SIZE_NO_CHANGE,
+		MATERIAL_RT_DEPTH_SEPARATE, 0, 0, IMAGE_FORMAT_RGBA16161616F), key
+end
+
+local function releaseTarget(cache)
+	local key = cache.textureW .. "x" .. cache.textureH
+	local pool = targetPool[key]
+
+	if not pool then
+		pool = {}
+		targetPool[key] = pool
+	end
+
+	pool[#pool + 1] = cache.target
+end
+
+-- Gives the image of a removed entry (and of the groups inside it) back to the pool.
+function Flash.ReleaseEntry(entry)
+	local cache = entry.cache
+
+	if cache then
+		releaseTarget(cache)
+		entry.cache = nil
+	end
+
+	if entry.clip then
+		for _, child in pairs(entry.clip.list) do
+			Flash.ReleaseEntry(child)
+		end
+	end
 end
 
 local function groupMaterial(target)
@@ -376,44 +411,10 @@ end
 
 local MAX_GROUP = 4096
 
--- Draws the clip of `entry` as one image composed with `blend` (see the header).
-local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
-	measuring = true
-	minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
-	drawEntries(entry.clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
-	measuring = false
-
-	if minX > maxX then
-		return
-	end
-
-	local x0, y0 = math.floor(minX) - 1, math.floor(minY) - 1
-	local width, height = math.ceil(maxX) + 1 - x0, math.ceil(maxY) + 1 - y0
-	local textureW, textureH = powerOfTwo(width), powerOfTwo(height)
-
-	if textureW > MAX_GROUP or textureH > MAX_GROUP then
-		return
-	end
-
-	flush()
-
-	local outerMask = maskCount
-	maskCount = 0
-
-	local target = groupTarget(textureW, textureH, groupDepth)
-	render.PushRenderTarget(target)
-	render.Clear(0, 0, 0, 0, true, true, true)
-	cam.Start2D()
-	groupDepth = groupDepth + 1
-	drawEntries(entry.clip, a, b, c, d, tx - x0, ty - y0, mr, mg, mb, ma, ar, ag, ab, aa)
-	flush()
-	groupDepth = groupDepth - 1
-	cam.End2D()
-	render.PopRenderTarget()
-	maskCount = outerMask
-
-	-- The image holds colours already multiplied by their alpha: "add" adds them, any other mode is a normal over.
-	render.SetMaterial(groupMaterial(target))
+-- The image of a group on the screen: the colours in it are already multiplied by their alpha, so "add" adds
+-- them and any other mode is a normal "over".
+local function compositeGroup(cache, blend)
+	render.SetMaterial(groupMaterial(cache.target))
 
 	if blend == BLEND_ADD then
 		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE, BLENDFUNC_ADD)
@@ -421,7 +422,8 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
 	end
 
-	local u1, v1 = width / textureW, height / textureH
+	local x0, y0, width, height = cache.x0, cache.y0, cache.width, cache.height
+	local u1, v1 = width / cache.textureW, height / cache.textureH
 	mesh.Begin(MATERIAL_QUADS, 1)
 
 	for corner = 0, 3 do
@@ -438,8 +440,90 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	render.OverrideBlend(false)
 end
 
+local function sameKey(cache, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	return cache.blend == blend and cache.a == a and cache.b == b and cache.c == c and cache.d == d
+		and cache.tx == tx and cache.ty == ty and cache.mr == mr and cache.mg == mg and cache.mb == mb
+		and cache.ma == ma and cache.ar == ar and cache.ag == ag and cache.ab == ab and cache.aa == aa
+end
+
+-- Draws the clip of `entry` as one image composed with `blend` (see the header). The image is kept with the
+-- entry and drawn again as long as the clip and where it is drawn do not change.
+local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	local clip = entry.clip
+	local cache = entry.cache
+
+	if cache and cache.version == clip.version and sameKey(cache, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa) then
+		Flash.Stats.groupReuses = Flash.Stats.groupReuses + 1
+
+		if cache.target then
+			flush()
+			compositeGroup(cache, blend)
+		end
+
+		return
+	end
+
+	measuring = true
+	minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+	drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	measuring = false
+
+	local x0, y0 = math.floor(minX) - 1, math.floor(minY) - 1
+	local width, height = math.ceil(maxX) + 1 - x0, math.ceil(maxY) + 1 - y0
+	local textureW, textureH = powerOfTwo(width), powerOfTwo(height)
+	local empty = minX > maxX or textureW > MAX_GROUP or textureH > MAX_GROUP
+
+	if cache and (empty or cache.textureW ~= textureW or cache.textureH ~= textureH) then
+		if cache.target then
+			releaseTarget(cache)
+		end
+
+		cache = nil
+	end
+
+	if not cache then
+		cache = {}
+		entry.cache = cache
+	end
+
+	cache.version, cache.blend = clip.version, blend
+	cache.a, cache.b, cache.c, cache.d, cache.tx, cache.ty = a, b, c, d, tx, ty
+	cache.mr, cache.mg, cache.mb, cache.ma, cache.ar, cache.ag, cache.ab, cache.aa = mr, mg, mb, ma, ar, ag, ab, aa
+
+	if empty then
+		cache.target = nil
+
+		return
+	end
+
+	cache.x0, cache.y0, cache.width, cache.height, cache.textureW, cache.textureH = x0, y0, width, height, textureW, textureH
+
+	if not cache.target then
+		cache.target = acquireTarget(textureW, textureH)
+	end
+
+	flush()
+	Flash.Stats.groupRenders = Flash.Stats.groupRenders + 1
+
+	local outerMask = maskCount
+	maskCount = 0
+
+	render.PushRenderTarget(cache.target)
+	render.Clear(0, 0, 0, 0, true, true, true)
+	cam.Start2D()
+	groupDepth = groupDepth + 1
+	drawEntries(clip, a, b, c, d, tx - x0, ty - y0, mr, mg, mb, ma, ar, ag, ab, aa)
+	flush()
+	groupDepth = groupDepth - 1
+	cam.End2D()
+	render.PopRenderTarget()
+	maskCount = outerMask
+
+	compositeGroup(cache, blend)
+end
+
 function Flash.ClearGroupCache()
-	groupTargets = {}
+	targetPool = {}
 	groupMaterials = {}
 end
 

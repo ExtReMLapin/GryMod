@@ -79,7 +79,8 @@ local function newClip(movie, definition, id, theme)
 		count = 0,
 		sorted = nil,
 		jumps = 0,
-		theme = theme
+		theme = theme,
+		version = 0
 	}, Clip)
 
 	clip:_goto(1)
@@ -123,6 +124,10 @@ function Clip:_remove(depth)
 	self.list[depth] = nil
 	self.count = self.count - 1
 	self.sorted = nil
+
+	if Flash.ReleaseEntry then
+		Flash.ReleaseEntry(entry)
+	end
 
 	if entry.name and self.names[entry.name] == entry then
 		self.names[entry.name] = nil
@@ -209,6 +214,12 @@ function Clip:_applyOps(index)
 end
 
 function Clip:_clear()
+	if Flash.ReleaseEntry then
+		for _, entry in pairs(self.list) do
+			Flash.ReleaseEntry(entry)
+		end
+	end
+
 	self.list = {}
 	self.names = {}
 	self.count = 0
@@ -236,6 +247,24 @@ function Clip:_goto(target)
 
 	self.frame = target
 	self.pos = target + self.frac
+	self:_touch()
+end
+
+-- Says that what this clip draws changed: its version, and its parents' (a cached image of a parent is stale too).
+function Clip:_touch()
+	local clip = self
+
+	while clip do
+		clip.version = clip.version + 1
+		clip = clip.parent
+	end
+end
+
+function Clip:SetVisible(visible)
+	if self.visible ~= visible then
+		self.visible = visible
+		self:_touch()
+	end
 end
 
 function Clip:_jump(frame)
@@ -264,6 +293,7 @@ function Clip:_colorChild(themeName, childName)
 	local old = entry.cx
 
 	entry.cx = {0, 0, 0, old and old[4] or 1, rgb[1], rgb[2], rgb[3], old and old[8] or 0}
+	self:_touch()
 end
 
 function Clip:_runActions()
@@ -427,7 +457,12 @@ function Clip:SetText(name, text)
 		return false
 	end
 
-	entry.text = text == nil and "" or tostring(text)
+	text = text == nil and "" or tostring(text)
+
+	if entry.text ~= text then
+		entry.text = text
+		self:_touch()
+	end
 
 	return true
 end

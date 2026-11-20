@@ -220,6 +220,45 @@ return {
 			end
 		},
 		{
+			name = "the version of a clip changes with its frame, its children and its visibility, and only then",
+			func = function(state)
+				local root = GryMod.Flash.NewRoot(movie())
+				local outer = root:Child("Outer")
+				local v0 = outer.version
+				outer:Advance(0) -- time passes but nothing moves
+				expect(outer.version).to.equal(v0)
+				outer:Child("Mover"):GotoAndStop("mid")
+				expect(outer.version).toNot.equal(v0)
+				local v1 = outer.version
+				outer:Child("Mover"):GotoAndStop("mid") -- same frame: nothing changed
+				expect(outer.version).to.equal(v1)
+				outer:Child("Mover"):SetVisible(false)
+				expect(outer.version).toNot.equal(v1)
+				expect(outer:Child("Mover").visible).to.beFalse()
+				local v2 = outer.version
+				outer:Child("Mover"):SetVisible(false)
+				expect(outer.version).to.equal(v2)
+			end
+		},
+		{
+			name = "setting a text bumps the version of the clip that holds the field and of its parents",
+			func = function(state)
+				local m = movie()
+				m.chars[10] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 11, n = "Field"}}}}
+				m.chars[11] = {k = "text", ox = 0, oy = 0, w = 10, h = 10, fh = 10, t = "", col = {255, 255, 255, 255}, al = 0, f = 9}
+				m.root = {{{d = 1, c = 10, n = "Holder"}}}
+				local root = GryMod.Flash.NewRoot(m)
+				local holder = root:Child("Holder")
+				local before, rootBefore = holder.version, root.version
+				holder:SetText("Field", "42")
+				expect(holder.version).toNot.equal(before)
+				expect(root.version).toNot.equal(rootBefore)
+				local after = holder.version
+				holder:SetText("Field", "42") -- the same text: nothing changed
+				expect(holder.version).to.equal(after)
+			end
+		},
+		{
 			name = "loading a missing movie gives nil",
 			func = function(state)
 				expect(GryMod.Flash.Load("no_such_movie")).to.beNil()
