@@ -1430,7 +1430,7 @@ return {
 		{{d=3,mv=true,m={0.804382,0,0,0.499969,8.75,-12.6},cx={0.0117188,0.0117188,0.0117188,1,252,0,0,0}}},
 		{{d=3,mv=true,m={0.8125,0,0,0.499969,8.75,-12.6},cx={0,0,0,1,255,0,0,0}},l="end",a={{"stop"}}}
 	}},
-	[224]={k="text",ox=-2,oy=-2,w=114,h=22.65,fh=14,t="<p align=\"right\"><font face=\"Font_Body\" size=\"14\" color=\"#ffffff\" letterSpacing=\"0.000000\" kerning=\"1\">@ui_MALFUNCTION</font></p>",col={255,255,255,255},al=1,f=63},
+	[224]={k="text",ox=-2,oy=-2,w=114,h=22.65,fh=14,t="@ui_MALFUNCTION",col={255,255,255,255},al=1,f=63},
 	[225]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=224,m={1,0,0,1,1.75,5.7}}}
 	}},

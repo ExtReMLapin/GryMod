@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import xml.etree.ElementTree as ET
+from html import unescape
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -239,6 +240,28 @@ def _color(elem):
             int(elem.get("alpha", 255)))
 
 
+_ALIGN = {"left": 0, "right": 1, "center": 2, "justify": 3}
+
+
+def parse_html_text(html):
+    """The plain text of an HTML text field, with the alignment (0 left, 1 right, 2 centre, 3 justify) and the
+    colour its markup asks for (None when it does not)."""
+    if not html:
+        return "", None, None
+    align = None
+    color = None
+    match = re.search(r'<p[^>]*\balign="(\w+)"', html)
+    if match:
+        align = _ALIGN.get(match.group(1).lower())
+    match = re.search(r'<font[^>]*\bcolor="#([0-9a-fA-F]{6})"', html)
+    if match:
+        value = int(match.group(1), 16)
+        color = ((value >> 16) & 255, (value >> 8) & 255, value & 255, 255)
+    text = re.sub(r"<br\s*/?>", chr(10), html, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]*>", "", text)
+    return unescape(text), align, color
+
+
 def _read_character(item, movie, scripts_dir=None):
     kind = item.get("type")
     if kind in SHAPE_TAGS:
@@ -250,11 +273,16 @@ def _read_character(item, movie, scripts_dir=None):
         movie.characters[cid] = Character(cid, "sprite", timeline=_timeline(item.find("subTags"), scripts_dir, cid))
     elif kind == "DefineEditTextTag":
         cid = int(item.get("characterID"))
+        initial, align, color = item.get("initialText", ""), int(item.get("align", 0)), _color(item.find("textColor"))
+        if item.get("html") == "true":
+            initial, html_align, html_color = parse_html_text(initial)
+            align = align if html_align is None else html_align
+            color = color if html_color is None else html_color
         movie.characters[cid] = Character(
             cid, "text", bounds=_rect(item.find("bounds")),
-            font_height=_f(item, "fontHeight") / TWIPS, initial_text=item.get("initialText", ""),
-            color=_color(item.find("textColor")), variable=item.get("variableName") or None,
-            align=int(item.get("align", 0)), font_id=int(item.get("fontId", 0)) or None)
+            font_height=_f(item, "fontHeight") / TWIPS, initial_text=initial,
+            color=color, variable=item.get("variableName") or None,
+            align=align, font_id=int(item.get("fontId", 0)) or None)
     elif kind == "DefineTextTag":
         cid = int(item.get("characterID"))
         movie.characters[cid] = Character(cid, "statictext", bounds=_rect(item.find("textBounds")))
