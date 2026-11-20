@@ -15,6 +15,21 @@ function GryMod.GryOptionschute(Panel)
 		}
 	})
 	Panel:CheckBox("Suit sounds", "gry_sounds")
+
+	-- the key of the quick menu (a `bind <key> +crysishud` in the console works too)
+	if GryMod.MenuKey then
+		Panel:AddControl("Label", {
+			Text = "Quick menu key (hold it, point with the mouse, release):"
+		})
+
+		local binder = vgui.Create("DBinder")
+		binder:SetValue(GetConVar("gry_menu_key"):GetInt())
+		binder.OnChange = function(_, code)
+			GryMod.MenuKey.SetKey(code)
+		end
+		Panel:AddItem(binder)
+	end
+
 	Panel:AddControl("ComboBox", {
 		Label = "Crysis HUD colours",
 		MenuButton = 0,

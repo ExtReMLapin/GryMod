@@ -793,10 +793,12 @@ local inited = false
 
 ------------------------------------------
 net.Receive("gry_spawn", function()
-	if gamemode.Get("sandbox") and inited == false then
-		GAMEMODE:AddNotify("To open GryMod menu, bind a key to +crysishud ", NOTIFY_GENERIC, 15)
-		GAMEMODE:AddNotify("Check the console for more informations ", NOTIFY_GENERIC, 13)
+	-- no key for the quick menu yet: a prompt asks for one (every time, while there is none)
+	if GryMod.MenuKey then
+		timer.Simple(2, GryMod.MenuKey.MaybePrompt)
+	end
 
+	if gamemode.Get("sandbox") and inited == false then
 		if not file.Exists("resource/fonts/Agency FB.ttf", "GAME") then
 			GAMEMODE:AddNotify("You don't have the required Font fix, check console to get the download link!", NOTIFY_GENERIC, 20)
 		else
