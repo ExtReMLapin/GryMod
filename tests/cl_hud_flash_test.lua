@@ -228,6 +228,73 @@ return {
 			end
 		},
 		{
+			name = "the stock Half-Life 2 and Garry's Mod weapons have their own fire mode icon",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function icon(class)
+					return M.FireModeFor({GetClass = function() return class end})
+				end
+
+				expect(icon("weapon_smg1")).to.equal("Auto")
+				expect(icon("weapon_ar2")).to.equal("Auto")
+				expect(icon("weapon_pistol")).to.equal("Single")
+				expect(icon("weapon_357")).to.equal("Single")
+				expect(icon("weapon_shotgun")).to.equal("Shotgun")
+				expect(icon("weapon_rpg")).to.equal("Missle")
+				expect(icon("weapon_frag")).to.equal("Grenade")
+				expect(icon("weapon_slam")).to.equal("Mine")
+				expect(icon("weapon_medkit")).to.equal("Repairkit")
+				expect(icon("weapon_crowbar")).to.equal("NoGun")
+				expect(icon("weapon_physgun")).to.equal("NoGun")
+				expect(M.FireModeFor(nil)).to.equal("NoGun")
+			end
+		},
+		{
+			name = "a scripted weapon is automatic when its Primary says so, else single shot",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local function weapon(automatic)
+					return {GetClass = function() return "some_addon_gun" end, Primary = {Automatic = automatic}}
+				end
+
+				expect(M.FireModeFor(weapon(true))).to.equal("Auto")
+				expect(M.FireModeFor(weapon(false))).to.equal("Single")
+				expect(M.FireModeFor({GetClass = function() return "some_addon_gun" end})).to.equal("Single")
+			end
+		},
+		{
+			name = "a weapon base can register its own way to read the fire mode, which wins over the generic rule",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local remove = M.AddFireModeResolver(function(weapon)
+					if weapon.Base == "test_base" then
+						return weapon.mode
+					end
+				end)
+
+				local function gun(mode)
+					return {GetClass = function() return "test_gun" end, Base = "test_base", Primary = {Automatic = true}, mode = mode}
+				end
+
+				expect(M.FireModeFor(gun("Burst"))).to.equal("Burst")
+				expect(M.FireModeFor(gun(nil))).to.equal("Auto") -- the resolver has no answer: the generic rule
+				remove()
+				expect(M.FireModeFor(gun("Burst"))).to.equal("Auto")
+			end
+		},
+		{
+			name = "a resolver that errors or answers with an unknown icon is ignored",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local removeBad = M.AddFireModeResolver(function() error("broken base") end)
+				local removeUnknown = M.AddFireModeResolver(function() return "NoSuchIcon" end)
+				local gun = {GetClass = function() return "x" end, Primary = {Automatic = false}}
+				expect(M.FireModeFor(gun)).to.equal("Single")
+				removeBad()
+				removeUnknown()
+			end
+		},
+		{
 			name = "ammo without a magazine counts the reserve, and no weapon or no ammo shows infinity",
 			func = function(state)
 				local M = GryMod.FlashHUD
@@ -240,6 +307,7 @@ return {
 				local noAmmo = {Clip1 = function() return -1 end, GetMaxClip1 = function() return -1 end, GetPrimaryAmmoType = function() return -1 end}
 				expect((M.AmmoFor(ply, noAmmo))).to.equal(-1)
 				expect((M.AmmoFor(ply, nil))).to.equal(-1)
+				expect(select(5, M.AmmoFor(ply, nil))).to.equal("NoGun")
 			end
 		},
 		{

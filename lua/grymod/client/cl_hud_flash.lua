@@ -378,15 +378,82 @@ function Module.EnergyValue(energy)
 	return math.floor(math.Clamp(energy, 0, MAX_NUMBER) + 1)
 end
 
--- magazine, reserve, magazine size, grenades and fire mode of what the player holds. -1 = no ammo system.
-function Module.AmmoFor(ply, weapon)
-	local grenades = ply:GetAmmoCount("Grenade")
+-- The icons the movie has for the weapon above the grenade (the labels of its AmmoMode clip).
+local FIRE_MODE_ICONS = {}
 
-	if not weapon or weapon:GetPrimaryAmmoType() < 0 then
-		return -1, 0, -1, grenades, "Single"
+for _, label in ipairs({"Single", "Burst", "Auto", "Grenade", "Incendiary", "Tranquilizer", "infinity", "Shotgun",
+	"Narrow", "Mine", "Repairkit", "Moac", "Moar", "TACCannon", "C4", "Gauss", "Gunner", "Missle", "Mounted",
+	"NoGun", "Claymore"}) do
+	FIRE_MODE_ICONS[label] = true
+end
+
+-- The stock weapons are written in C++: no Primary table to read, so their icon is listed here.
+local STOCK_WEAPON_ICON = {
+	weapon_pistol = "Single", weapon_357 = "Single", weapon_crossbow = "Single",
+	weapon_smg1 = "Auto", weapon_ar2 = "Auto", weapon_flechettegun = "Auto",
+	weapon_shotgun = "Shotgun", weapon_rpg = "Missle", weapon_frag = "Grenade", weapon_slam = "Mine",
+	weapon_medkit = "Repairkit",
+	weapon_crowbar = "NoGun", weapon_stunstick = "NoGun", weapon_physcannon = "NoGun", weapon_physgun = "NoGun",
+	weapon_fists = "NoGun", gmod_tool = "NoGun", gmod_camera = "NoGun", weapon_bugbait = "NoGun"
+}
+
+local resolvers = {}
+
+-- Weapon bases that keep their fire mode in their own fields can say how to read it: fn(weapon) returns one
+-- of the movie's icon labels, or nil when this weapon is not theirs. Returns a function that removes it.
+function Module.AddFireModeResolver(fn)
+	resolvers[#resolvers + 1] = fn
+
+	return function()
+		for i, other in ipairs(resolvers) do
+			if other == fn then
+				table.remove(resolvers, i)
+
+				return
+			end
+		end
+	end
+end
+
+-- The icon for what the player holds: a stock weapon's own icon, else what a registered base says, else the
+-- generic SWEP rule (Primary.Automatic: automatic, otherwise one shot at a time).
+function Module.FireModeFor(weapon)
+	if not weapon then
+		return "NoGun"
 	end
 
-	local fireMode = weapon.Primary and weapon.Primary.Automatic and "Auto" or "Single"
+	local class = weapon.GetClass and weapon:GetClass()
+
+	if class and STOCK_WEAPON_ICON[class] then
+		return STOCK_WEAPON_ICON[class]
+	end
+
+	for _, resolver in ipairs(resolvers) do
+		local ok, label = pcall(resolver, weapon)
+
+		if ok and FIRE_MODE_ICONS[label] then
+			return label
+		end
+	end
+
+	local primary = weapon.Primary
+
+	if istable(primary) and primary.Automatic then
+		return "Auto"
+	end
+
+	return "Single"
+end
+
+-- magazine, reserve, magazine size, grenades and fire mode icon of what the player holds. -1 = no ammo system.
+function Module.AmmoFor(ply, weapon)
+	local grenades = ply:GetAmmoCount("Grenade")
+	local fireMode = Module.FireModeFor(weapon)
+
+	if not weapon or weapon:GetPrimaryAmmoType() < 0 then
+		return -1, 0, -1, grenades, fireMode
+	end
+
 	local type = weapon:GetPrimaryAmmoType()
 	local clip = weapon:Clip1()
 
