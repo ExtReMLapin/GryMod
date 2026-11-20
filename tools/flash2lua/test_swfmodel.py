@@ -109,6 +109,20 @@ class SwfModelTest(unittest.TestCase):
         for a in flagged:
             self.assertIsInstance(a["unsupported"], str)
 
+    def test_rectangle_shape_has_a_polygon(self):
+        shape = self.movie.characters[15]
+        px = lambda *v: tuple(c / 20 for c in v)
+        self.assertEqual(shape.polygon, [px(29, -58), px(29, 318), px(2829, 318), px(2829, -58)])
+
+    def test_curved_shape_has_no_polygon(self):
+        self.assertIsNone(self.movie.characters[100].polygon)
+
+    def test_morph_shape_has_start_and_end_polygons(self):
+        morph = self.movie.characters[8]
+        px = lambda *v: tuple(c / 20 for c in v)
+        self.assertEqual(morph.polygon, [px(2673, -73), px(2687, -73), px(2687, 303), px(2673, 303)])
+        self.assertEqual(morph.end_polygon, [px(30, -58), px(2790, -58), px(2790, 318), px(30, 318)])
+
     def test_edit_text_fields(self):
         text = self.movie.characters[64]
         self.assertEqual(text.kind, "text")

@@ -72,6 +72,15 @@ class EmitLuaTest(unittest.TestCase):
         self.assertEqual((text["k"], text["t"], text["fh"]), ("text", "0", 18))
         self.assertEqual(text["col"][1], 255)
 
+    def test_polygons_are_emitted_for_masks(self):
+        self.assertEqual([self.data["chars"][15]["p"][i] for i in range(1, 9)],
+                         [29 / 20, -58 / 20, 29 / 20, 318 / 20, 2829 / 20, 318 / 20, 2829 / 20, -58 / 20])
+        morph = self.data["chars"][8]
+        self.assertEqual(morph["k"], "morph")
+        self.assertEqual(len(morph["p"]), 8)
+        self.assertEqual(len(morph["pe"]), 8)
+        self.assertNotIn("p", self.data["chars"][100])
+
     def test_file_size_is_reasonable(self):
         self.assertLess(len(self.text.encode("utf8")), 1_000_000)
 

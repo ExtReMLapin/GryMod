@@ -41,8 +41,11 @@ class Character:
     variable: Optional[str] = None
     align: Optional[int] = None
     font_id: Optional[int] = None
+    # simple shapes: the outline as a pixel polygon (one contour, straight edges), else None
+    polygon: Optional[list] = None
     # morph shapes
     end_bounds: Optional[tuple] = None
+    end_polygon: Optional[list] = None
     # fonts
     name: Optional[str] = None
 
@@ -131,6 +134,37 @@ def decode_actions(hexstr):
     return out
 
 
+def _polygon(records_parent):
+    """The outline of a one-contour shape made of straight edges as [(x, y)] in pixels (not closed
+    twice), or None for anything else (curves, several contours, an open path)."""
+    if records_parent is None:
+        return None
+    records = records_parent.find("shapeRecords")
+    if records is None:
+        return None
+    x = y = 0
+    points = []
+    moves = 0
+    for rec in records:
+        kind = rec.get("type")
+        if kind == "StyleChangeRecord":
+            if rec.get("stateMoveTo") == "true":
+                moves += 1
+                if moves > 1:
+                    return None
+                x, y = int(rec.get("moveDeltaX")), int(rec.get("moveDeltaY"))
+                points.append((x, y))
+        elif kind == "StraightEdgeRecord":
+            x += int(rec.get("deltaX", 0))
+            y += int(rec.get("deltaY", 0))
+            points.append((x, y))
+        elif kind == "CurvedEdgeRecord":
+            return None
+    if len(points) < 4 or points[0] != points[-1]:
+        return None
+    return [(px / TWIPS, py / TWIPS) for px, py in points[:-1]]
+
+
 def _place_op(item):
     has_char = item.get("placeFlagHasCharacter") == "true"
     blend = item.get("blendMode") if item.get("placeFlagHasBlendMode") == "true" else None
@@ -178,7 +212,8 @@ def _read_character(item, movie):
     kind = item.get("type")
     if kind in SHAPE_TAGS:
         cid = int(item.get("shapeId"))
-        movie.characters[cid] = Character(cid, "shape", bounds=_rect(item.find("shapeBounds")))
+        movie.characters[cid] = Character(cid, "shape", bounds=_rect(item.find("shapeBounds")),
+                                          polygon=_polygon(item.find("shapes")))
     elif kind == "DefineSpriteTag":
         cid = int(item.get("spriteId"))
         movie.characters[cid] = Character(cid, "sprite", timeline=_timeline(item.find("subTags")))
@@ -198,7 +233,9 @@ def _read_character(item, movie):
     elif kind == "DefineMorphShapeTag" or kind == "DefineMorphShape2Tag":
         cid = int(item.get("characterId"))
         movie.characters[cid] = Character(cid, "morph", bounds=_rect(item.find("startBounds")),
-                                          end_bounds=_rect(item.find("endBounds")))
+                                          end_bounds=_rect(item.find("endBounds")),
+                                          polygon=_polygon(item.find("startEdges")),
+                                          end_polygon=_polygon(item.find("endEdges")))
     elif kind in ("DefineFont3Tag", "DefineFont2Tag"):
         cid = int(item.get("fontID"))
         movie.characters[cid] = Character(cid, "font", name=(item.get("fontName") or "").strip("\0"))
