@@ -499,6 +499,7 @@ function GryMod.UpdateRadar()
 	end
 
 	local count = GryMod.CountNearbyNPCs()
+	GryMod.RadarCount = count -- the Crysis-style compass panel shows it on its stealth bar
 	local raderpers = math.Min(math.MapSimple(count, 20, 150), 150) -- For the color
 	GryMod.rcr = 105 + raderpers
 	GryMod.rcg = 235 - raderpers * 1.5

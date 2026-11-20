@@ -6,7 +6,7 @@
 -- not mounted as an addon has no materials folder in the game's search path.
 -- The result is written under garrysmod/data/ (out). Optional args: width, height (1024x768), scale (1), bg,
 -- twice (draw a second time and save out_2.png: it must be identical, from the group caches),
--- advance (seconds of timeline to play before drawing the HUD),
+-- radar = {bearing, fov, stealth} (the compass panel), advance (seconds of timeline to play before drawing the HUD),
 -- hud = {health, energy, mode, ammo = {mag, reserve, size, grenades}} (the Crysis HUD with values),
 -- sprite, frame, x, y (draw one sprite of the movie alone instead of the whole movie),
 -- texts = {{path = "Root.Texts.HealthEnergy.Colorset", name = "HealthText1", text = "1"}, ...},
@@ -57,6 +57,17 @@ if args.hud then
 	if args.advance then
 		-- let the timelines play (the digits flash when they change)
 		for _ = 1, math.floor(args.advance * 30) do hud:Update(1 / 30) end
+	end
+elseif args.radar then
+	-- the compass panel: radar = {bearing = 0, stealth = 0.3, fov = 15}
+	local panel = GryMod.FlashRadar.New(movie)
+	panel:SetHeading(args.radar.bearing or 0)
+	panel:SetFOV(args.radar.fov or 15)
+	panel:SetStealth(args.radar.stealth or 0)
+	root = panel.root
+
+	if args.advance then
+		for _ = 1, math.floor(args.advance * 30) do panel:Update(1 / 30) end
 	end
 elseif args.sprite then
 	-- one sprite of the movie alone, at (args.x, args.y) of the stage, on the frame args.frame

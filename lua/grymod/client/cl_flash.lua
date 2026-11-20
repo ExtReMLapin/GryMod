@@ -260,6 +260,22 @@ function Clip:_touch()
 	end
 end
 
+-- Flash's _x: moves this clip horizontally (replaces the x of its placement matrix).
+function Clip:SetX(x)
+	local entry = self.entry
+
+	if not entry or entry.m[5] == x then
+		return
+	end
+
+	local m = entry.m
+	entry.m = {m[1], m[2], m[3], m[4], x, m[6]}
+
+	if self.parent then
+		self.parent:_touch()
+	end
+end
+
 function Clip:SetVisible(visible)
 	if self.visible ~= visible then
 		self.visible = visible
@@ -465,6 +481,29 @@ function Clip:SetText(name, text)
 	end
 
 	return true
+end
+
+-- Replaces the text of every text field in this clip and in the clips inside it by fn(text) (the fields the
+-- engine fills with localised strings carry a "@ui_..." key as their initial text).
+function Clip:MapText(fn)
+	local changed = false
+
+	for _, entry in pairs(self.list) do
+		if entry.kind == "text" then
+			local text = fn(entry.text)
+
+			if text ~= entry.text then
+				entry.text = text
+				changed = true
+			end
+		elseif entry.clip then
+			entry.clip:MapText(fn)
+		end
+	end
+
+	if changed then
+		self:_touch()
+	end
 end
 
 -- The child clip (or field) at a dotted path of instance names, e.g. "Root.Texts.HealthEnergy", or nil.

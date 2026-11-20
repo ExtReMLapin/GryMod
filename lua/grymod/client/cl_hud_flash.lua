@@ -404,7 +404,7 @@ function Module.Enabled()
 	return styleConVar:GetString() == "crysis" and Flash.Load(Module.MOVIE) ~= nil
 end
 
-local hud
+local hud, panel
 local lastTime
 local fed = {}
 
@@ -439,10 +439,12 @@ local function feed(ply)
 	end
 end
 
-local function xOffset()
+-- gry_xadd spreads the two panels apart (the left one goes left), gry_xdist shifts both.
+local function xOffsets()
 	local add, distance = GetConVar("gry_xadd"), GetConVar("gry_xdist")
+	add, distance = add and add:GetInt() or 0, distance and distance:GetInt() or 0
 
-	return (add and add:GetInt() or 0) + (distance and distance:GetInt() or 0)
+	return add + distance, distance - add
 end
 
 -- The paint hook: nothing while dead or spectating, a fresh HUD after every respawn.
@@ -450,13 +452,14 @@ function Module.Paint()
 	local ply = LocalPlayer()
 
 	if not IsValid(ply) or not ply:Alive() then
-		hud = nil
+		hud, panel = nil, nil
 
 		return
 	end
 
 	if not hud then
 		hud = Module.New(Flash.Load(Module.MOVIE))
+		panel = GryMod.FlashRadar and GryMod.FlashRadar.New(Flash.Load(GryMod.FlashRadar.MOVIE))
 		fed = {}
 		lastTime = nil
 
@@ -468,12 +471,25 @@ function Module.Paint()
 	feed(ply)
 
 	local now = RealTime()
-	hud:Update(math.min(now - (lastTime or now), 0.1))
+	local dt = math.min(now - (lastTime or now), 0.1)
 	lastTime = now
 
-	-- the stage is 1024 x 768, scaled to the screen height and anchored to the bottom right
+	-- the stage is 1024 x 768, scaled to the screen height; the ammo block sits at the bottom right and the
+	-- compass panel at the bottom left, as in the original
 	local scale = ScrH() / 768
-	hud:Draw(ScrW() - 1024 * scale + xOffset(), ScrH() - 768 * scale, scale)
+	local right, left = xOffsets()
+
+	hud:Update(dt)
+	hud:Draw(ScrW() - 1024 * scale + right, ScrH() - 768 * scale, scale)
+
+	if panel then
+		local Radar = GryMod.FlashRadar
+		panel:SetHeading(Radar.BearingFromYaw(ply:EyeAngles().y))
+		panel:SetFOV(ply:GetFOV())
+		panel:SetStealth(Radar.StealthFromCount(GryMod.RadarCount))
+		panel:Update(dt)
+		panel:Draw(left, ScrH() - 768 * scale, scale)
+	end
 end
 
 -- Adds or removes the paint hook; returns whether this style is the one being drawn.
@@ -484,7 +500,7 @@ function Module.Apply(enabled)
 		hook.Add("HUDPaint", "GRYFLASHHUD", Module.Paint)
 	else
 		hook.Remove("HUDPaint", "GRYFLASHHUD")
-		hud = nil
+		hud, panel = nil, nil
 	end
 
 	return active

@@ -120,8 +120,9 @@ local maskCount = 0 -- vertices, 0 = no mask
 local maskSign = 1
 local polyA, polyB = {}, {}
 
--- Clips the polygon in polyA (n vertices of x, y, u, v) against the mask, appending the triangles to the batch.
-local function emitClipped(n, r, g, b, a)
+-- Clips the polygon in polyA (n vertices of x, y, u, v) against the mask. Returns the clipped polygon (polyA or
+-- polyB, as x, y, u, v groups) and its vertex count.
+local function clipToMask(n)
 	local from, to = polyA, polyB
 
 	for edge = 1, maskCount do
@@ -161,9 +162,17 @@ local function emitClipped(n, r, g, b, a)
 		from, to, n = to, from, count
 
 		if n < 3 then
-			return
+			return from, 0
 		end
 	end
+
+	return from, n
+end
+
+-- Appends the clipped polygon of polyA to the batch as triangles.
+local function emitClipped(n, r, g, b, a)
+	local from
+	from, n = clipToMask(n)
 
 	for i = 2, n - 1 do
 		vertex(from[1], from[2], from[3], from[4], r, g, b, a)
@@ -265,9 +274,31 @@ local function drawText(movie, field, text, a, b, c, d, tx, ty, mr, mg, mb, ma, 
 	end
 end
 
--- The outline of a mask entry in stage pixels as {x1, y1, x2, y2, ...}, or nil when it has none.
+-- The outline of a mask entry in stage pixels as {x1, y1, x2, y2, ...}, or nil when it has none, and the matrix
+-- of the shape inside it when the mask is a clip (a clip used as a mask: the first outline found in it counts).
 local function maskOutline(movie, entry)
 	local definition = movie.chars[entry.id]
+
+	if entry.clip then
+		for _, child in ipairs(entry.clip:Entries()) do
+			local outline, inner = maskOutline(movie, child)
+
+			if outline then
+				local m = child.m
+
+				if inner then
+					-- compose the child's matrix with the one found deeper
+					m = {m[1] * inner[1] + m[3] * inner[2], m[2] * inner[1] + m[4] * inner[2],
+						m[1] * inner[3] + m[3] * inner[4], m[2] * inner[3] + m[4] * inner[4],
+						m[1] * inner[5] + m[3] * inner[6] + m[5], m[2] * inner[5] + m[4] * inner[6] + m[6]}
+				end
+
+				return outline, m
+			end
+		end
+
+		return nil
+	end
 
 	if not definition or not definition.p then
 		return nil
@@ -288,7 +319,7 @@ local function maskOutline(movie, entry)
 end
 
 local function beginMask(movie, entry, a, b, c, d, tx, ty)
-	local outline = maskOutline(movie, entry)
+	local outline, inner = maskOutline(movie, entry)
 
 	if not outline then
 		return false
@@ -302,6 +333,14 @@ local function beginMask(movie, entry, a, b, c, d, tx, ty)
 	local ed = b * m[3] + d * m[4]
 	local etx = a * m[5] + c * m[6] + tx
 	local ety = b * m[5] + d * m[6] + ty
+
+	if inner then
+		-- a clip used as a mask: its shape's own matrix goes on top
+		ea, eb, ec, ed, etx, ety =
+			ea * inner[1] + ec * inner[2], eb * inner[1] + ed * inner[2],
+			ea * inner[3] + ec * inner[4], eb * inner[3] + ed * inner[4],
+			ea * inner[5] + ec * inner[6] + etx, eb * inner[5] + ed * inner[6] + ety
+	end
 
 	local points = #outline / 2
 	local area = 0
@@ -424,19 +463,35 @@ local function compositeGroup(cache, blend)
 
 	local x0, y0, width, height = cache.x0, cache.y0, cache.width, cache.height
 	local u1, v1 = width / cache.textureW, height / cache.textureH
-	mesh.Begin(MATERIAL_QUADS, 1)
 
-	for corner = 0, 3 do
-		local right = corner == 1 or corner == 2
-		local bottom = corner >= 2
-		position:SetUnpacked(right and x0 + width or x0, bottom and y0 + height or y0, 0)
-		mesh.Position(position)
-		mesh.TexCoord(0, right and u1 or 0, bottom and v1 or 0)
-		mesh.Color(255, 255, 255, 255)
-		mesh.AdvanceVertex()
+	polyA[1], polyA[2], polyA[3], polyA[4] = x0, y0, 0, 0
+	polyA[5], polyA[6], polyA[7], polyA[8] = x0 + width, y0, u1, 0
+	polyA[9], polyA[10], polyA[11], polyA[12] = x0 + width, y0 + height, u1, v1
+	polyA[13], polyA[14], polyA[15], polyA[16] = x0, y0 + height, 0, v1
+
+	local polygon, count = polyA, 4
+
+	if maskCount > 0 then
+		polygon, count = clipToMask(4)
 	end
 
-	mesh.End()
+	if count >= 3 then
+		mesh.Begin(MATERIAL_TRIANGLES, count - 2)
+
+		for i = 2, count - 1 do
+			for corner = 0, 2 do
+				local k = corner == 0 and 1 or i + corner - 1
+				position:SetUnpacked(polygon[k * 4 - 3], polygon[k * 4 - 2], 0)
+				mesh.Position(position)
+				mesh.TexCoord(0, polygon[k * 4 - 1], polygon[k * 4])
+				mesh.Color(255, 255, 255, 255)
+				mesh.AdvanceVertex()
+			end
+		end
+
+		mesh.End()
+	end
+
 	render.OverrideBlend(false)
 end
 
