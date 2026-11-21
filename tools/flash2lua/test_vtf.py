@@ -224,5 +224,46 @@ class RepeatAndGreyTest(unittest.TestCase):
         self.assertTrue((back == img).all())
 
 
+class VolumeTest(unittest.TestCase):
+    """A volume texture (the depth field of the header above 1): the slices follow one another, no mip levels."""
+
+    def volume(self, depth=4, h=8, w=16):
+        vol = np.zeros((depth, h, w, 4), dtype=np.uint8)
+        for k in range(depth):
+            vol[k, :, :, :3] = k * 60 + 10
+            vol[k, :, :, 3] = 255
+
+        return vol
+
+    def test_the_header_carries_the_depth_and_the_size_is_the_slices_one_after_the_other(self):
+        raw = vtf.vtf_bytes(self.volume(), "i8", srgb=False, mips=False, clamp="")
+        self.assertEqual(struct.unpack_from("<H", raw, 63)[0], 4)
+        self.assertEqual(struct.unpack_from("<HH", raw, 16), (16, 8))
+        self.assertEqual(len(raw), 80 + 4 * 16 * 8)
+
+    def test_slice_k_is_the_k_th_block_of_the_data(self):
+        raw = vtf.vtf_bytes(self.volume(), "i8", srgb=False, mips=False, clamp="")
+        for k in range(4):
+            block = raw[80 + k * 16 * 8:80 + (k + 1) * 16 * 8]
+            self.assertEqual(set(block), {k * 60 + 10})
+
+    def test_a_flat_texture_keeps_a_depth_of_one(self):
+        raw = vtf.vtf_bytes(gradient(16, 8), "i8", srgb=False, mips=False, clamp="")
+        self.assertEqual(struct.unpack_from("<H", raw, 63)[0], 1)
+
+    def test_the_other_formats_stack_the_slices_too(self):
+        raw = vtf.vtf_bytes(self.volume(2, 4, 4), "bgra8888", srgb=False, mips=False, clamp="")
+        self.assertEqual(len(raw), 80 + 2 * 4 * 4 * 4)
+        self.assertEqual(struct.unpack_from("<H", raw, 63)[0], 2)
+
+    def test_a_volume_has_no_mip_levels(self):
+        with self.assertRaises(ValueError):
+            vtf.vtf_bytes(self.volume(), "i8", srgb=False, mips=True)
+
+    def test_the_depth_is_a_power_of_two(self):
+        with self.assertRaises(ValueError):
+            vtf.vtf_bytes(self.volume(3), "i8", srgb=False, mips=False)
+
+
 if __name__ == "__main__":
     unittest.main()

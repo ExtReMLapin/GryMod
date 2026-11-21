@@ -335,12 +335,21 @@ def vtf_bytes(rgba, fmt="dxt5", srgb=True, mips=True, nolod=True, clamp="st"):
     """The content of a VTF 7.2 file for an (h, w, 4) uint8 image (sizes are powers of two).
 
     clamp: the axes whose texture coordinates are clamped ("s" and/or "t", "" for a texture that repeats on both)."""
-    h, w = rgba.shape[:2]
+    depth = 1
+    if rgba.ndim == 4:
+        # a volume texture: (depth, height, width, 4), the slices one after the other, with no mip levels
+        depth = rgba.shape[0]
+        if depth & (depth - 1):
+            raise ValueError("the depth of a volume texture is a power of two")
+        if mips:
+            raise ValueError("a volume texture is written without mip levels")
+    h, w = rgba.shape[-3:-1]
     if w & (w - 1) or h & (h - 1):
         raise ValueError("the size of a texture is a power of two")
     if set(clamp) - set("st"):
         raise ValueError(f"clamp is made of 's' and 't': {clamp!r}")
-    chain = mip_chain(rgba, srgb) if mips else [rgba]
+    slices = list(rgba) if depth > 1 or rgba.ndim == 4 else [rgba]
+    chain = mip_chain(rgba, srgb) if mips else [slices[0]]
     flags = (FLAG_CLAMPS if "s" in clamp else 0) | (FLAG_CLAMPT if "t" in clamp else 0)
     if srgb:
         flags |= FLAG_SRGB
@@ -348,12 +357,15 @@ def vtf_bytes(rgba, fmt="dxt5", srgb=True, mips=True, nolod=True, clamp="st"):
         flags |= FLAG_NOMIP
     if nolod:
         flags |= FLAG_NOLOD
-    if (rgba[:, :, 3] != 255).any():
+    if (rgba[..., 3] != 255).any():
         flags |= FLAG_EIGHTBITALPHA
     header = struct.pack("<4sIIIHHIHH4x3f4xfiBibbH", b"VTF\0", 7, 2, HEADER_SIZE, w, h, flags, 1, 0,
-                         0.5, 0.5, 0.5, 1.0, FORMATS[fmt], len(chain), -1, 0, 0, 1)
+                         0.5, 0.5, 0.5, 1.0, FORMATS[fmt], len(chain), -1, 0, 0, depth)
     header = header.ljust(HEADER_SIZE, b"\0")
-    body = b"".join(_mip_bytes(level, fmt) for level in reversed(chain))
+    if depth > 1 or rgba.ndim == 4:
+        body = b"".join(_mip_bytes(piece, fmt) for piece in slices)
+    else:
+        body = b"".join(_mip_bytes(level, fmt) for level in reversed(chain))
 
     return header + body
 
