@@ -163,7 +163,21 @@ function GryMod.KeysOptions(Panel)
 		end
 		Panel:AddItem(zoomBinder)
 
-		Panel:CheckBox("Binoculars zoom key: press once to open and again to close (off: hold the key)", "gry_zoom_toggle")
+		-- how the key works: the setting is written when the player picks a line, never when the panel opens
+		Panel:Help("Zoom key behaviour: hold, toggle, or automatic (a short press toggles, a long press holds)")
+
+		local modeBox = vgui.Create("DComboBox")
+		modeBox:SetSortItems(false)
+		modeBox:AddChoice("Hold: the zoom lasts while the key is down", 0)
+		modeBox:AddChoice("Toggle: press once to open, press again to close", 1)
+		modeBox:AddChoice("Automatic: a short press toggles, a long press holds", 2)
+		modeBox:SetValue((modeBox:GetOptionText(GryMod.SuitZoom.Mode() + 1)))
+		modeBox.OnSelect = function(_, _, _, data)
+			RunConsoleCommand("gry_zoom_mode", tostring(data))
+		end
+		Panel:AddItem(modeBox)
+
+		Panel:NumSlider("Short press: shorter than this is a toggle, longer holds (milliseconds, automatic mode)", "gry_zoom_tap_ms", 100, 600, 0)
 		Panel:CheckBox("Binoculars own zoom key on (off: the Half-Life 2 zoom key drives the binoculars)", "gry_zoom_own")
 	end
 end

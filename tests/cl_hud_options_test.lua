@@ -191,7 +191,7 @@ return {
 			end
 		},
 		{
-			name = "the options panel starts with a Keys section: its title, then the quick menu key picker, the zoom key picker with the hold / toggle box right under it, then the other zoom boxes, all before any other setting",
+			name = "the options panel starts with a Keys section: its title, then the quick menu key picker, the zoom key picker with the behaviour selector and the threshold slider right under it, then the other zoom boxes, all before any other setting",
 			func = function(state)
 				local realRun = RunConsoleCommand
 				local panel
@@ -247,14 +247,16 @@ return {
 				expect(find("binder", secondBinder + 1)).to.beNil() -- the two keys of the mod, nothing else asks for one
 				expect(keys < firstBinder).to.beTrue()
 
-				-- the toggle box is the control right after the zoom key picker, the own zoom box is in the section too
-				expect(order[secondBinder + 1]).to.equal("box:gry_zoom_toggle")
+				-- the zoom key behaviour (its label, then the threshold slider's label: the selector itself has none) comes right after the zoom
+				-- key picker, the own zoom box is in the section too
+				expect(string.find(order[secondBinder + 1], "label:Zoom key behaviour", 1, true)).toNot.beNil()
+				expect(string.find(order[secondBinder + 2], "label:Short press", 1, true)).toNot.beNil()
 				local own = find("box:gry_zoom_own")
 				expect(own).toNot.beNil()
 				expect(own > secondBinder).to.beTrue()
 
 				-- the section comes first: no other setting before the last of its controls
-				local lastOfSection = math.max(own, secondBinder + 1)
+				local lastOfSection = math.max(own, secondBinder + 2)
 				local other = find("box:gry_hud")
 				expect(other).toNot.beNil()
 				expect(other > lastOfSection).to.beTrue()
@@ -268,11 +270,11 @@ return {
 				-- and the keys are not asked for a second time further down
 				local count = 0
 				for _, entry in ipairs(order) do
-					if entry == "box:gry_zoom_own" or entry == "box:gry_zoom_toggle" then
+					if entry == "box:gry_zoom_own" then
 						count = count + 1
 					end
 				end
-				expect(count).to.equal(2)
+				expect(count).to.equal(1)
 			end
 		}
 	}

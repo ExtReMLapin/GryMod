@@ -3,7 +3,7 @@
 -- facts about the world) is turned into "must the zoom end, and why" by a pure function (SuitZoom.Reason). The tests give the module
 -- a world of their own (SuitZoom.Read replaced) and never play a sound.
 
-local OWN, KEY, TOGGLE = "gry_zoom_own", "gry_zoom_key", "gry_zoom_toggle"
+local OWN, KEY, MODE, TAP = "gry_zoom_own", "gry_zoom_key", "gry_zoom_mode", "gry_zoom_tap_ms"
 local WEAPON = {}
 
 -- a calm world: nothing prevents the zoom, and nothing ends it
@@ -29,7 +29,9 @@ return {
 		state.saved = {
 			own = setting(OWN) and setting(OWN):GetString(),
 			key = setting(KEY) and setting(KEY):GetString(),
-			toggle = setting(TOGGLE) and setting(TOGGLE):GetString(),
+			mode = setting(MODE) and setting(MODE):GetString(),
+			tap = setting(TAP) and setting(TAP):GetString(),
+			clock = Z and Z.Clock,
 			sway = setting("gry_binoculars_sway") and setting("gry_binoculars_sway"):GetString(),
 			read = Z and Z.Read,
 			drop = Bino and Bino.Drop,
@@ -41,6 +43,8 @@ return {
 		state.frame = 1000
 		FrameNumber = function() return state.frame end
 
+		-- the clock of the zoom is the test's: a press lasts as long as the case says (seconds)
+		state.now = 0
 		state.world = calm()
 		state.drops = 0
 		state.events = {}
@@ -59,7 +63,10 @@ return {
 			end
 			setting(OWN):SetString("1")
 			setting(KEY):SetString(tostring(KEY_F7))
-			setting(TOGGLE):SetString("0")
+			-- (hold: the cases that do not care about the mode press and let go at once; the three modes have their own cases)
+			if setting(MODE) then setting(MODE):SetString("0") end
+			if setting(TAP) then setting(TAP):SetString("250") end
+			Z.Clock = function() return state.now end
 			-- (the view tests read the game's own angles: no sway, whatever the player has saved or the default is)
 			if setting("gry_binoculars_sway") then setting("gry_binoculars_sway"):SetString("0") end
 			Z.Reset()
@@ -82,6 +89,7 @@ return {
 
 			if Z then
 				Z.Read = saved.read
+				Z.Clock = saved.clock
 			end
 
 			if Bino then
@@ -90,7 +98,8 @@ return {
 
 			if saved.own then setting(OWN):SetString(saved.own) end
 			if saved.key then setting(KEY):SetString(saved.key) end
-			if saved.toggle then setting(TOGGLE):SetString(saved.toggle) end
+			if saved.mode then setting(MODE):SetString(saved.mode) end
+			if saved.tap then setting(TAP):SetString(saved.tap) end
 			if saved.sway then setting("gry_binoculars_sway"):SetString(saved.sway) end
 		end
 
@@ -100,14 +109,14 @@ return {
 	end,
 	cases = {
 		{
-			name = "the three settings are saved with the profile: the own zoom is on by default (it does nothing until a key is chosen or bound), no key chosen, hold (not toggle)",
+			name = "the four settings are saved with the profile: the own zoom is on by default (it does nothing until a key is chosen or bound), no key chosen, the automatic mode (a short press toggles, a long one holds) with a 250 ms threshold between 100 and 600",
 			func = function(state)
 				local created = {}
 				local realCreate = CreateClientConVar
-				CreateClientConVar = function(name, default, shouldsave, ...)
-					created[name] = {default = default, save = shouldsave}
+				CreateClientConVar = function(name, default, shouldsave, userinfo, help, min, max)
+					created[name] = {default = default, save = shouldsave, min = min, max = max}
 
-					return realCreate(name, default, shouldsave, ...)
+					return realCreate(name, default, shouldsave, userinfo, help, min, max)
 				end
 
 				local ok, err = pcall(include, "grymod/client/cl_suit_zoom.lua")
@@ -120,11 +129,20 @@ return {
 				-- the file made a new module table: what afterEach puts back is that one's own function
 				state.saved.read = GryMod.SuitZoom.Read
 
-				for _, name in ipairs({OWN, KEY, TOGGLE}) do
+				local defaults = {[OWN] = "1", [KEY] = "0", [MODE] = "2", [TAP] = "250"}
+
+				for _, name in ipairs({OWN, KEY, MODE, TAP}) do
 					expect(created[name]).toNot.beNil()
 					expect(created[name].save).to.beTrue()
-					expect(created[name].default).to.equal(name == OWN and "1" or "0")
+					expect(created[name].default).to.equal(defaults[name])
 				end
+
+				-- (the old on / off setting of the toggle is gone: its saved value is not read)
+				expect(created["gry_zoom_toggle"]).to.beNil()
+				expect(created[MODE].min).to.equal(0)
+				expect(created[MODE].max).to.equal(2)
+				expect(created[TAP].min).to.equal(100)
+				expect(created[TAP].max).to.equal(600)
 			end
 		},
 		{
@@ -245,7 +263,7 @@ return {
 			name = "toggle mode: a press opens, the next press closes, the release in between does nothing",
 			func = function(state)
 				local Z = GryMod.SuitZoom
-				setting(TOGGLE):SetString("1")
+				setting(MODE):SetString("1")
 
 				Z.Press("key", true)
 				expect(Z.IsActive()).to.beTrue()
@@ -431,7 +449,7 @@ return {
 			name = "toggle mode: the poll clears a stale key but leaves the zoom open (it was opened by a press that is over)",
 			func = function(state)
 				local Z = GryMod.SuitZoom
-				setting(TOGGLE):SetString("1")
+				setting(MODE):SetString("1")
 				Z.Press("key", true)
 				state.world.keyUp = true
 				Z.Guard()
@@ -1070,7 +1088,7 @@ return {
 			end
 		},
 		{
-			name = "the options panel has the own zoom check box, the toggle check box and a key picker for the zoom key that saves through SetKey (and refuses what it refuses); opening the panel writes nothing",
+			name = "the options panel has the own zoom check box and a key picker for the zoom key that saves through SetKey (and refuses what it refuses); opening the panel writes nothing",
 			func = function(state)
 				local Z = GryMod.SuitZoom
 				local menu = GryMod.MenuKey
@@ -1078,7 +1096,7 @@ return {
 				local realRun = RunConsoleCommand
 				local found, binders = {}, {}
 				local menuKey = menu.convar:GetString()
-				local before = {setting(OWN):GetString(), setting(KEY):GetString(), setting(TOGGLE):GetString()}
+				local before = {setting(OWN):GetString(), setting(KEY):GetString(), setting(MODE):GetString(), setting(TAP):GetString()}
 				local panel
 
 				local ok, err = pcall(function()
@@ -1103,11 +1121,12 @@ return {
 					RunConsoleCommand = realRun
 
 					expect(found[OWN]).to.beTrue()
-					expect(found[TOGGLE]).to.beTrue()
+					-- (the mode selector and the threshold slider: see the case of the options panel for the zoom modes)
 					expect(#writes).to.equal(0)
 					expect(setting(OWN):GetString()).to.equal(before[1])
 					expect(setting(KEY):GetString()).to.equal(before[2])
-					expect(setting(TOGGLE):GetString()).to.equal(before[3])
+					expect(setting(MODE):GetString()).to.equal(before[3])
+					expect(setting(TAP):GetString()).to.equal(before[4])
 
 					-- the quick menu's picker is still there, and the zoom's is the one showing the zoom key (F7 from beforeEach)
 					expect(binders[KEY_F8]).toNot.beNil()
@@ -1133,6 +1152,329 @@ return {
 				if not ok then
 					error(err, 0)
 				end
+			end
+		},
+		{
+			name = "the options panel has the zoom key behaviour selector (hold, toggle, automatic) and the threshold slider (100 to 600 ms) right under the zoom key picker; it shows the saved mode, writes the setting only when a line is picked, and opening the panel writes nothing",
+			func = function(state)
+				local realRun = RunConsoleCommand
+				local writes = {}
+				local order = {}
+				local combo, slider, panel
+
+				local ok, err = pcall(function()
+					RunConsoleCommand = function(name, value) writes[#writes + 1] = tostring(name) .. "=" .. tostring(value) end
+					setting(MODE):SetString("1")
+					panel = vgui.Create("ControlPanel")
+					GryMod.KeysOptions(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DBinder" then
+								order[#order + 1] = "binder"
+							elseif child.ClassName == "DComboBox" then
+								order[#order + 1] = "combo"
+								combo = child
+							elseif child.ClassName == "DNumSlider" then
+								order[#order + 1] = "slider"
+								slider = child
+							elseif child.ClassName == "DCheckBoxLabel" then
+								order[#order + 1] = "box"
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+
+					expect(combo).toNot.beNil()
+					expect(slider).toNot.beNil()
+
+					-- the zoom key picker, then the selector, then the slider
+					expect(order[1]).to.equal("binder")
+					expect(order[2]).to.equal("binder")
+					expect(order[3]).to.equal("combo")
+					expect(order[4]).to.equal("slider")
+
+					-- three lines, in the order of the modes, and the saved mode is the one shown; opening wrote nothing
+					for mode = 0, 2 do
+						expect(combo:GetOptionData(mode + 1)).to.equal(mode)
+					end
+
+					expect(combo:GetOptionText(4)).to.beNil()
+					expect(string.find(combo:GetValue(), "Toggle", 1, true)).toNot.beNil()
+					expect(#writes).to.equal(0)
+
+					expect(slider:GetMin()).to.equal(100)
+					expect(slider:GetMax()).to.equal(600)
+
+					-- picking a line writes the mode
+					combo:ChooseOptionID(3)
+					expect(writes[1]).to.equal(MODE .. "=2")
+					combo:ChooseOptionID(1)
+					expect(writes[2]).to.equal(MODE .. "=0")
+					expect(#writes).to.equal(2)
+				end)
+
+				RunConsoleCommand = realRun
+
+				if IsValid(panel) then
+					panel:Remove()
+				end
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		-- ------------------------------------------------------------------------------------------------------------------
+		-- The three modes of the key (gry_zoom_mode: 0 hold, 1 toggle, 2 automatic) and the threshold between a short and a long press
+		-- ------------------------------------------------------------------------------------------------------------------
+		{
+			name = "PressAction (pure): hold opens at the press and closes at the release; toggle opens and closes at a press and never at a release; automatic toggles at a press, and at the release closes only what a long press held (the threshold itself is long)",
+			func = function(state)
+				local P = GryMod.SuitZoom.PressAction
+				local TAPMS = 250
+
+				-- a press: (mode, wasOpen)
+				for mode = 0, 2 do
+					expect(P(mode, false)).to.equal("open")
+				end
+
+				expect(P(0, true)).to.beNil()
+				expect(P(1, true)).to.equal("close")
+				expect(P(2, true)).to.equal("close")
+
+				-- a release: (mode, wasOpen, heldMs, tapMs)
+				for _, ms in ipairs({0, 100, 249, 250, 5000}) do
+					expect(P(0, true, ms, TAPMS)).to.equal("close")
+					expect(P(1, true, ms, TAPMS)).to.beNil()
+
+					-- nothing open at the release: nothing to close, in every mode
+					for mode = 0, 2 do
+						expect(P(mode, false, ms, TAPMS)).to.beNil()
+					end
+				end
+
+				expect(P(2, true, 0, TAPMS)).to.beNil()
+				expect(P(2, true, 249, TAPMS)).to.beNil()
+				expect(P(2, true, 250, TAPMS)).to.equal("close")
+				expect(P(2, true, 5000, TAPMS)).to.equal("close")
+
+				-- the threshold is the player's
+				expect(P(2, true, 150, 100)).to.equal("close")
+				expect(P(2, true, 150, 600)).to.beNil()
+			end
+		},
+		{
+			name = "Mode and TapMs read the settings: 0, 1 and 2 are the modes (a value out of range, which the setting itself holds back, is the automatic one), the threshold is held between 100 and 600 ms",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+
+				for _, case in ipairs({{"0", 0}, {"1", 1}, {"2", 2}, {"3", 2}, {"7", 2}}) do
+					setting(MODE):SetString(case[1])
+					expect(Z.Mode()).to.equal(case[2])
+				end
+
+				for _, case in ipairs({{"250", 250}, {"100", 100}, {"600", 600}, {"10", 100}, {"9000", 600}}) do
+					setting(TAP):SetString(case[1])
+					expect(Z.TapMs()).to.equal(case[2])
+				end
+			end
+		},
+		{
+			name = "automatic mode, a short press: the zoom stays open after the release, the next press closes it, and the release of that press does nothing",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				setting(MODE):SetString("2")
+
+				state.now = 10
+				Z.Press("key", true)
+				expect(Z.IsActive()).to.beTrue()
+				state.now = 10.1
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				expect(#state.events).to.equal(1)
+
+				-- later: the second press closes at once (a long wait in between changes nothing)
+				state.now = 30
+				Z.Press("key", true)
+				expect(Z.IsActive()).to.beFalse()
+				expect(state.events[2][1]).to.beFalse()
+
+				-- and its release, short or long, leaves it closed
+				state.now = 31
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beFalse()
+				expect(#state.events).to.equal(2)
+
+				-- (a new short press opens it again)
+				state.now = 40
+				Z.Press("key", true)
+				state.now = 40.05
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+			end
+		},
+		{
+			name = "automatic mode, a long press: the zoom is open while the key is down and closes at the release (a press of exactly the threshold is long, one millisecond less is short); the threshold is the setting's",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				setting(MODE):SetString("2")
+
+				state.now = 10
+				Z.Press("key", true)
+				state.now = 10.6
+				expect(Z.IsActive()).to.beTrue()
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beFalse()
+				expect(state.events[2][2]).to.equal("release")
+
+				-- the edge of the threshold (250 ms)
+				Z.Reset()
+				state.now = 20
+				Z.Press("key", true)
+				state.now = 20.249
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				Z.Reset()
+				state.now = 30
+				Z.Press("key", true)
+				state.now = 30.25
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beFalse()
+
+				-- another threshold
+				setting(TAP):SetString("500")
+				Z.Reset()
+				state.now = 40
+				Z.Press("key", true)
+				state.now = 40.4
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				Z.Reset()
+				state.now = 50
+				Z.Press("key", true)
+				state.now = 50.5
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beFalse()
+			end
+		},
+		{
+			name = "hold mode: a short press opens the zoom and its release closes it, however short; toggle mode: a long press does not close it at the release",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+
+				setting(MODE):SetString("0")
+				state.now = 1
+				Z.Press("key", true)
+				expect(Z.IsActive()).to.beTrue()
+				state.now = 1.02
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beFalse()
+
+				setting(MODE):SetString("1")
+				Z.Reset()
+				state.now = 2
+				Z.Press("key", true)
+				state.now = 9
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				state.now = 10
+				Z.Press("key", true)
+				expect(Z.IsActive()).to.beFalse()
+			end
+		},
+		{
+			name = "the modes with two sources of the key (the chosen key and a +gry_zoom bind): one press, timed from the first one down, ended when the last one is up",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				setting(MODE):SetString("2")
+
+				state.now = 5
+				Z.Press("key", true)
+				state.now = 5.1
+				Z.Press("bind", true)
+				state.now = 5.6
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				Z.Press("bind", false)
+				expect(Z.IsActive()).to.beFalse()
+			end
+		},
+		{
+			name = "automatic mode and a forced exit: a zoom kept open by a short press ends with a death and the next short press opens it again; a death during a long press blocks the key until it is let go, and that release (long) does nothing",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				setting(MODE):SetString("2")
+
+				-- opened by a short press, then the player dies
+				state.now = 1
+				Z.Press("key", true)
+				state.now = 1.1
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				state.world.alive = false
+				Z.Guard()
+				expect(Z.IsActive()).to.beFalse()
+				expect(Z.State.reason).to.equal("death")
+				state.world.alive = true
+				state.now = 5
+				Z.Press("key", true)
+				state.now = 5.1
+				Z.Press("key", false)
+				expect(Z.IsActive()).to.beTrue()
+				Z.Reset()
+
+				-- the player dies with the key down: nothing reopens, and the release is not a press
+				state.events = {}
+				state.now = 10
+				Z.Press("key", true)
+				state.world.alive = false
+				Z.Guard()
+				expect(Z.State.blocked).to.beTrue()
+				state.world.alive = true
+				state.now = 12
+				Z.Press("key", false)
+				expect(Z.State.blocked).to.beFalse()
+				expect(Z.IsActive()).to.beFalse()
+				expect(#state.events).to.equal(2)
+
+				-- (and the next press works as usual)
+				state.now = 13
+				Z.Press("key", true)
+				expect(Z.IsActive()).to.beTrue()
+			end
+		},
+		{
+			name = "automatic mode and a release that never came (found by the poll after two frames): a short press stays open, a long one closes",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				setting(MODE):SetString("2")
+
+				state.now = 1
+				Z.Press("key", true)
+				state.now = 1.1
+				state.world.keyUp = true
+				Z.Guard()
+				state.frame = state.frame + 1
+				Z.Guard()
+				expect(Z.IsActive()).to.beTrue()
+				expect(Z.State.held.key).to.beFalse()
+
+				Z.Reset()
+				state.frame = state.frame + 1
+				state.world.keyUp = false
+				state.now = 5
+				Z.Press("key", true)
+				state.now = 5.8
+				state.world.keyUp = true
+				Z.Guard()
+				state.frame = state.frame + 1
+				Z.Guard()
+				expect(Z.IsActive()).to.beFalse()
+				expect(Z.State.reason).to.equal("release")
 			end
 		},
 		-- ------------------------------------------------------------------------------------------------------------------

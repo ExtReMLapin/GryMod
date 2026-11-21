@@ -24,7 +24,11 @@ local Zoom = {}
 GryMod.SuitZoom = Zoom
 
 local OwnConVar = CreateClientConVar("gry_zoom_own", "1", true, false, "The binoculars' zoom has a key of its own (gry_zoom_key, or `bind <key> +gry_zoom`) and the mouse wheel steps its stages 2x, 4x, 8x; the Half-Life 2 zoom key then does nothing (until a key is chosen, the Half-Life 2 zoom key is left alone). Off: the Half-Life 2 zoom key drives the binoculars")
-local ToggleConVar = CreateClientConVar("gry_zoom_toggle", "0", true, false, "The own zoom key opens the zoom with one press and closes it with the next (off: hold the key)")
+
+-- How the key works: 0 hold (the zoom lasts as long as the key is down), 1 toggle (a press opens it, the next press closes it), 2 automatic
+-- (a short press toggles, a long press holds: it closes at the release). The threshold between short and long, in milliseconds.
+local ModeConVar = CreateClientConVar("gry_zoom_mode", "2", true, false, "How the binoculars' zoom key works: 0 hold the key, 1 press once to open and again to close, 2 automatic: a short press opens it and leaves it open (press again to close), a long press holds it (closes at the release)", 0, 2)
+local TapConVar = CreateClientConVar("gry_zoom_tap_ms", "250", true, false, "Automatic mode of the zoom key: a press shorter than this many milliseconds is a short press (toggle), a longer one holds", 100, 600)
 
 -- The key of the zoom (a button code, 0 = none). It must not be the quick menu's, nor the wheel's.
 local Key = GryMod.KeyBinder.New{
@@ -67,6 +71,8 @@ local S = {
 	active = false,
 	-- an Exit happened while the key was down: nothing opens until it is let go and pressed again
 	blocked = false,
+	-- when the key went down (Zoom.Clock), for the length of the press
+	pressAt = 0,
 	-- the weapon in hand when the zoom opened
 	weapon = nil,
 	-- the frame of the last view that the binoculars' CalcView gave (Zoom.Stamp)
@@ -102,8 +108,55 @@ function Zoom.Owns()
 	return OwnConVar:GetBool() and (S.active or S.held.key or S.held.bind or Key.IsBoundCached())
 end
 
-function Zoom.Toggle()
-	return ToggleConVar:GetBool()
+-- The mode of the key: 0 hold, 1 toggle, 2 automatic (anything else is the automatic one, the default).
+function Zoom.Mode()
+	local mode = ModeConVar:GetInt()
+
+	if mode < 0 or mode > 2 then
+		return 2
+	end
+
+	return mode
+end
+
+-- The length of a short press, in milliseconds, held between 100 and 600.
+function Zoom.TapMs()
+	return math.Clamp(TapConVar:GetInt(), 100, 600)
+end
+
+-- The clock of the key (seconds): a function of its own so that the tests can give the length of a press.
+function Zoom.Clock()
+	return RealTime()
+end
+
+-- What a press or a release of the key does, from the mode, whether the zoom is open, and for a release the time the key was down (ms) and
+-- the threshold of a short press (ms). Pure. Gives "open", "close" or nil (nothing). A press has no heldMs.
+--   hold: the press opens, the release closes;
+--   toggle: a press opens or closes, the release does nothing;
+--   automatic: a press opens or closes; the release closes only what a long press held: a short press leaves the zoom open (the next
+--   press closes it, and the release of that press finds nothing open).
+function Zoom.PressAction(mode, wasOpen, heldMs, tapMs)
+	if heldMs == nil then
+		if not wasOpen then
+			return "open"
+		end
+
+		return mode ~= 0 and "close" or nil
+	end
+
+	if not wasOpen then
+		return nil
+	end
+
+	if mode == 0 then
+		return "close"
+	end
+
+	if mode == 1 then
+		return nil
+	end
+
+	return heldMs >= tapMs and "close" or nil
 end
 
 -- The one question the others ask: a table read.
@@ -120,7 +173,7 @@ end
 function Zoom.Reset()
 	Key.Reset()
 	Zoom.Forget()
-	S.active, S.weapon, S.reason = false, nil, nil
+	S.active, S.weapon, S.reason, S.pressAt = false, nil, nil, 0
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -269,6 +322,19 @@ function Zoom.Exit(reason)
 	hook.Run("GryMod_SuitZoom", false, reason)
 end
 
+-- The last key is let go (or found up): the zoom closes or stays open, by the mode and the length of the press.
+function Zoom.Released()
+	if not S.active then
+		return
+	end
+
+	local heldMs = (Zoom.Clock() - S.pressAt) * 1000
+
+	if Zoom.PressAction(Zoom.Mode(), true, heldMs, Zoom.TapMs()) == "close" then
+		Zoom.Exit("release")
+	end
+end
+
 -- The key (source "key": the chosen key; "bind": +gry_zoom) goes down or up.
 function Zoom.Press(source, down)
 	if down and not Zoom.Wanted() then
@@ -284,17 +350,18 @@ function Zoom.Press(source, down)
 		end
 
 		S.upFrames = 0
+		S.pressAt = Zoom.Clock()
 
 		if S.blocked then
 			return
 		end
 
-		if S.active then
-			if Zoom.Toggle() then
-				Zoom.Exit("toggle")
-			end
-		else
+		local action = Zoom.PressAction(Zoom.Mode(), S.active)
+
+		if action == "open" then
 			open()
+		elseif action == "close" then
+			Zoom.Exit("toggle")
 		end
 
 		return
@@ -306,10 +373,7 @@ function Zoom.Press(source, down)
 	end
 
 	S.blocked, S.upFrames = false, 0
-
-	if S.active and not Zoom.Toggle() then
-		Zoom.Exit("release")
-	end
+	Zoom.Released()
 end
 
 -- The binoculars' CalcView has given the view this frame (see the reason "viewtaken").
@@ -366,10 +430,7 @@ function Zoom.Guard()
 
 	if S.upFrames >= Zoom.RELEASE_FRAMES then
 		Zoom.Forget()
-
-		if S.active and not Zoom.Toggle() then
-			Zoom.Exit("release")
-		end
+		Zoom.Released()
 	end
 end
 
