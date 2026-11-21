@@ -78,7 +78,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Horizon ladder that follows where you look", "gry_binoculars_horizon")
 	Panel:CheckBox("Tag an NPC aimed at for half a second (the radar shows it)", "gry_binoculars_tag")
 
-	Panel:CheckBox("Screen effects of damage: heavy armor hit flash and shake, red tint and blur at low health", "gry_screenfx")
+	Panel:CheckBox("Screen effects: heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change", "gry_screenfx")
 	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)
 	Panel:Button("Switch every element back on", "gry_hud_reset")
 
