@@ -97,6 +97,12 @@ return {
 		if option() then
 			option():SetString("1")
 		end
+
+		-- these cases are about the older path: the scan lines drawn on the screen. When the game runs the camouflage's pixel shader
+		-- (cl_cloak_shader.lua) the lines are its own and this module is not called: see cl_cloak_fx_test.lua for that path
+		if GryMod.CloakFX and GryMod.CloakFX.Shader then
+			stub(GryMod.CloakFX.Shader, "Active", function() return false end)
+		end
 	end,
 	afterEach = function(state)
 		restore()

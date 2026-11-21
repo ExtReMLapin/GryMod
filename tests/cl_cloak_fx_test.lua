@@ -98,6 +98,10 @@ return {
 		-- the scan lines (cl_cloak_lines.lua, tested in cl_cloak_lines_test.lua) need a real entity's box and the real stencil:
 		-- the fake players here are only drawn through the layers
 		stub(GryMod.CloakFX.Lines, "Draw", function() return true end)
+
+		-- the pixel shader (cl_cloak_shader.lua, tested in cl_cloak_shader_test.lua) is not in use unless a case turns it on: the cases above
+		-- are about the older layers, which stay as the fallback
+		stub(GryMod.CloakFX.Shader, "Active", function() return false end)
 	end,
 	afterAll = function(state)
 		GryMod.CloakFX.SetDrawHooks(next(GryMod.CloakFX.States) ~= nil)
@@ -823,5 +827,130 @@ return {
 				expect(F.States[ply]).to.beNil() -- back to plain: forgotten
 			end
 		},
+		{
+			name = "pixel shader, third person: the sparks are the shader's, not the edge layer: refraction and plain model, then the shader with the strength of the sparks",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				stub(F.Shader, "Active", function() return true end)
+
+				local calls = {}
+				stub(F.Shader, "Draw", function(ent, strength, amount, draw) calls[#calls + 1] = {ent = ent, strength = strength, amount = amount, draw = draw} return true end)
+
+				setState(ply, 1, 400)
+				translucent()
+
+				local _, _, spark = F.Visibility(1, 400)
+				expect(ply.draws).to.equal(2) -- refraction, plain model: no edge layer
+				expect(#calls).to.equal(1)
+				expect(calls[1].ent).to.equal(ply)
+				expect(calls[1].strength).to.aboutEqual(spark, 0.0001)
+				expect(calls[1].amount).to.equal(1)
+				expect(leftClean(log)).to.beTrue()
+
+				-- the function it is given draws the entity through the player's own draw hook
+				calls[1].draw(ply)
+				expect(ply.draws).to.equal(3)
+			end
+		},
+		{
+			name = "pixel shader, third person: in the flash of the start of the change the shader's strength is the flash, and the scan lines are not drawn on the screen (the shader has them)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local ply = fakePlayer(0)
+				stub(F.Shader, "Active", function() return true end)
+
+				local strength
+				stub(F.Shader, "Draw", function(ent, s) strength = s return true end)
+
+				local linesDrawn = 0
+				stub(F.Lines, "Draw", function() linesDrawn = linesDrawn + 1 return true end)
+
+				setState(ply, 0.12, 0)
+				translucent()
+
+				expect(strength).to.aboutEqual(F.TransitionSpark(0.12), 0.0001)
+				expect(strength > 0.5).to.beTrue()
+				expect(linesDrawn).to.equal(0)
+			end
+		},
+		{
+			name = "pixel shader, third person: far away nothing is added, the weapon in the hand gets the shader too, nearby",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local ply = fakePlayer(0)
+				local weapon = fakePlayer(0)
+				function ply:GetActiveWeapon() return weapon end
+				stub(F.Shader, "Active", function() return true end)
+
+				local drawn = {}
+				stub(F.Shader, "Draw", function(ent, s) drawn[#drawn + 1] = {ent = ent, s = s} return true end)
+
+				setState(ply, 1, 400)
+				translucent()
+				expect(#drawn).to.equal(2)
+				expect(drawn[1].ent).to.equal(ply)
+				expect(drawn[2].ent).to.equal(weapon)
+				expect(drawn[2].s).to.aboutEqual(drawn[1].s, 0.0001)
+				expect(weapon.draws).to.equal(2) -- refraction and plain model, as without the shader
+
+				drawn = {}
+				ply.center = Vector(F.DetailDistance + 500, 0, 0)
+				translucent()
+				expect(#drawn).to.equal(0)
+			end
+		},
+		{
+			name = "pixel shader: when it is not in use the edge layer and the scan lines are drawn as before",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local ply = fakePlayer(0)
+				-- Active is false (beforeEach)
+
+				local shaderDrawn = 0
+				stub(F.Shader, "Draw", function() shaderDrawn = shaderDrawn + 1 return true end)
+
+				setState(ply, 1, 400)
+				translucent()
+
+				expect(shaderDrawn).to.equal(0)
+				expect(ply.draws).to.equal(3) -- refraction, edge, plain model
+			end
+		},
+		{
+			name = "pixel shader, first person: the arms and the gun get the shader instead of the outline, with the outline's strength",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				stub(F.Shader, "Active", function() return true end)
+
+				local calls = {}
+				stub(F.Shader, "Draw", function(ent, strength, amount, draw) calls[#calls + 1] = {ent = ent, strength = strength, amount = amount} return true end)
+
+				local linesDrawn = 0
+				stub(F.Lines, "Draw", function() linesDrawn = linesDrawn + 1 return true end)
+
+				setState(me, 0.4, 0)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+
+				local _, _, spark = F.Visibility(0.4, 0)
+				expect(vm.draws).to.equal(1) -- the refraction only: no outline layer
+				expect(#calls).to.equal(1)
+				expect(calls[1].ent).to.equal(vm)
+				expect(calls[1].amount).to.equal(0.4)
+				expect(calls[1].strength).to.aboutEqual(math.max(spark, F.FirstPersonEdge * 0.4), 0.0001)
+				expect(linesDrawn).to.equal(0)
+				expect(leftClean(log)).to.beTrue()
+			end
+		}
 	}
 }

@@ -56,6 +56,32 @@ return {
 				expect(c ~= nil).to.beTrue()
 				expect(c:GetDefault()).to.equal("1")
 				expect(GryMod.CloakFX.Shader ~= nil).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = child:GetText()
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found[OPTION] ~= nil).to.beTrue()
 			end
 		},
 		{

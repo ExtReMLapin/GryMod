@@ -438,6 +438,9 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 	local updated = false
 	local eye, forward = EyePos(), EyeVector()
 
+	-- the sparks: the original's pixel shader when the game can run it (cl_cloak_shader.lua), else the edge layer and the scan lines
+	local shader = F.Shader and F.Shader.Active() and F.Shader
+
 	for ply, s in pairs(States) do
 		if s.amount > 0 and IsValid(ply) then
 			local visible, distance = drawn(ply, eye, forward)
@@ -454,21 +457,34 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 					spark = 0
 				end
 
-				drawLayers(ply, refract, base, spark)
+				if shader then
+					-- the shader's sparks are added over the plain model; `spark` is 0 far away, where nothing is added
+					drawLayers(ply, refract, base, 0)
 
-				-- the scan lines, on the screen over the silhouette: only in the electric flash of the start of the change
-				local flash = F.TransitionSpark(s.amount)
+					if spark > 0 then
+						shader.Draw(ply, spark, s.amount, drawPlain)
+					end
+				else
+					drawLayers(ply, refract, base, spark)
 
-				if distance <= F.DetailDistance and flash > 0.02 and F.Lines then
-					F.Lines.Draw(ply, flash, drawPlain)
+					-- the scan lines, on the screen over the silhouette: only in the electric flash of the start of the change
+					local flash = F.TransitionSpark(s.amount)
+
+					if distance <= F.DetailDistance and flash > 0.02 and F.Lines then
+						F.Lines.Draw(ply, flash, drawPlain)
+					end
 				end
 
 				-- the weapon in the hand follows the body (its world model is hidden by the server, see sv_system.lua, so
-				-- it is drawn from here): the refraction, then the plain model at the same opacity, without sparks
+				-- it is drawn from here): the refraction, then the plain model at the same opacity, and the shader's sparks
 				local weapon = ply:GetActiveWeapon()
 
 				if IsValid(weapon) and distance <= F.DetailDistance then
 					drawLayers(weapon, refract, base, 0)
+
+					if shader and spark > 0 then
+						shader.Draw(weapon, spark, s.amount, drawPlain)
+					end
 				end
 			end
 		end
@@ -533,6 +549,15 @@ local function endFirstPerson(ent, ply)
 	render.SetBlend(1)
 
 	local _, _, edge = firstPersonLayers(s)
+
+	-- the sparks of the original's pixel shader instead of the outline and of the scan lines (which are in the shader)
+	if F.Shader and F.Shader.Active() then
+		if edge >= F.Invisible and IsValid(ent) then
+			F.Shader.Draw(ent, edge, s.amount, drawPlain)
+		end
+
+		return
+	end
 
 	if edge >= F.Invisible and IsValid(ent) then
 		local _, edgeMat = materials()
