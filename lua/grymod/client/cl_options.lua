@@ -125,9 +125,41 @@ function GryMod.GryHUDOptions(Panel)
 	})
 end
 
--- The keys, all together at the top of the panel so that nobody has to scroll for them: each key picker with a short description (a
--- `bind <key> <command>` in the console works as well), and the boxes that go with a key right under it. A picker refuses what its
--- key refuses (Escape, the mouse wheel, the other key) and shows the key that is saved.
+-- The line under a key picker: for a key that is chosen, what the game already does with it (a warning when the key is bound to
+-- something: it will do that as well, we cannot tell what another addon's hook does with it); with none chosen, whenNone.
+local function keyStatus(code, command, whenNone)
+	if code and code > 0 then
+		return GryMod.KeyBinder.ConflictText(code, command) or "This key is free in the game."
+	end
+
+	return whenNone
+end
+
+-- What the zoom does while no key is chosen: the default key (computed, never saved), a bind of +gry_zoom, or nothing free.
+local function zoomWhenNone()
+	local zoom = GryMod.SuitZoom
+
+	if not GetConVar("gry_zoom_own"):GetBool() then
+		return "The binoculars' own zoom is switched off (the box below)."
+	end
+
+	if input.LookupBinding("+gry_zoom") ~= nil then
+		return "A `bind <key> +gry_zoom` in the console is the zoom key."
+	end
+
+	local default = zoom.DefaultKey()
+
+	if default then
+		return "Default: " .. string.upper(input.GetKeyName(default) or "?") .. " (free in the game), until you choose another key here."
+	end
+
+	return "No default key is free (H, J, K and N are taken): choose a key here."
+end
+
+-- The keys, all together at the top of the panel so that nobody has to scroll for them: each key picker with a short description and a line
+-- under it (the default, or a warning when the key is already bound in the game), the zoom's behaviour right under its key, and the boxes
+-- that go with a key. A `bind <key> <command>` in the console works as well. A picker refuses what its key refuses (Escape, the mouse
+-- wheel, the other key) and shows the key that is saved.
 function GryMod.KeysOptions(Panel)
 	Panel:Help("Keys")
 
@@ -139,29 +171,39 @@ function GryMod.KeysOptions(Panel)
 
 		local binder = vgui.Create("DBinder")
 		binder:SetValue(GetConVar("gry_menu_key"):GetInt())
+		Panel:AddItem(binder)
+
+		local status = Panel:Help(keyStatus(GryMod.MenuKey.Chosen(), "+crysishud", "No key is chosen."))
 		binder.OnChange = function(self, code)
 			if not GryMod.MenuKey.SetKey(code) then
 				self:SetValue(GryMod.MenuKey.Chosen())
 			end
+
+			status:SetText(keyStatus(GryMod.MenuKey.Chosen(), "+crysishud", "No key is chosen."))
 		end
-		Panel:AddItem(binder)
 	end
 
-	-- the binoculars' own zoom key: the Half-Life 2 zoom key stays out of it once a key is chosen, and the wheel is the zoom's while it is up
+	-- the binoculars' own zoom: a zoom of its own, apart from the Half-Life 2 suit zoom, which is left as it is; the wheel steps the stages
+	-- while it is up
 	if GryMod.SuitZoom then
 		Panel:AddControl("Label", {
-			Text = "Binoculars zoom key: hold it to zoom, the mouse wheel steps 2x, 4x, 8x. Until a key is chosen the Half-Life 2 zoom key stays as it is (a `bind <key> +gry_zoom` in the console works too)"
+			Text = "Binoculars zoom key: the binoculars' own zoom, apart from the Half-Life 2 suit zoom (its key is left as it is). The mouse wheel steps 2x, 4x, 8x. A `bind <key> +gry_zoom` in the console works too"
 		})
 
 		local zoomBinder = vgui.Create("DBinder")
 		zoomBinder:SetValue(GetConVar("gry_zoom_key"):GetInt())
+		Panel:AddItem(zoomBinder)
+
+		local zoomStatus = Panel:Help(keyStatus(GryMod.SuitZoom.Key.Chosen(), "+gry_zoom", zoomWhenNone()))
 		zoomBinder.OnChange = function(self, code)
 			-- a key that is refused (Escape, the wheel, the quick menu's key) is not shown as chosen
 			if not GryMod.SuitZoom.Key.SetKey(code) then
 				self:SetValue(GryMod.SuitZoom.Key.Chosen())
 			end
+
+			GryMod.SuitZoom.ForgetBinding()
+			zoomStatus:SetText(keyStatus(GryMod.SuitZoom.Key.Chosen(), "+gry_zoom", zoomWhenNone()))
 		end
-		Panel:AddItem(zoomBinder)
 
 		-- how the key works: the setting is written when the player picks a line, never when the panel opens
 		Panel:Help("Zoom key behaviour: hold, toggle, or automatic (a short press toggles, a long press holds)")
@@ -178,7 +220,7 @@ function GryMod.KeysOptions(Panel)
 		Panel:AddItem(modeBox)
 
 		Panel:NumSlider("Short press: shorter than this is a toggle, longer holds (milliseconds, automatic mode)", "gry_zoom_tap_ms", 100, 600, 0)
-		Panel:CheckBox("Binoculars own zoom key on (off: the Half-Life 2 zoom key drives the binoculars)", "gry_zoom_own")
+		Panel:CheckBox("Binoculars own zoom on (off: only the Half-Life 2 zoom key drives the binoculars)", "gry_zoom_own")
 	end
 end
 

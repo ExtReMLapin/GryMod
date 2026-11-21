@@ -34,6 +34,7 @@ return {
 			clock = Z and Z.Clock,
 			sway = setting("gry_binoculars_sway") and setting("gry_binoculars_sway"):GetString(),
 			read = Z and Z.Read,
+			lookupKey = input.LookupKeyBinding,
 			drop = Bino and Bino.Drop,
 			emit = GryMod.SoundMix.Emit,
 			frame = FrameNumber
@@ -45,6 +46,9 @@ return {
 
 		-- the clock of the zoom is the test's: a press lasts as long as the case says (seconds)
 		state.now = 0
+		-- the keys of the game: none bound, whatever the player's profile says (the cases bind what they need)
+		state.binds = {}
+		input.LookupKeyBinding = function(code) return state.binds[code] end
 		state.world = calm()
 		state.drops = 0
 		state.events = {}
@@ -86,6 +90,8 @@ return {
 		if saved then
 			GryMod.SoundMix.Emit = saved.emit
 			FrameNumber = saved.frame or FrameNumber
+
+			input.LookupKeyBinding = saved.lookupKey
 
 			if Z then
 				Z.Read = saved.read
@@ -239,7 +245,7 @@ return {
 			func = function(state)
 				local Z = GryMod.SuitZoom
 				setting(OWN):SetString("0")
-				expect(Z.Owns()).to.beFalse()
+				expect(Z.HasKey()).to.beFalse()
 				Z.Press("key", true)
 				expect(Z.IsActive()).to.beFalse()
 				expect(#state.events).to.equal(0)
@@ -597,71 +603,6 @@ return {
 			end
 		},
 		{
-			name = "with the option off, the Half-Life 2 zoom is left alone: +zoom goes on to the game, IN_ZOOM stays in the command, and the wheel is nobody's",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local ply = LocalPlayer()
-				local removed = {}
-				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function() removed.wheel = true end}
-
-				setting(OWN):SetString("0")
-				expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beNil()
-				expect(Z.BindPress(ply, "invprev", true, MOUSE_WHEEL_UP)).to.beNil()
-				Z.StartCommand(ply, cmd)
-				expect(#removed).to.equal(0)
-				expect(removed.wheel).to.beNil()
-			end
-		},
-		{
-			name = "with the option on, +zoom is taken (also through an alias, even one that runs several commands) so the Half-Life 2 zoom never starts; -zoom and other binds go on",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local ply = LocalPlayer()
-				local translate = input.TranslateAlias
-				input.TranslateAlias = function(command)
-					if command == "myzoom" then return "+zoom" end
-					if command == "both" then return "+jump; +zoom" end
-					if command == "harmless" then return "+attack" end
-
-					return nil
-				end
-
-				local ok, err = pcall(function()
-					expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beTrue()
-					expect(Z.BindPress(ply, "myzoom", true, KEY_F7)).to.beTrue()
-					expect(Z.BindPress(ply, "both", true, KEY_F7)).to.beTrue()
-					expect(Z.BindPress(ply, "-zoom", true, KEY_F7)).to.beNil()
-					expect(Z.BindPress(ply, "harmless", true, KEY_F7)).to.beNil()
-					expect(Z.BindPress(ply, "+attack", true, MOUSE_LEFT)).to.beNil()
-					expect(Z.BindPress(ply, "+gry_zoom", true, KEY_F7)).to.beNil()
-				end)
-
-				input.TranslateAlias = translate
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "with the option on, StartCommand removes IN_ZOOM from the player's own command (the keys PlayerBindPress cannot see: F1 to F12, aliases), and does not touch other buttons or other players' commands",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local removed = {}
-				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function() end}
-
-				Z.StartCommand(LocalPlayer(), cmd)
-				expect(#removed).to.equal(1)
-				expect(removed[1]).to.equal(IN_ZOOM)
-
-				Z.StartCommand({}, cmd)
-				expect(#removed).to.equal(1)
-
-				local registered = hook.GetTable().StartCommand and hook.GetTable().StartCommand["GRYSUITZOOM"]
-				expect(registered).toNot.beNil()
-			end
-		},
-		{
 			name = "the wheel while the zoom is up: the notch is taken whatever the bind says when the button is the wheel's (113 / 112), and so are invprev / invnext; one notch steps the stage once (up zooms in), at an end it is still taken and plays nothing",
 			func = function(state)
 				local Z = GryMod.SuitZoom
@@ -784,83 +725,6 @@ return {
 				Z.Press("key", true)
 				Z.StartCommand(LocalPlayer(), cmd)
 				expect(wheel).to.equal(0)
-			end
-		},
-		{
-			name = "the binoculars follow the own zoom when it is on (IN_ZOOM is no longer read) and the Half-Life 2 key when it is off; a dead player never zooms; the crosshair does the same",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local M = GryMod.FlashBinoculars
-				local cross = GryMod.FlashCrosshair
-				local zooming, alive = false, true
-				local enabled = M.Enabled
-				local ply = {
-					IsValid = function() return true end,
-					Alive = function() return alive end,
-					KeyDown = function(_, key) return key == IN_ZOOM and zooming end
-				}
-
-				M.Enabled = function() return true end
-
-				local ok, err = pcall(function()
-					-- off: the Half-Life 2 key
-					setting(OWN):SetString("0")
-					Z.State.active = true -- (nothing to do with it)
-					expect(M.Wanted(ply)).to.beFalse()
-					zooming = true
-					expect(M.Wanted(ply)).to.beTrue()
-					expect(cross == nil or cross.Zooming(ply)).to.beTrue()
-					alive = false
-					expect(M.Wanted(ply)).to.beFalse()
-					alive = true
-					Z.Reset()
-
-					-- on: only the own zoom
-					setting(OWN):SetString("1")
-					zooming = true
-					expect(M.Wanted(ply)).to.beFalse()
-					expect(cross == nil or cross.Zooming(ply)).to.beFalse()
-					zooming = false
-					Z.State.active = true
-					expect(M.Wanted(ply)).to.beTrue()
-					expect(cross == nil or cross.Zooming(ply)).to.beTrue()
-					alive = false
-					expect(M.Wanted(ply)).to.beFalse()
-					alive = true
-					Z.State.active = false
-					expect(M.Wanted(ply)).to.beFalse()
-				end)
-
-				M.Enabled = enabled
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "with the own zoom on the stages are on whatever gry_binoculars_stages says (the wheel is the zoom's interface); with it off they follow their own setting as before",
-			func = function(state)
-				local M = GryMod.FlashBinoculars
-				local stages = setting("gry_binoculars_stages")
-				local saved = stages:GetString()
-
-				local ok, err = pcall(function()
-					stages:SetString("0")
-					setting(OWN):SetString("0")
-					expect(M.StagesEnabled()).to.beFalse()
-					stages:SetString("1")
-					expect(M.StagesEnabled()).to.beTrue()
-					stages:SetString("0")
-					setting(OWN):SetString("1")
-					expect(M.StagesEnabled()).to.beTrue()
-				end)
-
-				stages:SetString(saved)
-
-				if not ok then
-					error(err, 0)
-				end
 			end
 		},
 		{
@@ -996,62 +860,6 @@ return {
 				menu.convar:SetString(menuKey)
 				menu.HidePrompt()
 				Z.Key.HidePrompt()
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "the prompt for the zoom key: only with the own zoom on and nothing bound, once per session, with a key set or a +gry_zoom bind it does not come, and it does not sit on the quick menu's prompt",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local lookup = input.LookupBinding
-				local menu = GryMod.MenuKey
-
-				local ok, err = pcall(function()
-					input.LookupBinding = function() return nil end
-					setting(KEY):SetString("0")
-					Z.Key.HidePrompt()
-
-					-- the option off: nothing asked, and nothing counted as asked
-					setting(OWN):SetString("0")
-					Z.asked = false
-					Z.MaybePrompt()
-					expect(IsValid(Z.Key.panel)).to.beFalse()
-					expect(Z.asked).to.beFalse()
-
-					-- a key already set, or a bind
-					setting(OWN):SetString("1")
-					setting(KEY):SetString(tostring(KEY_F7))
-					Z.MaybePrompt()
-					expect(IsValid(Z.Key.panel)).to.beFalse()
-					setting(KEY):SetString("0")
-					input.LookupBinding = function(command) return command == "+gry_zoom" and "MOUSE4" or nil end
-					Z.MaybePrompt()
-					expect(IsValid(Z.Key.panel)).to.beFalse()
-
-					-- nothing: asked, once
-					input.LookupBinding = function() return nil end
-					Z.MaybePrompt()
-					local panel = Z.Key.panel
-					expect(IsValid(panel)).to.beTrue()
-					expect(panel:GetTitle()).to.equal("GryMod binoculars zoom")
-					expect(Z.asked).to.beTrue()
-					Z.Key.HidePrompt()
-					Z.MaybePrompt()
-					expect(IsValid(Z.Key.panel)).to.beFalse()
-
-					-- the two prompts have their own places
-					menu.ShowPrompt()
-					Z.Key.ShowPrompt()
-					expect(select(2, menu.panel:GetPos())).toNot.equal(select(2, Z.Key.panel:GetPos()))
-				end)
-
-				input.LookupBinding = lookup
-				menu.HidePrompt()
-				Z.Key.HidePrompt()
-				Z.asked = false
 
 				if not ok then
 					error(err, 0)
@@ -1478,6 +1286,748 @@ return {
 			end
 		},
 		-- ------------------------------------------------------------------------------------------------------------------
+		-- The zoom is a zoom of its own, apart from the Half-Life 2 suit zoom (+zoom): that one is never touched. Its key is the player's
+		-- (gry_zoom_key, or `bind <key> +gry_zoom`), and until the player has chosen one a default is computed: the first of H, J, K, N
+		-- that nothing is bound to. The default is never written to the player's settings.
+		-- ------------------------------------------------------------------------------------------------------------------
+		{
+			name = "the Half-Life 2 zoom is never touched, whatever the own zoom has: +zoom (also an alias) and -zoom go on to the game, IN_ZOOM stays in the command, with the option on or off, a key chosen or not",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local ply = LocalPlayer()
+				local removed = {}
+				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function() end}
+				local translate = input.TranslateAlias
+				input.TranslateAlias = function(command) return command == "myzoom" and "+zoom" or nil end
+
+				local ok, err = pcall(function()
+					for _, own in ipairs({"1", "0"}) do
+						for _, key in ipairs({tostring(KEY_F7), "0"}) do
+							setting(OWN):SetString(own)
+							setting(KEY):SetString(key)
+							Z.ForgetBinding()
+
+							for _, bind in ipairs({"+zoom", "-zoom", "myzoom"}) do
+								expect(Z.BindPress(ply, bind, true, KEY_B)).to.beNil()
+								expect(Z.BindPress(ply, bind, false, KEY_B)).to.beNil()
+							end
+
+							-- (also with the zoom up: the wheel is ours, +zoom is not)
+							Z.Reset()
+							Z.Press("key", true)
+							expect(Z.BindPress(ply, "+zoom", true, KEY_B)).to.beNil()
+							Z.Reset()
+
+							Z.StartCommand(ply, cmd)
+						end
+					end
+
+					expect(#removed).to.equal(0)
+				end)
+
+				input.TranslateAlias = translate
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "StartCommand only zeroes the wheel's delta, and only while the own zoom is up: IN_ZOOM and every other button stay in the command, other players' commands are not touched",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local removed, wheel = {}, nil
+				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function(_, n) wheel = n end}
+
+				Z.StartCommand(LocalPlayer(), cmd)
+				expect(wheel).to.beNil()
+
+				Z.Press("key", true)
+				Z.StartCommand(LocalPlayer(), cmd)
+				expect(wheel).to.equal(0)
+
+				wheel = nil
+				Z.StartCommand({}, cmd)
+				expect(wheel).to.beNil()
+				expect(#removed).to.equal(0)
+			end
+		},
+		{
+			name = "the binoculars follow the Half-Life 2 zoom key (IN_ZOOM) OR the own zoom, whatever the option says: either one asks, both ask one state (one view, one answer), closing one does not close the other; a dead player never zooms; the crosshair does the same",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local cross = GryMod.FlashCrosshair
+				local zooming, alive = false, true
+				local enabled = M.Enabled
+				local ply = {
+					IsValid = function() return true end,
+					Alive = function() return alive end,
+					KeyDown = function(_, key) return key == IN_ZOOM and zooming end
+				}
+
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					for _, own in ipairs({"1", "0"}) do
+						setting(OWN):SetString(own)
+						Z.Reset()
+						zooming = false
+
+						-- nothing asks
+						expect(M.Wanted(ply)).to.beFalse()
+						expect(cross == nil or cross.Zooming(ply)).to.beFalse()
+
+						-- the game's key alone, as it always was
+						zooming = true
+						expect(M.Wanted(ply)).to.beTrue()
+						expect(cross == nil or cross.Zooming(ply)).to.beTrue()
+						zooming = false
+					end
+
+					-- the own zoom alone
+					setting(OWN):SetString("1")
+					Z.Reset()
+					Z.State.active = true
+					expect(M.Wanted(ply)).to.beTrue()
+					expect(cross == nil or cross.Zooming(ply)).to.beTrue()
+
+					-- both: one answer, and either one let go leaves the other
+					zooming = true
+					expect(M.Wanted(ply)).to.beTrue()
+					Z.State.active = false
+					expect(M.Wanted(ply)).to.beTrue()
+					Z.State.active = true
+					zooming = false
+					expect(M.Wanted(ply)).to.beTrue()
+					Z.State.active = false
+					expect(M.Wanted(ply)).to.beFalse()
+
+					-- a dead player never zooms, by either
+					alive = false
+					zooming = true
+					Z.State.active = true
+					expect(M.Wanted(ply)).to.beFalse()
+					expect(cross == nil or cross.Zooming(ply)).to.beFalse()
+				end)
+
+				M.Enabled = enabled
+				Z.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "both zooms asked together make one view: the stage state is one (it is not opened twice), the view is the stage's, and when the own zoom ends while the game's key is held the binoculars stay up",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local clock, enabled = M.Now, M.Enabled
+				local now, zooming = 0, false
+				local ply = {
+					IsValid = function() return true end,
+					Alive = function() return true end,
+					KeyDown = function(_, key) return key == IN_ZOOM and zooming end,
+					InVehicle = function() return false end,
+					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
+				}
+				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
+
+				M.Now = function() return now end
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					M.ZoomReset(M.ZoomState)
+
+					-- the game's key alone: the binoculars (the stages are on by default)
+					zooming = true
+					local view = M.CalcView(ply, origin, angles, 100, 3, 8000)
+					expect(view).toNot.beNil()
+					expect(M.ZoomState.active).to.beTrue()
+
+					-- the own zoom opens as well: the same state, the same view
+					Z.Press("key", true)
+					expect(Z.IsActive()).to.beTrue()
+					state.frame = state.frame + 1
+					now = 0.3
+					local both = M.CalcView(ply, origin, angles, 100, 3, 8000)
+					expect(both).toNot.beNil()
+					expect(M.ZoomState.active).to.beTrue()
+					expect(both.fov).to.aboutEqual(M.StageFov(100, 2), 1e-6)
+
+					-- the own zoom ends (the key let go): the game's key still holds the binoculars up
+					Z.Press("key", false)
+					expect(Z.IsActive()).to.beFalse()
+					state.frame = state.frame + 1
+					now = 0.6
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000)).toNot.beNil()
+					expect(M.ZoomState.active).to.beTrue()
+					expect(M.Wanted(ply)).to.beTrue()
+
+					-- and the other way round: the game's key let go, the own zoom stays
+					Z.Press("key", true)
+					zooming = false
+					state.frame = state.frame + 1
+					now = 0.9
+					expect(M.Wanted(ply)).to.beTrue()
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000)).toNot.beNil()
+					expect(M.ZoomState.active).to.beTrue()
+				end)
+
+				M.Now, M.Enabled = clock, enabled
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "with the own zoom on the stages are on whatever gry_binoculars_stages says as soon as the zoom has a key (the wheel is its interface); with the option off, or no key at all, they follow their own setting as before",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local stages = setting("gry_binoculars_stages")
+				local saved = stages:GetString()
+
+				local ok, err = pcall(function()
+					stages:SetString("0")
+					setting(OWN):SetString("0")
+					expect(M.StagesEnabled()).to.beFalse()
+					stages:SetString("1")
+					expect(M.StagesEnabled()).to.beTrue()
+
+					stages:SetString("0")
+					setting(OWN):SetString("1")
+					setting(KEY):SetString(tostring(KEY_F7))
+					expect(M.StagesEnabled()).to.beTrue()
+
+					-- no key, no default free: the game's zoom, as before
+					setting(KEY):SetString("0")
+					state.binds[KEY_H], state.binds[KEY_J], state.binds[KEY_K], state.binds[KEY_N] = "a", "b", "c", "d"
+					Z.ForgetBinding()
+					expect(M.StagesEnabled()).to.beFalse()
+				end)
+
+				stages:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "DefaultKey is the first of H, J, K, N that nothing is bound to in the game (a free key: LookupKeyBinding gives nothing), then none when they are all taken; the quick menu's chosen key is not free",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local menu = GryMod.MenuKey
+				local menuKey = menu.convar:GetString()
+
+				local ok, err = pcall(function()
+					menu.convar:SetString(tostring(KEY_F8))
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_H)
+
+					-- bound to something (any bind of the game: the Half-Life 2 zoom, ours, or another one)
+					state.binds[KEY_H] = "+zoom"
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_J)
+					state.binds[KEY_H] = "+gry_zoom"
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_J)
+					state.binds[KEY_J] = "+crysishud"
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_K)
+					state.binds[KEY_K] = "kill"
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_N)
+					state.binds[KEY_N] = "+use"
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.beNil()
+
+					-- an empty bind is no bind
+					state.binds = {[KEY_H] = ""}
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_H)
+
+					-- the key of the quick menu (chosen in its options, not a bind of the game) is not ours to take
+					state.binds = {}
+					menu.convar:SetString(tostring(KEY_H))
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_J)
+				end)
+
+				menu.convar:SetString(menuKey)
+				Z.ForgetBinding()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "DefaultKey is looked up once in half a second, not at every call; a key the player binds in the meantime is seen at the next look (the default moves to the next free key, or disappears)",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local lookup = input.LookupKeyBinding
+				local asked = 0
+
+				local ok, err = pcall(function()
+					input.LookupKeyBinding = function(code) asked = asked + 1 return state.binds[code] end
+					Z.ForgetBinding()
+					state.now = 100
+
+					for _ = 1, 50 do
+						expect(Z.DefaultKey()).to.equal(KEY_H)
+					end
+
+					expect(asked).to.beLessThan(5)
+					local first = asked
+
+					-- the player binds H: not seen before the half second is over
+					state.binds[KEY_H] = "+jump"
+					state.now = 100.3
+					expect(Z.DefaultKey()).to.equal(KEY_H)
+					expect(asked).to.equal(first)
+					state.now = 100.6
+					expect(Z.DefaultKey()).to.equal(KEY_J)
+					expect(asked).to.beGreaterThan(first)
+				end)
+
+				input.LookupKeyBinding = lookup
+				Z.ForgetBinding()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "HasKey: the own zoom has a key when one is chosen, when +gry_zoom is bound, or when a default is free; with all of the default keys taken and nothing chosen it has none; with the option off never",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local lookup = input.LookupBinding
+
+				local ok, err = pcall(function()
+					input.LookupBinding = function() return nil end
+					setting(OWN):SetString("1")
+
+					-- a default is free
+					setting(KEY):SetString("0")
+					Z.ForgetBinding()
+					expect(Z.HasKey()).to.beTrue()
+
+					-- none free, none chosen
+					state.binds[KEY_H], state.binds[KEY_J], state.binds[KEY_K], state.binds[KEY_N] = "a", "b", "c", "d"
+					Z.ForgetBinding()
+					expect(Z.HasKey()).to.beFalse()
+
+					-- a key chosen
+					setting(KEY):SetString(tostring(KEY_F7))
+					expect(Z.HasKey()).to.beTrue()
+
+					-- a +gry_zoom bind
+					setting(KEY):SetString("0")
+					input.LookupBinding = function(command) return command == "+gry_zoom" and "MOUSE4" or nil end
+					Z.ForgetBinding()
+					expect(Z.HasKey()).to.beTrue()
+
+					-- the option off
+					setting(OWN):SetString("0")
+					setting(KEY):SetString(tostring(KEY_F7))
+					expect(Z.HasKey()).to.beFalse()
+				end)
+
+				input.LookupBinding = lookup
+				Z.ForgetBinding()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the default key opens the zoom with nothing chosen, by the poll, with the three modes (hold, toggle, automatic); the player's settings are not written, and a key held while the chat is open does not zoom",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local B = GryMod.KeyBinder
+				local down = {}
+				local realRead, realDown = B.Read, input.IsButtonDown
+				local world = {pause = false, console = false, cursor = false, focusPanel = false, typing = false, focus = true}
+
+				B.Read = function(sit) for k, v in pairs(world) do sit[k] = v end return sit end
+				input.IsButtonDown = function(code) return down[code] == true end
+
+				local ok, err = pcall(function()
+					setting(KEY):SetString("0")
+					Z.ForgetBinding()
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+
+					-- hold
+					setting(MODE):SetString("0")
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					down[KEY_H] = false
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+
+					-- toggle
+					setting(MODE):SetString("1")
+					state.now = 1
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					state.now = 2
+					down[KEY_H] = false
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					down[KEY_H] = false
+					Z.Key.Poll()
+
+					-- automatic: short press stays, long press holds
+					setting(MODE):SetString("2")
+					state.now = 10
+					down[KEY_H] = true
+					Z.Key.Poll()
+					state.now = 10.1
+					down[KEY_H] = false
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					state.now = 11
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					state.now = 11.05
+					down[KEY_H] = false
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					state.now = 20
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					state.now = 20.5
+					down[KEY_H] = false
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+
+					-- the chat has the keyboard: an H typed does not zoom
+					world.typing = true
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					down[KEY_H] = false
+					Z.Key.Poll()
+					world.typing = false
+
+					-- nothing was written for the player
+					expect(setting(KEY):GetString()).to.equal("0")
+					expect(Z.Key.Chosen()).to.equal(0)
+				end)
+
+				B.Read, input.IsButtonDown = realRead, realDown
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "a key bound to something else is not the default: the Half-Life 2 key (B, +zoom) never opens the own zoom, and when H is bound the default is the next free key; the zoom of the game on that key is the game's",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local B = GryMod.KeyBinder
+				local down = {}
+				local realRead, realDown = B.Read, input.IsButtonDown
+
+				B.Read = function(sit) sit.pause, sit.console, sit.cursor, sit.focusPanel, sit.typing, sit.focus = false, false, false, false, false, true return sit end
+				input.IsButtonDown = function(code) return down[code] == true end
+
+				local ok, err = pcall(function()
+					setting(KEY):SetString("0")
+					state.binds[KEY_B] = "+zoom"
+					state.binds[KEY_H] = "+zoom"
+					Z.ForgetBinding()
+					expect(Z.DefaultKey()).to.equal(KEY_J)
+
+					Z.Key.Poll()
+					down[KEY_B] = true
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					down[KEY_B], down[KEY_H] = false, false
+					Z.Key.Poll()
+
+					down[KEY_J] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					down[KEY_J] = false
+					Z.Key.Poll()
+				end)
+
+				B.Read, input.IsButtonDown = realRead, realDown
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "a key chosen by the player, or a +gry_zoom bind, replaces the default: the default key does nothing any more",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local B = GryMod.KeyBinder
+				local down = {}
+				local realRead, realDown, lookup = B.Read, input.IsButtonDown, input.LookupBinding
+
+				B.Read = function(sit) sit.pause, sit.console, sit.cursor, sit.focusPanel, sit.typing, sit.focus = false, false, false, false, false, true return sit end
+				input.IsButtonDown = function(code) return down[code] == true end
+				input.LookupBinding = function() return nil end
+
+				local ok, err = pcall(function()
+					Z.ForgetBinding()
+
+					-- a key chosen: that one, not H
+					setting(KEY):SetString(tostring(KEY_F7))
+					Z.Key.Poll()
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					down[KEY_H] = false
+					Z.Key.Poll()
+					down[KEY_F7] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beTrue()
+					down[KEY_F7] = false
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+
+					-- a +gry_zoom bind (the engine runs +gry_zoom itself): H does nothing
+					setting(KEY):SetString("0")
+					input.LookupBinding = function(command) return command == "+gry_zoom" and "MOUSE4" or nil end
+					Z.ForgetBinding()
+					Z.Key.IsBoundCached()
+					Z.Key.Poll()
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					expect(Z.Key.Effective()).to.equal(0)
+				end)
+
+				B.Read, input.IsButtonDown, input.LookupBinding = realRead, realDown, lookup
+				Z.ForgetBinding()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "with the option off the default key does nothing either",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local B = GryMod.KeyBinder
+				local down = {}
+				local realRead, realDown = B.Read, input.IsButtonDown
+
+				B.Read = function(sit) sit.pause, sit.console, sit.cursor, sit.focusPanel, sit.typing, sit.focus = false, false, false, false, false, true return sit end
+				input.IsButtonDown = function(code) return down[code] == true end
+
+				local ok, err = pcall(function()
+					setting(KEY):SetString("0")
+					setting(OWN):SetString("0")
+					Z.ForgetBinding()
+					Z.Key.Poll()
+					down[KEY_H] = true
+					Z.Key.Poll()
+					expect(Z.IsActive()).to.beFalse()
+					expect(#state.events).to.equal(0)
+				end)
+
+				B.Read, input.IsButtonDown = realRead, realDown
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the prompt for the zoom key: only with the option on and no key chosen, no +gry_zoom bind and no free default; once per session; it does not sit on the quick menu's prompt",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local lookup = input.LookupBinding
+				local menu = GryMod.MenuKey
+
+				local ok, err = pcall(function()
+					input.LookupBinding = function() return nil end
+					setting(KEY):SetString("0")
+					Z.Key.HidePrompt()
+
+					-- the option off: nothing asked, and nothing counted as asked
+					state.binds[KEY_H], state.binds[KEY_J], state.binds[KEY_K], state.binds[KEY_N] = "a", "b", "c", "d"
+					Z.ForgetBinding()
+					setting(OWN):SetString("0")
+					Z.asked = false
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+					expect(Z.asked).to.beFalse()
+
+					-- a key already set, or a bind
+					setting(OWN):SetString("1")
+					setting(KEY):SetString(tostring(KEY_F7))
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+					setting(KEY):SetString("0")
+					input.LookupBinding = function(command) return command == "+gry_zoom" and "MOUSE4" or nil end
+					Z.ForgetBinding()
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+
+					-- a default key is free: the zoom works already, nothing to ask
+					input.LookupBinding = function() return nil end
+					state.binds = {}
+					Z.ForgetBinding()
+					Z.asked = false
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+
+					-- nothing: asked, once
+					state.binds[KEY_H], state.binds[KEY_J], state.binds[KEY_K], state.binds[KEY_N] = "a", "b", "c", "d"
+					Z.ForgetBinding()
+					Z.MaybePrompt()
+					local panel = Z.Key.panel
+					expect(IsValid(panel)).to.beTrue()
+					expect(panel:GetTitle()).to.equal("GryMod binoculars zoom")
+					expect(Z.asked).to.beTrue()
+					Z.Key.HidePrompt()
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+
+					-- the two prompts have their own places
+					menu.ShowPrompt()
+					Z.Key.ShowPrompt()
+					expect(select(2, menu.panel:GetPos())).toNot.equal(select(2, Z.Key.panel:GetPos()))
+				end)
+
+				input.LookupBinding = lookup
+				menu.HidePrompt()
+				Z.Key.HidePrompt()
+				Z.asked = false
+				Z.ForgetBinding()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the Keys section tells the default key (\"Default: H\") while no key is chosen, says none is free when they are all taken, and warns under a key picker when the key picked is already bound in the game (the zoom's and the quick menu's), with what it is bound to; a free key has no warning",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local menu = GryMod.MenuKey
+				local realRun = RunConsoleCommand
+				local menuKey = menu.convar:GetString()
+				local panel
+
+				local function build()
+					if IsValid(panel) then
+						panel:Remove()
+					end
+
+					panel = vgui.Create("ControlPanel")
+					GryMod.KeysOptions(panel)
+
+					local binders, labels = {}, {}
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DBinder" then
+								binders[#binders + 1] = child
+							elseif child.ClassName == "DLabel" then
+								labels[#labels + 1] = child
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+
+					return binders, labels
+				end
+
+				local function textOf(labels, fragment)
+					for _, label in ipairs(labels) do
+						if string.find(label:GetText(), fragment, 1, true) then
+							return label:GetText()
+						end
+					end
+				end
+
+				local ok, err = pcall(function()
+					RunConsoleCommand = function() end
+					menu.convar:SetString(tostring(KEY_F8))
+					setting(KEY):SetString("0")
+					Z.ForgetBinding()
+
+					-- a free default: said
+					local binders, labels = build()
+					expect(textOf(labels, "Default: H")).toNot.beNil()
+
+					-- H taken: the next one
+					state.binds[KEY_H] = "+zoom"
+					Z.ForgetBinding()
+					binders, labels = build()
+					expect(textOf(labels, "Default: J")).toNot.beNil()
+
+					-- none free
+					state.binds[KEY_J], state.binds[KEY_K], state.binds[KEY_N] = "b", "c", "d"
+					Z.ForgetBinding()
+					binders, labels = build()
+					expect(textOf(labels, "Default:")).to.beNil()
+					expect(textOf(labels, "No default key is free")).toNot.beNil()
+
+					-- the zoom's picker: a key bound in the game warns, with the command
+					state.binds = {[KEY_B] = "+zoom"}
+					Z.ForgetBinding()
+					binders, labels = build()
+					local zoomBinder = binders[2]
+					zoomBinder:OnChange(KEY_B)
+					expect(textOf(labels, "already bound to +zoom")).toNot.beNil()
+
+					-- a free key: no warning (the label says the key is free)
+					zoomBinder:OnChange(KEY_F9)
+					expect(textOf(labels, "already bound")).to.beNil()
+					expect(textOf(labels, "free in the game")).toNot.beNil()
+
+					-- the quick menu's picker too
+					binders, labels = build()
+					binders[1]:OnChange(KEY_B)
+					expect(textOf(labels, "already bound to +zoom")).toNot.beNil()
+				end)
+
+				RunConsoleCommand = realRun
+				menu.convar:SetString(menuKey)
+				menu.HidePrompt()
+				Z.Key.HidePrompt()
+				Z.ForgetBinding()
+
+				if IsValid(panel) then
+					panel:Remove()
+				end
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		-- ------------------------------------------------------------------------------------------------------------------
 		-- The key is polled (a single player game has cl_predict 0: the hooks PlayerButtonDown / Up are not called), and the zoom is on by
 		-- default but does nothing, and takes nothing from the Half-Life 2 zoom, until the player has chosen or bound a key
 		-- ------------------------------------------------------------------------------------------------------------------
@@ -1565,152 +2115,6 @@ return {
 				end)
 
 				B.Read, input.IsButtonDown = realRead, realDown
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "the own zoom is on by default (the player only has to choose a key), and the Half-Life 2 zoom is the player's until a key is chosen or a +gry_zoom bind exists",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local lookup = input.LookupBinding
-				local ply = LocalPlayer()
-				local removed = {}
-				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function() end}
-
-				local ok, err = pcall(function()
-					-- no key, no bind: the option is on and the zoom owns nothing
-					setting(KEY):SetString("0")
-					input.LookupBinding = function() return nil end
-					Z.Key.ForgetBinding()
-					expect(setting(OWN):GetBool()).to.beTrue()
-					expect(Z.Owns()).to.beFalse()
-					expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beNil()
-					Z.StartCommand(ply, cmd)
-					expect(#removed).to.equal(0)
-
-					-- a key chosen
-					setting(KEY):SetString(tostring(KEY_F7))
-					expect(Z.Owns()).to.beTrue()
-					expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beTrue()
-					Z.StartCommand(ply, cmd)
-					expect(#removed).to.equal(1)
-
-					-- a bind of +gry_zoom
-					removed = {}
-					setting(KEY):SetString("0")
-					input.LookupBinding = function(command) return command == "+gry_zoom" and "MOUSE3" or nil end
-					Z.Key.ForgetBinding()
-					expect(Z.Owns()).to.beTrue()
-					expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beTrue()
-					Z.StartCommand(ply, cmd)
-					expect(#removed).to.equal(1)
-
-					-- the option off: nothing, whatever the key
-					setting(OWN):SetString("0")
-					setting(KEY):SetString(tostring(KEY_F7))
-					expect(Z.Owns()).to.beFalse()
-				end)
-
-				input.LookupBinding = lookup
-				Z.Key.ForgetBinding()
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "without a key the binoculars follow the Half-Life 2 zoom as before (IN_ZOOM), and nothing the own zoom does is on: no stages forced",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local M = GryMod.FlashBinoculars
-				local lookup, enabled = input.LookupBinding, M.Enabled
-				local zooming = true
-				local ply = {IsValid = function() return true end, Alive = function() return true end, KeyDown = function(_, key) return key == IN_ZOOM and zooming end}
-
-				M.Enabled = function() return true end
-
-				local ok, err = pcall(function()
-					setting(KEY):SetString("0")
-					input.LookupBinding = function() return nil end
-					Z.Key.ForgetBinding()
-					expect(M.Wanted(ply)).to.beTrue()
-					zooming = false
-					expect(M.Wanted(ply)).to.beFalse()
-				end)
-
-				M.Enabled, input.LookupBinding = enabled, lookup
-				Z.Key.ForgetBinding()
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "the binding lookup is not asked on every call: once in half a second while no key is chosen, never while one is chosen",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local lookup = input.LookupBinding
-				local asked = 0
-
-				local ok, err = pcall(function()
-					input.LookupBinding = function() asked = asked + 1 return nil end
-					setting(KEY):SetString("0")
-					Z.Key.ForgetBinding()
-					for _ = 1, 50 do
-						Z.Owns()
-					end
-					expect(asked).to.equal(1)
-
-					asked = 0
-					setting(KEY):SetString(tostring(KEY_F7))
-					for _ = 1, 50 do
-						Z.Owns()
-					end
-					expect(asked).to.equal(0)
-				end)
-
-				input.LookupBinding = lookup
-				Z.Key.ForgetBinding()
-
-				if not ok then
-					error(err, 0)
-				end
-			end
-		},
-		{
-			name = "the prompt for a key comes at the spawn with the option on (the default) and nothing chosen, even though the zoom owns nothing yet; it does not come with a key chosen or a +gry_zoom bind",
-			func = function(state)
-				local Z = GryMod.SuitZoom
-				local lookup = input.LookupBinding
-
-				local ok, err = pcall(function()
-					Z.Key.HidePrompt()
-					setting(OWN):SetString("1")
-					setting(KEY):SetString("0")
-					input.LookupBinding = function() return nil end
-					Z.Key.ForgetBinding()
-					expect(Z.Owns()).to.beFalse()
-
-					Z.asked = false
-					Z.MaybePrompt()
-					expect(IsValid(Z.Key.panel)).to.beTrue()
-					Z.Key.HidePrompt()
-
-					Z.asked = false
-					input.LookupBinding = function(command) return command == "+gry_zoom" and "H" or nil end
-					Z.MaybePrompt()
-					expect(IsValid(Z.Key.panel)).to.beFalse()
-				end)
-
-				input.LookupBinding = lookup
-				Z.Key.HidePrompt()
-				Z.Key.ForgetBinding()
-				Z.asked = false
 
 				if not ok then
 					error(err, 0)

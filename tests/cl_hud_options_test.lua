@@ -247,16 +247,17 @@ return {
 				expect(find("binder", secondBinder + 1)).to.beNil() -- the two keys of the mod, nothing else asks for one
 				expect(keys < firstBinder).to.beTrue()
 
-				-- the zoom key behaviour (its label, then the threshold slider's label: the selector itself has none) comes right after the zoom
-				-- key picker, the own zoom box is in the section too
-				expect(string.find(order[secondBinder + 1], "label:Zoom key behaviour", 1, true)).toNot.beNil()
-				expect(string.find(order[secondBinder + 2], "label:Short press", 1, true)).toNot.beNil()
+				-- the line under the zoom key picker (the default key, or a warning), then the zoom key behaviour (its label, then the threshold
+				-- slider's label: the selector itself has none), the own zoom box is in the section too
+				expect(string.find(order[secondBinder + 1], "label:", 1, true)).to.equal(1)
+				expect(string.find(order[secondBinder + 2], "label:Zoom key behaviour", 1, true)).toNot.beNil()
+				expect(string.find(order[secondBinder + 3], "label:Short press", 1, true)).toNot.beNil()
 				local own = find("box:gry_zoom_own")
 				expect(own).toNot.beNil()
 				expect(own > secondBinder).to.beTrue()
 
 				-- the section comes first: no other setting before the last of its controls
-				local lastOfSection = math.max(own, secondBinder + 2)
+				local lastOfSection = math.max(own, secondBinder + 3)
 				local other = find("box:gry_hud")
 				expect(other).toNot.beNil()
 				expect(other > lastOfSection).to.beTrue()

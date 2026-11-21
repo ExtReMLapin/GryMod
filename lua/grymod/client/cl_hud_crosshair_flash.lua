@@ -565,13 +565,7 @@ end
 
 -- Whether the player is zooming with the binoculars on (with them off the zoom is the plain game's).
 function Cross.Zooming(ply)
-	local suit = GryMod.SuitZoom
-
-	-- the binoculars' own zoom key (gry_zoom_own): that module says so, the Half-Life 2 key is not looked at
-	if suit and suit.Owns() then
-		return suit.IsActive()
-	end
-
+	-- (the binoculars know both zooms, the game's key and the own zoom)
 	local binoculars = GryMod.FlashBinoculars
 
 	if binoculars and binoculars.Wanted then

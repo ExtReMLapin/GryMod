@@ -42,9 +42,10 @@ local StagesConVar = CreateClientConVar("gry_binoculars_stages", "1", true, fals
 local VisionConVar = CreateClientConVar("gry_binoculars_vision", "0", true, false, "The renderer's full-screen binoculars vision: a cool tint (0.7, 0.8, 1.0), fine scan lines (period of 4 pixels) and a darkening towards the edges (1 - 0.6 * distance from the centre). The original shows it in the High quality only and the film already has its own vignette: the edges get darker twice. Off by default")
 local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view (on by default)")
 
--- The stages are on with their own switch, and always with the suit zoom's own key (gry_zoom_own): the wheel is its interface.
+-- The stages are on with their own switch, and always while the own zoom has a key (gry_zoom_own, see cl_suit_zoom.lua): the wheel is
+-- its interface.
 function Bino.StagesEnabled()
-	return StagesConVar:GetBool() or (GryMod.SuitZoom ~= nil and GryMod.SuitZoom.Owns())
+	return StagesConVar:GetBool() or (GryMod.SuitZoom ~= nil and GryMod.SuitZoom.HasKey())
 end
 
 function Bino.SwayEnabled() return SwayConVar:GetBool() end
@@ -978,20 +979,21 @@ end
 
 local enabled = Bino.Enabled
 
--- Whether the player is zooming: alive and, with the own zoom key (gry_zoom_own, see cl_suit_zoom.lua) that module says so, else
--- the Half-Life 2 suit zoom key (IN_ZOOM) held.
+-- Whether the player is zooming: alive and either the Half-Life 2 suit zoom key (IN_ZOOM) is held, as it always was, or the own zoom (a
+-- zoom of its own on a key of its own, see cl_suit_zoom.lua) is open. One answer for both: the binoculars are one state, up when either
+-- asks and down when neither does.
 function Bino.Wanted(ply)
 	if not IsValid(ply) or not ply:Alive() then
 		return false
 	end
 
-	local suit = GryMod.SuitZoom
-
-	if suit and suit.Owns() then
-		return suit.IsActive()
+	if ply:KeyDown(IN_ZOOM) then
+		return true
 	end
 
-	return ply:KeyDown(IN_ZOOM)
+	local suit = GryMod.SuitZoom
+
+	return suit ~= nil and suit.IsActive()
 end
 
 -- Whether the movie could not be loaded (the own zoom is then not offered).
@@ -1627,15 +1629,16 @@ end
 -- the stages are not wanted, the sway's as soon as the binoculars are down).
 function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 	local suit = GryMod.SuitZoom
-	local own = suit ~= nil and suit.Owns()
 
-	-- the suit zoom looks at the world before the view is given: with the game paused (the menu or the console open in a single
+	-- the own zoom looks at the world before the view is given: with the game paused (the menu or the console open in a single
 	-- player game) Think does not run but CalcView does (measured), and a zoom that must end must not give one more view
-	if own then
+	if suit and suit.Wanted() then
 		suit.Guard()
 	end
 
-	-- with the own zoom key never a view in a vehicle: the game's CalcView would not run (our table ends the hook chain) and the
+	local own = suit ~= nil and suit.IsActive()
+
+	-- with the own zoom up never a view in a vehicle: the game's CalcView would not run (our table ends the hook chain) and the
 	-- vehicle's camera would be lost (the zoom itself ends in the next Think, see SuitZoom.Reason)
 	if own and ply:InVehicle() then
 		if zoom.active then
@@ -1693,14 +1696,14 @@ function Bino.StepWheel(bind)
 end
 
 -- PlayerBindPress: the wheel (invprev / invnext) steps the stage while the binoculars are up; the press and the release are
--- taken (the weapon is not changed), the other keys go on to the game. With the own zoom key the suit zoom module is the wheel's
+-- taken (the weapon is not changed), the other keys go on to the game. While the own zoom is up the suit zoom module is the wheel's
 -- owner (it also knows the wheel by its button, whatever the bind), and this does nothing.
 function Bino.BindPress(ply, bind, pressed)
 	if (bind ~= "invprev" and bind ~= "invnext") or zoom.stage == 0 or not stagesOn() or not Bino.Wanted(ply) then
 		return nil
 	end
 
-	if GryMod.SuitZoom and GryMod.SuitZoom.Owns() then
+	if GryMod.SuitZoom and GryMod.SuitZoom.IsActive() then
 		return nil
 	end
 

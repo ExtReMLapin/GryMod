@@ -1,11 +1,18 @@
--- The suit zoom of the binoculars as a key of its own (option gry_zoom_own), so that they do not hang on the Half-Life 2 suit zoom
--- (IN_ZOOM, the +zoom bind). One module owns "the player is zooming": the binoculars, the crosshair and the view hooks ask
--- GryMod.SuitZoom.IsActive(), the key and the +gry_zoom / -gry_zoom console commands open it, and SuitZoom.Exit(reason) is the only way
--- to close it, whatever the reason (the key let go, a death, a menu, a vehicle...). The option is on by default, but the module owns nothing
--- (Zoom.Owns() is false) until the player has chosen a key (gry_zoom_key) or bound +gry_zoom: until then the Half-Life 2 key drives the
--- binoculars as before, and its zoom is not blocked. With the option off the file does nothing either.
+-- The own zoom of the binoculars (option gry_zoom_own, on by default): a zoom of its own, on a key of its own, APART from the Half-Life 2
+-- suit zoom (IN_ZOOM, the +zoom bind, B in the game's defaults), which is never touched: its key goes on driving the binoculars as it
+-- always did, and nothing of it is swallowed or removed. One module owns "the own zoom is open": the binoculars, the crosshair and the view
+-- hooks ask GryMod.SuitZoom.IsActive() (the binoculars are up when the game's key OR the own zoom asks, one state for both), the key and
+-- the +gry_zoom / -gry_zoom console commands open it, and SuitZoom.Exit(reason) is the only way to close it, whatever the reason (the key
+-- let go, a death, a menu, a vehicle...).
 --
--- The chosen key is polled by the key factory (cl_key_binder.lua): a single player game has cl_predict 0, and then the hooks PlayerButtonDown /
+-- THE KEY is the player's: gry_zoom_key (a button code) or `bind <key> +gry_zoom`. Until the player has chosen one, a DEFAULT is computed
+-- (SuitZoom.DefaultKey): the first of H, J, K, N that nothing is bound to in the game (input.LookupKeyBinding says nothing) and that is not
+-- the quick menu's key, looked up again every half second. It is never written to the player's settings, and a key chosen or a +gry_zoom
+-- bind replaces it. Another addon that reads the same key with a hook cannot be detected (see the notes, section 10).
+--
+-- HOW THE KEY WORKS (gry_zoom_mode): hold, toggle, or automatic (a short press toggles, a long press holds; threshold gry_zoom_tap_ms).
+--
+-- The key is polled by the key factory (cl_key_binder.lua): a single player game has cl_predict 0, and then the hooks PlayerButtonDown /
 -- PlayerButtonUp are not called on the client (measured, see the notes).
 --
 -- The design, the hooks used and what was verified are in docs/superpowers/plans/2026-11-21-zoom-key-hooks.md.
@@ -23,7 +30,7 @@ GryMod = GryMod or {}
 local Zoom = {}
 GryMod.SuitZoom = Zoom
 
-local OwnConVar = CreateClientConVar("gry_zoom_own", "1", true, false, "The binoculars' zoom has a key of its own (gry_zoom_key, or `bind <key> +gry_zoom`) and the mouse wheel steps its stages 2x, 4x, 8x; the Half-Life 2 zoom key then does nothing (until a key is chosen, the Half-Life 2 zoom key is left alone). Off: the Half-Life 2 zoom key drives the binoculars")
+local OwnConVar = CreateClientConVar("gry_zoom_own", "1", true, false, "The binoculars have a zoom of their own, apart from the Half-Life 2 suit zoom (whose key goes on driving them as before): a key of its own (gry_zoom_key, `bind <key> +gry_zoom`, else the first free of H, J, K, N) and the mouse wheel steps its stages 2x, 4x, 8x. Off: only the Half-Life 2 zoom key drives the binoculars")
 
 -- How the key works: 0 hold (the zoom lasts as long as the key is down), 1 toggle (a press opens it, the next press closes it), 2 automatic
 -- (a short press toggles, a long press holds: it closes at the release). The threshold between short and long, in milliseconds.
@@ -36,9 +43,10 @@ local Key = GryMod.KeyBinder.New{
 	description = "Key of the binoculars' own zoom (a button code, 0 = none; `bind <key> +gry_zoom` works too)",
 	command = "+gry_zoom",
 	title = "GryMod binoculars zoom",
-	text = "The binoculars have their own zoom key, and none is\nchosen yet. Click the box and press the key you want\n(or bind one to +gry_zoom in the console).",
+	text = "The binoculars have their own zoom, and no key is free\nfor it (H, J, K and N are taken). Click the box and press\nthe key you want (or bind one to +gry_zoom in the console).",
 	y = 190,
 	active = function() return OwnConVar:GetBool() end,
+	default = function() return GryMod.SuitZoom.EffectiveDefault() end,
 	refuse = function(code)
 		return code == MOUSE_WHEEL_UP or code == MOUSE_WHEEL_DOWN or (GryMod.MenuKey ~= nil and GryMod.MenuKey.Chosen() == code)
 	end,
@@ -49,11 +57,12 @@ local Key = GryMod.KeyBinder.New{
 
 Zoom.Key = Key
 
--- The prompt for the key comes once per session, while the option is on and no key is chosen: it never blocks anything.
+-- The prompt for the key comes once per session, while the option is on and the zoom has no key at all (none chosen, no +gry_zoom bind,
+-- none of the default keys free): it never blocks anything.
 Zoom.asked = false
 
 function Zoom.MaybePrompt()
-	if Zoom.asked or not Zoom.Wanted() or Key.IsBound() then
+	if Zoom.asked or not Zoom.Wanted() or Key.IsBound() or Zoom.DefaultKey() ~= nil then
 		return
 	end
 
@@ -102,10 +111,53 @@ function Zoom.Wanted()
 	return OwnConVar:GetBool()
 end
 
--- The own zoom is in charge: the option is on AND the player has a way to zoom with it (a key chosen, a +gry_zoom bind, or a zoom that is
--- open or a key that is down right now). Until then the Half-Life 2 zoom key drives the binoculars and nothing of it is blocked.
-function Zoom.Owns()
-	return OwnConVar:GetBool() and (S.active or S.held.key or S.held.bind or Key.IsBoundCached())
+-- The keys that may be the default, in the order they are tried.
+Zoom.DEFAULT_KEYS = {KEY_H, KEY_J, KEY_K, KEY_N}
+
+local defaultKey, defaultUntil = nil, -math.huge
+
+-- The default key: the first of H, J, K, N that nothing is bound to in the game and that is not the quick menu's key, or nil. Looked up once
+-- in half a second (the engine calls walk the binds). It says which key is free, whether the player has chosen one or not (see
+-- EffectiveDefault).
+function Zoom.DefaultKey()
+	local now = Zoom.Clock()
+
+	if now >= defaultUntil or now < defaultUntil - 0.5 then
+		local menuKey = GryMod.MenuKey ~= nil and GryMod.MenuKey.Chosen() or 0
+
+		defaultKey, defaultUntil = nil, now + 0.5
+
+		for _, code in ipairs(Zoom.DEFAULT_KEYS) do
+			if code ~= menuKey and GryMod.KeyBinder.Conflict(code, nil) == nil then
+				defaultKey = code
+
+				break
+			end
+		end
+	end
+
+	return defaultKey
+end
+
+-- The default key in force: only while the option is on and the player has chosen nothing (no key, no +gry_zoom bind).
+function Zoom.EffectiveDefault()
+	if not OwnConVar:GetBool() or Key.IsBoundCached() then
+		return nil
+	end
+
+	return Zoom.DefaultKey()
+end
+
+-- The own zoom has a key: the option is on and a key is chosen, a +gry_zoom bind exists, a default key is free, or a zoom is open or a key
+-- is down right now. The wheel's stages are on with it (the wheel is the zoom's interface); the Half-Life 2 zoom is never part of this.
+function Zoom.HasKey()
+	return OwnConVar:GetBool() and (S.active or S.held.key or S.held.bind or Key.IsBoundCached() or Zoom.DefaultKey() ~= nil)
+end
+
+-- A bind just made, a key just chosen, a test: the next question looks at the binds again.
+function Zoom.ForgetBinding()
+	Key.ForgetBinding()
+	defaultKey, defaultUntil = nil, -math.huge
 end
 
 -- The mode of the key: 0 hold, 1 toggle, 2 automatic (anything else is the automatic one, the default).
@@ -172,6 +224,7 @@ end
 -- Everything back to the start, silently (no event, nothing put away).
 function Zoom.Reset()
 	Key.Reset()
+	Zoom.ForgetBinding()
 	Zoom.Forget()
 	S.active, S.weapon, S.reason, S.pressAt = false, nil, nil, 0
 end
@@ -209,10 +262,10 @@ function Zoom.Reason(sit, active)
 	return nil
 end
 
--- The button to ask the input system about while a key is held: the chosen key, or the one a +gry_zoom bind is on.
+-- The button to ask the input system about while a key is held: the key in use (chosen, or the default), or the one a +gry_zoom bind is on.
 local function heldButton()
 	if S.held.key then
-		local chosen = Key.Chosen()
+		local chosen = Key.Effective()
 
 		if chosen > 0 then
 			return chosen
@@ -444,7 +497,7 @@ end
 -- `bind <key> +gry_zoom` (the engine runs -gry_zoom at the release).
 function Zoom.Command(ply, command)
 	if command == "+gry_zoom" then
-		Key.ForgetBinding()
+		Zoom.ForgetBinding()
 	end
 
 	Zoom.Press("bind", command == "+gry_zoom")
@@ -461,45 +514,16 @@ end)
 -- The Half-Life 2 zoom stays out of it, and the wheel is the zoom's while it is up (only with the own zoom key on)
 -- ---------------------------------------------------------------------------------------------------------
 
--- Whether a bind runs the Half-Life 2 suit zoom: +zoom itself, or an alias of the player's that runs it.
-local function isZoomBind(bind)
-	if bind == "+zoom" then
-		return true
-	end
-
-	local target = input.TranslateAlias(bind)
-
-	if not target then
-		return false
-	end
-
-	for command in string.gmatch(target, "[^;]+") do
-		if string.Trim(command) == "+zoom" then
-			return true
-		end
-	end
-
-	return false
-end
-
 -- The keys that change the weapon (slot1 to slot6, last weapon, `use <weapon>`); the wheel's invprev / invnext are the zoom's.
 local function isWeaponBind(bind)
 	return string.find(bind, "^slot%d+$") ~= nil or bind == "lastinv" or string.sub(bind, 1, 4) == "use "
 end
 
--- PlayerBindPress. +zoom is taken, so the Half-Life 2 zoom never starts (-zoom goes on: it is harmless and stops a zoom that was up when
--- the option was switched on). While the zoom is up the wheel is ours, known by its button (112 / 113: still the wheel when the player
--- has bound it to something else) and by the binds invprev / invnext, and every notch is taken, even at the end of the stages; the weapon
--- keys are not taken: they change the weapon and end the zoom. With no zoom up nothing is taken: the wheel changes the weapon.
+-- PlayerBindPress. Nothing of the Half-Life 2 zoom is taken (+zoom, -zoom and the aliases that run it go on to the game). While the own
+-- zoom is up the wheel is ours, known by its button (112 / 113: still the wheel when the player has bound it to something else) and by the
+-- binds invprev / invnext, and every notch is taken, even at the end of the stages; the weapon keys are not taken: they change the weapon
+-- and end the zoom. With no zoom up nothing is taken: the wheel changes the weapon.
 function Zoom.BindPress(ply, bind, pressed, code)
-	if not Zoom.Owns() then
-		return nil
-	end
-
-	if isZoomBind(bind) then
-		return true
-	end
-
 	if not S.active then
 		return nil
 	end
@@ -538,18 +562,14 @@ function Zoom.BindPress(ply, bind, pressed, code)
 	return nil
 end
 
--- StartCommand, the player's own command: IN_ZOOM is removed (the keys PlayerBindPress cannot see: F1 to F12 and aliases), and while the
--- zoom is up the wheel's delta too (a weapon that reads it, the physgun, would scroll under the zoom).
+-- StartCommand, the player's own command: while the own zoom is up the wheel's delta is zeroed (a weapon that reads it, the physgun, would
+-- scroll under the zoom). IN_ZOOM is left alone.
 function Zoom.StartCommand(ply, cmd)
-	if not Zoom.Owns() or ply ~= LocalPlayer() then
+	if not S.active or ply ~= LocalPlayer() then
 		return
 	end
 
-	cmd:RemoveKey(IN_ZOOM)
-
-	if S.active then
-		cmd:SetMouseWheel(0)
-	end
+	cmd:SetMouseWheel(0)
 end
 
 hook.Add("PlayerBindPress", "GRYSUITZOOM", function(ply, bind, pressed, code)

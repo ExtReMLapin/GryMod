@@ -11,6 +11,8 @@
 --     y           = the top of the prompt (optional: two prompts must not sit on each other),
 --     active      = function, whether the prompt is wanted at all (optional, default yes),
 --     refuse      = function(code), true for a key that must not be taken (optional: the other key's, for example),
+--     default     = function, the button used while the player has chosen none (a button code, or nil for no default: optional). It is
+--                   computed by the owner and never saved in the player's setting: Chosen() stays 0, Effective() gives the button in use,
 --     press       = function(down), what the key does: called with true when the key is pressed and false when it is let go
 -- }
 --
@@ -43,6 +45,34 @@ function Binder.Decide(known, isDown, allowed, taken)
 	end
 
 	return taken and "release" or "skip"
+end
+
+-- The command the game already has on a button (a `bind` of the player or of the game's own defaults), or nil: a free key, a key bound
+-- to the command we are going to put on it (`command`), an empty bind and no key give nothing. Another addon that reads the key with a hook
+-- cannot be seen (its hook is an anonymous function): that conflict is not detected.
+function Binder.Conflict(code, command)
+	if not code or code <= 0 then
+		return nil
+	end
+
+	local bound = input.LookupKeyBinding(code)
+
+	if bound == nil or bound == "" or bound == command then
+		return nil
+	end
+
+	return bound
+end
+
+-- The warning for a key picked in the options, or nil.
+function Binder.ConflictText(code, command)
+	local bound = Binder.Conflict(code, command)
+
+	if bound then
+		return "This key is already bound to " .. bound .. " in the game (it will do that as well)."
+	end
+
+	return nil
 end
 
 -- The first reason a press must be refused, from the facts of the situation (pause, console, cursor, focusPanel, typing, focus), or nil.
@@ -88,6 +118,21 @@ function Binder.New(options)
 		return convar:GetInt()
 	end
 
+	-- The button in use: the key chosen, else the default of the owner (if it has one and gives one), else 0. This is the one polled.
+	function Key.Effective()
+		local chosen = convar:GetInt()
+
+		if chosen > 0 then
+			return chosen
+		end
+
+		if options.default then
+			return options.default() or 0
+		end
+
+		return 0
+	end
+
 	-- Whether the player has a way to use the key.
 	function Key.IsBound()
 		return input.LookupBinding(options.command) ~= nil or convar:GetInt() > 0
@@ -128,9 +173,10 @@ function Binder.New(options)
 		return action
 	end
 
-	-- Once per frame: the chosen button is read, and its edges are fed. Does nothing (and reads nothing) while no key is chosen.
+	-- Once per frame: the button in use (chosen, else the default) is read, and its edges are fed. Does nothing (and reads nothing) while there
+	-- is none.
 	function Key.Poll()
-		local chosen = convar:GetInt()
+		local chosen = Key.Effective()
 
 		if chosen ~= button then
 			-- (another key chosen, or none: the old one is let go, and the new one is only known: held while chosen, it presses nothing)
@@ -146,9 +192,9 @@ function Binder.New(options)
 		end
 	end
 
-	-- The engine's hooks PlayerButtonDown / PlayerButtonUp (when they come): the chosen key only.
+	-- The engine's hooks PlayerButtonDown / PlayerButtonUp (when they come): the button in use only.
 	function Key.Hook(code, down)
-		local chosen = convar:GetInt()
+		local chosen = Key.Effective()
 
 		if chosen > 0 and code == chosen then
 			if chosen ~= button then

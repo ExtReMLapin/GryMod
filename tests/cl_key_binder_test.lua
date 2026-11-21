@@ -265,6 +265,138 @@ return {
 			end
 		},
 		{
+			name = "a key with a default (options.default, a function giving a button or nil): while no key is chosen the poll reads the default and its edges are the presses; a key chosen replaces it; Chosen stays 0, so the saved setting is never written for the player; with no default and no key nothing is read",
+			func = function(state)
+				local calls = {}
+				local defaultKey = KEY_H
+				make({press = function(down) calls[#calls + 1] = down end, default = function() return defaultKey end})
+				state.withWorld(function(world)
+					local read = {}
+					input.IsButtonDown = function(b) read[#read + 1] = b return state.down end
+
+					made.convar:SetInt(0)
+					state.down = false
+					made.Poll()
+					state.down = true
+					made.Poll()
+					made.Poll()
+					state.down = false
+					made.Poll()
+					expect(#calls).to.equal(2)
+					expect(calls[1]).to.beTrue()
+					expect(calls[2]).to.beFalse()
+					expect(made.Chosen()).to.equal(0)
+					expect(made.convar:GetInt()).to.equal(0)
+					expect(made.Effective()).to.equal(KEY_H)
+
+					for _, b in ipairs(read) do
+						expect(b).to.equal(KEY_H)
+					end
+
+					-- a key chosen replaces the default: the default button is not read any more
+					calls, read = {}, {}
+					made.convar:SetInt(KEY_F7)
+					expect(made.Effective()).to.equal(KEY_F7)
+					state.down = false
+					made.Poll()
+					made.Poll()
+					state.down = true
+					made.Poll()
+					expect(#calls).to.equal(1)
+
+					for _, b in ipairs(read) do
+						expect(b).to.equal(KEY_F7)
+					end
+
+					-- no key, and the default says nothing: nothing is read
+					made.Reset()
+					made.convar:SetInt(0)
+					defaultKey = nil
+					calls, read = {}, {}
+					expect(made.Effective()).to.equal(0)
+					made.Poll()
+					made.Poll()
+					expect(#read).to.equal(0)
+					expect(#calls).to.equal(0)
+				end)
+			end
+		},
+		{
+			name = "a default that changes while it is held (the player binds the key to something else) is let go, the new default is only known, and a press that was down when it appeared presses nothing; the hook of the engine takes the default too",
+			func = function(state)
+				local calls = {}
+				local defaultKey = KEY_H
+				make({press = function(down) calls[#calls + 1] = down end, default = function() return defaultKey end})
+				state.withWorld(function(world)
+					input.IsButtonDown = function() return state.down end
+					made.convar:SetInt(0)
+
+					state.down = false
+					made.Poll()
+					state.down = true
+					made.Poll()
+					expect(#calls).to.equal(1)
+
+					defaultKey = KEY_J
+					made.Poll()
+					expect(#calls).to.equal(2)
+					expect(calls[2]).to.beFalse()
+					-- (still down: the new key presses nothing until it is let go and pressed again)
+					made.Poll()
+					expect(#calls).to.equal(2)
+					state.down = false
+					made.Poll()
+					state.down = true
+					made.Poll()
+					expect(#calls).to.equal(3)
+
+					-- the hook
+					made.Reset()
+					calls = {}
+					defaultKey = KEY_H
+					state.down = false
+					made.Poll()
+					made.Hook(KEY_H, true)
+					expect(#calls).to.equal(1)
+					made.Hook(KEY_J, true)
+					expect(#calls).to.equal(1)
+					made.Hook(KEY_H, false)
+					expect(#calls).to.equal(2)
+				end)
+			end
+		},
+		{
+			name = "Conflict (pure, from the engine's binds): a key that has a bind of the game gives it, a free key, the key of our own command, an empty bind and no key give nothing; ConflictText says what the key already does",
+			func = function(state)
+				local B = GryMod.KeyBinder
+				local lookup = input.LookupKeyBinding
+				local binds = {[KEY_B] = "+zoom", [KEY_F7] = "+gry_zoom", [KEY_F8] = "", [KEY_F9] = "+crysishud"}
+
+				input.LookupKeyBinding = function(code) return binds[code] end
+
+				local ok, err = pcall(function()
+					expect(B.Conflict(KEY_B, "+gry_zoom")).to.equal("+zoom")
+					expect(B.Conflict(KEY_F9, "+gry_zoom")).to.equal("+crysishud")
+					expect(B.Conflict(KEY_F7, "+gry_zoom")).to.beNil()
+					expect(B.Conflict(KEY_F8, "+gry_zoom")).to.beNil()
+					expect(B.Conflict(KEY_H, "+gry_zoom")).to.beNil()
+					expect(B.Conflict(0, "+gry_zoom")).to.beNil()
+					expect(B.Conflict(nil, "+gry_zoom")).to.beNil()
+
+					local text = B.ConflictText(KEY_B, "+gry_zoom")
+					expect(string.find(text, "already bound to +zoom", 1, true)).toNot.beNil()
+					expect(string.find(text, "as well", 1, true)).toNot.beNil()
+					expect(B.ConflictText(KEY_H, "+gry_zoom")).to.beNil()
+				end)
+
+				input.LookupKeyBinding = lookup
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "the hook only takes the chosen key, and nothing while no key is chosen",
 			func = function(state)
 				local calls = {}
