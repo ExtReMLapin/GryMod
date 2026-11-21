@@ -32,6 +32,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_hud_boot_flash.lua")
 	AddCSLuaFile("grymod/client/cl_hud_flash.lua")
 	AddCSLuaFile("grymod/client/cl_hud_radar_flash.lua")
+	AddCSLuaFile("grymod/sh_radar.lua")
 	AddCSLuaFile("grymod/client/cl_hud_quickmenu_flash.lua")
 	AddCSLuaFile("grymod/client/cl_menu_key.lua")
 	AddCSLuaFile("grymod/client/cl_hud_binoculars_flash.lua")
@@ -56,6 +57,8 @@ if SERVER then
 	include("grymod/server/sv_malfunction.lua")
 	include("grymod/server/sv_underwater.lua")
 	include("grymod/server/sv_cloak_ai.lua")
+	include("grymod/sh_radar.lua")
+	include("grymod/server/sv_radar.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.png")
@@ -169,6 +172,7 @@ if CLIENT then
 	include("grymod/client/cl_hud_flash.lua")
 	include("grymod/client/cl_hud_crosshair_flash.lua")
 	include("grymod/client/cl_hud_boot_flash.lua")
+	include("grymod/sh_radar.lua")
 	include("grymod/client/cl_hud_radar_flash.lua")
 	include("grymod/client/cl_hud_quickmenu_flash.lua")
 	include("grymod/client/cl_menu_key.lua")
