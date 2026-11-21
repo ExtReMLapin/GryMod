@@ -277,6 +277,16 @@ function GryMod.GryOptionschute(Panel)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)
 
 	GryMod.AdminOptions(Panel)
+
+	-- the effects test window opens apart from this panel (cl_debug_window.lua); last, after the administrators' section
+	local debugButton = Panel:Button("Open the effects test window")
+	debugButton.GryDebugOpen = true
+
+	debugButton.DoClick = function()
+		if GryMod.DebugWindow then
+			GryMod.DebugWindow.Open()
+		end
+	end
 end
 
 function GryMod.GryOptionschuteOptionmenu()

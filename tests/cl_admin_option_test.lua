@@ -317,12 +317,19 @@ return {
 						if child.ClassName == "DLabel" and child.GetText and child:GetText() == "Server (administrators only)" then
 							titleAt = #order + 1
 							order[#order + 1] = "title"
+						elseif child.GryDebugOpen then
+							order[#order + 1] = "debug" -- the button that opens the effects test window (cl_debug_window.lua)
 						elseif INTERACTIVE[child.ClassName] then
 							order[#order + 1] = admin and "admin" or "other"
 						end
 					end)
 
 					expect(titleAt ~= nil).to.beTrue()
+
+					-- the button of the effects test window is the last control of the panel, after the administrators' section
+					expect(order[#order]).to.equal("debug")
+					table.remove(order)
+
 					for i = titleAt + 1, #order do
 						expect(order[i]).to.equal("admin")
 					end

@@ -33,6 +33,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_underwater.lua")
 	AddCSLuaFile("grymod/client/cl_api_hud_events.lua")
 	AddCSLuaFile("grymod/client/cl_options.lua")
+	AddCSLuaFile("grymod/client/cl_debug_window.lua")
 	AddCSLuaFile("grymod/client/cl_cloak_fx.lua")
 	AddCSLuaFile("grymod/client/cl_cloak_lines.lua")
 	AddCSLuaFile("grymod/client/cl_cloak_shader.lua")
@@ -92,6 +93,7 @@ if SERVER then
 	include("grymod/sh_server_options.lua")
 	include("grymod/server/sv_server_options.lua")
 	include("grymod/server/sv_api.lua")
+	include("grymod/server/sv_debug_cmd.lua")
 	include("grymod/sh_api_tracked_hl2.lua")
 
 	if GryMod.Workshop == false then
@@ -279,5 +281,6 @@ if CLIENT then
 	include("grymod/sh_server_options.lua")
 	include("grymod/client/cl_admin_option.lua")
 	include("grymod/client/cl_options.lua")
+	include("grymod/client/cl_debug_window.lua")
 	include("grymod/sh_api_tracked_hl2.lua")
 end
