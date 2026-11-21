@@ -415,10 +415,9 @@ end
 drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 	if depth or skybox or skybox3d or drawing or not next(States) or not F.Enabled() then return end
 
-	-- the water's reflection and refraction, the cameras and the monitors are drawn in render targets: no cloak there
-	-- (a map with water draws the world three times per frame)
-	if render.GetRenderTarget() then return end
-
+	-- Also in the render targets: a mirror (func_reflective_glass draws the world again into _rt_waterreflection, with the
+	-- local player in it), the water, a camera. PrePlayerDraw hides the player in every view, so a view skipped here
+	-- would show nobody at all. The screen copy below is made per view (it copies the target being drawn into).
 	local updated = false
 	local eye, forward = EyePos(), EyeVector()
 

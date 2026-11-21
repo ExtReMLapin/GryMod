@@ -418,15 +418,47 @@ return {
 			end
 		},
 		{
-			name = "PlayerDraw: nothing in a render target (the water's reflection and refraction, cameras)",
+			name = "PlayerDraw: in a render target (a mirror, the water's reflection, a camera) the camouflaged player is drawn too, not missing",
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
 				setState(ply, 1, 0)
 				stub(render, "GetRenderTarget", function() return {} end)
+				-- the engine's own draw is still switched off (PrePlayerDraw), so the reflection would show nothing
+				-- if the layers were not drawn from here
+				expect(hook.GetTable().PrePlayerDraw.GryCloakFX(ply)).to.beTrue()
 				translucent()
-				expect(ply.draws).to.equal(0)
-				expect(log.refreshed).to.equal(0)
+				expect(ply.draws).to.beGreaterThan(0)
+				expect(log.drawn[1].material).to.exist() -- through the refraction material
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "PlayerDraw: in a render target the layers follow the same curves as in the main view (same opacity)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				setState(ply, 0.4, 0)
+				stub(render, "GetRenderTarget", function() return {} end)
+				translucent()
+				local _, base = F.Visibility(0.4, 0)
+				expect(ply.draws).to.equal(3) -- refraction, sparks, plain model: as in the main view
+				expect(log.blend[#log.blend - 1]).to.aboutEqual(base, 0.001) -- the plain model's opacity, then the reset
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "PlayerDraw: in a render target a drawing that fails does not leave the material or the opacity on",
+			func = function(state)
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				function ply:DrawModel() error("boom") end
+				setState(ply, 0.5, 0)
+				stub(render, "GetRenderTarget", function() return {} end)
+				pcall(translucent)
+				expect(leftClean(log)).to.beTrue()
+				expect(log.blendNow).to.equal(1)
 			end
 		},
 		{
