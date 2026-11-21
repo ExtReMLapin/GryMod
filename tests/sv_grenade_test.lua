@@ -133,6 +133,26 @@ return {
 			end
 		},
 		{
+			name = "a grenade the player picked up and let go is the player's (GryThrower), held or free: the client never warns about it (measured live)",
+			func = function(state)
+				local p = ply()
+				-- made by nobody, like a Combine soldier's: no thrower before the player touches it
+				local g = spawn("npc_grenade_frag", p:EyePos() + p:GetForward() * 60)
+				G.Update(g)
+				expect(IsValid(g:GetNWEntity("GryThrower"))).to.beFalse()
+
+				p:PickupObject(g)
+				G.Update(g)
+				expect(g:GetNWEntity("GryThrower")).to.equal(p)
+				expect(g:GetNWBool("GryArmed")).to.beFalse()
+
+				p:DropObject()
+				G.Update(g)
+				expect(g:GetNWEntity("GryThrower")).to.equal(p)
+				expect(g:GetNWBool("GryArmed")).to.beTrue()
+			end
+		},
+		{
 			name = "an unknown class is never active",
 			func = function(state)
 				expect(G.IsActive("prop_physics", {speed = 999, detonate = 5, launched = true})).to.beFalse()

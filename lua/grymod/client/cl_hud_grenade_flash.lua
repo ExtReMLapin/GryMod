@@ -33,13 +33,15 @@ function Grenade.ClampRange(metres)
 	return math.Clamp(metres, Grenade.MIN_RANGE, Grenade.MAX_RANGE)
 end
 
--- The player's own hand grenade (the one thrown by weapon_frag, a bomb) only warns within this distance: one thrown away
--- tells nothing, one that falls back on the player does. CHOICE (measured: a frag thrown flat goes 15 m at most before
--- it comes back). The setting gry_grenade_own turns the own grenade's warning off.
-Grenade.OWN_RANGE = 15
+-- A grenade the player threw NEVER warns (the owner's decision: hand grenade included, from the hand or the lob, first or third
+-- person, one picked up with the gravity gun and let go again). The server writes who threw each projectile (sv_grenade.lua,
+-- GryThrower) and the engine's owner is read too (Grenade.Candidate). Only the setting gry_grenade_own_warn (off) brings back
+-- the old rule: the player's own hand grenade warns within this distance (measured: a frag thrown flat goes 15 m at most
+-- before it comes back).
+Grenade.OWN_WARN_RANGE = 15
 
--- The projectiles a player FIRES: the player's own never warn (a missile that leaves, a rifle grenade, an energy ball).
--- CHOICE: the original warns about them too (nothing there looks at who fired).
+-- The projectiles a player FIRES: a missile that leaves, a rifle grenade, an energy ball. They never warn the player, not even
+-- with gry_grenade_own_warn. CHOICE: the original warns about them too (nothing there looks at who fired).
 Grenade.FIRED = {
 	rpg_missile = true,
 	grenade_ar2 = true,
@@ -93,9 +95,10 @@ end
 -- Whether a candidate ({class, metres, onScreen, own, armed, visible}) deserves a warning. `armed` is the server's mark
 -- (sv_grenade.lua): true for a projectile that is active and not held in the player's hands, so an inert one (lying
 -- around, a mine on the ground) and the one in the hands are not warned about, unless armedOnly is false (the switch
--- gry_grenade_armed_only, for debugging). opts: range (metres, default DEFAULT_RANGE), own (false: the player's own hand
--- grenade never warns; default true), los (true: only a projectile seen from the eye, `visible` not false; default false,
--- as in the original, which warns through walls).
+-- gry_grenade_armed_only, for debugging). opts: range (metres, default DEFAULT_RANGE), ownWarn (true: the player's own hand
+-- grenade warns within OWN_WARN_RANGE, the old rule; default false: a grenade the player threw never warns, whatever the
+-- distance), los (true: only a projectile seen from the eye, `visible` not false; default false, as in the original, which
+-- warns through walls).
 function Grenade.Warns(c, armedOnly, opts)
 	opts = opts or {}
 	local range = opts.range or Grenade.DEFAULT_RANGE
@@ -109,8 +112,8 @@ function Grenade.Warns(c, armedOnly, opts)
 	end
 
 	if c.own then
-		-- what the player fired goes away from them; the hand grenade is theirs to follow only while it is close
-		if Grenade.FIRED[c.class] or opts.own == false or c.metres > Grenade.OWN_RANGE then
+		-- what the player threw or fired never warns; with the old rule on, the hand grenade does while it is close
+		if Grenade.FIRED[c.class] or not opts.ownWarn or c.metres > Grenade.OWN_WARN_RANGE then
 			return false
 		end
 	end
@@ -293,17 +296,17 @@ local warning
 local lastTime
 local armedSwitch
 
--- The settings (client, saved): the range in metres, the player's own hand grenade, the line of sight (the original warns
--- through walls: off).
+-- The settings (client, saved): the range in metres, the old warning for the player's own hand grenade (off; a new name: a
+-- saved gry_grenade_own 1 of the earlier rule must not bring it back), the line of sight (the original warns through walls: off).
 local rangeVar = CreateClientConVar("gry_grenade_range", tostring(Grenade.DEFAULT_RANGE), true, false,
 	"Distance in metres under which a projectile coming is warned about", Grenade.MIN_RANGE, Grenade.MAX_RANGE)
-local ownVar = CreateClientConVar("gry_grenade_own", "1", true, false,
-	"The player's own hand grenade (thrown, within 15 m) is warned about too (0: never)", 0, 1)
+local ownWarnVar = CreateClientConVar("gry_grenade_own_warn", "0", true, false,
+	"1: the player's own hand grenade warns within 15 m (the old rule); 0: a grenade the player threw never warns", 0, 1)
 local losVar = CreateClientConVar("gry_grenade_los", "0", true, false,
 	"Warn only about a projectile in the line of sight (0: also through walls, as in the original game)", 0, 1)
 
 function Grenade.Options()
-	return {range = Grenade.ClampRange(rangeVar:GetFloat()), own = ownVar:GetBool(), los = losVar:GetBool()}
+	return {range = Grenade.ClampRange(rangeVar:GetFloat()), ownWarn = ownWarnVar:GetBool(), los = losVar:GetBool()}
 end
 
 -- The line of sight of the projectiles, one table each (weak: they go with the entity).

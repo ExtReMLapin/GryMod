@@ -182,7 +182,7 @@ return {
 			end
 		},
 		{
-			name = "the warning picks the nearest dangerous projectile in front of the player, within range, the player's own thrown one included",
+			name = "the warning picks the nearest dangerous projectile in front of the player, within range",
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				local picked = G.Pick({
@@ -198,27 +198,32 @@ return {
 			end
 		},
 		{
-			name = "the player's own thrown grenade is warned about like an enemy's, but nothing is warned about within 1 m of the eye (the grenade that leaves the hand)",
+			name = "a grenade the player threw NEVER warns, hand grenade included, at any distance (owner's decision); nothing is warned about within 1 m of the eye either",
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				expect(G.MIN_OWN).to.equal(1)
-				-- armed and free: the one the player threw, falling or rolling near them
-				local picked = G.Pick({{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = true}})
-				expect(picked ~= nil and picked.metres == 5).to.beTrue()
-				expect(G.Pick({{class = "npc_grenade_frag", metres = 1.5, onScreen = true, own = true, armed = true}}) ~= nil).to.beTrue()
-				-- at the hand, the instant it is thrown: nothing yet
-				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.7, onScreen = true, own = true, armed = true}})).to.equal(nil)
-				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.99, onScreen = true, own = true, armed = true}})).to.equal(nil)
-				-- a grenade the player let go of after picking it up has no owner in the engine (only a thrower): same at the hand
+				expect(G.OWN_RANGE).to.beNil() -- the 15 m rule of the old default is gone
+				local function own(metres, class) return {class = class or "npc_grenade_frag", metres = metres, onScreen = true, own = true, armed = true} end
+
+				for _, class in ipairs({"npc_grenade_frag", "grenade_helicopter", "combine_mine", "grenade_ar2", "rpg_missile", "prop_combine_ball"}) do
+					for _, metres in ipairs({1.5, 5, 8, 14.9, 15, 20, 39}) do
+						expect(G.Pick({own(metres, class)})).to.equal(nil)
+						expect(G.Pick({own(metres, class)}, false)).to.equal(nil)
+						expect(G.Pick({own(metres, class)}, true, {range = 100})).to.equal(nil)
+					end
+				end
+
+				-- a grenade the player let go of after picking it up with the gravity gun is recognised as theirs by the server
+				-- (the thrower), so it arrives here with own = true: same; an enemy's one with no thrower at the hand does not blink
 				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.9, onScreen = true, own = false, armed = true}})).to.equal(nil)
 				expect(G.Pick({{class = "npc_grenade_frag", metres = 1.1, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
-				-- and an own one that is not armed (the server marks it so while it is held in the hands) is not warned about
-				expect(G.Pick({{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = false}})).to.equal(nil)
-				-- the nearest of an own one and an enemy's
+
+				-- the player's own one never hides an enemy's behind it: the nearest of the two is the enemy's
 				expect(G.Pick({
-					{class = "npc_grenade_frag", metres = 6, onScreen = true, own = true, armed = true},
+					own(6),
 					{class = "grenade_ar2", metres = 9, onScreen = true, own = false, armed = true}
-				}).metres).to.equal(6)
+				}).metres).to.equal(9)
+				expect(G.Pick({own(2), {class = "npc_grenade_frag", metres = 35, onScreen = true, own = false, armed = true}}).metres).to.equal(35)
 			end
 		},
 		{
@@ -254,12 +259,12 @@ return {
 			end
 		},
 		{
-			name = "a projectile the player FIRED (missile, rifle grenade, energy ball) never warns, an enemy's does, and so does the player's own hand grenade",
+			name = "a projectile the player FIRED (missile, rifle grenade, energy ball) never warns, even with the old own-grenade rule on, and an enemy's does",
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				for _, class in ipairs({"rpg_missile", "grenade_ar2", "prop_combine_ball"}) do
 					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = true, armed = true}})).to.equal(nil)
-					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = true, armed = true}}, true, {own = true})).to.equal(nil)
+					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = true, armed = true}}, true, {ownWarn = true})).to.equal(nil)
 					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
 				end
 				-- the nearest is not the player's own missile but the enemy's behind it
@@ -273,23 +278,26 @@ return {
 			end
 		},
 		{
-			name = "the player's own hand grenade: gry_grenade_own off silences it, and it only warns within 15 m (one thrown away does not tell, one that falls back on the player does)",
+			name = "gry_grenade_own_warn (off by default) brings back the old rule: the player's own hand grenade warns within 15 m, never what the player fired",
 			func = function(state)
 				local G = GryMod.FlashGrenade
-				expect(G.OWN_RANGE).to.equal(15)
+				expect(G.OWN_WARN_RANGE).to.equal(15)
 				local function own(metres, class) return {class = class or "npc_grenade_frag", metres = metres, onScreen = true, own = true, armed = true} end
-				expect(G.Pick({own(8)}, true, {own = false})).to.equal(nil)
-				expect(G.Pick({own(8)}, true, {own = true}) ~= nil).to.beTrue()
-				expect(G.Pick({own(8)}) ~= nil).to.beTrue() -- on by default
-				expect(G.Pick({own(15)}) ~= nil).to.beTrue()
-				expect(G.Pick({own(15.5)})).to.equal(nil)
-				expect(G.Pick({own(30)}, true, {range = 100})).to.equal(nil)
-				expect(G.Pick({own(9, "grenade_helicopter")}) ~= nil).to.beTrue()
-				expect(G.Pick({own(20, "grenade_helicopter")})).to.equal(nil)
-				-- an enemy's frag at 30 m still warns
-				expect(G.Pick({{class = "npc_grenade_frag", metres = 30, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
-				-- and the own one beyond 15 m does not hide the enemy's
-				expect(G.Pick({own(16), {class = "npc_grenade_frag", metres = 35, onScreen = true, own = false, armed = true}}).metres).to.equal(35)
+				local on = {ownWarn = true}
+				expect(G.Pick({own(8)}, true, on) ~= nil).to.beTrue()
+				expect(G.Pick({own(8)}, true, {ownWarn = false})).to.equal(nil)
+				expect(G.Pick({own(8)}, true, {})).to.equal(nil)
+				expect(G.Pick({own(8)})).to.equal(nil) -- off when no option is given
+				expect(G.Pick({own(15)}, true, on) ~= nil).to.beTrue()
+				expect(G.Pick({own(15.5)}, true, on)).to.equal(nil)
+				expect(G.Pick({own(30)}, true, {ownWarn = true, range = 100})).to.equal(nil)
+				expect(G.Pick({own(9, "grenade_helicopter")}, true, on) ~= nil).to.beTrue()
+				expect(G.Pick({own(20, "grenade_helicopter")}, true, on)).to.equal(nil)
+				expect(G.Pick({own(0.9)}, true, on)).to.equal(nil) -- still nothing at the hand
+				-- an enemy's frag at 30 m warns whatever the option says, and the own one beyond 15 m does not hide it
+				local enemy = {class = "npc_grenade_frag", metres = 30, onScreen = true, own = false, armed = true}
+				expect(G.Pick({enemy}, true, on) ~= nil).to.beTrue()
+				expect(G.Pick({own(16), {class = "npc_grenade_frag", metres = 35, onScreen = true, own = false, armed = true}}, true, on).metres).to.equal(35)
 			end
 		},
 		{
@@ -336,17 +344,79 @@ return {
 			end
 		},
 		{
-			name = "the settings exist: gry_grenade_range (40, 5 to 200), gry_grenade_own (1), gry_grenade_los (0)",
+			name = "the settings exist: gry_grenade_range (40, 5 to 200), gry_grenade_own_warn (0), gry_grenade_los (0)",
 			func = function(state)
-				local r, o, l = GetConVar("gry_grenade_range"), GetConVar("gry_grenade_own"), GetConVar("gry_grenade_los")
+				local r, o, l = GetConVar("gry_grenade_range"), GetConVar("gry_grenade_own_warn"), GetConVar("gry_grenade_los")
 				expect(r).toNot.beNil()
 				expect(o).toNot.beNil()
 				expect(l).toNot.beNil()
 				expect(r:GetMin()).to.equal(5)
 				expect(r:GetMax()).to.equal(200)
 				expect(r:GetDefault()).to.equal("40")
-				expect(o:GetDefault()).to.equal("1")
+				expect(o:GetDefault()).to.equal("0")
 				expect(l:GetDefault()).to.equal("0")
+			end
+		},
+		{
+			name = "an old saved gry_grenade_own 1 does not bring the old rule back: only gry_grenade_own_warn does, and it is read by Options",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local warn = GetConVar("gry_grenade_own_warn")
+				local old = GetConVar("gry_grenade_own") -- it only exists when an earlier version of the module created it in this session
+				local savedWarn, savedOld = warn:GetString(), old and old:GetString()
+
+				local ok, err = pcall(function()
+					if old then
+						old:SetString("1")
+					end
+
+					warn:SetString("0")
+					expect(G.Options().ownWarn).to.beFalse()
+					local own = {class = "npc_grenade_frag", metres = 8, onScreen = true, own = true, armed = true}
+					expect(G.Pick({own}, true, G.Options())).to.equal(nil)
+
+					warn:SetString("1")
+					expect(G.Options().ownWarn).to.beTrue()
+					expect(G.Pick({own}, true, G.Options()) ~= nil).to.beTrue()
+				end)
+
+				pcall(function() warn:SetString(savedWarn) end)
+				pcall(function() if old then old:SetString(savedOld) end end)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "gry_grenade_own_warn has its check box in the options, and the old gry_grenade_own has none",
+			func = function(state)
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_grenade_own_warn"]).to.beTrue()
+				expect(found["gry_grenade_own"]).to.beNil()
 			end
 		},
 		{
@@ -379,6 +449,12 @@ return {
 					expect(G.Candidate(stub(NULL, true, ply), ply, {x = 0, y = 0, visible = true}).own).to.beTrue()
 					expect(G.Candidate(stub(NULL, true, {}), ply, {x = 0, y = 0, visible = true}).own).to.beFalse()
 					expect(G.Candidate(stub(ply, true), ply, {x = 0, y = 0, visible = true}).own).to.beTrue()
+					-- another player (a bot, a team mate) threw it: it is not the player's own, so it warns
+					local bot = {IsValid = function() return true end}
+					expect(G.Candidate(stub(bot, true, bot), ply, {x = 0, y = 0, visible = true}).own).to.beFalse()
+					-- third person (ShouldDrawLocalPlayer) changes the camera, not who threw: the eye of the player still gives the distance
+					local third = {EyePos = function() return eye end, IsValid = function() return true end, ShouldDrawLocalPlayer = function() return true end}
+					expect(G.Candidate(stub(third, true), third, {x = 0, y = 0, visible = true}).own).to.beTrue()
 					-- the line of sight reading is carried when given
 					expect(G.Candidate(stub(NULL, true), ply, {x = 0, y = 0, visible = true}, false).visible).to.beFalse()
 			end
