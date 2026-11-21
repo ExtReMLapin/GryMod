@@ -1,4 +1,63 @@
 
+-- One colour of the custom HUD theme: a mixer that writes "r g b" in its setting, and puts the HUD on the custom
+-- theme when the player picks a colour. Opening the panel writes nothing.
+local function addColourMixer(Panel, label, convarName)
+	Panel:Help(label)
+
+	local mixer = vgui.Create("DColorMixer")
+	mixer:SetPalette(false)
+	mixer:SetAlphaBar(false)
+	mixer:SetWangs(true)
+	mixer:SetTall(110)
+
+	local current = GryMod.FlashHUD.ParseColour(GetConVar(convarName):GetString()) or {255, 255, 255}
+	mixer:SetColor(Color(current[1], current[2], current[3]))
+
+	local ready = true
+	mixer.ValueChanged = function(_, color)
+		if not ready then
+			return
+		end
+
+		local text = color.r .. " " .. color.g .. " " .. color.b
+
+		if GetConVar(convarName):GetString() ~= text then
+			RunConsoleCommand(convarName, text)
+			RunConsoleCommand("gry_hud_theme", "custom")
+		end
+	end
+
+	Panel:AddItem(mixer)
+end
+
+-- The HUD settings: the colours (the four sets of the original game, or your own), and one switch for each
+-- element of the interface.
+function GryMod.GryHUDOptions(Panel)
+	Panel:Help("HUD colours")
+	Panel:AddControl("ComboBox", {
+		Label = "Colour set",
+		MenuButton = 0,
+		Options = {
+			["Ice blue"] = {gry_hud_theme = "blue"},
+			["Military green (Crysis default)"] = {gry_hud_theme = "default"},
+			["Amber"] = {gry_hud_theme = "orange"},
+			["White"] = {gry_hud_theme = "white"},
+			["Custom (the three colours below)"] = {gry_hud_theme = "custom"}
+		}
+	})
+	addColourMixer(Panel, "Custom colour of the outlines and icons", "gry_hud_color_line")
+	addColourMixer(Panel, "Custom colour of the active indicators", "gry_hud_color_over")
+	addColourMixer(Panel, "Custom colour of the digits and letters", "gry_hud_color_text")
+
+	Panel:Help("HUD elements")
+
+	for _, option in ipairs(GryMod.HUDOptions.List) do
+		Panel:CheckBox(option.label, "gry_hud_" .. option.name)
+	end
+
+	Panel:Button("Switch every element back on", "gry_hud_reset")
+end
+
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
 function GryMod.GryOptionschute(Panel)
 	Panel:AddControl("Label", {
@@ -31,16 +90,8 @@ function GryMod.GryOptionschute(Panel)
 		Panel:AddItem(binder)
 	end
 
-	Panel:AddControl("ComboBox", {
-		Label = "Crysis HUD colours",
-		MenuButton = 0,
-		Options = {
-			["Blue"] = {gry_hud_theme = "blue"},
-			["Crysis default (green)"] = {gry_hud_theme = "default"},
-			["White"] = {gry_hud_theme = "white"},
-			["Orange"] = {gry_hud_theme = "orange"}
-		}
-	})
+	GryMod.GryHUDOptions(Panel)
+
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)
 

@@ -45,3 +45,7 @@ function Options.Reset()
 		convar:SetString(convar:GetDefault())
 	end
 end
+
+concommand.Add("gry_hud_reset", function()
+	Options.Reset()
+end)

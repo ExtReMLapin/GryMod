@@ -85,6 +85,40 @@ return {
 			end
 		},
 		{
+			name = "the options panel has a check box and a colour mixer for each setting, and opening it writes nothing",
+			func = function(state)
+				local writes = {}
+				local realRun = RunConsoleCommand
+				RunConsoleCommand = function(name, value)
+					writes[#writes + 1] = tostring(name):lower() .. "=" .. tostring(value)
+				end
+
+				local ok, err = pcall(function()
+					local panel = vgui.Create("ControlPanel")
+					GryMod.GryOptionschute(panel)
+
+					local boxes, mixers = 0, 0
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" then boxes = boxes + 1 end
+							if child.ClassName == "DColorMixer" then mixers = mixers + 1 end
+							walk(child)
+						end
+					end
+
+					walk(panel)
+					panel:Remove()
+					expect(boxes >= #GryMod.HUDOptions.List).to.beTrue()
+					expect(mixers).to.equal(3)
+				end)
+
+				RunConsoleCommand = realRun
+				expect(ok).to.beTrue()
+				expect(#writes).to.equal(0)
+				expect(concommand.GetTable().gry_hud_reset ~= nil).to.beTrue()
+			end
+		},
+		{
 			name = "the status panel and the radar panel are each drawn or not by their own switch",
 			func = function(state)
 				local Flash = GryMod.Flash
