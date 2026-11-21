@@ -155,7 +155,8 @@ local CloakAltFire = CreateClientConVar("gry_cloak_altfire", "1", true, false, "
 
 -- Does the right click of this weapon fire a shot right now? Pure: the class, the magazine (Clip1) and the ammo reserve of the
 -- primary and of the secondary ammo type of the weapon. What the secondary IS comes from the weapon registry (GryMod.API, the stock
--- weapons are registered there as data): the shotgun's double barrel needs two shells in the magazine, a grenade, an energy ball
+-- weapons are registered there as data): the shotgun's right click needs a shell in the magazine (both barrels with two, a single shot
+-- with the last one: the engine's own rule, which the first version of this table got wrong), a grenade, an energy ball
 -- or another shot needs its secondary ammo, the frag grenade's lob needs a grenade left. A zoom (the crossbow), a swing and the
 -- weapons the registry does not know never count.
 function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
@@ -169,7 +170,7 @@ function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
 	local alt = def.alt
 
 	if alt == "doublebarrel" then
-		return (clip1 or 0) >= 2 -- the double barrel fires both shells
+		return (clip1 or 0) >= 1 -- both barrels with two shells or more; with the last one the engine fires a single shot instead
 	elseif alt == "throwlow" then
 		return (primaryReserve or 0) > 0 -- the lob, while there is a grenade
 	elseif alt == "grenade" or alt == "energy" or alt == "shoot" then
@@ -442,6 +443,31 @@ local function endCloak(ply)
 		GryMod.DamageFx.Decloak(GryMod.DamageFx.State, RealTime())
 	end
 end
+
+-- A shot the SERVER saw: bullets left the player's weapon (the hook EntityFireBullets, sv_system.lua: the shotgun in either mode, the other
+-- addons' weapons, whatever their rules). It ends the camouflage like the press that caused it, unless the player turned the right click
+-- off (gry_cloak_altfire) and it was one. The press is judged by the numbers of the weapon; this is the shot itself: nothing to guess.
+-- The suit is already out of the camouflage when the press ended it first, so the second one finds nothing to do.
+function GryMod.CloakShot(ply, alt)
+	if ply.NanosuitMode ~= GryMod.Modes.CLOAK then
+		return
+	end
+
+	if alt and not CloakAltFire:GetBool() then
+		return
+	end
+
+	endCloak(ply)
+end
+
+net.Receive("gry_cloak_shot", function()
+	local alt = net.ReadBool()
+	local ply = LocalPlayer()
+
+	if IsValid(ply) then
+		GryMod.CloakShot(ply, alt)
+	end
+end)
 
 -- How long a press that came too early (the weapon is being drawn) is followed, in seconds.
 local ATTACK_WATCH = 2

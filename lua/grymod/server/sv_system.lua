@@ -3,6 +3,7 @@ util.AddNetworkString("gry_spawn")
 util.AddNetworkString("gry_jump")
 util.AddNetworkString("gry_drop")
 util.AddNetworkString("gry_empty_energy")
+util.AddNetworkString("gry_cloak_shot")
 util.AddNetworkString("gry_armor_hit_sound")
 
 GryMod.Config = {
@@ -133,6 +134,41 @@ function meta:SetNanosuitMode(mode, networked)
 
 	return refused == nil, refused
 end
+
+-- The camouflage ends when the player shoots. The client judges the press of the key by the numbers of the weapon (cl_hud.lua), which is a
+-- guess; bullets leaving the weapon are the shot itself, and the engine tells every addon through EntityFireBullets (the engine's weapons,
+-- the scripted ones, whatever their rules). Only bullets: a grenade, an energy ball, a lob, a swing leave through the client's rules.
+-- The server sees it (in single player the client's weapon code does not run), so it is told to the player, who ends the camouflage (he
+-- may have turned the right click off: gry_cloak_altfire is his).
+--
+-- Whose shot is this: the player's, or a scripted weapon's whose owner is a player; and only in the camouflage. Returns the player and whether it is an
+-- alt fire (the right click alone is down), or nothing.
+function GryMod.CloakShooter(ent)
+	if not IsValid(ent) then return nil end
+
+	local ply = ent
+
+	if ent:IsWeapon() then
+		ply = ent:GetOwner()
+	end
+
+	if not IsValid(ply) or not ply:IsPlayer() or ply.Nanosuit_mode ~= GryMod.Modes.CLOAK then
+		return nil
+	end
+
+	return ply, ply:KeyDown(IN_ATTACK2) and not ply:KeyDown(IN_ATTACK)
+end
+
+-- Every bullet of the server goes through here: the check is cheap and nothing is returned (the bullets are left as they are).
+hook.Add("EntityFireBullets", "GryCloakShot", function(ent, data)
+	local ply, alt = GryMod.CloakShooter(ent)
+
+	if not ply then return end
+
+	net.Start("gry_cloak_shot")
+	net.WriteBool(alt)
+	net.Send(ply)
+end)
 
 net.Receive("gry_empty_energy", function(len, ply)
 	ply:SetNWFloat("GryEnergy", 0)

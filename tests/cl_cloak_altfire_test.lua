@@ -85,13 +85,17 @@ return {
 	end,
 	cases = {
 		{
-			name = "the shotgun's right click shoots with at least two shells in the magazine",
+			name = "the shotgun's right click shoots with any shell in the magazine: both barrels with two or more, a single shot with the last one (the engine's own rule), nothing with none",
 			func = function(state)
 				local shoots = GryMod.AltFireShoots
 				expect(shoots("weapon_shotgun", 6, 0, 0)).to.beTrue()
 				expect(shoots("weapon_shotgun", 2, 0, 0)).to.beTrue()
-				expect(shoots("weapon_shotgun", 1, 30, 0)).to.beFalse()
+				-- with one shell left the right click fires a single shot (measured by the owner: a shot goes off, the camouflage must end)
+				expect(shoots("weapon_shotgun", 1, 30, 0)).to.beTrue()
+				expect(shoots("weapon_shotgun", 1, 0, 0)).to.beTrue()
+				-- an empty magazine reloads (or dry fires): no shot
 				expect(shoots("weapon_shotgun", 0, 30, 0)).to.beFalse()
+				expect(shoots("weapon_shotgun", 0, 0, 0)).to.beFalse()
 			end
 		},
 		{
@@ -133,7 +137,8 @@ return {
 
 				API.RegisterWeapon("t_alt_gun", {alt = "doublebarrel"})
 				expect(shoots("t_alt_gun", 2, 0, 0)).to.beTrue()
-				expect(shoots("t_alt_gun", 1, 30, 0)).to.beFalse()
+				expect(shoots("t_alt_gun", 1, 30, 0)).to.beTrue() -- the last shell is a single shot
+				expect(shoots("t_alt_gun", 0, 30, 0)).to.beFalse()
 
 				API.RegisterWeapon("t_alt_gun", {alt = "throwlow"})
 				expect(shoots("t_alt_gun", -1, 1, 0)).to.beTrue()
@@ -180,10 +185,10 @@ return {
 			end
 		},
 		{
-			name = "a right click that cannot shoot keeps the camouflage: shotgun with one shell, no grenade, crossbow, other addon",
+			name = "a right click that cannot shoot keeps the camouflage: shotgun with no shell, no grenade, crossbow, other addon",
 			func = function(state)
 				local cases = {
-					{"weapon_shotgun", 1, 30, 0},
+					{"weapon_shotgun", 0, 30, 0},
 					{"weapon_smg1", 30, 90, 0},
 					{"weapon_ar2", 30, 90, 0},
 					{"weapon_frag", -1, 0, 0},
@@ -542,6 +547,68 @@ return {
 				end
 
 				expect(found["gry_cloak_altfire"]).to.beTrue()
+			end
+		},
+		{
+			name = "a right click with the shotgun's last shell ends the camouflage and empties the energy, like any shot (the owner's bug)",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 1, 30, 0)
+				GryMod.CloackAttack(ply, IN_ATTACK2)
+				expect(#ply.modeSet).to.equal(1)
+				expect(ply.modeSet[1][1]).to.equal(GryMod.Modes.ARMOR)
+				expect(sent[1]).to.equal("gry_empty_energy")
+			end
+		},
+		{
+			name = "CloakShot: a real shot reported by the server ends the camouflage, once, whatever the weapon's rules say",
+			func = function(state)
+				expect(GryMod.CloakShot).to.exist()
+
+				-- a weapon no rule knows, a magazine the rules call empty: the server saw bullets leave
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "some_other_addon_swep", 0, 0, 0)
+				GryMod.CloakShot(ply, false)
+				expect(#ply.modeSet).to.equal(1)
+				expect(ply.NanosuitMode).to.equal(GryMod.Modes.ARMOR)
+				expect(sent[1]).to.equal("gry_empty_energy")
+
+				-- the key press and the server both saw it: the second one finds the suit out of the camouflage already
+				GryMod.CloakShot(ply, false)
+				expect(#ply.modeSet).to.equal(1)
+				expect(#sent).to.equal(1)
+			end
+		},
+		{
+			name = "CloakShot: a right click shot keeps the camouflage when the player turned gry_cloak_altfire off; a left click shot never does",
+			func = function(state)
+				GetConVar("gry_cloak_altfire"):SetString("0")
+
+				local right = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 2, 0, 0)
+				GryMod.CloakShot(right, true)
+				expect(#right.modeSet).to.equal(0)
+
+				local left = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 2, 0, 0)
+				GryMod.CloakShot(left, false)
+				expect(#left.modeSet).to.equal(1)
+
+				GetConVar("gry_cloak_altfire"):SetString("1")
+				local again = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 2, 0, 0)
+				GryMod.CloakShot(again, true)
+				expect(#again.modeSet).to.equal(1)
+			end
+		},
+		{
+			name = "CloakShot: outside the camouflage nothing happens",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.ARMOR, "weapon_shotgun", 6, 0, 0)
+				GryMod.CloakShot(ply, false)
+				expect(#ply.modeSet).to.equal(0)
+				expect(#sent).to.equal(0)
+			end
+		},
+		{
+			name = "the server's shot notice is received",
+			func = function(state)
+				expect(net.Receivers["gry_cloak_shot"] ~= nil).to.beTrue()
 			end
 		}
 	}
