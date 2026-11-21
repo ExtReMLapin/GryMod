@@ -250,7 +250,7 @@ return {
 			func = function(state)
 				local p = ply()
 				GryMod.Malfunction.Start(p, 5, "emp")
-				hook.GetTable().PlayerDeath["GryMod malfunction death"](p)
+				hook.GetTable().PostPlayerDeath["GryMod malfunction death"](p)
 				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
 				expect(timer.Exists("GryMalfunction" .. p:EntIndex())).to.beFalse()
 

@@ -51,9 +51,12 @@ hook.Add("GryUseEnergy", "grymod energy usage", function(ply)
 end)
 
 
-hook.Add("PlayerDeath","grymod death stop healing sound", function (ply)
+-- PostPlayerDeath, not PlayerDeath: it is the one hook that every death goes through, Player:KillSilent included. Running it
+-- twice does nothing more: the sound is over for the player once it has been stopped.
+hook.Add("PostPlayerDeath","grymod death stop healing sound", function (ply)
 	if (ply.should_heath_regen or Mech.RepairSoundPlaying(ply, CurTime())) then
 		ply.should_heath_regen = false
+		ply.last_repair_sound = nil
 		net.Start("gry_stop_health_regen")
 		net.Send(ply)
 	end

@@ -293,7 +293,8 @@ hook.Add("PlayerSpawn", "GryMod radar", function(ply)
 	Radar.Reset(ply)
 end)
 
-hook.Add("PlayerDeath", "GryMod radar", function(ply)
+-- PostPlayerDeath: Player:KillSilent skips PlayerDeath
+hook.Add("PostPlayerDeath", "GryMod radar", function(ply)
 	Radar.Reset(ply)
 end)
 

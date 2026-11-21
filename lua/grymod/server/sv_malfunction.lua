@@ -276,7 +276,8 @@ end)
 -- Clean-up
 -- ---------------------------------------------------------------------------------------------------------
 
-hook.Add("PlayerDeath", "GryMod malfunction death", function(ply)
+-- PostPlayerDeath: Player:KillSilent skips PlayerDeath
+hook.Add("PostPlayerDeath", "GryMod malfunction death", function(ply)
 	Malfunction.Clear(ply)
 end)
 

@@ -224,7 +224,7 @@ return {
 				hit(p, 10)
 				expect(count("gry_stop_health_regen")).to.equal(0)
 				local dead = recorded(function()
-					hook.GetTable().PlayerDeath["grymod death stop healing sound"](p)
+					hook.GetTable().PostPlayerDeath["grymod death stop healing sound"](p)
 				end)
 				expect(count("gry_stop_health_regen")).to.equal(1)
 			end

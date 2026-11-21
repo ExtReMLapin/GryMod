@@ -159,7 +159,8 @@ timer.Create("GryDrownPoll", POLL, 0, function()
 	Drown.Poll(POLL)
 end)
 
-hook.Add("PlayerDeath", "GryDrownClear", function(ply)
+-- PostPlayerDeath: Player:KillSilent skips PlayerDeath
+hook.Add("PostPlayerDeath", "GryDrownClear", function(ply)
 	Drown.Clear(ply)
 end)
 
