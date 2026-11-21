@@ -271,6 +271,58 @@ return {
 				fn()
 				expect(probes).to.equal(0)
 			end
+		},
+		{
+			name = "the look: the bright glassy one (the picture read as it is) by default, the natural one (read through the sRGB conversion, nearly invisible) when the option is 0; a check box",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				local c = GetConVar("gry_cloak_refract_look")
+				expect(c ~= nil).to.beTrue()
+				expect(c:GetDefault()).to.equal("1")
+
+				local before = c:GetString()
+				c:SetString("1")
+				expect(R.Look()).to.equal("1")
+				c:SetString("0")
+				expect(R.Look()).to.equal("0")
+				c:SetString(before)
+
+				-- a part made for each look: switching it takes effect at once, without a reload
+				c:SetString("1")
+				local bright = R.Part("models/debug/debugwhite")
+				c:SetString("0")
+				local natural = R.Part("models/debug/debugwhite")
+				c:SetString(before)
+				expect(bright ~= natural).to.beTrue()
+				expect(bright.material:GetInt("$linearread_basetexture")).to.equal(1)
+				expect(natural.material:GetInt("$linearread_basetexture")).to.equal(0)
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = child:GetText()
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_cloak_refract_look"] ~= nil).to.beTrue()
+			end
 		}
 	}
 }

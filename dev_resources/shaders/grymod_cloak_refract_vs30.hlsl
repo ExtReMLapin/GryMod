@@ -22,6 +22,11 @@ struct VS_OUTPUT {
 	float3 viewVec : TEXCOORD7;	// from the eye to the position
 };
 
+// The layer is drawn over a model the engine has just drawn, at the very same depth; this vertex shader skins the vertices its own way, so the
+// two depths differ by a rounding error and the depth test passes for some triangles and not for others (measured: the model's own colours showed
+// through as flat facets). The layer is pulled this far (a share of the clip space's w, so in the depth buffer's own units) towards the camera.
+#define DEPTH_PULL 0.0002
+
 VS_OUTPUT main(VS_INPUT vert) {
 	float3 world_normal;
 	float3 world_pos;
@@ -30,6 +35,7 @@ VS_OUTPUT main(VS_INPUT vert) {
 	VS_OUTPUT output = (VS_OUTPUT)0;
 	output.clip = mul(float4(world_pos, 1), cViewProj);
 	output.proj_pos = output.clip;
+	output.proj_pos.z -= output.clip.w * DEPTH_PULL;
 	output.uv = vert.vTexCoord.xy;
 	output.worldPos = world_pos;
 	output.worldNormal = normalize(world_normal);

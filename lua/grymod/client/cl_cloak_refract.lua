@@ -43,6 +43,17 @@ R.RIM_LIGHT = 0.2
 R.RELIEF = 1
 R.GENERIC_TILING = 2
 
+-- The look. The copy of the screen holds the colours as they are shown, and the layer's output goes into a linear buffer. Read as it is ("1": the
+-- default) the picture comes out brighter than the scene behind, a glassy, icy camouflaged arm (the one the owner liked); read through the sRGB
+-- conversion the engine applies to colours ("0") the camouflaged arm is nearly invisible and shows what is behind it, the physically right
+-- picture. One option, gry_cloak_refract_look; a change takes effect at once (a part is made for each look).
+local look = GetConVar("gry_cloak_refract_look") or CreateClientConVar("gry_cloak_refract_look", "1", true, false,
+	"1: the camouflaged arms are bright and glassy (the picture behind read as it is); 0: nearly invisible, showing exactly what is behind (read through the sRGB conversion)", 0, 1)
+
+function R.Look()
+	return look:GetBool() and "1" or "0"
+end
+
 -- Under this alpha nothing is drawn.
 R.MIN_ALPHA = 0.01
 
@@ -101,7 +112,7 @@ local parts = {}
 
 -- The material that draws the layer over a part of a model whose own material is `path`, with that material's relief map. Made once.
 function R.Part(path)
-	local name = R.prefix .. "_" .. R.PIXEL .. "_" .. string.gsub(path, "[^%w]", "_")
+	local name = R.prefix .. "_" .. R.PIXEL .. "_" .. R.VERTEX .. "_" .. R.Look() .. "_" .. string.gsub(path, "[^%w]", "_")
 	local part = parts[name]
 
 	if part then
@@ -125,7 +136,7 @@ function R.Part(path)
 			["$texture1"] = bump,
 			["$texture2"] = R.PALETTE,
 			["$texture3"] = R.INTERLATION,
-			["$linearread_basetexture"] = "1",
+			["$linearread_basetexture"] = R.Look(),
 			["$linearread_texture1"] = "1",
 			["$linearread_texture2"] = "1",
 			["$linearread_texture3"] = "1",
@@ -254,7 +265,7 @@ local modelParts = {}
 
 local function partsOf(ent)
 	local model = ent:GetModel()
-	local list = modelParts[R.PIXEL .. model]
+	local list = modelParts[R.PIXEL .. R.VERTEX .. R.Look() .. model]
 
 	if not list then
 		list = {}
@@ -263,7 +274,7 @@ local function partsOf(ent)
 			list[index] = R.Part(path)
 		end
 
-		modelParts[R.PIXEL .. model] = list
+		modelParts[R.PIXEL .. R.VERTEX .. R.Look() .. model] = list
 	end
 
 	return list
