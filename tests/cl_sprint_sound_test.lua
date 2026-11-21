@@ -583,7 +583,7 @@ return {
 					IsOnGround = function() return true end,
 					WaterLevel = function() return 3 end,
 					Alive = function() return true end,
-					GetNWBool = function() return false end,
+					GetNW2Bool = function() return false end,
 					IsValid = function() return true end
 				}
 				local frame = SS.Sample(ply, 55, true)
@@ -607,7 +607,7 @@ return {
 				expect(SS.Sample(ply, 55, false).jumped).to.beFalse()
 				ply.NanosuitMode = GryMod.Modes.ARMOR
 				expect(SS.Sample(ply, 55, true).speed).to.beFalse()
-				ply.GetNWBool = function(self, name) return name == "GryMalfunction" end
+				ply.GetNW2Bool = function(self, name) return name == "GryMalfunction" end
 				expect(SS.Sample(ply, 55, true).suit).to.beFalse()
 			end
 		},

@@ -725,7 +725,7 @@ return {
 				local p = ply()
 				local e = spawnNPC("npc_zombie", p:GetPos() + Vector(300, 0, 0))
 				local hooks = hook.GetTable().EntityTakeDamage
-				local mode, energy = p.Nanosuit_mode, p:GetNWFloat("GryEnergy")
+				local mode, energy = p.Nanosuit_mode, p:GetNW2Float("GryEnergy")
 				local orders = {{"Grymod damage handeling", "GryMod radar"}, {"GryMod radar", "Grymod damage handeling"}}
 
 				startRecording()
@@ -735,7 +735,7 @@ return {
 						dmg:SetDamage(10)
 						dmg:SetAttacker(e)
 						p.Nanosuit_mode = GryMod.Modes.ARMOR
-						p:SetNWFloat("GryEnergy", 100)
+						p:SetNW2Float("GryEnergy", 100)
 						R.Reset(p)
 
 						for _, name in ipairs(order) do
@@ -747,7 +747,7 @@ return {
 				end)
 				stopRecording()
 				p.Nanosuit_mode = mode
-				p:SetNWFloat("GryEnergy", energy)
+				p:SetNW2Float("GryEnergy", energy)
 				R.Reset(p)
 				assert(ok, err)
 			end

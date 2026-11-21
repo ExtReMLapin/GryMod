@@ -148,14 +148,14 @@ return {
 				local mine = spawn("rpg_missile", p:EyePos() + p:GetForward() * 200)
 				mine:SetOwner(p)
 				G.Update(mine)
-				expect(mine:GetNWEntity("GryThrower")).to.equal(p)
+				expect(mine:GetNW2Entity("GryThrower")).to.equal(p)
 				local foe = spawn("rpg_missile", p:EyePos() + p:GetForward() * 200 + Vector(0, 100, 0))
 				G.Update(foe)
-				expect(IsValid(foe:GetNWEntity("GryThrower"))).to.beFalse()
+				expect(IsValid(foe:GetNW2Entity("GryThrower"))).to.beFalse()
 				-- the owner is lost later (the engine clears it): the mark follows
 				mine:SetOwner(NULL)
 				G.Update(mine)
-				expect(IsValid(mine:GetNWEntity("GryThrower"))).to.beFalse()
+				expect(IsValid(mine:GetNW2Entity("GryThrower"))).to.beFalse()
 			end
 		},
 		{
@@ -165,17 +165,17 @@ return {
 				-- made by nobody, like a Combine soldier's: no thrower before the player touches it
 				local g = spawn("npc_grenade_frag", p:EyePos() + p:GetForward() * 60)
 				G.Update(g)
-				expect(IsValid(g:GetNWEntity("GryThrower"))).to.beFalse()
+				expect(IsValid(g:GetNW2Entity("GryThrower"))).to.beFalse()
 
 				p:PickupObject(g)
 				G.Update(g)
-				expect(g:GetNWEntity("GryThrower")).to.equal(p)
-				expect(g:GetNWBool("GryArmed")).to.beFalse()
+				expect(g:GetNW2Entity("GryThrower")).to.equal(p)
+				expect(g:GetNW2Bool("GryArmed")).to.beFalse()
 
 				p:DropObject()
 				G.Update(g)
-				expect(g:GetNWEntity("GryThrower")).to.equal(p)
-				expect(g:GetNWBool("GryArmed")).to.beTrue()
+				expect(g:GetNW2Entity("GryThrower")).to.equal(p)
+				expect(g:GetNW2Bool("GryArmed")).to.beTrue()
 			end
 		},
 		{
@@ -192,13 +192,13 @@ return {
 				local p = ply()
 				local g = spawn("npc_grenade_frag", p:EyePos() + p:GetForward() * 120)
 				G.Update(g)
-				expect(g:GetNWBool("GryArmed")).to.beFalse()
+				expect(g:GetNW2Bool("GryArmed")).to.beFalse()
 				-- the fuse: picking the grenade up arms it (1.5 s) in the engine, then it is let go
 				p:PickupObject(g)
 				p:DropObject()
 				expect(g:GetInternalVariable("m_flDetonateTime") > 0).to.beTrue()
 				G.Update(g)
-				expect(g:GetNWBool("GryArmed")).to.beTrue()
+				expect(g:GetNW2Bool("GryArmed")).to.beTrue()
 			end
 		},
 		{
@@ -211,11 +211,11 @@ return {
 				expect(g:GetInternalVariable("m_flDetonateTime") > 0).to.beTrue()
 				expect(G.IsActive(g)).to.beFalse() -- the fuse runs, but the player has it
 				G.Update(g)
-				expect(g:GetNWBool("GryArmed")).to.beFalse()
+				expect(g:GetNW2Bool("GryArmed")).to.beFalse()
 				p:DropObject()
 				expect(g:IsPlayerHolding()).to.beFalse()
 				G.Update(g)
-				expect(g:GetNWBool("GryArmed")).to.beTrue()
+				expect(g:GetNW2Bool("GryArmed")).to.beTrue()
 			end
 		},
 		{
@@ -243,8 +243,8 @@ return {
 				local bomb = spawn("grenade_helicopter", p:EyePos() + p:GetForward() * 150 + Vector(0, 100, 0))
 				G.Update(mine)
 				G.Update(bomb)
-				expect(mine:GetNWBool("GryArmed")).to.beFalse()
-				expect(bomb:GetNWBool("GryArmed")).to.beFalse()
+				expect(mine:GetNW2Bool("GryArmed")).to.beFalse()
+				expect(bomb:GetNW2Bool("GryArmed")).to.beFalse()
 			end
 		},
 		{
@@ -271,9 +271,9 @@ return {
 				local g = spawn("npc_grenade_frag", p:EyePos() + p:GetForward() * 120)
 				G.Track(g)
 				expect(G.TrackedCount()).to.equal(before + 1)
-				g:SetNWBool("GryArmed", true) -- a stale mark: the tick corrects it
+				g:SetNW2Bool("GryArmed", true) -- a stale mark: the tick corrects it
 				G.Tick()
-				expect(g:GetNWBool("GryArmed")).to.beFalse()
+				expect(g:GetNW2Bool("GryArmed")).to.beFalse()
 				-- one that is gone (an entity is valid until the end of the frame: a stand-in that can be made invalid at once)
 				local alive = true
 				local fake = {
@@ -281,11 +281,11 @@ return {
 					GetClass = function() return "combine_mine" end,
 					GetVelocity = function() return Vector(0, 0, 0) end,
 					GetInternalVariable = function() return 1 end,
-					GetNWBool = function() return false end,
-					SetNWBool = function() end,
+					GetNW2Bool = function() return false end,
+					SetNW2Bool = function() end,
 					GetOwner = function() return NULL end,
-					GetNWEntity = function() return NULL end,
-					SetNWEntity = function() end
+					GetNW2Entity = function() return NULL end,
+					SetNW2Entity = function() end
 				}
 				G.Track(fake)
 				expect(G.TrackedCount()).to.equal(before + 2)
@@ -311,15 +311,15 @@ return {
 				expect(G.TrackedCount()).to.equal(before + 1) -- OnEntityCreated followed it, as for a combine_mine
 
 				G.Tick()
-				expect(mine:GetNWBool("GryArmed")).to.beFalse() -- its own reader says no
+				expect(mine:GetNW2Bool("GryArmed")).to.beFalse() -- its own reader says no
 				mine.TestArmed = true
 				G.Tick()
-				expect(mine:GetNWBool("GryArmed")).to.beTrue() -- the five-times-a-second tick marks it: the client warns
+				expect(mine:GetNW2Bool("GryArmed")).to.beTrue() -- the five-times-a-second tick marks it: the client warns
 				expect(G.IsActive(mine)).to.beTrue()
 
 				mine.TestArmed = false
 				G.Tick()
-				expect(mine:GetNWBool("GryArmed")).to.beFalse()
+				expect(mine:GetNW2Bool("GryArmed")).to.beFalse()
 
 				-- a registered class is the same everywhere: removing the entry stops the marks
 				GryMod.API.UnregisterTracked("t_third_mine")
@@ -335,7 +335,7 @@ return {
 				GryMod.API.RegisterTracked("t_third_mine", {class = "t_third_mine", danger = {label = "TRAP"}})
 				local mine = spawn("t_third_mine", p:EyePos() + p:GetForward() * 150)
 				G.Update(mine)
-				expect(mine:GetNWBool("GryArmed")).to.beTrue()
+				expect(mine:GetNW2Bool("GryArmed")).to.beTrue()
 
 				local held = true
 				local stand = {IsValid = function() return true end, GetClass = function() return "t_third_mine" end, IsPlayerHolding = function() return held end}
@@ -360,10 +360,10 @@ return {
 				GryMod.API.RegisterTracked("t_third_mine", {class = "t_third_mine", danger = {ownerOf = function(ent) return ent.Planter end}})
 				local mine = spawn("t_third_mine", p:EyePos() + p:GetForward() * 150)
 				G.Update(mine)
-				expect(IsValid(mine:GetNWEntity("GryThrower"))).to.beFalse()
+				expect(IsValid(mine:GetNW2Entity("GryThrower"))).to.beFalse()
 				mine.Planter = p
 				G.Update(mine)
-				expect(mine:GetNWEntity("GryThrower")).to.equal(p)
+				expect(mine:GetNW2Entity("GryThrower")).to.equal(p)
 			end
 		},
 		{

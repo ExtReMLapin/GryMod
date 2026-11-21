@@ -92,7 +92,7 @@ end
 hook.Add("Think", "GryMod run speed", function()
 	for _, ply in ipairs(player.GetAll()) do
 		if ply.Nanosuit_mode == GryMod.Modes.SPEED then
-			local run = Mech.SpeedRunSpeed(ply:GetNWFloat("GryEnergy"))
+			local run = Mech.SpeedRunSpeed(ply:GetNW2Float("GryEnergy"))
 
 			if ply:GetRunSpeed() ~= run then
 				ply:SetRunSpeed(run)

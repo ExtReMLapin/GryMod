@@ -64,7 +64,7 @@ return {
 		if not p:Alive() then p:Spawn() end
 		GryMod.Malfunction.Clear(p)
 		p:SetHealth(p:GetMaxHealth())
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
 		GryMod.Config = table.Copy(savedConfig)
 		GryMod.Config.InfiniteArmor = false
@@ -77,7 +77,7 @@ return {
 		if IsValid(p) then
 			GryMod.Malfunction.Clear(p)
 			p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-			p:SetNWFloat("GryEnergy", 100)
+			p:SetNW2Float("GryEnergy", 100)
 		end
 
 		for _, e in ipairs(spawned) do
@@ -158,8 +158,8 @@ return {
 				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
 				expect(GryMod.Malfunction.Start(p, 6, "emp")).to.beTrue()
 				expect(GryMod.Malfunction.IsActive(p)).to.beTrue()
-				expect(p:GetNWBool("GryMalfunction")).to.beTrue()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Bool("GryMalfunction")).to.beTrue()
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
 				expect(near(GryMod.Malfunction.Remaining(p), 6, 0.1)).to.beTrue()
 				expect(timer.Exists("GryMalfunction" .. p:EntIndex())).to.beTrue()
@@ -198,8 +198,8 @@ return {
 				GryMod.Malfunction.End(p)
 				hook.Remove("GryMod_MalfunctionEnd", "test")
 				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
-				expect(p:GetNWBool("GryMalfunction")).to.beFalse()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Bool("GryMalfunction")).to.beFalse()
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 				expect(near(p.next_energy_regen - CurTime(), 1, 0.1)).to.beTrue()
 				expect(timer.Exists("GryMalfunction" .. p:EntIndex())).to.beFalse()
 				expect(ended).to.equal(p)
@@ -212,11 +212,11 @@ return {
 				GryMod.Malfunction.Start(p, 5, "emp")
 				p.next_energy_regen = CurTime() - 5 -- the delay is long over
 				thinkHook("GryMod health think")()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 				GryMod.Malfunction.End(p)
 				p.next_energy_regen = CurTime() - 1
 				thinkHook("GryMod health think")()
-				expect(p:GetNWFloat("GryEnergy")).to.beGreaterThan(0)
+				expect(p:GetNW2Float("GryEnergy")).to.beGreaterThan(0)
 			end
 		},
 		{
@@ -242,7 +242,7 @@ return {
 				GryMod.Malfunction.Start(p, 5, "emp")
 				local dmg = takeDamage(p, 10)
 				expect(near(dmg:GetDamage(), 7)).to.beTrue()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 			end
 		},
 		{
@@ -267,8 +267,8 @@ return {
 				local p = ply()
 				local dmg = takeDamage(p, 10, DMG_SHOCK)
 				expect(dmg:GetDamage()).to.equal(0)
-				expect(near(p:GetNWFloat("GryEnergy"), 100 - 10 - 15)).to.beTrue()
-				expect(p:GetNWFloat("GryFlicker")).to.beGreaterThan(CurTime())
+				expect(near(p:GetNW2Float("GryEnergy"), 100 - 10 - 15)).to.beTrue()
+				expect(p:GetNW2Float("GryFlicker")).to.beGreaterThan(CurTime())
 				expect(pending(p)).to.beNil()
 				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
 			end
@@ -277,20 +277,20 @@ return {
 			name = "THE OWNER'S CASE: a shock that eats the end of the armor bar puts the suit down (5 s)",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 20)
+				p:SetNW2Float("GryEnergy", 20)
 				takeDamage(p, 10, DMG_SHOCK) -- 20 - 15 - 10 is under 0
 				expect(pending(p)).to.equal("overload")
 				GryMod.Malfunction.Resolve(p)
 				expect(GryMod.Malfunction.IsActive(p)).to.beTrue()
 				expect(near(GryMod.Malfunction.Remaining(p), 5, 0.1)).to.beTrue()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 			end
 		},
 		{
 			name = "a light shock when the bar is already empty puts the suit down",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				takeDamage(p, 8, DMG_SHOCK)
 				GryMod.Malfunction.Resolve(p)
 				expect(GryMod.Malfunction.IsActive(p)).to.beTrue()
@@ -302,7 +302,7 @@ return {
 				local p = ply()
 				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
 				takeDamage(p, 10, DMG_SHOCK)
-				expect(near(p:GetNWFloat("GryEnergy"), 85)).to.beTrue()
+				expect(near(p:GetNW2Float("GryEnergy"), 85)).to.beTrue()
 				expect(pending(p)).to.beNil()
 			end
 		},
@@ -321,7 +321,7 @@ return {
 			name = "bullets, blasts and fire never put the suit down, even with an empty bar",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 
 				for _, kind in ipairs({DMG_BULLET, DMG_BLAST, DMG_BURN, DMG_SLASH, DMG_DISSOLVE}) do
 					takeDamage(p, 40, kind)
@@ -340,15 +340,15 @@ return {
 				spawned[#spawned + 1] = hunter
 				expect(hunter:GetClass()).to.equal("npc_hunter")
 
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				takeDamage(p, 60, DMG_CLUB, hunter, hunter) -- the bar holds
 				expect(pending(p)).to.beNil()
 
-				p:SetNWFloat("GryEnergy", 10)
+				p:SetNW2Float("GryEnergy", 10)
 				takeDamage(p, 15, DMG_CLUB, hunter, hunter) -- breaks it, but a small hit
 				expect(pending(p)).to.beNil()
 
-				p:SetNWFloat("GryEnergy", 30)
+				p:SetNW2Float("GryEnergy", 30)
 				takeDamage(p, 40, DMG_CLUB, hunter, hunter)
 				expect(pending(p)).to.equal("impact")
 				GryMod.Malfunction.Resolve(p)
@@ -364,7 +364,7 @@ return {
 				prop:SetModel("models/props_c17/oildrum001.mdl")
 				prop:Spawn()
 				spawned[#spawned + 1] = prop
-				p:SetNWFloat("GryEnergy", 10)
+				p:SetNW2Float("GryEnergy", 10)
 				takeDamage(p, 40, DMG_CLUB, prop, prop)
 				expect(pending(p)).to.beNil()
 			end
@@ -397,14 +397,14 @@ return {
 			func = function(state)
 				local p = ply()
 				setConvar("gry_malfunction_shock", "0")
-				p:SetNWFloat("GryEnergy", 20)
+				p:SetNW2Float("GryEnergy", 20)
 				takeDamage(p, 30, DMG_SHOCK)
 				expect(pending(p)).to.beNil()
-				expect(p:GetNWFloat("GryFlicker")).to.equal(0)
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0) -- the armor took it as any damage: 20 absorbed, 10 through
+				expect(p:GetNW2Float("GryFlicker")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0) -- the armor took it as any damage: 20 absorbed, 10 through
 				setConvar("gry_malfunction", "0")
 				setConvar("gry_malfunction_shock", "1")
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				takeDamage(p, 30, DMG_SHOCK)
 				expect(pending(p)).to.beNil()
 			end
@@ -504,14 +504,14 @@ return {
 			func = function(state)
 				local p = ply()
 				p:SetNanosuitMode(GryMod.Modes.CLOAK, true)
-				expect(p:GetNWFloat("GryEnergy") > 0).to.beTrue()
+				expect(p:GetNW2Float("GryEnergy") > 0).to.beTrue()
 
 				-- what cl_hud.lua sends when the attack key is pressed while camouflaged
 				p:SetNanosuitMode(GryMod.Modes.ARMOR, true)
 				net.Receivers["gry_empty_energy"](0, p)
 
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
-				expect(p:GetNWBool("GryMalfunction", false)).to.beFalse()
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Bool("GryMalfunction", false)).to.beFalse()
 				expect(p.gryMalfunctionPending).to.beNil()
 				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
 

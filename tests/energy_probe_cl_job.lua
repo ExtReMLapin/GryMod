@@ -23,7 +23,7 @@ hook.Add("PreRender", "gryprobe_cl", function()
 	local p = LocalPlayer()
 	if not IsValid(p) then return end
 	local ES = GryMod.EnergySmooth
-	local raw = p:GetNWFloat("GryEnergy")
+	local raw = p:GetNW2Float("GryEnergy")
 	P.fed = findFed()
 	local fedE = P.fed and P.fed.energy
 	-- cols: 2 NWFloat, 3 value given to the HUD (setEnergy), 4 server value (gry_energy or NW), 5 shown float

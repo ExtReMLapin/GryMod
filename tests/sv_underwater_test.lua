@@ -63,7 +63,7 @@ return {
 		savedConVars = {}
 		for _, p in ipairs(player.GetAll()) do
 			GryMod.Drown.Clear(p)
-			p:SetNWFloat("GryEnergy", 100)
+			p:SetNW2Float("GryEnergy", 100)
 			p:SetHealth(p:GetMaxHealth())
 		end
 	end,
@@ -197,7 +197,7 @@ return {
 				setConVar("gry_drown_rules", "0")
 				local p = ply()
 				local touched = 0
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				stub(FindMetaTable("Entity"), "WaterLevel", function() return 3 end)
 				stub(FindMetaTable("Entity"), "SetSaveValue", function() touched = touched + 1 end)
 				stub(GryMod.Drown, "Hurt", function() touched = touched + 1 end)
@@ -206,7 +206,7 @@ return {
 				for _ = 1, 4000 do GryMod.Drown.Poll(0.25) end
 
 				expect(touched).to.equal(0)
-				expect(p:GetNWFloat("GryEnergy")).to.equal(100)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(100)
 			end
 		},
 		{
@@ -214,7 +214,7 @@ return {
 			func = function(state)
 				local p = ply()
 				local hurts, notes = {}, 0
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				stub(FindMetaTable("Entity"), "WaterLevel", function() return 3 end)
 				stub(FindMetaTable("Entity"), "SetSaveValue", function() end)
 				-- the other players of the test server (bots) are under water too: only the first one is counted
@@ -228,24 +228,24 @@ return {
 				-- 65 s: the minute and five seconds of the suit paying
 				for _ = 1, 260 do GryMod.Drown.Poll(0.25) end
 
-				expect(near(p:GetNWFloat("GryEnergy"), 100 - 5 * 100 / 30, 1)).to.beTrue()
+				expect(near(p:GetNW2Float("GryEnergy"), 100 - 5 * 100 / 30, 1)).to.beTrue()
 				expect(#hurts).to.equal(0)
-				expect(p:GetNWBool("GryDrowning")).to.beFalse()
+				expect(p:GetNW2Bool("GryDrowning")).to.beFalse()
 
 				-- 25 more seconds: the bar is empty, then 5 s of drowning
 				for _ = 1, 120 do GryMod.Drown.Poll(0.25) end
 
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 				expect(#hurts >= 5 and #hurts <= 6).to.beTrue()
 				expect(notes).to.equal(#hurts)
 				expect(hurts[1][1]).to.equal(p)
 				expect(hurts[1][2]).to.equal(math.floor(p:GetMaxHealth() * 0.1))
-				expect(p:GetNWBool("GryDrowning")).to.beTrue()
+				expect(p:GetNW2Bool("GryDrowning")).to.beTrue()
 
 				-- the head comes out: the mark and the count are cleared
 				stub(FindMetaTable("Entity"), "WaterLevel", function() return 0 end)
 				GryMod.Drown.Poll(0.25)
-				expect(p:GetNWBool("GryDrowning")).to.beFalse()
+				expect(p:GetNW2Bool("GryDrowning")).to.beFalse()
 				expect(p.gryDrown == nil or p.gryDrown.seconds == 0).to.beTrue()
 			end
 		},
@@ -253,7 +253,7 @@ return {
 			name = "the energy does not come back while the suit pays (the recharge is held as the energy is spent)",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				p.next_energy_regen = 0
 				stub(FindMetaTable("Entity"), "WaterLevel", function() return 3 end)
 				stub(FindMetaTable("Entity"), "SetSaveValue", function() end)

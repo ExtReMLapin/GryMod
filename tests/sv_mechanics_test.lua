@@ -34,7 +34,7 @@ return {
 		local p = ply()
 		if not p:Alive() then p:Spawn() end
 		p:SetHealth(p:GetMaxHealth())
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
 		p.ps = nil
 		GryMod.Config = table.Copy(savedConfig)
@@ -82,28 +82,28 @@ return {
 				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
 				expect(thinkHook("GryMod run speed") ~= nil).to.beTrue()
 
-				p:SetNWFloat("GryEnergy", 60)
+				p:SetNW2Float("GryEnergy", 60)
 				thinkHook("GryMod run speed")()
 				expect(p:GetRunSpeed()).to.equal(600)
 
-				p:SetNWFloat("GryEnergy", 10)
+				p:SetNW2Float("GryEnergy", 10)
 				thinkHook("GryMod run speed")()
 				expect(near(p:GetRunSpeed(), M.SpeedRunSpeed(10))).to.beTrue()
 				expect(p:GetRunSpeed() < 600).to.beTrue()
 				expect(p:GetRunSpeed() > 400).to.beTrue()
 
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				thinkHook("GryMod run speed")()
 				expect(near(p:GetRunSpeed(), M.SpeedRunSpeed(0))).to.beTrue()
 
 				-- back up: the top speed again
-				p:SetNWFloat("GryEnergy", 80)
+				p:SetNW2Float("GryEnergy", 80)
 				thinkHook("GryMod run speed")()
 				expect(p:GetRunSpeed()).to.equal(600)
 
 				-- another mode: nothing of this
 				p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-				p:SetNWFloat("GryEnergy", 5)
+				p:SetNW2Float("GryEnergy", 5)
 				thinkHook("GryMod run speed")()
 				expect(p:GetRunSpeed()).to.equal(400)
 			end
@@ -178,21 +178,21 @@ return {
 			func = function(state)
 				local p = ply()
 				p:SetNanosuitMode(GryMod.Modes.STRENGTH, false)
-				p:SetNWFloat("GryEnergy", 36)
+				p:SetNW2Float("GryEnergy", 36)
 				p:SetGroundEntity(game.GetWorld())
 				GryMod.SuperJump(p, IN_JUMP)
-				expect(near(p:GetNWFloat("GryEnergy"), 1)).to.beTrue()
+				expect(near(p:GetNW2Float("GryEnergy"), 1)).to.beTrue()
 			end
 		},
 		{
 			name = "the armor takes at least 30 percent of a hit even with an empty bar",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				local dmg = takeDamage(p, 20)
 				expect(near(dmg:GetDamage(), 14)).to.beTrue()
 				GryMod.Config.Mechanics = "classic"
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				dmg = takeDamage(p, 20)
 				expect(near(dmg:GetDamage(), 20)).to.beTrue()
 			end
@@ -201,10 +201,10 @@ return {
 			name = "the armor still absorbs one health point per energy point, and the rest goes through",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 10)
+				p:SetNW2Float("GryEnergy", 10)
 				local dmg = takeDamage(p, 25)
 				expect(near(dmg:GetDamage(), 15)).to.beTrue()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 			end
 		},
 		{

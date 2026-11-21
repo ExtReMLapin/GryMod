@@ -34,7 +34,7 @@ local function fakePlayer(speed)
 	function ply:ShouldDrawLocalPlayer() return true end
 	function ply:DrawShadow(on) self.shadow = on end
 	function ply:GetViewModel() return NULL end
-	function ply:GetNWBool() return false end
+	function ply:GetNW2Bool() return false end
 	function ply:EntIndex() return 99 end
 	function ply:GetVelocity() return Vector(speed or 0, 0, 0) end
 	function ply:DrawModel()
@@ -637,7 +637,7 @@ return {
 				local events = {"PrePlayerDraw", "PostDrawTranslucentRenderables", "PreDrawViewModel", "PostDrawViewModel", "PreDrawPlayerHands", "PostDrawPlayerHands"}
 				local ply = fakePlayer(0)
 				local flag = true
-				function ply:GetNWBool() return flag end
+				function ply:GetNW2Bool() return flag end
 				stub(_G, "FrameTime", function() return 1 end)
 
 				-- start from nothing
@@ -670,7 +670,7 @@ return {
 				local F = GryMod.CloakFX
 				local ply = fakePlayer(0)
 				local flag = true
-				function ply:GetNWBool() return flag end
+				function ply:GetNW2Bool() return flag end
 				stub(_G, "FrameTime", function() return 1 end)
 				F.Update(ply)
 				expect(ply.shadow).to.equal(false)
@@ -846,7 +846,7 @@ return {
 				local before = convar:GetString()
 				local me = fakePlayer(0)
 				local flag = true
-				function me:GetNWBool() return flag end
+				function me:GetNW2Bool() return flag end
 				stub(_G, "FrameTime", function() return 0.016 end)
 				convar:SetString("0")
 				local ok, err = pcall(function()
@@ -867,7 +867,7 @@ return {
 				local vm = fakePlayer(0)
 				function me:GetViewModel() return vm end
 				local alive = true
-				function me:GetNWBool() return true end
+				function me:GetNW2Bool() return true end
 				function me:Alive() return alive end
 				stub(_G, "FrameTime", function() return 0.1 end)
 				stub(F, "DrawScreenFx", function() end) -- the local player's screen effect is not the point here
@@ -889,9 +889,82 @@ return {
 			end
 		},
 		{
-			name = "the players are looked at often enough for the change of another player to start without a visible delay",
+			name = "no scan: a player is followed when the game says his switch changed (the hook EntityNetworkedVarChanged, also for every player at a full update: somebody who joins), or that he came back into view; the Think hook does not look at the players",
 			func = function(state)
-				expect(GryMod.CloakFX.ScanInterval).to.beBetween(0.02, 0.25)
+				local F = GryMod.CloakFX
+				expect(F.ScanInterval).to.beNil()
+
+				local changed = hook.GetTable().EntityNetworkedVarChanged and hook.GetTable().EntityNetworkedVarChanged.GryCloakFX
+				local transmit = hook.GetTable().NotifyShouldTransmit and hook.GetTable().NotifyShouldTransmit.GryCloakFX
+				local think = hook.GetTable().Think and hook.GetTable().Think.GryCloakFX
+				expect(changed).to.exist()
+				expect(transmit).to.exist()
+				expect(think).to.exist()
+
+				-- the Think hook must not go through the players when nothing is waiting
+				local looked = 0
+				stub(player, "GetAll", function() looked = looked + 1 return {} end)
+				stub(_G, "FrameTime", function() return 0.1 end)
+				think()
+				think()
+				expect(looked).to.equal(0)
+
+				-- the game says that somebody's switch changed (the value is not updated yet in the hook: the next frame reads it)
+				local ply = fakePlayer(0)
+				local flag = true
+				function ply:GetNW2Bool(name) return name == "GryCloak" and flag end
+				F.States[ply] = nil
+
+				changed(ply, "GryCloak", nil, true)
+				expect(F.States[ply]).to.beNil() -- not at once
+				think()
+				expect(F.States[ply]).to.exist()
+
+				-- another variable, a thing that is not a player: nothing is waiting
+				local other = fakePlayer(0)
+				function other:GetNW2Bool() return true end
+				changed(other, "GryEnergy", 0, 50)
+				local prop = {IsPlayer = function() return false end, IsValid = function() return true end}
+				function prop:GetNW2Bool() return true end
+				changed(prop, "GryCloak", nil, true)
+				think()
+				expect(F.States[other]).to.beNil()
+				expect(F.States[prop]).to.beNil()
+
+				-- a player who comes back into view while camouflaged; one who leaves is not looked at
+				local back, gone = fakePlayer(0), fakePlayer(0)
+				function back:GetNW2Bool() return true end
+				function gone:GetNW2Bool() return true end
+				transmit(back, true)
+				transmit(gone, false)
+				think()
+				expect(F.States[back]).to.exist()
+				expect(F.States[gone]).to.beNil()
+
+				F.States[ply], F.States[back] = nil, nil
+				F.SetDrawHooks(false)
+			end
+		},
+		{
+			name = "CatchUp: once, at the load of the level and when the file is loaded again in a running game, the players already camouflaged are followed (the full update may have come before the hooks)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local a, b = fakePlayer(0), fakePlayer(0)
+				function a:GetNW2Bool() return true end
+				function b:GetNW2Bool() return false end
+				stub(player, "GetAll", function() return {a, b} end)
+				stub(_G, "FrameTime", function() return 0.1 end)
+				F.States[a], F.States[b] = nil, nil
+
+				F.CatchUp()
+				hook.GetTable().Think.GryCloakFX()
+
+				expect(F.States[a]).to.exist()
+				expect(F.States[b]).to.beNil()
+				expect(hook.GetTable().InitPostEntity.GryCloakFX).to.exist()
+
+				F.States[a] = nil
+				F.SetDrawHooks(false)
 			end
 		},
 		{
@@ -900,7 +973,7 @@ return {
 				local F = GryMod.CloakFX
 				local ply = fakePlayer(0)
 				local flag = false
-				function ply:GetNWBool(name) return name == "GryCloak" and flag end
+				function ply:GetNW2Bool(name) return name == "GryCloak" and flag end
 				stub(_G, "FrameTime", function() return 0.1 end)
 
 				F.Update(ply) -- never camouflaged: no state is made
@@ -921,7 +994,7 @@ return {
 
 				-- the speed it keeps follows the player's, smoothed
 				local runner = fakePlayer(300)
-				function runner:GetNWBool(name) return name == "GryCloak" end
+				function runner:GetNW2Bool(name) return name == "GryCloak" end
 				F.Update(runner)
 				local first = F.States[runner].speed
 				expect(first > 0 and first < 300).to.beTrue()

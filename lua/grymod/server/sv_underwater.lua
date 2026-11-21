@@ -86,7 +86,7 @@ function Drown.Clear(ply)
 	ply.gryDrown = nil
 
 	if IsValid(ply) then
-		ply:SetNWBool("GryDrowning", false)
+		ply:SetNW2Bool("GryDrowning", false)
 	end
 end
 
@@ -117,11 +117,11 @@ local function update(ply, dt)
 	-- the engine's air stays in the future: it does not drown the player on its own
 	ply:SetSaveValue("m_AirFinished", CurTime() + AIR_HOLD)
 
-	local energy = ply:GetNWFloat("GryEnergy")
+	local energy = ply:GetNW2Float("GryEnergy")
 	local after, damage = Drown.Step(state, dt, true, energy, {maxEnergy = 100, maxHealth = ply:GetMaxHealth()})
 
 	if after ~= energy then
-		ply:SetNWFloat("GryEnergy", after)
+		ply:SetNW2Float("GryEnergy", after)
 		-- while the suit pays the bar does not recharge (the recharge waits as after any use of the energy)
 		ply.next_energy_regen = CurTime() + GryMod.Mech.EnergyRechargeDelay()
 		ply.energy_on_use = after
@@ -129,8 +129,8 @@ local function update(ply, dt)
 
 	local drowning = Drown.IsDrowning(state)
 
-	if ply:GetNWBool("GryDrowning", false) ~= drowning then
-		ply:SetNWBool("GryDrowning", drowning)
+	if ply:GetNW2Bool("GryDrowning", false) ~= drowning then
+		ply:SetNW2Bool("GryDrowning", drowning)
 	end
 
 	if damage > 0 then

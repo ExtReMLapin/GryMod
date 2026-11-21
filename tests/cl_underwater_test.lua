@@ -57,7 +57,7 @@ local function fakePlayer(fields)
 	function ply:WaterLevel() return self.level end
 	function ply:Alive() return self.alive end
 	function ply:GetVelocity() return self.velocity end
-	function ply:GetNWBool(name) return name == "GryDrowning" and self.drowning end
+	function ply:GetNW2Bool(name) return name == "GryDrowning" and self.drowning end
 
 	return ply
 end

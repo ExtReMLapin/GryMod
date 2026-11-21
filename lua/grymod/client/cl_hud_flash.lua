@@ -917,7 +917,7 @@ local function serverEnergy(ply)
 		return (smooth.Raw(ply, CurTime()))
 	end
 
-	return ply:GetNWFloat("GryEnergy")
+	return ply:GetNW2Float("GryEnergy")
 end
 
 local function feed(ply)
@@ -932,7 +932,7 @@ local function feed(ply)
 	-- the original gives its HUD the energy as a float at every frame (setEnergy); here it is predicted between
 	-- the server's updates (cl_energy_smooth.lua)
 	local smooth = GryMod.EnergySmooth
-	local energy = Module.EnergyValue(smooth and smooth.Shown(ply, CurTime()) or ply:GetNWFloat("GryEnergy"))
+	local energy = Module.EnergyValue(smooth and smooth.Shown(ply, CurTime()) or ply:GetNW2Float("GryEnergy"))
 
 	if fed.energy ~= energy then
 		fed.energy = energy
@@ -940,10 +940,10 @@ local function feed(ply)
 	end
 
 	-- the server says when the suit is down (an EMP, an electric hit) and when a light shock flickers the HUD
-	local down = ply:GetNWBool("GryMalfunction", false)
+	local down = ply:GetNW2Bool("GryMalfunction", false)
 	local rawEnergy = serverEnergy(ply)
 	fed.restartHold = Module.RestartHold(fed.restartHold or false, down, rawEnergy)
-	local status = Module.StatusFor(rawEnergy, hud.status, down, fed.restartHold and not down, ply:GetNWFloat("GryFlicker", 0) > CurTime(), emptyRuleConVar:GetBool())
+	local status = Module.StatusFor(rawEnergy, hud.status, down, fed.restartHold and not down, ply:GetNW2Float("GryFlicker", 0) > CurTime(), emptyRuleConVar:GetBool())
 
 	if status ~= hud.status then
 		hud:Destroy(status)
@@ -1071,7 +1071,7 @@ function Module.Paint()
 		fxSample.max = ply:GetMaxHealth()
 		fxSample.energy = serverEnergy(ply)
 		fxSample.armor = Module.ModeName(ply.NanosuitMode) == "Armor"
-		fxSample.malfunction = ply:GetNWBool("GryMalfunction", false) -- the start of a malfunction empties the bar: not a hit
+		fxSample.malfunction = ply:GetNW2Bool("GryMalfunction", false) -- the start of a malfunction empties the bar: not a hit
 		damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
 
 		jumpX, jumpY = damageFx.HudOffset(damageFx.State, dt)

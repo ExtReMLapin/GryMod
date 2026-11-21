@@ -396,7 +396,7 @@ return {
 			func = function()
 				local ES = GryMod.EnergySmooth
 				expect(ES ~= nil).to.beTrue()
-				local fake = {GetNWFloat = function() return 55 end, GetNWBool = function() return false end, Health = function() return 100 end}
+				local fake = {GetNW2Float = function() return 55 end, GetNW2Bool = function() return false end, Health = function() return 100 end}
 				ES.Receive(42.25, -42.5, 10.0)
 				local value, rate = ES.Raw(fake, 10.1)
 				expect(value).to.equal(42.25)
@@ -415,7 +415,7 @@ return {
 			func = function()
 				local ES = GryMod.EnergySmooth
 				local down = false
-				local fake = {GetNWFloat = function() return 55 end, GetNWBool = function(_, name) return name == "GryMalfunction" and down end, Health = function() return 100 end}
+				local fake = {GetNW2Float = function() return 55 end, GetNW2Bool = function(_, name) return name == "GryMalfunction" and down end, Health = function() return 100 end}
 				ES.Reset()
 				-- nothing came: the networked float
 				expect(ES.Shown(fake, 20)).to.equal(55)
@@ -444,7 +444,7 @@ return {
 			func = function()
 				local ES = GryMod.EnergySmooth
 				local health = 0
-				local fake = {GetNWFloat = function() return 0 end, GetNWBool = function() return false end, Health = function() return health end}
+				local fake = {GetNW2Float = function() return 0 end, GetNW2Bool = function() return false end, Health = function() return health end}
 				ES.Reset()
 				ES.Receive(0, 0, 40.0)
 				expect(ES.Shown(fake, 40.0)).to.equal(0)

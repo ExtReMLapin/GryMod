@@ -509,8 +509,8 @@ return {
 						GetPos = function() return Vector(524.9, 0, 0) end,
 						WorldSpaceCenter = function() return Vector(524.9, 0, 0) end,
 						GetOwner = function() return owner end,
-						GetNWBool = function(_, name) return name == "GryArmed" and armed end,
-						GetNWEntity = function(_, name) return name == "GryThrower" and thrown or NULL end
+						GetNW2Bool = function(_, name) return name == "GryArmed" and armed end,
+						GetNW2Entity = function(_, name) return name == "GryThrower" and thrown or NULL end
 					}
 				end
 				local ply = {EyePos = function() return eye end, IsValid = function() return true end}

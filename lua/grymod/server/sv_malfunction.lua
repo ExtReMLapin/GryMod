@@ -33,7 +33,7 @@ function Malfunction.Enabled(category)
 end
 
 function Malfunction.IsActive(ply)
-	return IsValid(ply) and ply:GetNWBool("GryMalfunction", false)
+	return IsValid(ply) and ply:GetNW2Bool("GryMalfunction", false)
 end
 
 -- Seconds left (0 when the suit works).
@@ -53,7 +53,7 @@ end
 -- the GryMod_MalfunctionStart hook. Returns whether the suit is down after the call.
 function Malfunction.Start(ply, seconds, reason)
 	-- a suit that is off (GryMod.API.SetSuitEnabled) has nothing to put down
-	if not (IsValid(ply) and ply:IsPlayer() and ply:Alive()) or not Malfunction.Enabled() or GryMod.Config.InfiniteArmor or ply:GetNWBool("GryDisabled", false) then
+	if not (IsValid(ply) and ply:IsPlayer() and ply:Alive()) or not Malfunction.Enabled() or GryMod.Config.InfiniteArmor or ply:GetNW2Bool("GryDisabled", false) then
 		return false
 	end
 
@@ -70,14 +70,14 @@ function Malfunction.Start(ply, seconds, reason)
 	ply.gryMalfunctionReason = reason
 
 	if not was then
-		ply:SetNWBool("GryMalfunction", true)
+		ply:SetNW2Bool("GryMalfunction", true)
 
 		-- the suit is forced to armor mode and the bar is empty
 		if ply.Nanosuit_mode ~= GryMod.Modes.ARMOR then
 			ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
 		end
 
-		ply:SetNWFloat("GryEnergy", 0)
+		ply:SetNW2Float("GryEnergy", 0)
 		hook.Run("GryUseEnergy", ply)
 		hook.Run("GryMod_MalfunctionStart", ply, seconds, reason)
 	end
@@ -97,10 +97,10 @@ function Malfunction.End(ply)
 	end
 
 	timer.Remove(timerName(ply))
-	ply:SetNWBool("GryMalfunction", false)
+	ply:SetNW2Bool("GryMalfunction", false)
 	ply.gryMalfunctionEnd = nil
 	ply.gryMalfunctionGrace = CurTime() + GryMod.Mech.MalfunctionGrace()
-	ply:SetNWFloat("GryEnergy", 0)
+	ply:SetNW2Float("GryEnergy", 0)
 	ply.energy_on_use = 0
 	ply.next_energy_regen = CurTime() + GryMod.Mech.EnergyRechargeDelay()
 	hook.Run("GryMod_MalfunctionEnd", ply)
@@ -113,8 +113,8 @@ function Malfunction.Clear(ply)
 	end
 
 	timer.Remove(timerName(ply))
-	ply:SetNWBool("GryMalfunction", false)
-	ply:SetNWFloat("GryFlicker", 0)
+	ply:SetNW2Bool("GryMalfunction", false)
+	ply:SetNW2Float("GryFlicker", 0)
 	ply.gryMalfunctionEnd = nil
 	ply.gryMalfunctionGrace = nil
 	ply.gryMalfunctionPending = nil
@@ -140,7 +140,7 @@ function Malfunction.Resolve(ply)
 	end
 
 	-- an overload only happens if the bar really ended at 0
-	if pending == "overload" and ply:GetNWFloat("GryEnergy") > 0 then
+	if pending == "overload" and ply:GetNW2Float("GryEnergy") > 0 then
 		return
 	end
 
@@ -162,7 +162,7 @@ end
 -- Called first thing by the damage handler of sv_health.lua, before the armor works on the hit: electric hits burn
 -- energy and may put the suit down, a heavy machine breaking the armor does too.
 function Malfunction.OnDamage(ply, dmginfo)
-	if not Malfunction.Enabled() or Malfunction.IsActive(ply) or not ply:Alive() or GryMod.Config.InfiniteArmor or ply:GetNWBool("GryDisabled", false) then
+	if not Malfunction.Enabled() or Malfunction.IsActive(ply) or not ply:Alive() or GryMod.Config.InfiniteArmor or ply:GetNW2Bool("GryDisabled", false) then
 		return
 	end
 
@@ -174,7 +174,7 @@ function Malfunction.OnDamage(ply, dmginfo)
 
 	local Mech = GryMod.Mech
 	local shock = Mech.ShockClass(dmginfo:GetDamageType(), amt, className(dmginfo:GetInflictor()))
-	local energy = ply:GetNWFloat("GryEnergy")
+	local energy = ply:GetNW2Float("GryEnergy")
 	local armor = ply.Nanosuit_mode == GryMod.Modes.ARMOR
 
 	if shock and Malfunction.Enabled("shock") then
@@ -190,8 +190,8 @@ function Malfunction.OnDamage(ply, dmginfo)
 
 		-- a light shock: the HUD flickers and the bar loses more than the armor takes
 		local extra = Mech.ShockEnergyDrain(amt)
-		ply:SetNWFloat("GryFlicker", CurTime() + Mech.ShockFlickerSeconds())
-		ply:SetNWFloat("GryEnergy", math.max(0, energy - extra))
+		ply:SetNW2Float("GryFlicker", CurTime() + Mech.ShockFlickerSeconds())
+		ply:SetNW2Float("GryEnergy", math.max(0, energy - extra))
 		hook.Run("GryUseEnergy", ply)
 
 		if not grace and energy - extra - (armor and amt or 0) <= 0 then

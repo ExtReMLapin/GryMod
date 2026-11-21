@@ -75,9 +75,9 @@ return {
 		GryMod.Config.InfiniteArmor = false
 		GryMod.Config.Mechanics = "classic"
 		GryMod.Malfunction.Clear(p)
-		p:SetNWBool("GryDisabled", false)
+		p:SetNW2Bool("GryDisabled", false)
 		p:SetHealth(p:GetMaxHealth())
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
 		p.gryApiEnergyEmpty = nil
 	end,
@@ -94,9 +94,9 @@ return {
 
 		if IsValid(p) then
 			GryMod.Malfunction.Clear(p)
-			p:SetNWBool("GryDisabled", false)
+			p:SetNW2Bool("GryDisabled", false)
 			p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-			p:SetNWFloat("GryEnergy", 100)
+			p:SetNW2Float("GryEnergy", 100)
 			p:SetHealth(p:GetMaxHealth())
 		end
 
@@ -118,7 +118,7 @@ return {
 				local API, p = GryMod.API, ply()
 
 				expect(API.SetEnergy(p, 42.5)).to.beTrue()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(42.5)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(42.5)
 				expect(API.GetEnergy(p)).to.equal(42.5)
 
 				expect(API.SetEnergy(p, 250)).to.beTrue()
@@ -132,7 +132,7 @@ return {
 			name = "SetEnergy refuses what is not a number (nil, text, NaN) and a player that is not valid, with a reason, and changes nothing",
 			func = function()
 				local API, p = GryMod.API, ply()
-				p:SetNWFloat("GryEnergy", 60)
+				p:SetNW2Float("GryEnergy", 60)
 
 				for _, bad in ipairs({"lots", true, 0 / 0}) do
 					local ok, reason = API.SetEnergy(p, bad)
@@ -156,7 +156,7 @@ return {
 			name = "AddEnergy adds (a negative amount takes), clamped; RefillEnergy fills the bar; EmptyEnergy empties it",
 			func = function()
 				local API, p = GryMod.API, ply()
-				p:SetNWFloat("GryEnergy", 50)
+				p:SetNW2Float("GryEnergy", 50)
 
 				expect(API.AddEnergy(p, 20)).to.beTrue()
 				expect(API.GetEnergy(p)).to.equal(70)
@@ -421,7 +421,7 @@ return {
 				expect(API.SetSuitEnabled(p, false)).to.beTrue()
 
 				expect(API.IsSuitEnabled(p)).to.beFalse()
-				expect(p:GetNWBool("GryDisabled")).to.beTrue()
+				expect(p:GetNW2Bool("GryDisabled")).to.beTrue()
 				expect(API.GetMode(p)).to.equal(GryMod.Modes.ARMOR)
 				expect(offs).to.equal(1)
 
@@ -430,7 +430,7 @@ return {
 
 				expect(API.SetSuitEnabled(p, true)).to.beTrue()
 				expect(API.IsSuitEnabled(p)).to.beTrue()
-				expect(p:GetNWBool("GryDisabled")).to.beFalse()
+				expect(p:GetNW2Bool("GryDisabled")).to.beFalse()
 				expect(ons).to.equal(1)
 
 				API.SetSuitEnabled(p, true)
@@ -453,7 +453,7 @@ return {
 
 				GryMod.SetModeFromClient(p, GryMod.Modes.CLOAK)
 				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
-				expect(p:GetNWBool("GryCloak")).to.beFalse()
+				expect(p:GetNW2Bool("GryCloak")).to.beFalse()
 
 				API.SetSuitEnabled(p, true)
 				expect(API.SetMode(p, GryMod.Modes.SPEED)).to.beTrue()

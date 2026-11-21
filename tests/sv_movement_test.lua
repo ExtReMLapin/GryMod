@@ -27,7 +27,7 @@ return {
 	beforeEach = function()
 		local p = ply()
 		if not p:Alive() then p:Spawn() end
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 
 		for name, value in pairs(saved) do
 			GetConVar(name):SetString(value)
@@ -186,11 +186,11 @@ return {
 				expect(near(M.SpeedRunSpeed(0), empty)).to.beTrue()
 				expect(math.abs(low - 266 * 1.4) < 2).to.beTrue()
 
-				p:SetNWFloat("GryEnergy", 10)
+				p:SetNW2Float("GryEnergy", 10)
 				hook.GetTable().Think["GryMod run speed"]()
 				expect(near(p:GetRunSpeed(), low)).to.beTrue()
 
-				p:SetNWFloat("GryEnergy", 90)
+				p:SetNW2Float("GryEnergy", 90)
 				hook.GetTable().Think["GryMod run speed"]()
 				expect(p:GetRunSpeed()).to.equal(757)
 			end

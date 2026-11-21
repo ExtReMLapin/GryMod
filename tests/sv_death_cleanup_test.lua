@@ -54,19 +54,19 @@ local function dirty(p)
 	assert(GryMod.Malfunction.Start(p, 30, "emp"), "the suit did not go down")
 	GryMod.Radar.State(p).sent = {{id = 1}, {id = 2}}
 	p.gryDrown = GryMod.Drown.NewState()
-	p:SetNWBool("GryDrowning", true)
+	p:SetNW2Bool("GryDrowning", true)
 	p.should_heath_regen = true
 	p.next_health_regen = CurTime() + 5
 	p.last_repair_sound = CurTime()
 end
 
 local function clean(p)
-	expect(p:GetNWBool("GryMalfunction")).to.beFalse()
+	expect(p:GetNW2Bool("GryMalfunction")).to.beFalse()
 	expect(timer.Exists("GryMalfunction" .. p:EntIndex())).to.beFalse()
 	expect(p.gryMalfunctionEnd).to.beNil()
 	expect(GryMod.Radar.State(p).sent).to.beNil()
 	expect(p.gryDrown).to.beNil()
-	expect(p:GetNWBool("GryDrowning")).to.beFalse()
+	expect(p:GetNW2Bool("GryDrowning")).to.beFalse()
 	expect(p.should_heath_regen).to.equal(false)
 end
 

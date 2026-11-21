@@ -272,7 +272,7 @@ function SS.Sample(ply, energy, wasOnGround)
 		energy = energy,
 		energyMin = minimum,
 		alive = ply:Alive(),
-		suit = not ply:GetNWBool("GryMalfunction", false)
+		suit = not ply:GetNW2Bool("GryMalfunction", false)
 	}
 end
 

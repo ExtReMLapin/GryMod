@@ -50,7 +50,7 @@ local function fakeMe(mode, alive, malfunction)
 		NanosuitMode = mode,
 		IsValid = function() return true end,
 		Alive = function() return alive end,
-		GetNWBool = function(_, name) return name == "GryMalfunction" and malfunction or false end
+		GetNW2Bool = function(_, name) return name == "GryMalfunction" and malfunction or false end
 	}
 end
 
@@ -366,7 +366,7 @@ return {
 
 				enabled = true
 				me.NanosuitMode = Modes.STRENGTH
-				me.GetNWBool = function(_, name) return name == "GryMalfunction" end
+				me.GetNW2Bool = function(_, name) return name == "GryMalfunction" end
 				now = 1020
 				think()
 				expect(paintHook()).to.beNil()

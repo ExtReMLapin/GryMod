@@ -304,7 +304,7 @@ function Zoom.Read(sit)
 	sit.typing = ply:IsTyping()
 	sit.focus = system.HasFocus()
 	-- the suit down: the server's flag, or the HUD in its lost state (an empty energy bar with the HUD's empty rule)
-	sit.malfunction = ply:GetNWBool("GryMalfunction", false) or (boot ~= nil and boot.IsLost() or false)
+	sit.malfunction = ply:GetNW2Bool("GryMalfunction", false) or (boot ~= nil and boot.IsLost() or false)
 	sit.vehicle = ply:InVehicle()
 	sit.thirdperson = ply:ShouldDrawLocalPlayer()
 	sit.viewother = ply:GetViewEntity() ~= ply

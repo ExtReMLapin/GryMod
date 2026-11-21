@@ -74,7 +74,7 @@ return {
 		local p = ply()
 		if not p:Alive() then p:Spawn() end
 		p:SetHealth(p:GetMaxHealth())
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
 		p.last_repair_sound = nil
 		p.should_heath_regen = false
@@ -146,15 +146,15 @@ return {
 			func = function(state)
 				local p = ply()
 				-- 100 energy, 91 taken: 9 left, under 10
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				hit(p, 91)
 				expect(count("gry_armor_hit_sound")).to.equal(0)
 				-- 100 energy, 80 taken: 20 left
-				p:SetNWFloat("GryEnergy", 100)
+				p:SetNW2Float("GryEnergy", 100)
 				hit(p, 80)
 				expect(count("gry_armor_hit_sound")).to.equal(1)
 				-- an empty bar
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				hit(p, 30)
 				expect(count("gry_armor_hit_sound")).to.equal(0)
 			end
@@ -175,7 +175,7 @@ return {
 				GryMod.Config.Mechanics = "classic"
 				hit(p, 2)
 				expect(count("gry_armor_hit_sound")).to.equal(1)
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				hit(p, 2)
 				expect(count("gry_armor_hit_sound")).to.equal(0)
 			end
@@ -220,7 +220,7 @@ return {
 				p:SetHealth(60)
 				p.next_health_regen = CurTime() + 2.5
 				think()
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				hit(p, 10)
 				expect(count("gry_stop_health_regen")).to.equal(0)
 				local dead = recorded(function()

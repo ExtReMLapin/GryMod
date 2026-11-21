@@ -23,11 +23,11 @@ return {
 			name = "the camouflage is a network switch the other players can read",
 			func = function(state)
 				local p = ply()
-				expect(p:GetNWBool("GryCloak", false)).to.beFalse()
+				expect(p:GetNW2Bool("GryCloak", false)).to.beFalse()
 				p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
-				expect(p:GetNWBool("GryCloak", false)).to.beTrue()
+				expect(p:GetNW2Bool("GryCloak", false)).to.beTrue()
 				p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-				expect(p:GetNWBool("GryCloak", false)).to.beFalse()
+				expect(p:GetNW2Bool("GryCloak", false)).to.beFalse()
 			end
 		},
 		{
@@ -37,9 +37,9 @@ return {
 
 				for _, mode in ipairs({GryMod.Modes.SPEED, GryMod.Modes.STRENGTH, GryMod.Modes.ARMOR}) do
 					p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
-					expect(p:GetNWBool("GryCloak", false)).to.beTrue()
+					expect(p:GetNW2Bool("GryCloak", false)).to.beTrue()
 					p:SetNanosuitMode(mode, false)
-					expect(p:GetNWBool("GryCloak", false)).to.beFalse()
+					expect(p:GetNW2Bool("GryCloak", false)).to.beFalse()
 				end
 			end
 		},

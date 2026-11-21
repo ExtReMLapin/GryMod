@@ -195,7 +195,7 @@ function U.Tick(dt)
 
 	local ply = LocalPlayer()
 
-	if IsValid(ply) and ply:GetNWBool("GryDrowning", false) then
+	if IsValid(ply) and ply:GetNW2Bool("GryDrowning", false) then
 		return
 	end
 

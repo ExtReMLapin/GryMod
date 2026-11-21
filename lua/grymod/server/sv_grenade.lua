@@ -94,14 +94,14 @@ function Grenade.Update(ent)
 
 	local thrower = Grenade.ThrowerOf(ent) or NULL
 
-	if ent:GetNWEntity("GryThrower") ~= thrower then
-		ent:SetNWEntity("GryThrower", thrower)
+	if ent:GetNW2Entity("GryThrower") ~= thrower then
+		ent:SetNW2Entity("GryThrower", thrower)
 	end
 
 	local armed = Grenade.IsActive(ent)
 
-	if ent:GetNWBool("GryArmed") ~= armed then
-		ent:SetNWBool("GryArmed", armed)
+	if ent:GetNW2Bool("GryArmed") ~= armed then
+		ent:SetNW2Bool("GryArmed", armed)
 	end
 end
 

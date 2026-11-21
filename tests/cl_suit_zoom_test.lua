@@ -2142,7 +2142,7 @@ return {
 					Alive = function() return facts.alive end,
 					Health = function() return facts.health end,
 					IsTyping = function() return facts.typing end,
-					GetNWBool = function(_, name) return name == "GryMalfunction" and facts.malfunction end,
+					GetNW2Bool = function(_, name) return name == "GryMalfunction" and facts.malfunction end,
 					InVehicle = function() return facts.vehicle end,
 					ShouldDrawLocalPlayer = function() return facts.third end,
 					GetViewEntity = function(self) return facts.view and self or {} end,

@@ -29,7 +29,7 @@ return {
 		local p = ply()
 		if not p:Alive() then p:Spawn() end
 		p:SetHealth(p:GetMaxHealth())
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
 		p.ps = nil
 		GryMod.Config = table.Copy(savedConfig)
@@ -92,7 +92,7 @@ return {
 				GryMod.Config.InfiniteArmor = true
 				local dmg = takeDamage(p, 500)
 				expect(dmg:GetDamage()).to.equal(0)
-				expect(p:GetNWFloat("GryEnergy")).to.equal(100)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(100)
 			end
 		},
 		{
@@ -101,7 +101,7 @@ return {
 				local p = ply()
 				local dmg = takeDamage(p, 30)
 				expect(dmg:GetDamage()).to.equal(0)
-				expect(p:GetNWFloat("GryEnergy")).to.equal(70)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(70)
 			end
 		},
 		{
@@ -111,7 +111,7 @@ return {
 				p:SetNanosuitMode(GryMod.Modes.STRENGTH, false)
 				p:SetGroundEntity(game.GetWorld())
 				GryMod.SuperJump(p, IN_JUMP)
-				expect(p:GetNWFloat("GryEnergy")).to.equal(60)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(60)
 			end
 		},
 		{
@@ -123,7 +123,7 @@ return {
 				p:SetGroundEntity(game.GetWorld())
 				GryMod.SuperJump(p, IN_JUMP)
 				expect(p.ps).to.beTrue()
-				expect(p:GetNWFloat("GryEnergy")).to.equal(100)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(100)
 			end
 		},
 		{
@@ -131,7 +131,7 @@ return {
 			func = function(state)
 				local p = ply()
 				p:SetNanosuitMode(GryMod.Modes.STRENGTH, false)
-				p:SetNWFloat("GryEnergy", 10)
+				p:SetNW2Float("GryEnergy", 10)
 				p.ps = nil
 				GryMod.SuperJump(p, IN_JUMP)
 				expect(p:GetJumpPower()).to.equal(200)
@@ -141,13 +141,13 @@ return {
 			name = "leaving the cloak by attacking keeps the energy at zero",
 			func = function(state)
 				local p = ply()
-				p:SetNWFloat("GryEnergy", 80)
+				p:SetNW2Float("GryEnergy", 80)
 				hook.Run("GryUseEnergy", p) -- what a drain tick does
 				net.Receivers["gry_empty_energy"](0, p)
-				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
 				p.next_energy_regen = CurTime() - 1
 				thinkHook("GryMod health think")()
-				expect(p:GetNWFloat("GryEnergy")).to.beLessThan(20)
+				expect(p:GetNW2Float("GryEnergy")).to.beLessThan(20)
 			end
 		},
 		{

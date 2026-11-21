@@ -24,7 +24,7 @@ local selectableModes = {
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
 	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
-	ply:SetNWFloat("GryEnergy", 100)
+	ply:SetNW2Float("GryEnergy", 100)
 	net.Start("gry_spawn")
 	net.Send(ply)
 end)
@@ -75,7 +75,7 @@ function meta:SetNanosuitMode(mode, networked)
 	if mode ~= GryMod.Modes.ARMOR then
 		if GryMod.Malfunction and GryMod.Malfunction.IsActive(self) then
 			refused = "malfunction"
-		elseif self:GetNWBool("GryDisabled", false) then
+		elseif self:GetNW2Bool("GryDisabled", false) then
 			refused = "disabled"
 		end
 
@@ -106,11 +106,11 @@ function meta:SetNanosuitMode(mode, networked)
 	if (mode == GryMod.Modes.CLOAK) then
 		-- the look is made on each client from this switch (cl_cloak_fx.lua): the picture behind the player is bent,
 		-- and it fades in and out. A client that turned it off (gry_cloak_fx 0) puts the old material on itself.
-		self:SetNWBool("GryCloak", true)
+		self:SetNW2Bool("GryCloak", true)
 		self:SetNoTarget(true)
 		self:DrawWorldModel(false)
 	else
-		self:SetNWBool("GryCloak", false)
+		self:SetNW2Bool("GryCloak", false)
 		self:SetMaterial("")
 
 		if IsValid(hands) then
@@ -171,7 +171,7 @@ hook.Add("EntityFireBullets", "GryCloakShot", function(ent, data)
 end)
 
 net.Receive("gry_empty_energy", function(len, ply)
-	ply:SetNWFloat("GryEnergy", 0)
+	ply:SetNW2Float("GryEnergy", 0)
 	-- count it as a use: otherwise the regeneration starts again from the energy of the last drain tick
 	hook.Run("GryUseEnergy", ply)
 end)
@@ -186,10 +186,10 @@ function GryMod.SuperJump(ply, key)
 	if key == IN_JUMP and ply:Alive() and ply.Nanosuit_mode == GryMod.Modes.SPEED and ply:OnGround() and not GryMod.Config.InfiniteArmor then
 		-- a jump in speed mode costs a little energy in the original game
 		local speedCost = GryMod.Mech.JumpCost(GryMod.Modes.SPEED)
-		local available = ply:GetNWFloat("GryEnergy")
+		local available = ply:GetNW2Float("GryEnergy")
 
 		if speedCost > 0 and available >= speedCost then
-			ply:SetNWFloat("GryEnergy", available - speedCost)
+			ply:SetNW2Float("GryEnergy", available - speedCost)
 			hook.Run("GryUseEnergy", ply)
 		end
 
@@ -200,7 +200,7 @@ function GryMod.SuperJump(ply, key)
 		return
 	end
 
-	local energy = ply:GetNWFloat("GryEnergy")
+	local energy = ply:GetNW2Float("GryEnergy")
 	local infinite = GryMod.Config.InfiniteArmor
 
 	local cost = GryMod.Mech.JumpCost(GryMod.Modes.STRENGTH)
@@ -209,7 +209,7 @@ function GryMod.SuperJump(ply, key)
 		ply:SetJumpPower(500)
 
 		if not infinite then
-			ply:SetNWFloat("GryEnergy", energy - cost)
+			ply:SetNW2Float("GryEnergy", energy - cost)
 			hook.Run("GryUseEnergy", ply)
 		end
 
@@ -241,13 +241,13 @@ end
 
 hook.Add("Think", "GrySpeedThink", function()
 	for k, v in pairs(player.GetAll()) do
-		local amnt = v:GetNWFloat("GryEnergy")
+		local amnt = v:GetNW2Float("GryEnergy")
 		local amnt_to_drain = GryMod.Mech.SpeedDrain(amnt) * FrameTime()
 
 		if GryMod.IsSpeedSprinting(v) then
 			-- an empty bar or a drain that cannot be paid: nothing is taken (the run speed follows the energy, sv_mechanics.lua)
 			if amnt_to_drain <= amnt and amnt > 0 then
-				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
+				v:SetNW2Float("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
 			end
 		end
@@ -258,13 +258,13 @@ hook.Add("Think", "GryCloakThink", function()
 	for k, v in pairs(player.GetAll()) do
 		if v.Nanosuit_mode == GryMod.Modes.CLOAK and not GryMod.Config.InfiniteArmor then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
-			local amnt = v:GetNWFloat("GryEnergy")
+			local amnt = v:GetNW2Float("GryEnergy")
 			local amnt_to_drain = GryMod.Mech.CloakDrain(v:GetVelocity():Length()) * FrameTime()
 
 			if amnt_to_drain > amnt or GryMod.Mech.CloakFailsAt(amnt) then
 				v:SetNanosuitMode(GryMod.Modes.ARMOR, true)
 			else
-				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
+				v:SetNW2Float("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
 			end
 		end

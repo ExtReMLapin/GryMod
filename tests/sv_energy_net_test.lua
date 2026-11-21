@@ -1,5 +1,5 @@
 -- The energy goes to the client at the tick rate (gry_energy message: value and rate of change), because the
--- networked float (SetNWFloat) only reaches the client about every 0.1 s: see
+-- networked float (SetNW2Float) only reaches the client about every 0.1 s: see
 -- docs/superpowers/plans/2026-11-21-energy-smooth.md. GLuaTest format, server realm (one player, singleplayer is enough).
 
 local savedConfig
@@ -24,10 +24,10 @@ local TICK = 1 / 66
 
 local function setUp(p, opts)
 	opts = opts or {}
-	p:SetNWFloat("GryEnergy", opts.energy or 60)
+	p:SetNW2Float("GryEnergy", opts.energy or 60)
 	p:SetNanosuitMode(opts.mode or GryMod.Modes.ARMOR, false)
 	p.next_energy_regen = opts.regen or 0
-	p.energy_on_use = p:GetNWFloat("GryEnergy")
+	p.energy_on_use = p:GetNW2Float("GryEnergy")
 	stub(_G, "FrameTime", function() return TICK end)
 	stub(P, "IsSprinting", function() return opts.sprint or false end)
 	stub(P, "GetVelocity", function() return Vector(opts.speed or 0, 0, 0) end)
@@ -37,12 +37,12 @@ end
 
 -- the energy a tick really gives or takes, per second, once every hook of the Think has run
 local function realRate(p)
-	local before = p:GetNWFloat("GryEnergy")
+	local before = p:GetNW2Float("GryEnergy")
 	thinkHook("GrySpeedThink")()
 	thinkHook("GryCloakThink")()
 	thinkHook("GryMod health think")()
 
-	return (p:GetNWFloat("GryEnergy") - before) / TICK
+	return (p:GetNW2Float("GryEnergy") - before) / TICK
 end
 
 local function near(a, b)
@@ -71,7 +71,7 @@ return {
 		local p = ply()
 		if IsValid(p) then
 			p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-			p:SetNWFloat("GryEnergy", 100)
+			p:SetNW2Float("GryEnergy", 100)
 			p.next_energy_regen = 0
 		end
 		GryMod.Config = table.Copy(savedConfig)
@@ -86,7 +86,7 @@ return {
 				local rate = GryMod.EnergyRate(p)
 				expect(near(rate, -42.5)).to.beTrue()
 				expect(near(realRate(p), rate)).to.beTrue()
-				p:SetNWFloat("GryEnergy", 15)
+				p:SetNW2Float("GryEnergy", 15)
 				rate = GryMod.EnergyRate(p)
 				expect(near(rate, -1.5)).to.beTrue()
 				expect(near(realRate(p), rate)).to.beTrue()
@@ -98,14 +98,14 @@ return {
 				local p = ply()
 				setUp(p, {mode = GryMod.Modes.SPEED, sprint = true, speed = 600, energy = 0, regen = CurTime() + 1})
 				expect(GryMod.EnergyRate(p)).to.equal(0)
-				p:SetNWFloat("GryEnergy", 60)
+				p:SetNW2Float("GryEnergy", 60)
 				stub(P, "GetVelocity", function() return Vector(100, 0, 0) end)
 				expect(GryMod.EnergyRate(p)).to.equal(0)
 				stub(P, "GetVelocity", function() return Vector(600, 0, 0) end)
 				stub(P, "IsOnGround", function() return false end)
 				expect(GryMod.EnergyRate(p)).to.equal(0)
 				-- the delay over, an empty bar under a sprint recharges, and the rate says so
-				p:SetNWFloat("GryEnergy", 0)
+				p:SetNW2Float("GryEnergy", 0)
 				p.next_energy_regen = CurTime() - 0.1
 				stub(P, "IsOnGround", function() return true end)
 				local rate = GryMod.EnergyRate(p)
@@ -122,7 +122,7 @@ return {
 				expect(near(rate, -GryMod.Mech.CloakDrain(300))).to.beTrue()
 				expect(near(realRate(p), rate)).to.beTrue()
 				p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
-				p:SetNWFloat("GryEnergy", 5)
+				p:SetNW2Float("GryEnergy", 5)
 				expect(GryMod.EnergyRate(p)).to.equal(0)
 			end
 		},
@@ -150,14 +150,14 @@ return {
 				local p = ply()
 				setUp(p, {energy = 100, regen = CurTime() - 1})
 				expect(GryMod.EnergyRate(p)).to.equal(0)
-				p:SetNWFloat("GryEnergy", 40)
+				p:SetNW2Float("GryEnergy", 40)
 				expect(GryMod.EnergyRate(p) > 0).to.beTrue()
-				p:SetNWBool("GryMalfunction", true)
+				p:SetNW2Bool("GryMalfunction", true)
 				local ok, err = pcall(function()
 					expect(GryMod.EnergyRate(p)).to.equal(0)
 					expect(near(realRate(p), 0)).to.beTrue()
 				end)
-				p:SetNWBool("GryMalfunction", false)
+				p:SetNW2Bool("GryMalfunction", false)
 				assert(ok, err)
 				GryMod.Config.InfiniteArmor = true
 				expect(GryMod.EnergyRate(p)).to.equal(0)
@@ -208,7 +208,7 @@ return {
 				expect(near(sent[1].floats[2], -42.5)).to.beTrue()
 				send()
 				expect(#sent).to.equal(1)
-				p:SetNWFloat("GryEnergy", 59.4)
+				p:SetNW2Float("GryEnergy", 59.4)
 				send()
 				expect(#sent).to.equal(2)
 				expect(near(sent[2].floats[1], 59.4)).to.beTrue()

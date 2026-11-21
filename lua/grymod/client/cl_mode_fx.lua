@@ -242,7 +242,7 @@ hook.Add("Think", HOOK, function()
 
 	sample.mode = ply.NanosuitMode
 	sample.alive = ply:Alive()
-	sample.malfunction = ply:GetNWBool("GryMalfunction", false)
+	sample.malfunction = ply:GetNW2Bool("GryMalfunction", false)
 
 	FX.Observe(FX.State, sample, FX.Now(), FX.Enabled())
 end)

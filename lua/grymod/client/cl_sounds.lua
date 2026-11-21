@@ -199,7 +199,7 @@ hook.Add("Think", "GryModSounds", function()
 
 	if not IsValid(ply) then return end
 
-	local energy = ply:GetNWFloat("GryEnergy")
+	local energy = ply:GetNW2Float("GryEnergy")
 	local now = GryMod.SoundMix.Now()
 
 	-- the voice: nothing before the first energy value (the sprint sound below runs whatever the energy)

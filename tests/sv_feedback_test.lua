@@ -77,7 +77,7 @@ end
 -- the same with the suit's armor on
 local function armorHit(order, victim, attacker, amount, energy)
 	victim.Nanosuit_mode = GryMod.Modes.ARMOR
-	victim:SetNWFloat("GryEnergy", energy)
+	victim:SetNW2Float("GryEnergy", energy)
 
 	return run(order, victim, attacker, amount)
 end
@@ -100,7 +100,7 @@ return {
 	groupName = "GryMod crosshair feedback",
 	beforeEach = function(state)
 		local p = ply()
-		savedMode, savedEnergy, savedInfinite = p.Nanosuit_mode, p:GetNWFloat("GryEnergy"), GryMod.Config.InfiniteArmor
+		savedMode, savedEnergy, savedInfinite = p.Nanosuit_mode, p:GetNW2Float("GryEnergy"), GryMod.Config.InfiniteArmor
 	end,
 	afterEach = function(state)
 		local p = ply()
@@ -108,7 +108,7 @@ return {
 		if IsValid(p) then
 			p.gryNextDamageDir = nil
 			p.Nanosuit_mode = savedMode
-			p:SetNWFloat("GryEnergy", savedEnergy)
+			p:SetNW2Float("GryEnergy", savedEnergy)
 		end
 
 		GryMod.Config.InfiniteArmor = savedInfinite

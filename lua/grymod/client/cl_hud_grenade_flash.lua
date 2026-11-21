@@ -382,7 +382,7 @@ end
 function Grenade.Candidate(ent, ply, point, visible)
 	point = point or ent:WorldSpaceCenter():ToScreen()
 	local owner = ent:GetOwner()
-	local thrower = ent:GetNWEntity("GryThrower")
+	local thrower = ent:GetNW2Entity("GryThrower")
 
 	return {
 		ent = ent,
@@ -390,7 +390,7 @@ function Grenade.Candidate(ent, ply, point, visible)
 		metres = ply:EyePos():Distance(ent:GetPos()) / 52.49,
 		onScreen = point.visible,
 		own = (IsValid(owner) and owner == ply) or (IsValid(thrower) and thrower == ply),
-		armed = ent:GetNWBool("GryArmed"),
+		armed = ent:GetNW2Bool("GryArmed"),
 		visible = visible,
 		screen = point
 	}
@@ -405,7 +405,7 @@ local function candidates(ply, opts)
 			local visible
 
 			-- the line of sight costs a ray: only for a projectile that is on the screen and active
-			if opts.los and point.visible and ent:GetNWBool("GryArmed") then
+			if opts.los and point.visible and ent:GetNW2Bool("GryArmed") then
 				visible = lineOfSight(ent, ply)
 			end
 

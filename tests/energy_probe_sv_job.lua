@@ -16,7 +16,7 @@ hook.Add("Think", "gryprobe_sv", function()
 	local p = ply()
 	if not IsValid(p) then return end
 	local t = SysTime()
-	P.rows[#P.rows + 1] = {t, p:GetNWFloat("GryEnergy"), FrameTime(), CurTime(), p:GetVelocity():Length()}
+	P.rows[#P.rows + 1] = {t, p:GetNW2Float("GryEnergy"), FrameTime(), CurTime(), p:GetVelocity():Length()}
 	local s = P.scn
 	if s and s.step then s.step(p, t - s.t0) end
 end)
@@ -40,19 +40,19 @@ function P.start(name)
 	P.scn = s
 	if name == "sprint" then
 		p:SetNanosuitMode(GryMod.Modes.SPEED, false)
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		s.move = true
 	elseif name == "recharge" then
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-		p:SetNWFloat("GryEnergy", 10)
+		p:SetNW2Float("GryEnergy", 10)
 		hook.Run("GryUseEnergy", p)
 	elseif name == "cloak" then
 		p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		s.move = true
 	elseif name == "armor" then
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		s.step = function(pp, dt)
 			if not s.hit and dt > 0.5 then
 				s.hit = true

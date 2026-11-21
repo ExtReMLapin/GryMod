@@ -82,7 +82,7 @@ function API.IsSuitEnabled(ply)
 		return false
 	end
 
-	return not ply:GetNWBool("GryDisabled", false)
+	return not ply:GetNW2Bool("GryDisabled", false)
 end
 
 -- The built-in events are registered by the module that draws them: this file may load first or last.

@@ -29,7 +29,7 @@ function API.GetEnergy(ply)
 		return nil
 	end
 
-	return ply:GetNWFloat("GryEnergy")
+	return ply:GetNW2Float("GryEnergy")
 end
 
 -- Sets the energy (clamped to 0..100). It counts as a use of the energy, like a drain: the recharge delay starts again
@@ -43,7 +43,7 @@ function API.SetEnergy(ply, amount)
 		return false, "invalid amount"
 	end
 
-	ply:SetNWFloat("GryEnergy", math.Clamp(amount, 0, 100))
+	ply:SetNW2Float("GryEnergy", math.Clamp(amount, 0, 100))
 	hook.Run("GryUseEnergy", ply)
 
 	return true
@@ -59,7 +59,7 @@ function API.AddEnergy(ply, amount)
 		return false, "invalid amount"
 	end
 
-	return API.SetEnergy(ply, ply:GetNWFloat("GryEnergy") + amount)
+	return API.SetEnergy(ply, ply:GetNW2Float("GryEnergy") + amount)
 end
 
 function API.RefillEnergy(ply)
@@ -75,7 +75,7 @@ end
 hook.Add("GryUseEnergy", "GryMod API energy", function(ply)
 	hook.Run("GryMod_EnergyUsed", ply)
 
-	if ply:GetNWFloat("GryEnergy") <= 0 then
+	if ply:GetNW2Float("GryEnergy") <= 0 then
 		if not ply.gryApiEnergyEmpty then
 			ply.gryApiEnergyEmpty = true
 			hook.Run("GryMod_EnergyEmpty", ply)
@@ -134,7 +134,7 @@ function API.IsSuitEnabled(ply)
 		return false
 	end
 
-	return not ply:GetNWBool("GryDisabled", false)
+	return not ply:GetNW2Bool("GryDisabled", false)
 end
 
 -- Switches the suit off (false) or on (true). Off: the mode is armor and cannot change, the armor takes no hit, the energy
@@ -156,7 +156,7 @@ function API.SetSuitEnabled(ply, enabled)
 		return true
 	end
 
-	ply:SetNWBool("GryDisabled", not enabled)
+	ply:SetNW2Bool("GryDisabled", not enabled)
 
 	if not enabled and ply.Nanosuit_mode ~= Modes.ARMOR then
 		ply:SetNanosuitMode(Modes.ARMOR, true)

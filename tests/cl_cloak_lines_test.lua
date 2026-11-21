@@ -78,7 +78,7 @@ local function fakePlayer(speed)
 	function ply:ShouldDrawLocalPlayer() return true end
 	function ply:DrawShadow() end
 	function ply:GetViewModel() return NULL end
-	function ply:GetNWBool() return false end
+	function ply:GetNW2Bool() return false end
 	function ply:EntIndex() return 99 end
 	function ply:GetVelocity() return Vector(speed or 0, 0, 0) end
 	function ply:DrawModel() self.draws = self.draws + 1 end

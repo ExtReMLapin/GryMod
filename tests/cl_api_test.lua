@@ -301,7 +301,7 @@ return {
 				local ply = LocalPlayer()
 
 				expect(IsValid(ply)).to.beTrue()
-				expect(GryMod.API.IsSuitEnabled(ply)).to.equal(not ply:GetNWBool("GryDisabled", false))
+				expect(GryMod.API.IsSuitEnabled(ply)).to.equal(not ply:GetNW2Bool("GryDisabled", false))
 				expect(GryMod.API.IsSuitEnabled(nil)).to.beFalse()
 			end
 		},

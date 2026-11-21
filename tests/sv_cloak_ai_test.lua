@@ -45,7 +45,7 @@ return {
 		local p = ply()
 		if not p:Alive() then p:Spawn() end
 		p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
-		p:SetNWFloat("GryEnergy", 100)
+		p:SetNW2Float("GryEnergy", 100)
 		setAI("1")
 	end,
 	afterEach = function(state)

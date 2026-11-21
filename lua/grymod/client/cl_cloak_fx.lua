@@ -241,7 +241,7 @@ end
 
 -- Follows the player's switch for one frame. Nothing is made for a player who was never camouflaged.
 function F.Update(ply)
-	local cloaked = ply:GetNWBool("GryCloak", false) and ply:Alive()
+	local cloaked = ply:GetNW2Bool("GryCloak", false) and ply:Alive()
 	local s = States[ply]
 
 	if not s then
@@ -299,11 +299,35 @@ function F.Update(ply)
 	return s
 end
 
--- The players that are not followed yet are looked at this often (seconds): a short delay, so that the change of another
--- player starts when the server hides his weapon (nothing is run while nobody is camouflaged but this look).
-F.ScanInterval = 0.1
+-- How a player comes to be followed. The game tells us, nothing is polled: the switch is a NW2 variable, so EntityNetworkedVarChanged is called when it
+-- changes AND for every variable of every entity at a full update (somebody who joins while another player is camouflaged: the old value is nil); and
+-- NotifyShouldTransmit is called when a player comes back into view. The hook runs before the client's value changes (measured by the wiki: it still reads
+-- the old one), so the player is only put on a waiting list and read at the next Think, when the value is there.
+local waiting = setmetatable({}, {__mode = "k"})
 
-local lastScan = 0
+hook.Add("EntityNetworkedVarChanged", "GryCloakFX", function(ent, name)
+	if name == "GryCloak" and IsValid(ent) and ent:IsPlayer() then
+		waiting[ent] = true
+	end
+end)
+
+hook.Add("NotifyShouldTransmit", "GryCloakFX", function(ent, shouldTransmit)
+	if shouldTransmit and IsValid(ent) and ent:IsPlayer() then
+		waiting[ent] = true
+	end
+end)
+
+-- The players already camouflaged when this runs: at the load of the level (the full update may have come before the hooks were there) and when this
+-- file is loaded again in a running game. Once, not a loop.
+function F.CatchUp()
+	for _, ply in ipairs(player.GetAll()) do
+		if ply:GetNW2Bool("GryCloak", false) then
+			waiting[ply] = true
+		end
+	end
+end
+
+hook.Add("InitPostEntity", "GryCloakFX", F.CatchUp)
 
 hook.Add("Think", "GryCloakFX", function()
 	-- the ones already followed, at every frame
@@ -319,25 +343,21 @@ hook.Add("Think", "GryCloakFX", function()
 		end
 	end
 
-	-- the new ones: the local player at every frame, the others every ScanInterval
-	local me = LocalPlayer()
+	-- the ones the game told us about
+	if next(waiting) then
+		for ply in pairs(waiting) do
+			waiting[ply] = nil
 
-	if IsValid(me) and not States[me] and me:GetNWBool("GryCloak", false) then
-		F.Update(me)
-	end
-
-	local now = RealTime()
-
-	if now - lastScan > F.ScanInterval then
-		lastScan = now
-
-		for _, ply in ipairs(player.GetAll()) do
-			if not States[ply] and ply:GetNWBool("GryCloak", false) then
+			if IsValid(ply) and not States[ply] then
 				F.Update(ply)
 			end
 		end
 	end
 end)
+
+if IsValid(LocalPlayer()) then
+	F.CatchUp() -- loaded again in a running game
+end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Materials

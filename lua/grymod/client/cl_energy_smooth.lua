@@ -150,7 +150,7 @@ function ES.Raw(ply, now)
 		return n.value, n.rate
 	end
 
-	return ply:GetNWFloat("GryEnergy"), 0
+	return ply:GetNW2Float("GryEnergy"), 0
 end
 
 -- The energy to give the HUD's setEnergy.
@@ -164,7 +164,7 @@ function ES.Shown(ply, now)
 		return value
 	end
 
-	return ES.view:Update(value, rate, now, not ply:GetNWBool("GryMalfunction", false))
+	return ES.view:Update(value, rate, now, not ply:GetNW2Bool("GryMalfunction", false))
 end
 
 function ES.Reset()
