@@ -22,7 +22,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`. New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`, `"tracked"`. New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -98,7 +98,7 @@ the suit's safe state (a malfunction, an empty bar and a respawn must always rea
 friendly cross and the radar both ask it (`GryMod.Friendly.Relation` is the same function). The order:
 
 1. the providers you add, the higher priority first;
-2. the registry of tracked entities (not there yet, see below);
+2. the `relation` field of the entry of the registry of tracked entities that matches the entity (see below), when it is not `"auto"`;
 3. the built-in rule: an NPC that likes the player is an ally, one that hates him is hostile, everything else is neutral; a player of
    the same team is an ally.
 
@@ -234,5 +234,81 @@ weapons: later (the HUD already reads their fire mode through its own resolvers)
 
 ## Tracked entities
 
-Not there yet: a registry of scannable entities shared by the binoculars and the radar. `GryMod.API.Has("tracked")` will tell when it
-exists.
+`GryMod.API.Has("tracked")` is true. The registry of tracked entities says what an NPC or a nextbot is for the radar and the
+binoculars: its icon, when the radar lists it, what it is to the player (ally, neutral or hostile) and whether the binoculars may
+tag it. An entity that is not registered behaves as it always did: the radar reads its class and its attitude.
+
+### Register a class
+
+```lua
+if GRYMOD_INSTALLED and GryMod.API.Has("tracked") then
+	-- the guards of my addon: allies, always on the radar, even when the player did not meet them yet
+	GryMod.API.RegisterTracked("my_addon_guard", {
+		class = "npc_my_guard",
+		relation = "ally",
+		radar = "always",
+	})
+
+	-- my turret: a hostile machine the binoculars cannot tag, listed like any enemy (alerted or fighting within 26 m)
+	GryMod.API.RegisterTracked("my_addon_turret", {
+		class = {"npc_my_turret", "npc_my_turret_big"},
+		relation = "hostile",
+		radar = "hostile",
+		scan = false,
+		type = "machine",
+		size = "big",
+	})
+end
+```
+
+`RegisterTracked(key, def)` returns `true`, or `false` and a reason. The key is yours (a unique name: registering it again replaces
+the entry and keeps its place in the order). An invalid value refuses the whole definition and keeps the previous one; fields it does
+not know are ignored. `UnregisterTracked(key)` removes it (returns whether there was one). `GetTracked(ent)` gives the first entry
+that matches the entity, or `nil`: it is the stored table, read it and do not change it.
+
+### The fields
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `class` | a class name, or a list of them | matches the entities of these classes |
+| `base` | a class name, or a list of them | matches the entities built on that base class (`ENT.Base`, `scripted_ents.IsBasedOn`) and the base itself |
+| `match` | `function(ent)` returning `true` | matches what the function says, asked through `SafeCall` |
+| `scan` | boolean, `true` by default | the binoculars may tag it; `false`: they cannot (the lock sound does not play, the server refuses the tag) |
+| `radar` | `"always"`, `"hostile"`, `"scan"`, `"never"` | when the radar lists it (below); nothing: the radar's usual rules |
+| `relation` | `"auto"` (default), `"ally"`, `"neutral"`, `"hostile"`, or `function(ply, ent)` | what it is to the player; `"auto"`: the NPC's real attitude |
+| `type` | `"human"`, `"flying"`, `"machine"` or 1, 2, 3 | the icon of the radar: a soldier, a flying unit, a machine; nothing: the class decides (unknown classes are `"human"`) |
+| `size` | `"normal"`, `"big"` | `"big"` draws the icon twice the size (the Strider's); nothing: the class decides |
+| `label` | text, or `function(ent)` | a name for the entity. Stored; no part of the HUD shows it yet |
+| `shape` | `"unit"` (default), `"rect"` | `"rect"` is stored and reserved for vehicles: it is not drawn yet |
+
+At least one of `class`, `base` and `match` is needed. The entity matches when ANY of the ones you give matches, tried in this order
+of cost: the class, then the base, then the function (which is not called when the class or the base matched). Entries are tried in
+the order they were registered, and the first that matches wins. The class and base answers are kept in a cache by class (emptied by
+every `RegisterTracked` and `UnregisterTracked`), so `GetTracked` is cheap enough for the radar to ask it for every NPC at every tick.
+A `match` function is asked about every entity of a class that no earlier entry took: keep it short.
+
+### `radar`: when the contact is listed
+
+| Value | The radar lists it |
+| --- | --- |
+| `"always"` | at once, calm and never scanned, within the radar's range, in the colour of its relation (blue for an ally; for a hostile the colour of its state), whatever the player's "allies always on the radar" switch says |
+| `"hostile"` | by the rules of the enemies, whatever its relation: alerted or fighting the player within 26 m, or scanned. It has the colours of an enemy, an ally with this setting keeps its blue |
+| `"scan"` | only once the binoculars scanned it (its alert, a marker when it hurt the player and the allies switch do not list it) |
+| `"never"` | never: not scanned, not as a marker, not at once |
+
+Without `radar` the usual rules apply: an ally is listed at once (the player's switch), a hostile by its alert, a neutral only
+scanned or when it hurt the player.
+
+### `relation`
+
+`relation` is step 2 of the relation chain above: your providers come first, then the entry, then the NPC's real attitude. A function
+is asked with `(ply, ent)` through `SafeCall` and answers `"ally"`, `"neutral"` or `"hostile"`; `nil` (or any other value) is no opinion
+and the built-in rule answers. The crosshair's friendly cross follows it too.
+
+### What the radar looks at
+
+The registry is read for **NPCs and nextbots**. A nextbot is not on the radar unless an entry matches it (the radar then describes it with
+no NPC state and no enemy: it is calm, and `radar = "always"` or a scan lists it; the engine gives it no attitude, so give it a
+`relation`). Other entities, vehicles included, are accepted by the registry but ignored by the radar: their drawing comes with their own
+part (`shape = "rect"`). The `label` does not travel to the client either: the radar's message has no room for text and the movies have
+no field for a name; it is there for a later part.
