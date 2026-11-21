@@ -602,7 +602,7 @@ return {
 				function me:GetViewModel() return NULL end
 				stub(_G, "LocalPlayer", function() return me end)
 				stub(ModeFX, "Now", function() return now end)
-				ModeFX.State.aliveAt = 0
+				ModeFX.Spawn(ModeFX.State, 0)
 
 				FindMetaTable("Player").SetNanosuitMode(me, Modes.SPEED, false)
 				local event = seen("mode")
@@ -630,14 +630,14 @@ return {
 				local set = FindMetaTable("Player").SetNanosuitMode
 
 				-- 0.2 s after the respawn
-				ModeFX.State.aliveAt = now - 0.2
+				ModeFX.Spawn(ModeFX.State, now - 0.2)
 				set(me, Modes.SPEED, false)
 				expect(seen("mode").data.tint).to.equal(false)
 				timer.Remove("GryModModeVoice")
 
 				-- the suit is down
 				spy = {}
-				ModeFX.State.aliveAt = 0
+				ModeFX.Spawn(ModeFX.State, 0)
 				me.down = true
 				set(me, Modes.STRENGTH, false)
 				expect(seen("mode").data.tint).to.equal(false)

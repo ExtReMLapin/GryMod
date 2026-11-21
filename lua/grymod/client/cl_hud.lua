@@ -687,6 +687,11 @@ end
 -- awareness of the hostile NPCs the server sends as radar contacts: cl_hud_radar_units.lua, Radar.StealthTarget.)
 -- no key for the quick menu yet: a prompt asks for one (every time, while there is none)
 net.Receive("gry_spawn", function()
+	-- the first second after a respawn gets no mode tint (cl_mode_fx.lua)
+	if GryMod.ModeFX then
+		GryMod.ModeFX.Spawned()
+	end
+
 	if GryMod.MenuKey then
 		timer.Simple(2, GryMod.MenuKey.MaybePrompt)
 	end

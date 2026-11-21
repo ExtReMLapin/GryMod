@@ -12,9 +12,11 @@
 -- How it works: the tint is part of the HUD event "mode" (cl_api_hud_events.lua), which plays it together with the mode's
 -- activation sound. Player:SetNanosuitMode (cl_hud.lua) calls the event at every change of mode, and asks for the tint (data.tint)
 -- only when TintDue says so: not the first time the mode is known, not while the player is dead, in the first second after a
--- respawn (the server puts the suit back in armor then), nor while the suit is down (sv_malfunction.lua forces armor mode). A Think
--- hook only keeps the bookkeeping those rules need. The post effect hook exists only while an effect runs and takes itself away at
--- the end. Switch: gry_screenfx, the same as the damage effects of cl_damage_fx.lua.
+-- respawn (the server puts the suit back in armor then), nor while the suit is down (sv_malfunction.lua forces armor mode). The
+-- bookkeeping those rules need rides on events, nothing runs at every frame: the respawn message of the server (net "gry_spawn",
+-- cl_hud.lua calls FX.Spawned), the arrival in game (InitPostEntity) and the networked flag "GryMalfunction" turning on
+-- (EntityNetworkedVarChanged). The post effect hook exists only while an effect runs and takes itself away at the end. Switch:
+-- gry_screenfx, the same as the damage effects of cl_damage_fx.lua.
 
 GryMod = GryMod or {}
 
@@ -26,9 +28,10 @@ local Modes = GryMod.Modes
 -- Seconds after a respawn in which a change of mode is the server's own (the suit goes back to armor), not a choice.
 FX.SPAWN_GRACE = 1
 
--- Seconds after a change in which a suit that turns out to be down takes the effect back: the server sets the flag "GryMalfunction"
--- just before it forces armor mode, but the two reach the client in the order they like (seen in a test: the mode first, the flag a
--- frame later at 20 fps).
+-- Seconds after a change in which a suit that turns out to be down (the flag "GryMalfunction" turns on), or a player who turns out to
+-- have just respawned (the message "gry_spawn"), takes the effect back: the server sets the flag just before it forces armor mode, and
+-- puts the suit back in armor just before it sends the respawn message, but the messages reach the client in the order they like
+-- (seen in a test: the mode first, the flag a frame later at 20 fps).
 FX.WITHDRAW = 0.3
 
 -- Per mode, the flow graph's numbers: seconds up to the peak, seconds in all, and the colour offsets added to the picture at
@@ -81,10 +84,10 @@ end
 -- State
 --------------------------------------------------------------------------------------------------------------------
 
--- starts: mode -> the time its effect began; mode: the last mode seen; aliveAt: when the player was last seen coming alive;
--- startedMode, startedAt: the last effect Observe started.
+-- starts: mode -> the time its effect began; spawnAt: when the respawn message (or the arrival in game) was last seen, nil when none
+-- was (the player has been there for a while); startedMode, startedAt: the last effect Play started (Withdraw may take it back).
 function FX.NewState()
-	return {starts = {}, mode = nil, aliveAt = nil}
+	return {starts = {}, spawnAt = nil}
 end
 
 -- The clock of the effects: replaceable, the tests freeze it.
@@ -219,30 +222,26 @@ function FX.TintDue(state, previous, mode, sample, now)
 		return false
 	end
 
-	return state.aliveAt ~= nil and now - state.aliveAt >= FX.SPAWN_GRACE
+	return state.spawnAt == nil or now - state.spawnAt >= FX.SPAWN_GRACE
 end
 
--- Looks at the player once a frame: sample = {alive, malfunction}, now in seconds. It only keeps the state's bookkeeping: since when the
--- player has been alive (TintDue), and takes the effect back when the suit turns out to be down a moment after it started.
-function FX.Observe(state, sample, now)
-	if not sample.alive then
-		state.aliveAt = nil
-
-		return
-	end
-
-	if not state.aliveAt then
-		state.aliveAt = now
-	end
-
-	-- a forced armor mode shows before the flag that says why: take the effect back
-	if sample.malfunction and state.startedMode and now - state.startedAt < FX.WITHDRAW then
+-- Takes back the tint Play started less than FX.WITHDRAW seconds ago: the change that started it turns out to be the server's own
+-- (a suit that went down, a player who respawned), not a choice. Nothing to take back: nothing happens.
+function FX.Withdraw(state, now)
+	if state.startedMode and now - state.startedAt < FX.WITHDRAW then
 		state.starts[state.startedMode] = nil
 		state.startedMode = nil
 	end
 end
 
--- Starts the tint of a mode on a state and remembers it (Observe may take it back). Returns whether the mode has a tint.
+-- The player respawned at this time (the server's message "gry_spawn", or the arrival in game): the first second holds the tint back
+-- (TintDue), and the mode change that came just before the message is the respawn's own (Withdraw).
+function FX.Spawn(state, now)
+	state.spawnAt = now
+	FX.Withdraw(state, now)
+end
+
+-- Starts the tint of a mode on a state and remembers it (Withdraw may take it back). Returns whether the mode has a tint.
 function FX.Play(state, mode, now)
 	if not PROFILES[mode] then
 		return false
@@ -263,7 +262,7 @@ end
 
 FX.State = FX.State or FX.NewState()
 
--- one table, filled in again each frame: no garbage
+-- one table, filled in again at each mode change: no garbage
 local sample = {alive = false, malfunction = false}
 
 -- Whether the local player's change of mode from `previous` to `mode` gets the tint, from what the player is now.
@@ -280,15 +279,23 @@ function FX.TintNow(previous, mode)
 	return FX.TintDue(FX.State, previous, mode, sample, FX.Now())
 end
 
-hook.Add("Think", HOOK, function()
-	local ply = LocalPlayer()
+-- The respawn message of the server arrived (cl_hud.lua, net "gry_spawn").
+function FX.Spawned()
+	FX.Spawn(FX.State, FX.Now())
+end
 
-	if not IsValid(ply) then
-		return
+-- The suit goes down: the game calls EntityNetworkedVarChanged when a NW2 variable changes (nothing is polled), with the NEW value as
+-- the fourth argument. Only the flag of the local player turning on matters.
+hook.Add("EntityNetworkedVarChanged", HOOK, function(ent, name, _, down)
+	if name == "GryMalfunction" and down == true and ent == LocalPlayer() then
+		FX.Withdraw(FX.State, FX.Now())
 	end
-
-	sample.alive = ply:Alive()
-	sample.malfunction = ply:GetNW2Bool("GryMalfunction", false)
-
-	FX.Observe(FX.State, sample, FX.Now())
 end)
+
+-- The arrival in game counts as a respawn: the server's answer with the mode (sv_system.lua) must not tint.
+hook.Add("InitPostEntity", HOOK, function()
+	FX.Spawn(FX.State, FX.Now())
+end)
+
+-- The first version looked at the player at every frame: a copy of it left by an older load of the file goes.
+hook.Remove("Think", HOOK)

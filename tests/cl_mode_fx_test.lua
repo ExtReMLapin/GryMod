@@ -32,15 +32,15 @@ local function r3(mode, t)
 	return {r, g, b}
 end
 
--- a sample the way the Think hook builds it
+-- a sample the way FX.TintNow builds it
 local function sample(alive, malfunction)
 	return {alive = alive ~= false, malfunction = malfunction == true}
 end
 
--- a state that has seen the player alive since a long time ago
+-- a state whose last respawn was a long time ago
 local function seen()
 	local state = FX.NewState()
-	FX.Observe(state, sample(), -100)
+	FX.Spawn(state, -100)
 
 	return state
 end
@@ -137,19 +137,19 @@ return {
 			end
 		},
 		{
-			name = "TintDue: nothing while dead, nor in the first second after the respawn (the server puts the suit back in armor)",
+			name = "TintDue: nothing while dead, nor in the first second after the respawn (the server puts the suit back in armor); a state with no respawn on record is not held back",
 			func = function(state)
 				local s = seen()
 				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(false), 10)).to.beFalse()
 
-				-- the observer sees the player die, then come back
-				FX.Observe(s, sample(false), 10)
-				expect(s.aliveAt).to.beNil()
-				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 11)).to.beFalse() -- never seen alive yet
-
-				FX.Observe(s, sample(true), 12)
+				-- the respawn message (net gry_spawn) is the stamp: the second after it holds the tint back
+				FX.Spawn(s, 12)
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 12)).to.beFalse()
 				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 12.5)).to.beFalse()
 				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 13)).to.beTrue()
+
+				-- a file loaded into a game already running has seen no respawn: the player has been there for a while
+				expect(FX.TintDue(FX.NewState(), Modes.ARMOR, Modes.SPEED, sample(true), 0.1)).to.beTrue()
 			end
 		},
 		{
@@ -161,20 +161,31 @@ return {
 			end
 		},
 		{
-			name = "Play starts the tint and remembers it; the malfunction flag that shows a moment after the forced armor mode takes it back (seen live: mode first, flag 50 ms later)",
+			name = "Play starts the tint and remembers it; the malfunction flag or the respawn message that shows a moment after the forced armor mode takes it back (seen live: mode first, flag 50 ms later)",
 			func = function(state)
 				local s = seen()
 				expect(FX.Play(s, Modes.ARMOR, 10)).to.beTrue()
 				expect(FX.Params(s, 10.02)).toNot.beNil()
 
-				FX.Observe(s, sample(true, true), 10.05)
+				FX.Withdraw(s, 10.05)
 				expect(FX.Params(s, 10.05)).to.beNil()
+
+				-- a respawn message right after a mode message (the order they arrive in is the engine's): the same
+				local respawn = seen()
+				FX.Play(respawn, Modes.STRENGTH, 20)
+				FX.Spawn(respawn, 20.05)
+				expect(FX.Params(respawn, 20.05)).to.beNil()
+				expect(FX.TintDue(respawn, Modes.ARMOR, Modes.SPEED, sample(), 20.5)).to.beFalse()
 
 				-- a flag that comes long after leaves a normal effect alone
 				local late = seen()
 				FX.Play(late, Modes.SPEED, 10)
-				FX.Observe(late, sample(true, true), 10.35)
+				FX.Withdraw(late, 10.35)
 				expect(FX.Params(late, 10.35)).toNot.beNil()
+
+				-- nothing started, or already taken back: nothing to do
+				FX.Withdraw(FX.NewState(), 10)
+				FX.Withdraw(s, 10.06)
 
 				-- no tint for the camouflage
 				expect(FX.Play(seen(), Modes.CLOAK, 10)).to.beFalse()
@@ -309,43 +320,122 @@ return {
 			end
 		},
 		{
-			name = "the Think hook only keeps the bookkeeping (since when the player is alive): a change of mode alone starts nothing, the event does",
+			name = "no Think hook: the bookkeeping rides on events (the respawn message, the networked flag, the arrival in game), nothing runs at every frame",
+			func = function(state)
+				expect(hook.GetTable().Think.GryModeFx).to.beNil()
+				expect(isfunction(hook.GetTable().EntityNetworkedVarChanged.GryModeFx)).to.beTrue()
+				expect(isfunction(hook.GetTable().InitPostEntity.GryModeFx)).to.beTrue()
+			end
+		},
+		{
+			name = "loading the file again leaves one hook of each kind and removes the Think of an older load",
+			func = function(state)
+				hook.Add("Think", "GryModeFx", function() end) -- the copy an older version left
+				stub(FX, "Now", FX.Now) -- the load puts its own back
+				stub(FX, "State", FX.State)
+
+				include("grymod/client/cl_mode_fx.lua")
+
+				local hooks = hook.GetTable()
+				expect(hooks.Think.GryModeFx).to.beNil()
+				expect(isfunction(hooks.EntityNetworkedVarChanged.GryModeFx)).to.beTrue()
+				expect(isfunction(hooks.InitPostEntity.GryModeFx)).to.beTrue()
+
+				-- hooks are keyed by name: a second load replaces, it does not add
+				for _, event in ipairs({"EntityNetworkedVarChanged", "InitPostEntity"}) do
+					local count = 0
+
+					for name in pairs(hooks[event]) do
+						if name == "GryModeFx" then count = count + 1 end
+					end
+
+					expect(count).to.equal(1)
+				end
+			end
+		},
+		{
+			name = "the flag GryMalfunction turning on for the local player takes back a tint that started a moment ago; other variables, other entities, the flag turning off, or a late flag do not",
 			func = function(state)
 				local now = 1000
 				local me = fakeMe(Modes.ARMOR, true, false)
 				stub(FX, "Now", function() return now end)
 				stub(_G, "LocalPlayer", function() return me end)
 				stub(_G, "DrawColorModify", function() end)
-				stub(FX, "State", FX.NewState())
+				stub(FX, "State", seen())
 
-				local think = hook.GetTable().Think.GryModeFx
-				expect(isfunction(think)).to.beTrue()
+				local changed = hook.GetTable().EntityNetworkedVarChanged.GryModeFx
 
-				think()
-				expect(FX.State.aliveAt).to.equal(1000)
+				local function started(mode)
+					FX.State = seen()
+					FX.Play(FX.State, mode, now)
+				end
 
-				me.NanosuitMode = Modes.SPEED
-				now = 1010
-				think()
-				expect(paintHook()).to.beNil()
+				started(Modes.ARMOR)
+				changed(me, "GryMalfunction", false, true)
+				expect(FX.Params(FX.State, now)).to.beNil()
+
+				for _, case in ipairs({
+					{me, "GryEnergy", 0, true},
+					{me, "GryMalfunction", true, false},
+					{fakeMe(Modes.ARMOR, true, false), "GryMalfunction", false, true}
+				}) do
+					started(Modes.SPEED)
+					now = now + 0.01
+					changed(case[1], case[2], case[3], case[4])
+					expect(FX.Params(FX.State, now)).toNot.beNil()
+				end
+
+				started(Modes.SPEED)
+				now = now + 0.35
+				changed(me, "GryMalfunction", false, true) -- long after the change: a normal effect, left alone
+				expect(FX.Params(FX.State, now)).toNot.beNil()
 			end
 		},
 		{
-			name = "the Think hook does nothing without a player; the live decision (TintNow) reads the player: alive for a while, not down",
+			name = "the arrival in game (InitPostEntity) counts as a respawn: no tint in the first second",
+			func = function(state)
+				local now = 1000
+				stub(FX, "Now", function() return now end)
+				stub(FX, "State", seen())
+
+				hook.GetTable().InitPostEntity.GryModeFx()
+				expect(FX.TintDue(FX.State, Modes.ARMOR, Modes.SPEED, sample(), now + 0.5)).to.beFalse()
+				expect(FX.TintDue(FX.State, Modes.ARMOR, Modes.SPEED, sample(), now + 1)).to.beTrue()
+			end
+		},
+		{
+			name = "FX.Spawned stamps the respawn on the live state at the live time; the net message gry_spawn calls it",
+			func = function(state)
+				local now = 1000
+				stub(FX, "Now", function() return now end)
+				stub(FX, "State", seen())
+				stub(timer, "Simple", function() end) -- the receiver also arms the key prompts
+
+				FX.Spawned()
+				expect(FX.TintDue(FX.State, Modes.ARMOR, Modes.SPEED, sample(), now + 0.5)).to.beFalse()
+				expect(FX.TintDue(FX.State, Modes.ARMOR, Modes.SPEED, sample(), now + 1)).to.beTrue()
+
+				FX.State = seen()
+				local called = 0
+				stub(FX, "Spawned", function() called = called + 1 end)
+				local receiver = net.Receivers["gry_spawn"]
+				expect(isfunction(receiver)).to.beTrue()
+				receiver()
+				expect(called).to.equal(1)
+			end
+		},
+		{
+			name = "the live decision (TintNow) reads the player on demand: no player, alive for a while and not down, down, dead",
 			func = function(state)
 				local now = 1000
 				local me = fakeMe(Modes.ARMOR, true, false)
 				stub(FX, "Now", function() return now end)
 				stub(_G, "LocalPlayer", function() return nil end)
-				stub(FX, "State", FX.NewState())
+				stub(FX, "State", seen())
 
-				local think = hook.GetTable().Think.GryModeFx
-				think() -- no player: no error
 				expect(FX.TintNow(Modes.ARMOR, Modes.SPEED)).to.beFalse()
 
 				_G.LocalPlayer = function() return me end
-				think()
-				now = 1010
 				expect(FX.TintNow(Modes.ARMOR, Modes.SPEED)).to.beTrue()
 
 				me.GetNW2Bool = function(_, name) return name == "GryMalfunction" end
