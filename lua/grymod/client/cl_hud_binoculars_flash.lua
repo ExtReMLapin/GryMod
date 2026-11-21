@@ -36,7 +36,7 @@ local HorizonConVar = CreateClientConVar("gry_binoculars_horizon", "1", true, fa
 local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, false, "The dark vignette of the binoculars fades out as they close, in the 14 frames of the original's film (off: it goes with the picture, at once)")
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
 local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "The original's cryvision sound mood while the binoculars are up: explosions, collisions and vehicles are lowered (in and out in half a second)")
-local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC being scanned through the binoculars is outlined in the last 0.3 s of the scan (needs the tag switch: the scan is the tag's)")
+local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC scanned through the binoculars is outlined in pale blue from the last 0.3 s of its scan until the binoculars come down (at most 8 at once; needs the tag switch: the scan is the tag's)")
 local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s between them (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
 
 function Bino.StagesEnabled() return StagesConVar:GetBool() end
@@ -617,18 +617,25 @@ function Bino.ScanStep(st, target, dt, accepts)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
--- The silhouette: for the last 0.3 s of a scan (CHUDRadar::UpdateScanner, constant 0x392644c4; FUN_391cffa0 highlights the
--- entity, the CryVision silhouette) the entity being scanned is outlined. The scan state machine owns the countdown, so the
--- silhouette is read from it: it goes with the scan (the end, a reset, the binoculars closing).
+-- The silhouette (CHUDRadar::UpdateScanner, constant 0x392644c4; FUN_391cffa0 highlights the entity, the CryVision silhouette):
+-- from the last 0.3 s of a scan the entity being scanned is outlined, and the outline STAYS: the entry has no end time (-1.0,
+-- never expires) and FUN_391d04a0 clears the entries only when the binoculars come down (DEDUCED from that, see the research
+-- note 8.5). So the scan state machine only gives the start; the outlined entities are kept in a set (at most
+-- SILHOUETTE_MAX, the oldest dropped first) until the binoculars are let go, the entity is dead or invalid, or a reset.
 -- ---------------------------------------------------------------------------------------------------------
 
 Bino.SILHOUETTE_SECONDS = 0.3
+Bino.SILHOUETTE_MAX = 8
 
--- The outline: DEDUCED, the colour and the thickness of the engine's CryVision pass were not read (it is in the shader
--- chain of PostEffectsGame.cfx, not in the game's code): the radar's hostile red, a thin glow of two passes of 3 pixels.
-Bino.SilhouetteColor = Color(255, 64, 48, 255)
+-- The outline: the vision parameters the original gives the entity's render proxy are (0.8, 0.8, 1.0, 0.5), a pale blue-white
+-- (204, 204, 255 in 8 bits), VERIFIED in the research note 8.5. The thickness (about 3 pixels, then a glow) is the engine's
+-- pass: a halo of two passes of 3 pixels is the nearest GMod has.
+Bino.SilhouetteColor = Color(204, 204, 255, 255)
 Bino.SILHOUETTE_BLUR = 3
 Bino.SILHOUETTE_PASSES = 2
+
+-- The entities outlined now, oldest first (see Bino.SilhouetteAdd).
+Bino.Silhouettes = {}
 
 -- The entity to outline for this scan state, or nil: the one being scanned, with at most 0.3 s of the countdown left (and
 -- some), while valid(entity) says it still may be (alive).
@@ -640,6 +647,55 @@ function Bino.SilhouetteTarget(st, valid)
 	end
 
 	return nil
+end
+
+-- Puts an entity in the set (once), dropping the oldest ones past SILHOUETTE_MAX.
+function Bino.SilhouetteAdd(set, entity)
+	if entity == nil then
+		return set
+	end
+
+	for i = 1, #set do
+		if set[i] == entity then
+			return set
+		end
+	end
+
+	set[#set + 1] = entity
+
+	while #set > Bino.SILHOUETTE_MAX do
+		table.remove(set, 1)
+	end
+
+	return set
+end
+
+-- Drops from the set the entities that valid() refuses (dead, gone), keeping the order; the same table comes back.
+function Bino.SilhouetteLive(set, valid)
+	local kept = 0
+
+	for i = 1, #set do
+		local entity = set[i]
+
+		if valid(entity) then
+			kept = kept + 1
+			set[kept] = entity
+		end
+	end
+
+	for i = #set, kept + 1, -1 do
+		set[i] = nil
+	end
+
+	return set
+end
+
+function Bino.SilhouetteClear(set)
+	for i = #set, 1, -1 do
+		set[i] = nil
+	end
+
+	return set
 end
 
 -- An NPC that is alive and exists.
@@ -999,17 +1055,29 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	binoculars:Draw((ScrW() - 1366 * scale) / 2, 0, scale)
 end)
 
--- The outline of the entity being scanned (see Bino.SilhouetteTarget): a halo, drawn only while the binoculars are wanted
--- (asked here too: this runs before the HUD paints the frame in which the key is let go).
+-- The outline of the entities scanned (see Bino.SilhouetteTarget): one halo for the whole set, drawn only while the
+-- binoculars are wanted (asked here too: this runs before the HUD paints the frame in which the key is let go); with the
+-- binoculars down (or the HUD off) the set is emptied, so they are not outlined again at the next opening.
 function Bino.DrawSilhouette()
-	if not Bino.SilhouetteEnabled() or not Bino.Enabled() or not Bino.Wanted(LocalPlayer()) then
+	local set = Bino.Silhouettes
+
+	if not Bino.Enabled() or not Bino.Wanted(LocalPlayer()) then
+		if #set > 0 then
+			Bino.SilhouetteClear(set)
+		end
+
 		return
 	end
 
-	local entity = Bino.SilhouetteTarget(scan, Bino.SilhouetteValid)
+	if not Bino.SilhouetteEnabled() then
+		return
+	end
 
-	if entity then
-		halo.Add({entity}, Bino.SilhouetteColor, Bino.SILHOUETTE_BLUR, Bino.SILHOUETTE_BLUR, Bino.SILHOUETTE_PASSES, true, false)
+	Bino.SilhouetteAdd(set, Bino.SilhouetteTarget(scan, Bino.SilhouetteValid))
+	Bino.SilhouetteLive(set, Bino.SilhouetteValid)
+
+	if #set > 0 then
+		halo.Add(set, Bino.SilhouetteColor, Bino.SILHOUETTE_BLUR, Bino.SILHOUETTE_BLUR, Bino.SILHOUETTE_PASSES, true, false)
 	end
 end
 
@@ -1126,5 +1194,6 @@ function Bino.Reset()
 	Bino.AudioReset()
 	Bino.MoodStep(false)
 	Bino.ScanReset(scan)
+	Bino.SilhouetteClear(Bino.Silhouettes)
 	Bino.ZoomReset(zoom)
 end

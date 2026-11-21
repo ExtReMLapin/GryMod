@@ -963,30 +963,162 @@ return {
 			end
 		},
 		{
-			name = "the binoculars closing in the middle of a scan (or a reset) takes the silhouette away with the scan",
+			name = "the silhouette is the original's pale blue-white (204, 204, 255), not the radar's red",
+			func = function(state)
+				local c = GryMod.FlashBinoculars.SilhouetteColor
+				expect(c.r).to.equal(204)
+				expect(c.g).to.equal(204)
+				expect(c.b).to.equal(255)
+				expect(c.a).to.equal(255)
+			end
+		},
+		{
+			name = "the set of outlined entities: no duplicates, at most SILHOUETTE_MAX (8) with the oldest dropped first, invalid or dead ones pruned, and it can be cleared",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.SILHOUETTE_MAX).to.equal(8)
+				local set = {}
+				local list = {}
+				for i = 1, 10 do list[i] = {id = i} end
+				local always = function() return true end
+
+				M.SilhouetteAdd(set, list[1])
+				M.SilhouetteAdd(set, list[1])
+				expect(#set).to.equal(1)
+
+				for i = 2, 10 do M.SilhouetteAdd(set, list[i]) end
+				expect(#set).to.equal(8)
+				-- the oldest two (1 and 2) are gone, the newest is last
+				expect(set[1]).to.equal(list[3])
+				expect(set[8]).to.equal(list[10])
+
+				-- pruning keeps the order and the same table
+				local kept = M.SilhouetteLive(set, function(e) return e.id % 2 == 0 end)
+				expect(kept).to.equal(set)
+				expect(#set).to.equal(4)
+				expect(set[1]).to.equal(list[4])
+				expect(set[4]).to.equal(list[10])
+				expect(#M.SilhouetteLive(set, always)).to.equal(4)
+
+				-- nil is not added
+				M.SilhouetteAdd(set, nil)
+				expect(#set).to.equal(4)
+
+				M.SilhouetteClear(set)
+				expect(#set).to.equal(0)
+			end
+		},
+		{
+			name = "durations: the outline starts in the last 0.3 s of the 0.55 s scan and then stays, frame after frame, for as long as the binoculars are up; it goes when they are let go or the NPC dies, and does not come back",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local add, enabled, wanted, hudEnabled = halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled
-				local count = 0
-				local npc = {IsValid = function() return true end, IsNPC = function() return true end, Health = function() return 40 end}
 				local st = M.ScanState
+				local alive, up = true, true
+				local haloed = {}
+				local npc = {IsValid = function() return true end, IsNPC = function() return true end, Health = function() return alive and 40 or 0 end}
+				local dt = 1 / 30
 
 				local ok, err = pcall(function()
-					halo.Add = function() count = count + 1 end
+					halo.Add = function(entities) haloed[#haloed + 1] = entities[1] end
 					M.SilhouetteEnabled = function() return true end
-					M.Wanted = function() return true end
+					M.Wanted = function() return up end
 					M.Enabled = function() return true end
+					M.ScanReset(st)
+					M.SilhouetteClear(M.Silhouettes)
 
+					local first, last
+					local accepts = function() return true end
+
+					-- 12 s of frames aimed at the NPC
+					for frame = 1, 360 do
+						local time = frame * dt
+						M.ScanStep(st, npc, dt, accepts)
+						local before = #haloed
+						M.DrawSilhouette()
+
+						if #haloed > before then
+							first = first or time
+							last = time
+						end
+					end
+
+					-- the aim is seen on frame 1, the debounce (0.05 s) and the scan (0.55 s) follow: the outline starts about 0.3 s before the
+					-- end of the scan, around 0.35 s to 0.45 s here, and is still there on the last frame
+					expect(first).toNot.beNil()
+					expect(first > 0.3 and first < 0.5).to.beTrue()
+					expect(last).to.aboutEqual(12, 1e-6)
+					-- one halo per frame from the first frame to the last, no gap
+					expect(#haloed).to.equal(math.floor((12 - first) / dt + 0.5) + 1)
+
+					-- let go: gone, and not back when the binoculars come up again
+					local count = #haloed
+					up = false
+					M.DrawSilhouette()
+					up = true
+					M.DrawSilhouette()
+					expect(#haloed).to.equal(count)
+
+					-- a scanned NPC that is then killed: its outline goes with it, for good
+					M.ScanReset(st)
 					st.current, st.timer = npc, 0.2
 					M.DrawSilhouette()
-					expect(count).to.equal(1)
-					M.Reset()
-					expect(st.current).to.beNil()
+					expect(#haloed).to.equal(count + 1)
+					st.current, st.timer = nil, 0
 					M.DrawSilhouette()
-					expect(count).to.equal(1)
+					expect(#haloed).to.equal(count + 2)
+					alive = false
+					M.DrawSilhouette()
+					expect(#haloed).to.equal(count + 2)
+					alive = true
+					M.DrawSilhouette()
+					expect(#haloed).to.equal(count + 2)
 				end)
 
 				M.ScanReset(st)
+				M.SilhouetteClear(M.Silhouettes)
+				halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled = add, enabled, wanted, hudEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "a reset takes every outline away, and the entities scanned are outlined together (one halo call with all of them)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local add, enabled, wanted, hudEnabled = halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled
+				local st = M.ScanState
+				local calls = {}
+				local function npc() return {IsValid = function() return true end, IsNPC = function() return true end, Health = function() return 40 end} end
+				local a, b = npc(), npc()
+
+				local ok, err = pcall(function()
+					halo.Add = function(entities) calls[#calls + 1] = #entities end
+					M.SilhouetteEnabled = function() return true end
+					M.Wanted = function() return true end
+					M.Enabled = function() return true end
+					M.ScanReset(st)
+					M.SilhouetteClear(M.Silhouettes)
+
+					st.current, st.timer = a, 0.2
+					M.DrawSilhouette()
+					st.current, st.timer = b, 0.2
+					M.DrawSilhouette()
+					st.current, st.timer = nil, 0
+					M.DrawSilhouette()
+					expect(calls[#calls]).to.equal(2)
+
+					local count = #calls
+					M.Reset()
+					expect(st.current).to.beNil()
+					M.DrawSilhouette()
+					expect(#calls).to.equal(count)
+				end)
+
+				M.ScanReset(st)
+				M.SilhouetteClear(M.Silhouettes)
 				halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled = add, enabled, wanted, hudEnabled
 
 				if not ok then

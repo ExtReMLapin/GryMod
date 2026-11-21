@@ -78,7 +78,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Horizon ladder that follows where you look", "gry_binoculars_horizon")
 	Panel:CheckBox("Dark vignette fading out as the binoculars close (off: it goes at once)", "gry_binoculars_vignette")
 	Panel:CheckBox("Tag an NPC aimed at for half a second (the radar shows it)", "gry_binoculars_tag")
-	Panel:CheckBox("Outline the NPC being scanned during the last 0.3 s of the scan (needs the tag option above)", "gry_binoculars_silhouette")
+	Panel:CheckBox("Outline in pale blue the NPCs scanned, from the end of their scan until the binoculars come down (needs the tag option above)", "gry_binoculars_silhouette")
 	Panel:CheckBox("Binoculars sound mood: explosions, collisions and vehicles are lowered while they are up", "gry_binoculars_mood")
 	Panel:CheckBox("Binoculars zoom stages 2x, 4x, 8x with the mouse wheel, 0.2 s between them (off: the Half-Life 2 zoom). Changes how the mouse feels", "gry_binoculars_stages")
 
