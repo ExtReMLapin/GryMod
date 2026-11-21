@@ -829,6 +829,8 @@ end
 local hud, panel
 local lastTime
 local fed = {}
+-- what the damage effects look at each frame (one table, filled in again)
+local fxSample = {}
 
 local function feed(ply)
 	local maxHealth = ply:GetMaxHealth()
@@ -924,10 +926,26 @@ function Module.Paint()
 
 	hud:Update(dt)
 
+	-- a heavy armor hit makes both panels jump together (cl_damage_fx.lua: the original's HUD interference), and the
+	-- screen effects of damage are started from here (one look at the player a frame)
+	local jumpX, jumpY = 0, 0
+	local damageFx = GryMod.DamageFx
+
+	if damageFx then
+		fxSample.health = ply:Health()
+		fxSample.max = ply:GetMaxHealth()
+		fxSample.energy = ply:GetNWFloat("GryEnergy")
+		fxSample.armor = Module.ModeName(ply.NanosuitMode) == "Armor"
+		damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
+
+		jumpX, jumpY = damageFx.HudOffset(damageFx.State, dt)
+		jumpX, jumpY = jumpX * scale, jumpY * scale
+	end
+
 	-- each panel has its own switch (gry_hud_status, gry_hud_radar); a hidden one keeps running so that it is
 	-- in the right state when it comes back
 	if not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("status") then
-		hud:Draw(ScrW() - 1024 * scale + right, ScrH() - 768 * scale, scale)
+		hud:Draw(ScrW() - 1024 * scale + right + jumpX, ScrH() - 768 * scale + jumpY, scale)
 	end
 
 	if panel then
@@ -938,7 +956,7 @@ function Module.Paint()
 		panel:Update(dt)
 
 		if not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("radar") then
-			panel:Draw(left, ScrH() - 768 * scale, scale)
+			panel:Draw(left + jumpX, ScrH() - 768 * scale + jumpY, scale)
 		end
 	end
 end
@@ -955,6 +973,11 @@ function Module.Reset()
 	end
 
 	hud, panel = nil, nil
+
+	-- a respawn starts with no damage effect and a fresh reference health
+	if GryMod.DamageFx then
+		GryMod.DamageFx.Reset(GryMod.DamageFx.State)
+	end
 end
 
 -- Adds or removes the paint hook; returns whether this style is the one being drawn.

@@ -193,6 +193,27 @@ function Panel:SetStealth(level)
 	end
 end
 
+-- setDamage: the movie's damage ring, frame = value * 100 + 1, hidden above 1. The original only feeds it with the damage
+-- state of the radar of the vehicle the player drives (never on foot, see 2026-11-21-damage-feedback-notes.md), so
+-- nothing calls it in GryMod; the function mirrors the movie's.
+function Panel:SetDamage(value)
+	local ring = self.view and self.view:Child("Indicator")
+
+	if not ring then
+		return
+	end
+
+	if type(value) ~= "number" or value ~= value or value > 1 then
+		ring:SetVisible(false)
+
+		return
+	end
+
+	-- Flash goes to the last frame when the number is past the end (the ring has 22 frames)
+	ring:SetVisible(true)
+	ring:GotoAndStop(math.min(math.floor(math.max(value, 0) * 100 + 1), ring.n))
+end
+
 -- setSector: the name shown at the bottom.
 function Panel:SetSector(name)
 	self.sector = name
