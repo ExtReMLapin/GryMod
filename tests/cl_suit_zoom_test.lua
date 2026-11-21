@@ -535,6 +535,10 @@ return {
 				local up = hook.GetTable().PlayerButtonUp["GRYKEYBINDER"]
 				local ply = LocalPlayer()
 				local first = IsFirstTimePredicted
+				-- (a calm world of the test's own: the real one has whatever panel another test left)
+				local B = GryMod.KeyBinder
+				local realRead = B.Read
+				B.Read = function(sit) sit.pause, sit.console, sit.cursor, sit.focusPanel, sit.typing, sit.focus = false, false, false, false, false, true return sit end
 
 				local ok, err = pcall(function()
 					IsFirstTimePredicted = function() return false end
@@ -563,6 +567,7 @@ return {
 				end)
 
 				IsFirstTimePredicted = first
+				B.Read = realRead
 
 				if not ok then
 					error(err, 0)
