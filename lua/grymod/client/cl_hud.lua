@@ -136,6 +136,11 @@ function GryMod.CryOpenClose(ply, command, args)
 	end
 
 	if command == "+crysishud" then
+		-- (the key bound to the command, to poll for its release: the hooks that tell it are not called in a single player game)
+		if GryMod.MenuKey and GryMod.MenuKey.TrackBinding then
+			GryMod.MenuKey.TrackBinding()
+		end
+
 		GryMod.FlashMenu.Begin()
 	else
 		GryMod.FlashMenu.Finish()

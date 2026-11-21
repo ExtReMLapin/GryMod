@@ -111,18 +111,20 @@ return {
 			end
 		},
 		{
-			name = "the key hooks only act on the first prediction of a press, so a press is not handled several times",
+			name = "the hooks of the engine only act on the first prediction of a press, so a press is not handled several times (the press itself is the key factory's, which polls the key too)",
 			func = function(state)
 				local K = GryMod.MenuKey
 				local convar = GetConVar("gry_menu_key")
 				local key, openClose, first, pressed = convar:GetInt(), GryMod.CryOpenClose, IsFirstTimePredicted, K.pressed
 				local calls = {}
+				local realRead = GryMod.KeyBinder.Read
 				GryMod.CryOpenClose = function(_, command) calls[#calls + 1] = command end
+				GryMod.KeyBinder.Read = function(sit) sit.pause, sit.console, sit.cursor, sit.focusPanel, sit.typing, sit.focus = false, false, false, false, false, true return sit end
 				convar:SetInt(KEY_F7)
 
 				local ok, err = pcall(function()
-					local down = hook.GetTable().PlayerButtonDown["GRYMENUKEY"]
-					local up = hook.GetTable().PlayerButtonUp["GRYMENUKEY"]
+					local down = hook.GetTable().PlayerButtonDown["GRYKEYBINDER"]
+					local up = hook.GetTable().PlayerButtonUp["GRYKEYBINDER"]
 
 					IsFirstTimePredicted = function() return false end
 					down(LocalPlayer(), KEY_F7)
@@ -136,11 +138,106 @@ return {
 					up(LocalPlayer(), KEY_F7)
 					expect(calls[2]).to.equal("-crysishud")
 					expect(K.Pressed()).to.beNil()
+					expect(#calls).to.equal(2)
 				end)
 
 				IsFirstTimePredicted = first
 				GryMod.CryOpenClose = openClose
+				GryMod.KeyBinder.Read = realRead
+				K.Reset()
 				convar:SetInt(key)
+				K.pressed = pressed
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the chosen key is polled, with no hook of the engine called (a single player game, cl_predict 0): held opens the menu and is remembered for its release, let go applies it; a press in the chat does nothing",
+			func = function(state)
+				local K = GryMod.MenuKey
+				local B = GryMod.KeyBinder
+				local convar = GetConVar("gry_menu_key")
+				local key, openClose, pressed = convar:GetInt(), GryMod.CryOpenClose, K.pressed
+				local realRead, realDown = B.Read, input.IsButtonDown
+				local calls, typing, down = {}, false, false
+				GryMod.CryOpenClose = function(_, command) calls[#calls + 1] = command end
+				B.Read = function(sit) sit.pause, sit.console, sit.cursor, sit.focusPanel, sit.typing, sit.focus = false, false, false, false, typing, true return sit end
+				input.IsButtonDown = function() return down end
+
+				local ok, err = pcall(function()
+					convar:SetInt(KEY_F7)
+					K.Poll()
+					down = true
+					K.Poll()
+					K.Poll()
+					expect(calls[1]).to.equal("+crysishud")
+					expect(K.Pressed()).to.equal(KEY_F7)
+					down = false
+					K.Poll()
+					expect(calls[2]).to.equal("-crysishud")
+					expect(K.Pressed()).to.beNil()
+					expect(#calls).to.equal(2)
+
+					calls, typing = {}, true
+					down = true
+					K.Poll()
+					down = false
+					K.Poll()
+					expect(#calls).to.equal(0)
+				end)
+
+				input.IsButtonDown, B.Read = realDown, realRead
+				GryMod.CryOpenClose = openClose
+				K.Reset()
+				convar:SetInt(key)
+				K.pressed = pressed
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "a menu opened by a bind (the command +crysishud, which works without prediction) remembers the key that is down and bound to it, so its release can be polled; with no such key down it remembers nothing",
+			func = function(state)
+				local K = GryMod.MenuKey
+				local lookup, isDown, pressed = input.LookupKeyBinding, input.IsButtonDown, K.pressed
+
+				local ok, err = pcall(function()
+					input.LookupKeyBinding = function(code) return code == KEY_F9 and "+crysishud" or (code == KEY_F8 and "+attack" or nil) end
+					input.IsButtonDown = function(code) return code == KEY_F8 or code == KEY_F9 end
+					K.pressed = nil
+					expect(K.TrackBinding()).to.equal(KEY_F9)
+					expect(K.Pressed()).to.equal(KEY_F9)
+
+					K.pressed = nil
+					input.IsButtonDown = function() return false end
+					expect(K.TrackBinding()).to.beNil()
+					expect(K.Pressed()).to.beNil()
+
+					-- the command itself asks for it
+					local called = 0
+					local track = K.TrackBinding
+					K.TrackBinding = function() called = called + 1 end
+					local menu = GryMod.FlashMenu
+					local enabled, begin = menu.Enabled, menu.Begin
+					menu.Enabled = function() return true end
+					menu.Begin = function() end
+
+					local ran, why = pcall(GryMod.CryOpenClose, nil, "+crysishud")
+					menu.Enabled, menu.Begin = enabled, begin
+					K.TrackBinding = track
+
+					if not ran then
+						error(why, 0)
+					end
+
+					expect(called).to.equal(1)
+				end)
+
+				input.LookupKeyBinding, input.IsButtonDown = lookup, isDown
 				K.pressed = pressed
 
 				if not ok then

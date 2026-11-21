@@ -1,15 +1,27 @@
 -- The key of the quick menu. The engine does not let Lua run `bind`, so the key can be chosen two ways: the
 -- usual `bind <key> +crysishud`, or the gry_menu_key setting, picked with a key picker (this file's prompt and the
 -- options panel). While neither is set, a small prompt asks for a key every time the player spawns.
+--
+-- The chosen key is seen by the key factory (cl_key_binder.lua), which polls it: the hooks PlayerButtonDown / PlayerButtonUp are not called
+-- in a single player game (cl_predict 0). A key bound with `bind <key> +crysishud` reaches the console command, which works everywhere.
 
 GryMod = GryMod or {}
 
-local Key = GryMod.KeyBinder.New{
+local Key
+
+Key = GryMod.KeyBinder.New{
 	convar = "gry_menu_key",
 	description = "Key that opens the quick menu (a button code, 0 = none; `bind <key> +crysishud` works too)",
 	command = "+crysishud",
 	title = "GryMod quick menu",
 	text = "No key opens the quick menu yet.\nClick the box and press the key you want\n(or bind one to +crysishud in the console).",
+	-- the chosen key goes down or up: the menu opens or applies
+	press = function(down)
+		local chosen = Key.Chosen()
+
+		Key.Track(chosen, down)
+		Key.Handle(chosen, down)
+	end,
 	-- the suit zoom key is another key (when both are chosen they must differ)
 	refuse = function(code)
 		return GryMod.SuitZoom ~= nil and GryMod.SuitZoom.Key.Chosen() == code
@@ -45,6 +57,20 @@ function Key.Track(button, down)
 	end
 end
 
+-- The quick menu opened by a `bind <key> +crysishud` (the command, not the hooks: they are not called without prediction): the key that is
+-- down and bound to the command is the one to poll for its release.
+function Key.TrackBinding()
+	for code = 1, BUTTON_CODE_LAST or 0 do
+		if input.IsButtonDown(code) and input.LookupKeyBinding(code) == "+crysishud" then
+			Key.pressed = code
+
+			return code
+		end
+	end
+
+	return nil
+end
+
 function Key.Pressed()
 	return Key.pressed
 end
@@ -53,14 +79,14 @@ function Key.Forget()
 	Key.pressed = nil
 end
 
--- (a press can be run again while the engine predicts the same command: only the first time counts)
+-- The button that opens the menu is remembered while it is down (the hooks, when the engine calls them: a game with prediction; the chosen
+-- key's press and a bind's command also do it, see above). The press itself is the factory's.
 hook.Add("PlayerButtonDown", "GRYMENUKEY", function(ply, button)
 	if not IsFirstTimePredicted() or ply ~= LocalPlayer() or gui.IsGameUIVisible() or IsValid(vgui.GetKeyboardFocus()) then
 		return
 	end
 
 	Key.Track(button, true)
-	Key.Handle(button, true)
 end)
 
 -- The release is passed on to the menu whenever the hook gets it. It does not get it when a panel (the chat, the Q or C
@@ -71,5 +97,4 @@ hook.Add("PlayerButtonUp", "GRYMENUKEY", function(ply, button)
 	end
 
 	Key.Track(button, false)
-	Key.Handle(button, false)
 end)
