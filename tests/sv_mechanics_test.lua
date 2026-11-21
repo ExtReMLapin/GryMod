@@ -79,11 +79,11 @@ return {
 			end
 		},
 		{
-			name = "a speed sprint costs 55 a second above a fifth of the bar, almost nothing under it",
+			name = "a speed sprint costs 42.5 a second above a fifth of the bar (the game's 110 of 200 less the 25 the bar gives back, as the notes say: 85 a second net), almost nothing under it",
 			func = function(state)
 				local M = GryMod.Mech
-				expect(M.SpeedDrain(80)).to.equal(55)
-				expect(M.SpeedDrain(20.5)).to.equal(55)
+				expect(M.SpeedDrain(80)).to.equal(42.5)
+				expect(M.SpeedDrain(20.5)).to.equal(42.5)
 				expect(M.SpeedDrain(20)).to.equal(1.5)
 				expect(M.SpeedDrain(1)).to.equal(1.5)
 				expect(M.SpeedDrain(0)).to.equal(0)

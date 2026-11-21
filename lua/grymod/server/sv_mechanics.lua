@@ -35,15 +35,16 @@ function Mech.EnergyRechargeDelay()
 	return Mech.IsCrysis() and 1 or 5
 end
 
--- Energy per second of a speed sprint: 110 of 200 above a fifth of the bar, almost nothing under it (the servo
--- loop stops and the sprint goes on), none with an empty bar.
+-- Energy per second of a speed sprint: the game takes 110 of 200 above a fifth of the bar and the bar still gives back
+-- its 25 a second, so the net loss is 85 of 200 (research-mech/NOTES.md: about 1.9 s from full to a fifth); almost
+-- nothing under it (the servo loop stops and the sprint goes on), none with an empty bar.
 function Mech.SpeedDrain(energy)
 	if not Mech.IsCrysis() then
 		return GryMod.Config.speedEnergyDrain
 	end
 
 	if energy > 20 then
-		return 55
+		return 42.5
 	elseif energy > 0 then
 		return 1.5
 	end
