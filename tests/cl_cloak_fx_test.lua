@@ -92,9 +92,49 @@ local function leftClean(log)
 	return log.override[#log.override] == false and (log.blend[#log.blend] == nil or log.blend[#log.blend] == 1)
 end
 
+
+-- The real players' states are the game's own (somebody is camouflaged while the cases run, in a game that is being played): they are set aside before
+-- each case and put back after it, so that running these cases never makes a real camouflage fall. The cases only ever see their own fake players.
+local parked = {}
+
+local function parkStates()
+	local F = GryMod.CloakFX
+	parked = {}
+
+	if not F then return end
+
+	for ply, s in pairs(F.States) do
+		parked[ply] = s
+	end
+
+	for ply in pairs(parked) do
+		F.States[ply] = nil
+	end
+end
+
+local function unparkStates()
+	local F = GryMod.CloakFX
+
+	if not F then return end
+
+	for ply in pairs(F.States) do
+		F.States[ply] = nil
+	end
+
+	for ply, s in pairs(parked) do
+		if IsValid(ply) then
+			F.States[ply] = s
+		end
+	end
+
+	parked = {}
+end
+
 return {
 	groupName = "GryMod camouflage rendering",
 	beforeEach = function(state)
+		parkStates()
+
 		-- the draw hooks only exist while somebody is camouflaged: the cases call them directly
 		GryMod.CloakFX.SetDrawHooks(true)
 
@@ -116,12 +156,9 @@ return {
 		restore()
 		renderLog = nil
 
-		-- emptied in place: the module keeps its own reference to the table
-		if GryMod.CloakFX then
-			for ply in pairs(GryMod.CloakFX.States) do
-				GryMod.CloakFX.States[ply] = nil
-			end
-		end
+		-- the cases' fake players go, the real ones come back (emptied in place: the module keeps its own reference to the table)
+		unparkStates()
+		GryMod.CloakFX.SetDrawHooks(next(GryMod.CloakFX.States) ~= nil) -- a case may have put them away: the real players' hooks come back with their states
 	end,
 	cases = {
 		{
@@ -1441,6 +1478,137 @@ return {
 				expect(log.screenCopies).to.equal(1) -- once for both
 				expect(log.refreshed).to.equal(0)
 				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "ViewModelProxy: for the weapons whose own effects the engine draws at EVERY draw of the view model (the gravity gun's glow: each draw of our layer brought it back over the layer, a big orange patch), the layer goes on a client copy of the view model, which has no such effects: made once, set like the real one at each call (place, sequence, cycle, skin, bodygroups, pose parameters), gone with the state; nothing for the other weapons",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local made, removed = {}, {}
+
+				stub(_G, "ClientsideModel", function(model)
+					local ent = {model = model, poses = {}, groups = {}, bones = 0}
+					function ent:IsValid() return not self.gone end
+					function ent:SetNoDraw(on) self.nodraw = on end
+					function ent:SetPos(v) self.pos = v end
+					function ent:SetAngles(a) self.ang = a end
+					function ent:SetSequence(n) self.sequence = n end
+					function ent:SetCycle(c) self.cycle = c end
+					function ent:SetPlaybackRate(r) self.rate = r end
+					function ent:SetSkin(k) self.skin = k end
+					function ent:SetBodygroup(g, v) self.groups[g] = v end
+					function ent:SetPoseParameter(n, v) self.poses[n] = v end
+					function ent:SetupBones() self.bones = self.bones + 1 end
+					function ent:InvalidateBoneCache() end
+					function ent:Remove() self.gone = true removed[#removed + 1] = self end
+					made[#made + 1] = ent
+
+					return ent
+				end)
+
+				local state = {sequence = 7, cycle = 0.25, pose = 0.6}
+				local vm = fakePlayer(0)
+				function vm:GetModel() return "models/weapons/c_physcannon.mdl" end
+				function vm:GetPos() return Vector(1, 2, 3) end
+				function vm:GetAngles() return Angle(4, 5, 6) end
+				function vm:GetSequence() return state.sequence end
+				function vm:GetCycle() return state.cycle end
+				function vm:GetSkin() return 2 end
+				function vm:GetNumBodyGroups() return 2 end
+				function vm:GetBodygroup(g) return g + 1 end
+				function vm:GetNumPoseParameters() return 2 end
+				function vm:GetPoseParameterName(i) return i == 0 and "active" or "move_x" end
+				function vm:GetPoseParameter(n) return n == "active" and state.pose or 0.1 end
+
+				local me = fakePlayer(0)
+				local weapon = fakePlayer(0)
+				local class = "weapon_physcannon"
+				function weapon:GetClass() return class end
+				function me:GetActiveWeapon() return weapon end
+
+				local proxy = F.ViewModelProxy(vm, me)
+				expect(proxy ~= nil).to.beTrue()
+				expect(#made).to.equal(1)
+				expect(proxy.model).to.equal("models/weapons/c_physcannon.mdl")
+				expect(proxy.nodraw).to.beTrue()
+				expect(proxy.pos).to.equal(Vector(1, 2, 3))
+				expect(proxy.ang).to.equal(Angle(4, 5, 6))
+				expect(proxy.sequence).to.equal(7)
+				expect(proxy.cycle).to.equal(0.25)
+				expect(proxy.rate).to.equal(0) -- it does not play: the real one sets the frame
+				expect(proxy.skin).to.equal(2)
+				expect(proxy.groups[0]).to.equal(1)
+				expect(proxy.groups[1]).to.equal(2)
+				expect(proxy.poses.active).to.equal(0.6)
+				expect(proxy.poses.move_x).to.equal(0.1)
+				expect(proxy.bones > 0).to.beTrue()
+
+				-- the next frame: the same copy, set again
+				state.sequence, state.cycle, state.pose = 9, 0.5, 0.9
+				expect(F.ViewModelProxy(vm, me)).to.equal(proxy)
+				expect(#made).to.equal(1)
+				expect(proxy.sequence).to.equal(9)
+				expect(proxy.cycle).to.equal(0.5)
+				expect(proxy.poses.active).to.equal(0.9)
+
+				-- another weapon: no copy, and the one that was there goes
+				class = "weapon_crossbow"
+				expect(F.ViewModelProxy(vm, me)).to.beNil()
+				expect(proxy.gone).to.beTrue()
+				expect(#made).to.equal(1)
+
+				-- back to the gravity gun: a new copy; ClearViewModelProxy takes it away, once
+				class = "weapon_physcannon"
+				local again = F.ViewModelProxy(vm, me)
+				expect(again ~= proxy).to.beTrue()
+				F.ClearViewModelProxy()
+				expect(again.gone).to.beTrue()
+				F.ClearViewModelProxy()
+				expect(#removed).to.equal(2)
+			end
+		},
+		{
+			name = "refraction layer, first person: the layer and the shader's sparks are drawn on the view model's copy when there is one (the real view model is not asked to draw them), the hands as always",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands, copy = fakePlayer(0), fakePlayer(0), fakePlayer(0)
+				function me:GetViewModel() return vm end
+				function hands:SetMaterial() end
+				function vm:SetMaterial() end
+				function me:GetHands() return hands end -- (Update asks the local player's hands)
+				stub(F.Refract, "Active", function() return true end)
+				stub(F, "ViewModelProxy", function(v, p) if v == vm then return copy end end)
+
+				local layers = {}
+				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) layers[#layers + 1] = ent return true end)
+
+				stub(F.Shader, "Active", function() return true end)
+				local sparks = {}
+				stub(F.Shader, "Draw", function(ent, strength) sparks[#sparks + 1] = ent return true end)
+
+				setState(me, 0.4)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+
+				expect(layers[1]).to.equal(copy)
+				expect(layers[2]).to.equal(hands)
+				expect(sparks[1]).to.equal(copy)
+				expect(sparks[2]).to.equal(hands)
+				expect(vm.draws).to.equal(0)
+				expect(leftClean(log)).to.beTrue()
+
+				-- and the copy goes when the player's state does
+				local cleared = 0
+				stub(F, "ClearViewModelProxy", function() cleared = cleared + 1 end)
+				function me:GetNW2Bool() return false end
+				stub(_G, "FrameTime", function() return 10 end)
+				F.Update(me)
+				expect(cleared > 0).to.beTrue()
 			end
 		},
 		{

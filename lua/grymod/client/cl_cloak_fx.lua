@@ -290,6 +290,11 @@ function F.Update(ply)
 		end
 
 		F.ClearWeaponProxy(ply)
+
+		if ply == LocalPlayer() then
+			F.ClearViewModelProxy()
+		end
+
 		States[ply] = nil
 
 		if not next(States) then
@@ -648,6 +653,79 @@ local function firstPersonLayers(s)
 	return refract * F.FirstPersonBend, base, math.max(spark, F.FirstPersonEdge * clamp01(s.amount))
 end
 
+-- Some weapons draw effects of their own at EVERY draw of their view model, whoever asks (the engine calls the weapon's ViewModelDrawn after each
+-- DrawModel on it): the gravity gun's orange glow came back over our layer once for each draw of it, a patch no blend or colour can tone down
+-- (measured: the glow stayed with the blend and the colour at nothing, and grew into a big sphere when the layer was drawn from the Pre hook). The layer of
+-- those weapons goes on a client copy of the view model, which has no such effects: it is set like the real one at each call, and drawn where the real
+-- one is. Only the weapons listed here (checked in the game), the others keep the real view model.
+F.ProxyViewModelWeapons = {weapon_physcannon = true}
+
+local viewModelCopy
+
+function F.ClearViewModelProxy()
+	if viewModelCopy then
+		local entry = viewModelCopy
+		viewModelCopy = nil
+
+		if IsValid(entry.ent) then
+			entry.ent:Remove()
+		end
+	end
+end
+
+-- The copy of `vm` to draw the layer on, set like it, or nil when the weapon is not one of the listed ones (then the real view model is used).
+function F.ViewModelProxy(vm, ply)
+	local weapon = ply:GetActiveWeapon()
+
+	if not IsValid(weapon) or not F.ProxyViewModelWeapons[weapon:GetClass()] or not IsValid(vm) then
+		F.ClearViewModelProxy()
+
+		return nil
+	end
+
+	local model = vm:GetModel()
+
+	if not model or model == "" then
+		F.ClearViewModelProxy()
+
+		return nil
+	end
+
+	if not viewModelCopy or viewModelCopy.model ~= model or not IsValid(viewModelCopy.ent) then
+		F.ClearViewModelProxy()
+
+		local ent = ClientsideModel(model)
+
+		if not IsValid(ent) then return nil end
+
+		ent:SetNoDraw(true)
+		viewModelCopy = {ent = ent, model = model}
+	end
+
+	local copy = viewModelCopy.ent
+
+	copy:SetPos(vm:GetPos())
+	copy:SetAngles(vm:GetAngles())
+	copy:SetSequence(vm:GetSequence())
+	copy:SetCycle(vm:GetCycle())
+	copy:SetPlaybackRate(0) -- it does not play: the real one gives the frame
+	copy:SetSkin(vm:GetSkin())
+
+	for group = 0, vm:GetNumBodyGroups() - 1 do
+		copy:SetBodygroup(group, vm:GetBodygroup(group))
+	end
+
+	for i = 0, vm:GetNumPoseParameters() - 1 do
+		local name = vm:GetPoseParameterName(i)
+		copy:SetPoseParameter(name, vm:GetPoseParameter(name))
+	end
+
+	copy:SetupBones()
+	copy:InvalidateBoneCache()
+
+	return copy
+end
+
 local function startFirstPerson(ent, ply)
 	if drawing or ply ~= LocalPlayer() or not F.Enabled() then return end
 
@@ -708,8 +786,15 @@ local function endFirstPerson(ent, ply)
 
 	-- the refraction layer over the arms the engine has just drawn, with the alpha the plain model has lost; at the end of the change (the plain
 	-- model nearly all there) nothing
-	if F.Refract and F.Refract.Active() and layerBase < F.NearlyPlain and IsValid(ent) then
-		F.Refract.Draw(ent, F.Refract.BumpScale(s.amount), F.Refract.Alpha(layerBase), drawPlain)
+	-- (the view model's layer goes on its copy for the weapons that draw effects of their own at every draw of it, see F.ViewModelProxy)
+	local layerEnt = ent
+
+	if IsValid(ent) and ent == ply:GetViewModel() then
+		layerEnt = F.ViewModelProxy(ent, ply) or ent
+	end
+
+	if F.Refract and F.Refract.Active() and layerBase < F.NearlyPlain and IsValid(layerEnt) then
+		F.Refract.Draw(layerEnt, F.Refract.BumpScale(s.amount), F.Refract.Alpha(layerBase), drawPlain)
 	end
 
 	-- the sparks of the original's pixel shader instead of the outline and of the scan lines (which are in the shader)
@@ -719,7 +804,7 @@ local function endFirstPerson(ent, ply)
 			local strength = F.SparkStrength(s.amount, s.speed)
 
 			if strength > 0 then
-				F.Shader.Draw(ent, strength, s.amount, drawPlain)
+				F.Shader.Draw(layerEnt, strength, s.amount, drawPlain)
 			end
 		end
 

@@ -89,9 +89,49 @@ end
 
 local boxOnScreen = {{x = 400, y = 200, visible = true}, {x = 560, y = 200, visible = true}, {x = 400, y = 640, visible = true}, {x = 560, y = 640, visible = true}}
 
+
+-- The real players' states are the game's own (somebody is camouflaged while the cases run, in a game that is being played): they are set aside before
+-- each case and put back after it, so that running these cases never makes a real camouflage fall. The cases only ever see their own fake players.
+local parked = {}
+
+local function parkStates()
+	local F = GryMod.CloakFX
+	parked = {}
+
+	if not F then return end
+
+	for ply, s in pairs(F.States) do
+		parked[ply] = s
+	end
+
+	for ply in pairs(parked) do
+		F.States[ply] = nil
+	end
+end
+
+local function unparkStates()
+	local F = GryMod.CloakFX
+
+	if not F then return end
+
+	for ply in pairs(F.States) do
+		F.States[ply] = nil
+	end
+
+	for ply, s in pairs(parked) do
+		if IsValid(ply) then
+			F.States[ply] = s
+		end
+	end
+
+	parked = {}
+end
+
 return {
 	groupName = "GryMod camouflage scan lines",
 	beforeEach = function(state)
+		parkStates()
+
 		state.optionBefore = option() and option():GetString()
 
 		if option() then
@@ -116,14 +156,12 @@ return {
 			option():SetString(state.optionBefore)
 		end
 
+		unparkStates()
+
 		local F = GryMod.CloakFX
 
 		if F then
 			F.SetDrawHooks(next(F.States) ~= nil)
-
-			for ply in pairs(F.States) do
-				F.States[ply] = nil
-			end
 		end
 	end,
 	cases = {
