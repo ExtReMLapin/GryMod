@@ -155,15 +155,16 @@ end
 -- it is listed (see Step), noScan that the binoculars may not tag it. The relation comes through the relation chain, which asks the
 -- registry too.
 -- The way an entity faces, in degrees: its own yaw, except for a vehicle, which faces 90 degrees from it (MEASURED: the Buggy and the
--- airboat at yaw 0 face along +y, and their forward vector says so): the rectangle on the radar points where it drives.
+-- airboat at yaw 0 face along +y): the rectangle on the radar points where it drives. The raw angles on both sides, the same rule
+-- as the client's (Radar.Facing, cl_hud_radar_units.lua): the forward vector of a vehicle differs between the server and the client.
 function Radar.Facing(ent)
-	if ent:IsVehicle() then
-		local forward = ent:GetForward()
+	local yaw = ent:GetAngles().y
 
-		return math.deg(math.atan2(forward.y, forward.x))
+	if ent:IsVehicle() then
+		return yaw + 90
 	end
 
-	return ent:GetAngles().y
+	return yaw
 end
 
 function Radar.Describe(npc, ply)

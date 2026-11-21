@@ -321,14 +321,16 @@ return {
 			end
 		},
 		{
-			name = "the live facing of a vehicle is the way it faces (its forward vector, 90 degrees from its yaw), not its yaw: the rectangle points where it drives",
+			name = "the live facing of a vehicle is the way it faces, 90 degrees from its raw yaw (the client's forward vector does not say so: measured), not its yaw: the rectangle points where it drives",
 			func = function(state)
 				local R = GryMod.FlashRadar
 				local realFind, realSnapshot = R.FindEntity, R.Snapshot
 				local function ent(vehicle)
 					return {IsValid = function() return true end, IsDormant = function() return false end, IsVehicle = function() return vehicle end,
 						GetPos = function() return Vector(10, 20, 30) end, GetAngles = function() return Angle(0, 30, 0) end,
-						GetForward = function() return Vector(math.cos(math.rad(120)), math.sin(math.rad(120)), 0) end}
+						-- (MEASURED on a real Buggy: on the CLIENT GetForward is the forward of the raw angles, 30 here; only the server's is
+						-- the way the vehicle faces)
+						GetForward = function() return Vector(math.cos(math.rad(30)), math.sin(math.rad(30)), 0) end}
 				end
 				local ents = {[7] = ent(true), [8] = ent(false)}
 				R.FindEntity = function(id) return ents[id] end
