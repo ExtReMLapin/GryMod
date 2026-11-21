@@ -6,8 +6,8 @@
 --   * the server only says who is camouflaged (the network switch "GryCloak" of the player, sv_system.lua);
 --   * every client turns that into a level that glides from 0 to 1 and back (Step), per player;
 --   * the level gives three numbers (Visibility): how much the picture is bent, how much of the plain model stays
---     (almost nothing), and how strong the sparks are. The speed of the player counts for nothing: a player who moves
---     looks as one who stands. They follow the original's layer: the opacity of the plain model goes down linearly
+--     (almost nothing), and how strong the sparks are. The speed of the player counts for one thing only: the plain
+--     model shows 3 points more at a run. A player who moves otherwise looks as one who stands. They follow the original's layer: the opacity of the plain model goes down linearly
 --     with the level (the layer's alpha is 0.8 x level), the bend is 11 times stronger at the start than at the end,
 --     and the sparks are there only while the change lasts, at a faint constant intensity;
 --   * the draw hooks put the layers on the player, on the weapon in the hand, and on the view model and the hands
@@ -48,11 +48,18 @@ end
 F.ActivateTime = 0.8
 F.DeactivateTime = 0.6
 
--- Moving changes nothing: the reference is a player who stands still, and the opacity, the bend and the sparks are the same whatever his speed
--- (the original's videos show no change in the player's opacity when he moves, nor sparks).
+-- The reference is a player who stands still. Moving changes only one thing, and barely: the plain model shows a little more, MovingVisibility
+-- points of opacity at FullSpeed (the owner's allowance, "3 %"). The bend and the sparks are the same whatever his speed (the original's videos
+-- show no electric effect in motion), and so is the speed of the sparks' animation (the Lua's drift, cl_cloak_shader.lua).
 --
 -- What the plain model still shows once fully camouflaged (the original layer keeps 20 % of the suit at rest, 0.8 being its largest blend).
 F.BaseStill = 0.03
+F.MovingVisibility = 0.03
+
+-- The speed (units a second) at which the supplement is complete: a run (400) is above it, a walk (200) a little under. The speed it follows is the
+-- real one with a short delay, so that it does not flicker at every step.
+F.FullSpeed = 300
+F.SpeedDelay = 0.15
 
 -- How much the picture behind is bent (the value of $refractamount) once done, and the extra at the start of the
 -- change, which goes down to nothing as the level goes up (the original bends 11 times more at the start than once
@@ -98,23 +105,28 @@ function F.TransitionCurve(level)
 	return (TRANSITION[i + 1] + (TRANSITION[i + 2] - TRANSITION[i + 1]) * t) / 255
 end
 
+function F.SmoothSpeed(previous, speed, dt)
+	return speed + (previous - speed) * math.exp(-dt / F.SpeedDelay)
+end
+
 -- The sparks: only while the cloak goes in or out, always at the same intensity from the first frame to the last: not the flash of the start, nor the
 -- motion on the screen. Nothing when plain, nothing once the change is done, whether he moves or not. The original's own value for a camouflaged
 -- player who stands still (the transition texture's last value squared) is about 5 %: too faint to be seen, the owner chose 15 %.
 F.SparkRest = 0.15
 
--- level (0 plain, 1 camouflaged) -> refraction amount, opacity of the plain model drawn over it, strength of the sparks (0 to 1). No table: this
--- runs for every camouflaged player at every frame.
-function F.Visibility(amount)
+-- level (0 plain, 1 camouflaged) and speed (units a second, optional) -> refraction amount, opacity of the plain model drawn over it, strength of the
+-- sparks (0 to 1). No table: this runs for every camouflaged player at every frame.
+function F.Visibility(amount, speed)
 	if amount <= 0 then
 		return 0, 1, 0
 	end
 
 	local b = clamp01(amount)
+	local s = clamp01((speed or 0) / F.FullSpeed)
 
 	-- the original's bump scale is 0.25 + 2.5 x (1 - level): eleven times more at the start than at the end
 	local refract = b * F.RefractStill + F.RefractChange * (1 - b)
-	local base = 1 - b * (1 - F.BaseStill)
+	local base = 1 - b * (1 - (F.BaseStill + F.MovingVisibility * s))
 
 	return refract, base, F.SparkStrength(b)
 end
@@ -227,7 +239,7 @@ function F.Update(ply)
 			return nil
 		end
 
-		s = {amount = 0, cloaked = false, legacy = false}
+		s = {amount = 0, speed = 0, cloaked = false, legacy = false}
 		States[ply] = s
 		F.SetDrawHooks(true)
 
@@ -239,6 +251,7 @@ function F.Update(ply)
 	local dt = FrameTime()
 	s.cloaked = cloaked
 	s.amount = F.Step(s.amount, cloaked, dt)
+	s.speed = F.SmoothSpeed(s.speed, ply:GetVelocity():Length2D(), dt)
 
 	local legacy = F.Enabled() == false and (cloaked or s.amount > 0)
 
@@ -477,7 +490,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 					end
 				end
 
-				local refract, base, spark = F.Visibility(s.amount)
+				local refract, base, spark = F.Visibility(s.amount, s.speed)
 				local strength = 0
 
 				if distance > F.DetailDistance then
@@ -533,7 +546,7 @@ F.NearlyPlain = 0.99
 F.FirstPersonBend = 1.5
 
 local function firstPersonLayers(s)
-	local refract, base, spark = F.Visibility(s.amount)
+	local refract, base, spark = F.Visibility(s.amount, s.speed)
 
 	return refract * F.FirstPersonBend, base, math.max(spark, F.FirstPersonEdge * clamp01(s.amount))
 end

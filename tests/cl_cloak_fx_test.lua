@@ -73,9 +73,9 @@ local function recordRender()
 	return log
 end
 
-local function setState(ply, amount)
+local function setState(ply, amount, speed)
 	local F = GryMod.CloakFX
-	F.States[ply] = {amount = amount, cloaked = amount > 0}
+	F.States[ply] = {amount = amount, speed = speed or 0, cloaked = amount > 0}
 end
 
 -- what the engine calls after the translucent things
@@ -206,27 +206,43 @@ return {
 			end
 		},
 		{
-			name = "moving changes nothing: the plain model's opacity and the bend are those of standing still, whatever the speed of the player (the original's references are the ones of a player who stands)",
+			name = "moving makes the plain model a little more visible, 3 points of opacity at full speed and nothing else: the bend and the sparks are those of standing still",
 			func = function(state)
 				local F = GryMod.CloakFX
+				expect(F.MovingVisibility).to.equal(0.03)
 
-				local logStill = recordRender()
-				local still = fakePlayer(0)
-				setState(still, 0.5)
-				translucent()
-				F.States[still] = nil
+				local refractStill, baseStill, sparkStill = F.Visibility(1, 0)
+				local refractRun, baseRun, sparkRun = F.Visibility(1, F.FullSpeed)
+				expect(baseRun - baseStill).to.aboutEqual(0.03, 0.0001)
+				expect(refractRun).to.equal(refractStill)
+				expect(sparkRun).to.equal(sparkStill)
 
-				local logRun = recordRender()
-				local running = fakePlayer(400)
-				setState(running, 0.5)
-				translucent()
+				-- half the speed, half the supplement; a higher one is capped; a negative one counts for nothing
+				expect(select(2, F.Visibility(1, F.FullSpeed / 2)) - baseStill).to.aboutEqual(0.015, 0.0001)
+				expect(select(2, F.Visibility(1, 99999))).to.aboutEqual(baseRun, 0.000001)
+				expect(select(2, F.Visibility(1, -50))).to.aboutEqual(baseStill, 0.000001)
 
-				expect(running.draws).to.equal(still.draws)
-				expect(#logRun.blend).to.equal(#logStill.blend)
+				-- in the change it grows with the level (the plain model is what has not gone yet)
+				local _, mid = F.Visibility(0.5, 0)
+				local _, midRun = F.Visibility(0.5, F.FullSpeed)
+				expect(midRun - mid).to.aboutEqual(0.015, 0.0001)
 
-				for i, value in ipairs(logStill.blend) do
-					expect(logRun.blend[i]).to.aboutEqual(value, 0.000001)
-				end
+				-- a plain player stays plain; the speed is not needed
+				local refract, base, spark = F.Visibility(0, 400)
+				expect(refract).to.equal(0)
+				expect(base).to.equal(1)
+				expect(spark).to.equal(0)
+				expect(select(2, F.Visibility(1))).to.equal(baseStill)
+			end
+		},
+		{
+			name = "SmoothSpeed follows the real speed with a short delay, so that the supplement does not flicker at every step",
+			func = function(state)
+				local F = GryMod.CloakFX
+				expect(F.SmoothSpeed(0, 300, 0)).to.equal(0)
+				expect(F.SmoothSpeed(0, 300, F.SpeedDelay)).to.aboutEqual(300 * (1 - math.exp(-1)), 0.001)
+				expect(F.SmoothSpeed(300, 300, 0.1)).to.aboutEqual(300, 0.0001)
+				expect(F.SmoothSpeed(300, 0, 10)).to.aboutEqual(0, 0.01)
 			end
 		},
 		{
@@ -408,11 +424,17 @@ return {
 				expect(#log.color).to.beGreaterThan(0)
 				expect(leftClean(log)).to.beTrue()
 
-				local running = fakePlayer(400)
+				-- done: no sparks, whether he moves or not; the plain model is nearly gone when still, back at 6 % when he runs
 				GryMod.CloakFX.States[ply] = nil
-				setState(running, 1)
+				local still = fakePlayer(0)
+				setState(still, 1)
 				translucent()
-				expect(running.draws).to.equal(1) -- the refraction only: done, even moving, no sparks and the plain model nearly gone
+				expect(still.draws).to.equal(1) -- the refraction only
+
+				local running = fakePlayer(400)
+				setState(running, 1, 400)
+				translucent()
+				expect(running.draws).to.equal(2) -- the refraction and the plain model, faint
 				expect(leftClean(log)).to.beTrue()
 			end
 		},
@@ -875,6 +897,19 @@ return {
 				end
 
 				expect(F.States[ply]).to.beNil() -- back to plain: forgotten
+
+				-- the speed it keeps follows the player's, smoothed
+				local runner = fakePlayer(300)
+				function runner:GetNWBool(name) return name == "GryCloak" end
+				F.Update(runner)
+				local first = F.States[runner].speed
+				expect(first > 0 and first < 300).to.beTrue()
+
+				for i = 1, 30 do
+					F.Update(runner)
+				end
+
+				expect(F.States[runner].speed).to.aboutEqual(300, 0.5)
 			end
 		},
 		{
