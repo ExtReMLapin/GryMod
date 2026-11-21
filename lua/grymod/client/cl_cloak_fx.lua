@@ -139,6 +139,75 @@ function F.TransitionSpark(amount)
 	return clamp01(F.TransitionCurve(amount) ^ 2 - restSpark)
 end
 
+-- The strength of the sparks drawn by the pixel shader (cl_cloak_shader.lua): the original's own, max(speed on the screen, transition ^ 2). The
+-- transition term is the transition texture squared as a function of the level: the flash at the start of the change, then down to (55 / 255) ^ 2,
+-- about 5 %, once done. Nothing else raises it: standing still the sparks are faint, they come back when the model moves on the screen.
+function F.SparkStrength(amount, motion)
+	if amount <= 0 then
+		return 0
+	end
+
+	return math.max(clamp01(motion), F.TransitionCurve(amount) ^ 2)
+end
+
+-- The original's speed scale (fSpeedScale): how far the model moved on the screen since the last frame, as the distance in screen units
+-- (the width and the height are 1) times 100, at most 1: a hundredth of the screen in a frame is the full scale. `prev` and `now` are the
+-- model's position in the camera's space (x ahead, y left, z up), the field of view is the usual 4:3 one in degrees. Nothing behind the camera.
+F.MotionGain = 100
+
+function F.ScreenMotion(prev, now, fov, aspect)
+	if prev.x < 1 or now.x < 1 then return 0 end
+
+	local tanV = math.tan(math.rad(fov) / 2) * 0.75
+	local tanH = tanV * aspect
+	local dy = (now.y / now.x - prev.y / prev.x) / tanH * 0.5
+	local dz = (now.z / now.x - prev.z / prev.x) / tanV * 0.5
+
+	return clamp01(math.sqrt(dy * dy + dz * dz) * F.MotionGain)
+end
+
+function F.FieldOfView()
+	local ply = LocalPlayer()
+
+	return ply and ply.GetFOV and ply:GetFOV() or 90
+end
+
+-- The motion of `ent` (at world position `pos`) on the screen, once per frame whatever the number of views drawn (a mirror draws the player
+-- again in the same frame). 0 the first time it is seen, and after a gap too long for the last position to mean anything. The tracks are kept in
+-- the player's state, one for each entity drawn for him (the body, the weapon, the view model).
+F.MotionGap = 0.25
+
+function F.Motion(s, ent, pos)
+	local tracks = s.tracks
+
+	if not tracks then
+		tracks = {}
+		s.tracks = tracks
+	end
+
+	local frame, time = FrameNumber(), CurTime()
+	local view = WorldToLocal(pos, angle_zero, EyePos(), EyeAngles())
+	local track = tracks[ent]
+
+	if not track then
+		tracks[ent] = {view = view, frame = frame, time = time, value = 0}
+
+		return 0
+	end
+
+	if track.frame == frame then return track.value end
+
+	local value = 0
+
+	if time - track.time < F.MotionGap then
+		value = F.ScreenMotion(track.view, view, F.FieldOfView(), ScrW() / ScrH())
+	end
+
+	track.view, track.frame, track.time, track.value = view, frame, time, value
+
+	return value
+end
+
 -- The screen effect of the activation, read from the original's graph (seconds -> grey level, fringes, condensation):
 -- the saturation goes 1 -> 0.5 in 0.7 s then back in 1 s, the colour fringes 0 -> 0.4 in 0.7 s then back in 1 s, and
 -- the condensation 0 -> 1.5 in 0.2 s, -> 0.3 in 0.25 s, -> 0 in 1 s.
@@ -452,17 +521,20 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				end
 
 				local refract, base, spark = F.Visibility(s.amount, s.speed)
+				local strength = 0
 
 				if distance > F.DetailDistance then
 					spark = 0
 				end
 
 				if shader then
-					-- the shader's sparks are added over the plain model; `spark` is 0 far away, where nothing is added
+					-- the shader's sparks are added over the plain model, with the original's strength: the flash of the change, the motion on
+					-- the screen (nothing far away, where the sparks are not worth the cost)
 					drawLayers(ply, refract, base, 0)
+					strength = distance <= F.DetailDistance and F.SparkStrength(s.amount, F.Motion(s, ply, ply:WorldSpaceCenter())) or 0
 
-					if spark > 0 then
-						shader.Draw(ply, spark, s.amount, drawPlain)
+					if strength > 0 then
+						shader.Draw(ply, strength, s.amount, drawPlain)
 					end
 				else
 					drawLayers(ply, refract, base, spark)
@@ -482,8 +554,8 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				if IsValid(weapon) and distance <= F.DetailDistance then
 					drawLayers(weapon, refract, base, 0)
 
-					if shader and spark > 0 then
-						shader.Draw(weapon, spark, s.amount, drawPlain)
+					if shader and strength > 0 then
+						shader.Draw(weapon, strength, s.amount, drawPlain)
 					end
 				end
 			end
@@ -552,8 +624,13 @@ local function endFirstPerson(ent, ply)
 
 	-- the sparks of the original's pixel shader instead of the outline and of the scan lines (which are in the shader)
 	if F.Shader and F.Shader.Active() then
-		if edge >= F.Invisible and IsValid(ent) then
-			F.Shader.Draw(ent, edge, s.amount, drawPlain)
+		if IsValid(ent) then
+			-- the original's strength: no floor of our own (the outline's is only for the older layer below)
+			local strength = F.SparkStrength(s.amount, F.Motion(s, ent, ent:GetPos()))
+
+			if strength > 0 then
+				F.Shader.Draw(ent, strength, s.amount, drawPlain)
+			end
 		end
 
 		return

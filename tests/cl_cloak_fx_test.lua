@@ -828,38 +828,128 @@ return {
 			end
 		},
 		{
-			name = "pixel shader, third person: the sparks are the shader's, not the edge layer: refraction and plain model, then the shader with the strength of the sparks",
+			name = "SparkStrength: the original's max(speed on the screen, transition squared): the flash at the start, a faint 5 % once done and still, the motion when it is larger",
+			func = function(state)
+				local F = GryMod.CloakFX
+				expect(F.SparkStrength(0, 0)).to.equal(0)
+				expect(F.SparkStrength(0.1, 0)).to.beGreaterThan(0.9)
+				-- done and still: the transition texture's last value squared, (55 / 255) ^ 2: faint
+				expect(F.SparkStrength(1, 0)).to.aboutEqual((55 / 255) ^ 2, 0.002)
+				expect(F.SparkStrength(1, 0.6)).to.aboutEqual(0.6, 0.0001)
+				expect(F.SparkStrength(0.1, 0.2)).to.aboutEqual(F.SparkStrength(0.1, 0), 0.0001)
+				expect(F.SparkStrength(1, 5)).to.equal(1)
+			end
+		},
+		{
+			name = "ScreenMotion: the original's speed scale, the model's move on the screen between two frames (a hundredth of the screen's width is a full scale), 0 behind the camera",
+			func = function(state)
+				local F = GryMod.CloakFX
+				-- 90 degrees across 4:3, on a 16:9 screen: tan(v/2) = 0.75, tan(h/2) = 1.3333
+				local aspect = 16 / 9
+
+				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 0, 0), 90, aspect)).to.equal(0)
+				-- sideways: 3 units at 300 is 0.01 of the tangent, /1.3333 x 0.5 of the width x 100
+				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 3, 0), 90, aspect)).to.aboutEqual(0.375, 0.002)
+				-- up: the same move is larger against the height
+				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 0, 3), 90, aspect)).to.aboutEqual(0.6667, 0.002)
+				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 60, 0), 90, aspect)).to.equal(1)
+				-- a narrower field of view magnifies the same move
+				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 3, 0), 45, aspect)).to.beGreaterThan(0.375)
+				-- behind the camera, or on it
+				expect(F.ScreenMotion(Vector(-300, 0, 0), Vector(-300, 30, 0), 90, aspect)).to.equal(0)
+				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(0.5, 30, 0), 90, aspect)).to.equal(0)
+			end
+		},
+		{
+			name = "Motion: the first sight of an entity is 0, then the move since the last frame, once per frame whatever the number of views, and 0 again after a long gap",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local frame, now = 10, 100
+				stub(_G, "FrameNumber", function() return frame end)
+				stub(_G, "CurTime", function() return now end)
+				stub(_G, "EyePos", function() return Vector(0, 0, 0) end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
+
+				local s = {}
+				local ent = {}
+				expect(F.Motion(s, ent, Vector(300, 0, 0))).to.equal(0)
+
+				frame, now = 11, 100.016
+				local moved = F.Motion(s, ent, Vector(300, 3, 0))
+				expect(moved).to.aboutEqual(0.375, 0.002)
+
+				-- another view of the same frame (a mirror): the same value, not a second move
+				expect(F.Motion(s, ent, Vector(300, 6, 0))).to.equal(moved)
+
+				-- still, the next frame
+				frame, now = 12, 100.032
+				expect(F.Motion(s, ent, Vector(300, 3, 0))).to.equal(0)
+
+				-- not seen for a while: the move since is not a speed
+				frame, now = 13, 101.5
+				expect(F.Motion(s, ent, Vector(300, 80, 0))).to.equal(0)
+
+				-- each entity has its own track
+				frame, now = 14, 101.516
+				expect(F.Motion(s, {}, Vector(300, 0, 0))).to.equal(0)
+			end
+		},
+		{
+			name = "pixel shader, third person: refraction and plain model, then the shader added with the original's strength: faint when still, the motion on the screen when moving",
 			func = function(state)
 				local F = GryMod.CloakFX
 				local log = recordRender()
 				local ply = fakePlayer(0)
+				local frame = 1
+				stub(_G, "FrameNumber", function() return frame end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local calls = {}
 				stub(F.Shader, "Draw", function(ent, strength, amount, draw) calls[#calls + 1] = {ent = ent, strength = strength, amount = amount, draw = draw} return true end)
 
-				setState(ply, 1, 400)
+				setState(ply, 1, 400) -- the speed in the world does not matter: the screen decides
+				ply.center = Vector(300, 0, 0)
 				translucent()
 
-				local _, _, spark = F.Visibility(1, 400)
 				expect(ply.draws).to.equal(2) -- refraction, plain model: no edge layer
 				expect(#calls).to.equal(1)
 				expect(calls[1].ent).to.equal(ply)
-				expect(calls[1].strength).to.aboutEqual(spark, 0.0001)
+				expect(calls[1].strength).to.aboutEqual(F.SparkStrength(1, 0), 0.0001) -- still: the faint 5 %
 				expect(calls[1].amount).to.equal(1)
 				expect(leftClean(log)).to.beTrue()
 
+				-- moving across the view: the motion takes over
+				frame = 2
+				ply.center = Vector(300, 3, 0)
+				calls = {}
+				translucent()
+				expect(#calls).to.equal(1)
+				expect(calls[1].strength).to.aboutEqual(0.375, 0.002)
+
 				-- the function it is given draws the entity through the player's own draw hook
+				local before = ply.draws
 				calls[1].draw(ply)
-				expect(ply.draws).to.equal(3)
+				expect(ply.draws).to.equal(before + 1)
 			end
 		},
 		{
-			name = "pixel shader, third person: in the flash of the start of the change the shader's strength is the flash, and the scan lines are not drawn on the screen (the shader has them)",
+			name = "pixel shader, third person: in the flash of the start of the change the strength is the flash, and the scan lines are not drawn on the screen (the shader has them)",
 			func = function(state)
 				local F = GryMod.CloakFX
 				recordRender()
 				local ply = fakePlayer(0)
+				stub(_G, "FrameNumber", function() return 1 end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local strength
@@ -871,7 +961,7 @@ return {
 				setState(ply, 0.12, 0)
 				translucent()
 
-				expect(strength).to.aboutEqual(F.TransitionSpark(0.12), 0.0001)
+				expect(strength).to.aboutEqual(F.SparkStrength(0.12, 0), 0.0001)
 				expect(strength > 0.5).to.beTrue()
 				expect(linesDrawn).to.equal(0)
 			end
@@ -884,6 +974,11 @@ return {
 				local ply = fakePlayer(0)
 				local weapon = fakePlayer(0)
 				function ply:GetActiveWeapon() return weapon end
+				stub(_G, "FrameNumber", function() return 1 end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local drawn = {}
@@ -922,14 +1017,22 @@ return {
 			end
 		},
 		{
-			name = "pixel shader, first person: the arms and the gun get the shader instead of the outline, with the outline's strength",
+			name = "pixel shader, first person: the arms and the gun get the shader instead of the outline, with the original's strength (no floor of its own: faint when still, the flash at the start)",
 			func = function(state)
 				local F = GryMod.CloakFX
 				local log = recordRender()
 				local me = fakePlayer(0)
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm = fakePlayer(0)
+				function vm:GetPos() return Vector(20, 0, -10) end
 				function me:GetViewModel() return vm end
+				local frame = 1
+				stub(_G, "FrameNumber", function() return frame end)
+				stub(_G, "EyePos", function() return Vector(0, 0, 0) end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local calls = {}
@@ -942,14 +1045,31 @@ return {
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
 
-				local _, _, spark = F.Visibility(0.4, 0)
 				expect(vm.draws).to.equal(1) -- the refraction only: no outline layer
 				expect(#calls).to.equal(1)
 				expect(calls[1].ent).to.equal(vm)
 				expect(calls[1].amount).to.equal(0.4)
-				expect(calls[1].strength).to.aboutEqual(math.max(spark, F.FirstPersonEdge * 0.4), 0.0001)
+				expect(calls[1].strength).to.aboutEqual(F.SparkStrength(0.4, 0), 0.0001)
 				expect(linesDrawn).to.equal(0)
 				expect(leftClean(log)).to.beTrue()
+
+				-- done and still: the faint 5 %, not the old outline's floor of 0.45
+				frame = 2
+				calls = {}
+				setState(me, 1, 0)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(#calls).to.equal(1)
+				expect(calls[1].strength).to.aboutEqual(F.SparkStrength(1, 0), 0.0001)
+				expect(calls[1].strength < 0.1).to.beTrue()
+
+				-- the gun moving on the screen (raised to the eye): the motion
+				frame = 3
+				calls = {}
+				function vm:GetPos() return Vector(20, 2, -10) end
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(calls[1].strength > 0.2).to.beTrue()
 			end
 		}
 	}
