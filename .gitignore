@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# Working notes, plans and specs: kept on disk, never tracked
+docs/superpowers/
