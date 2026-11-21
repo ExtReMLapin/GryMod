@@ -167,6 +167,92 @@ return {
 			end
 		},
 		{
+			name = "when a malfunction ends the icon of the current mode plays its reboot animation (frames 43 to 49) and stays on its last frame",
+			func = function(state)
+				local hud = newHud()
+				hud:SetMode("Speed")
+				hud:Destroy(1)
+				-- a mode change during the malfunction: the reboot is the icon of the mode now shown
+				hud:SetMode("Cloak")
+				hud:Destroy(0)
+				local icon = hud.icons:Child("Cloak")
+				expect(icon:CurrentLabel()).to.equal("reboot")
+				expect(icon:CurrentFrame()).to.equal(43)
+				expect(icon.playing).to.beTrue()
+				hud:Update(1 / 30)
+				hud:Update(1 / 30)
+				expect(icon:CurrentFrame()).to.equal(45)
+
+				for _ = 1, 10 do hud:Update(1 / 30) end -- a refresh must not restart it, and it ends by itself (0.23 s)
+
+				expect(icon:CurrentFrame()).to.equal(49)
+				expect(icon.playing).to.beFalse()
+			end
+		},
+		{
+			name = "the reboot animation plays only after a malfunction: not at the first normal state, not after a flicker",
+			func = function(state)
+				local hud = newHud()
+				hud:SetMode("Speed")
+				hud:Destroy(0)
+				expect(hud.icons:Child("Speed"):CurrentLabel()).to.equal("normal")
+				hud:Destroy(2)
+				hud:Destroy(0)
+				expect(hud.icons:Child("Speed"):CurrentLabel()).to.equal("normal")
+				hud:Destroy(1)
+				hud:Destroy(2) -- a flicker in the middle of the malfunction: the previous state is not the malfunction any more
+				hud:Destroy(0)
+				expect(hud.icons:Child("Speed"):CurrentLabel()).to.equal("normal")
+			end
+		},
+		{
+			name = "gry_icon_reboot 0 brings back the old behaviour (no reboot animation); the switch is saved, on by default, with a check box",
+			func = function(state)
+				local convar = GetConVar("gry_icon_reboot")
+				expect(convar:GetDefault()).to.equal("1")
+				local saved = convar:GetString()
+				convar:SetString("0")
+				local ok, err = pcall(function()
+					local hud = newHud()
+					hud:SetMode("Speed")
+					hud:Destroy(1)
+					hud:Destroy(0)
+					expect(hud.icons:Child("Speed"):CurrentLabel()).to.equal("normal")
+				end)
+				convar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok2, err2 = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok2 then
+					error(err2, 0)
+				end
+
+				expect(found["gry_icon_reboot"]).to.beTrue()
+			end
+		},
+		{
 			name = "a malfunction plays its animation and stays on the malfunction frames, the ammo block malfunctions too",
 			func = function(state)
 				local hud = newHud()

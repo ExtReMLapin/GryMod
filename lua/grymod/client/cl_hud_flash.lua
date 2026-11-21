@@ -409,8 +409,12 @@ function HUD:_applyAmmo()
 	end
 end
 
+-- Switch: after a malfunction the icon of the current mode plays its "reboot" animation (RebootHUD runs reboot() on every movie).
+local IconRebootConVar = CreateClientConVar("gry_icon_reboot", "1", true, false, "After a HUD malfunction the suit mode icon plays its reboot animation (the original); 0: it does not")
+
 -- destroy: 0 the suit works again, 1 malfunction, 2 flickering. The original also plays a sound.
 function HUD:Destroy(status)
+	local previous = self.status
 	self.status = status
 
 	local label = status == 1 and "malfunction" or status == 2 and "flickering" or "normal"
@@ -432,6 +436,15 @@ function HUD:Destroy(status)
 		self.player:GotoAndStop("on2")
 		self:_resolve()
 		self:_refresh()
+
+		-- RebootHUD: destroy(0) then reboot(), which plays the "reboot" label (frames 43 to 49, 0.23 s) of the icon now shown
+		if previous == 1 and IconRebootConVar:GetBool() and self.icons and self.mode then
+			local current = self.icons:Child(self.mode)
+
+			if current then
+				current:GotoAndPlay("reboot")
+			end
+		end
 	else
 		self.main:GotoAndPlay(label)
 
