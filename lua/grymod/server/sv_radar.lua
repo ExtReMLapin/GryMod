@@ -8,7 +8,7 @@
 --     the hostiles above (alerted or fighting within 26 m, or scanned). Neutrals (animals, NPCs that neither like nor hate the
 --     player) show only when scanned or when they hurt him;
 --   - the NPC that hurt the player is marked for 10 s, on the border of the radar if it is out of it;
---   - the icon type: 1 ground, 2 flying, 3 machines.
+--   - the icon type: 1 ground, 2 flying, 3 machines (the registry's `type` and `size`: the stock classes are entries too).
 --   - the registry of tracked entities (GryMod.API.RegisterTracked, sh_api_tracked.lua) overrides all this for the NPCs and
 --     nextbots it matches: the icon type and size, the relation, when the contact is listed (radar = "always", "hostile",
 --     "scan" or "never") and whether the binoculars may tag it (scan = false); an entity that is not registered is as above.
@@ -65,34 +65,21 @@ function Radar.Level(state, enemyIsPlayer)
 	return 0
 end
 
--- The icon of the original: 1 infantry, 2 helicopters, 3 other vehicles and machines.
-local flying = {
-	npc_combinegunship = true, npc_helicopter = true, npc_combinedropship = true, npc_cscanner = true, npc_clawscanner = true,
-	npc_manhack = true
-}
-
-local machines = {
-	npc_strider = true, npc_hunter = true, npc_turret_floor = true, npc_turret_ceiling = true, npc_turret_ground = true,
-	npc_rollermine = true, npc_combine_camera = true
-}
-
--- Drawn twice the size (the original doubles the Hunter and the Alien warrior).
-local big = {
-	npc_strider = true, npc_hunter = true, npc_antlionguard = true, npc_antlionguardian = true
-}
-
-Radar.Flying, Radar.Machines, Radar.Big = flying, machines, big
+-- The icon of the original: 1 infantry, 2 helicopters, 3 other vehicles and machines, and whether it is drawn twice the size (the
+-- original doubles the Hunter and the Alien warrior). Which class has which is the registry's (the `type` and `size` fields of
+-- GryMod.API.RegisterTracked, sh_api_tracked.lua): the Half-Life 2 classes are registered as data in sh_api_tracked_hl2.lua and
+-- an addon's own go through the same code. A class that no entry names is a ground unit.
+Radar.Flying, Radar.Machines, Radar.Big = nil, nil, nil -- the old class tables: a hot reload keeps the table of the earlier copy
 
 function Radar.TypeOf(class)
-	local kind = 1
+	local API = GryMod.API
+	local entry = API and API.GetTrackedByClass and API.GetTrackedByClass(class)
 
-	if flying[class] then
-		kind = 2
-	elseif machines[class] then
-		kind = 3
+	if not entry then
+		return 1, false
 	end
 
-	return kind, big[class] and true or false
+	return entry.type or 1, entry.size == "big"
 end
 
 -- The registry entry of the entity (GryMod.API.GetTracked), or nil: none, or no registry (a hot reload of this file).

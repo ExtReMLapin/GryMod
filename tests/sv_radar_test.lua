@@ -178,6 +178,34 @@ return {
 			end
 		},
 		{
+			name = "the icon type is read from the registry of tracked entities, no class table of the radar: a class registered by an addon has its icon, an earlier registration beats the stock one",
+			func = function(state)
+				local API = GryMod.API
+				expect(R.Flying).to.beNil()
+				expect(R.Machines).to.beNil()
+				expect(R.Big).to.beNil()
+
+				expect(API.RegisterTracked("t_radar_big_flyer", {class = "t_npc_flyer", type = "flying", size = "big"})).to.beTrue()
+				expect(API.RegisterTracked("t_radar_strider", {class = "npc_strider", type = "human"})).to.beTrue()
+				local ok, err = pcall(function()
+					local t, big = R.TypeOf("t_npc_flyer")
+					expect(t).to.equal(2)
+					expect(big).to.beTrue()
+					t, big = R.TypeOf("npc_strider")
+					expect(t).to.equal(1)
+					expect(big).to.beFalse()
+				end)
+				API.UnregisterTracked("t_radar_big_flyer")
+				API.UnregisterTracked("t_radar_strider")
+				if not ok then error(err, 0) end
+
+				local t, big = R.TypeOf("npc_strider")
+				expect(t).to.equal(3)
+				expect(big).to.beTrue()
+				expect(R.TypeOf("t_npc_flyer")).to.equal(1)
+			end
+		},
+		{
 			name = "a hostile NPC that is fighting the player within 26 m is listed in the attack colour and tagged",
 			func = function(state)
 				local st = newState()
