@@ -1191,6 +1191,53 @@ return {
 					error(err, 0)
 				end
 			end
+		},
+		{
+			name = "CalcView asks the suit zoom to look at the world first (Think does not run while a single player game is paused by the menu or the console, CalcView does: measured), so a zoom that must end gives no more view; with the option off it asks nothing",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local guard, clock, enabled = Z.Guard, M.Now, M.Enabled
+				local calls = 0
+				local ply = {
+					IsValid = function() return true end,
+					Alive = function() return true end,
+					KeyDown = function() return false end,
+					InVehicle = function() return false end,
+					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
+				}
+
+				Z.Guard = function() calls = calls + 1 guard() end
+				M.Now = function() return 0 end
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					M.ZoomReset(M.ZoomState)
+					M.CalcView(ply, Vector(), Angle(), 100, 3, 8000)
+					expect(calls).to.equal(1)
+
+					-- the world says the menu is up: the zoom ends in this very call and no view is given
+					Z.State.active = true
+					Z.State.frame = FrameNumber()
+					state.world.pause = true
+					expect(M.CalcView(ply, Vector(), Angle(), 100, 3, 8000)).to.beNil()
+					expect(Z.IsActive()).to.beFalse()
+					expect(Z.State.reason).to.equal("pause")
+					expect(M.ZoomState.active).to.beFalse()
+
+					setting(OWN):SetString("0")
+					calls = 0
+					M.CalcView(ply, Vector(), Angle(), 100, 3, 8000)
+					expect(calls).to.equal(0)
+				end)
+
+				Z.Guard, M.Now, M.Enabled = guard, clock, enabled
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }

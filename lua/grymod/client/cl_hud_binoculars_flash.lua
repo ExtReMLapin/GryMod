@@ -1629,6 +1629,12 @@ function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 	local suit = GryMod.SuitZoom
 	local own = suit ~= nil and suit.Owns()
 
+	-- the suit zoom looks at the world before the view is given: with the game paused (the menu or the console open in a single
+	-- player game) Think does not run but CalcView does (measured), and a zoom that must end must not give one more view
+	if own then
+		suit.Guard()
+	end
+
 	-- with the own zoom key never a view in a vehicle: the game's CalcView would not run (our table ends the hook chain) and the
 	-- vehicle's camera would be lost (the zoom itself ends in the next Think, see SuitZoom.Reason)
 	if own and ply:InVehicle() then
