@@ -62,7 +62,9 @@ All of them are saved between sessions (Options > GryMod in the spawn menu, or t
 
 * `gry_hud 0` : hide the HUD (health, energy, ammo, radar, compass). The quick menu and the suit abilities keep working.
 * `gry_sounds 0` : mute the suit sounds.
-* `gry_hud_theme` : the colours of the HUD (`blue`, `default`, `white`, `orange`: the four the original game offers).
+* `gry_hud_theme` : the colours of the HUD: `blue` (the original's "Ice blue"), `default` ("Military green"), `orange` ("Amber"), `white`, the four sets the original game offers, or `custom`, which uses the three colours `gry_hud_color_line` (outlines and icons), `gry_hud_color_over` (active indicators) and `gry_hud_color_text` (digits and letters), each written `r g b` (0 to 255). The options panel has a colour mixer for each.
+* One switch for each element of the interface, all on by default (`gry_hud_reset` puts them back): `gry_hud_status` (health, energy and ammo panel), `gry_hud_radar` (compass and radar panel), `gry_hud_crosshair`, `gry_hud_damage` (damage direction arcs), `gry_hud_hit` (hit marker), `gry_hud_grenade` (grenade warning), `gry_hud_binoculars`, `gry_hud_quickmenu`, `gry_hud_boot` (start-up log, shutdown animation and reboot sequence, with their sounds). The original game has no such switches, only the four colour sets and a crosshair style.
+* `gry_hud_crosshair_style` : the crosshair, 1 to 13 (the original's profile uses 6).
 * `gry_menu_key` : the button code of the quick menu key (the engine does not let an addon run `bind`; set it with the key picker of the options or of the prompt).
 * `gry_mechanics` (server) : `crysis` (default, the original game's numbers: energy recharge 8/6/7 s after a 1 s delay, sprint, cloak and jump costs, 30 % minimum armor absorption, health back in 1 s steps after 2.5 s) or `classic` (GryMod's earlier numbers).
 * `gry_xadd`, `gry_xdist` : HUD position.
@@ -73,9 +75,13 @@ The Crysis interface
 -------------
 
 The interface is drawn from the Crysis Scaleform movies (`HUD_AmmoHealthEnergySuit`, `HUD_RadarCompassStealth`,
-`HUD_QuickMenu`, `HUD_Binoculars`, `HUD_GrenadeDetect`), with their own animations and the original ActionScript
-rules for the digits, the bars, the suit icon, the ammo colours, the malfunction (the HUD turns red when the energy is
-empty) and the quick menu's selection. How it works:
+`HUD_QuickMenu`, `HUD_Binoculars`, `HUD_GrenadeDetect`, `HUD_Crosshair`, `HUD_FriendlyCross`, `HUD_Initialize`,
+`HUD_Lost`, `HUD_Reboot`), with their own animations and the original ActionScript rules for the digits, the bars,
+the suit icon, the ammo colours, the malfunction (the HUD turns red when the energy is empty, the shutdown animation
+plays, then the reboot sequence when the suit comes back), the quick menu's selection, the crosshair (13 styles that
+spread with what you do, open on something you can use, blink on a hit; the damage arcs show where a hit came from;
+a cross on an ally) and the start-up log at every spawn. The sounds of the start-up, malfunction and reboot are the
+demo's own interface sounds. How it works:
 
 * `tools/flash2lua/` converts the movies once, offline (Python, [FFDec](https://github.com/jindrapetrik/jpexs-decompiler)
   and the Crysis SP demo's `GameData.pak`): every shape becomes a picture in an atlas
@@ -84,11 +90,14 @@ empty) and the quick menu's selection. How it works:
   the converter or the demo.
 * `lua/grymod/client/cl_flash.lua` plays the timelines (30 images per second, any frame rate),
   `cl_flash_draw.lua` draws them; `cl_hud_flash.lua`, `cl_hud_radar_flash.lua`, `cl_hud_quickmenu_flash.lua`,
-  `cl_hud_binoculars_flash.lua` and `cl_hud_grenade_flash.lua` are the hand-ported ActionScript and the link with
-  GryMod's values.
+  `cl_hud_binoculars_flash.lua`, `cl_hud_grenade_flash.lua`, `cl_hud_crosshair_flash.lua` and
+  `cl_hud_boot_flash.lua` are the hand-ported ActionScript and the link with GryMod's values;
+  `lua/grymod/server/sv_feedback.lua` tells the client where damage came from and when the player hit something.
 * The compass panel has no minimap picture and no enemy icons yet; its stealth bar shows how many NPCs are near.
-  Not ported: the binoculars' horizon ladder and target locks, the crosshair and its damage direction arcs, pickups,
-  use icons, mission markers (a survey of every movie is in the research notes of the branch's author).
+  Not ported: the binoculars' horizon ladder and target locks, pickups, use icons, mission markers (a survey of every
+  movie is in the research notes of the branch's author). The crosshair's spread is estimated from what the player
+  does (speed, air, crouch, shots) because Garry's Mod weapons have no common spread value, and "friendly" means a
+  teammate or one of the Half-Life 2 rebels' NPC classes.
 
 Tests
 -------------
