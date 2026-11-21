@@ -159,6 +159,28 @@ end
 
 local L_SHAPE = {0, 0, 100, 0, 100, 40, 40, 40, 40, 100, 0, 100}
 
+-- The same square masked by a shape of several contours (`ps`, a list of outlines).
+local function maskedMovieOf(contours)
+	local m = maskedMovie(nil)
+	m.chars[2].p = nil
+	m.chars[2].ps = contours
+
+	return m
+end
+
+-- Two rectangles of 30 x 100 with a gap of 40 between them, and the same drawn as a morph that narrows them to 20.
+local TWO_BARS = {{0, 0, 30, 0, 30, 100, 0, 100}, {70, 0, 100, 0, 100, 100, 70, 100}}
+local TWO_BARS_END = {{0, 0, 20, 0, 20, 100, 0, 100}, {80, 0, 100, 0, 100, 100, 80, 100}}
+
+local function morphingMovie(ratio)
+	local m = maskedMovie(nil)
+	m.chars[2] = {k = "morph", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 100, dh = 100, ex = 0, ey = 0, ew = 100, eh = 100,
+		ps = TWO_BARS, pes = TWO_BARS_END}
+	m.root[1][1].r = ratio
+
+	return m
+end
+
 return {
 	groupName = "GryMod Flash drawing (no render context)",
 	cases = {
@@ -220,6 +242,99 @@ return {
 				local triangles = drawnTriangles(GryMod.Flash.NewRoot(maskedMovie(diamond)))
 				expect(area(triangles)).to.aboutEqual(polygonArea(diamond), 0.5)
 				expect(allInside(triangles, moved(diamond, 10, 20))).to.beTrue()
+			end
+		},
+		{
+			name = "a mask of two separate rectangles lets through the two of them and nothing of the gap",
+			func = function(state)
+				local triangles = drawnTriangles(GryMod.Flash.NewRoot(maskedMovieOf(TWO_BARS)))
+				expect(#triangles).to.beGreaterThan(0)
+				expect(area(triangles)).to.aboutEqual(2 * 30 * 100, 0.5)
+
+				-- every triangle lies in one of the two rectangles
+				local moved1, moved2 = moved(TWO_BARS[1], 10, 20), moved(TWO_BARS[2], 10, 20)
+
+				for _, t in ipairs(triangles) do
+					local cx, cy = (t[1] + t[3] + t[5]) / 3, (t[2] + t[4] + t[6]) / 3
+					expect(insideOrOn(cx, cy, moved1, 0.01) or insideOrOn(cx, cy, moved2, 0.01)).to.beTrue()
+				end
+
+				local _, _, masks = GryMod.Flash.DrawState()
+				expect(masks).to.equal(0)
+			end
+		},
+		{
+			name = "a quad in the gap between the rectangles of a mask draws nothing",
+			func = function(state)
+				local m = maskedMovieOf(TWO_BARS)
+				-- 30 x 100 from 35 to 65 of the mask's origin: between the rectangles (30 and 70)
+				m.chars[1].ox, m.chars[1].dw = 35, 30
+				expect(#drawnTriangles(GryMod.Flash.NewRoot(m))).to.equal(0)
+			end
+		},
+		{
+			name = "a quad across the contours of a mask is cut once: the area is the one of the mask, never twice",
+			func = function(state)
+				-- two rectangles that touch, one concave contour (two pieces) and an island: the quad covers all of them
+				local touching = {{0, 0, 50, 0, 50, 100, 0, 100}, {50, 0, 100, 0, 100, 100, 50, 100}}
+				expect(area(drawnTriangles(GryMod.Flash.NewRoot(maskedMovieOf(touching))))).to.aboutEqual(100 * 100, 0.5)
+
+				local island = {0, 0, 100, 0, 100, 40, 40, 40, 40, 100, 0, 100}
+				local m = maskedMovieOf({island, {60, 60, 90, 60, 90, 90, 60, 90}})
+				expect(area(drawnTriangles(GryMod.Flash.NewRoot(m)))).to.aboutEqual(polygonArea(island) + 30 * 30, 0.5)
+			end
+		},
+		{
+			name = "a mask of several contours whose outline the drawing code cannot cut is drawn without a mask, like a single one",
+			func = function(state)
+				local bowTie = {0, 0, 10, 10, 10, 0, 0, 10}
+				local m = maskedMovieOf({TWO_BARS[1], bowTie})
+				expect(area(drawnTriangles(GryMod.Flash.NewRoot(m)))).to.aboutEqual(100 * 100, 0.5)
+			end
+		},
+		{
+			name = "a morph mask of several contours follows its ratio: the start at 0, the end at 65535, between them in between",
+			func = function(state)
+				local function drawnArea(ratio)
+					return area(drawnTriangles(GryMod.Flash.NewRoot(morphingMovie(ratio))))
+				end
+
+				expect(drawnArea(0)).to.aboutEqual(2 * 30 * 100, 0.5)
+				expect(drawnArea(65535)).to.aboutEqual(2 * 20 * 100, 0.5)
+				expect(drawnArea(32767.5)).to.aboutEqual(2 * 25 * 100, 0.5)
+				expect(drawnArea(0)).to.aboutEqual(2 * 30 * 100, 0.5) -- back to the start after the others
+			end
+		},
+		{
+			name = "the pieces of a morph mask are kept per ratio, in a bounded number",
+			func = function(state)
+				local F = GryMod.Flash
+				local m = morphingMovie(100)
+				local root = F.NewRoot(m)
+				drawnTriangles(root)
+				expect(F.MaskMorphCached(m.chars[2])).to.equal(1)
+				drawnTriangles(root)
+				expect(F.MaskMorphCached(m.chars[2])).to.equal(1) -- the same ratio again: nothing new
+
+				for ratio = 1, 700 do
+					root:EntryAt(1).ratio = ratio
+					drawnTriangles(root)
+				end
+
+				expect(F.MaskMorphCached(m.chars[2])).to.beBetween(1, 600)
+				-- and what is drawn is right once the cache has been emptied and filled again
+				expect(area(drawnTriangles(F.NewRoot(morphingMovie(65535))))).to.aboutEqual(2 * 20 * 100, 0.5)
+			end
+		},
+		{
+			name = "a morph mask with one outline (p, pe) still follows its ratio",
+			func = function(state)
+				local m = morphingMovie(65535)
+				m.chars[2].ps, m.chars[2].pes = nil, nil
+				m.chars[2].p, m.chars[2].pe = {0, 0, 100, 0, 100, 100, 0, 100}, {0, 0, 50, 0, 50, 100, 0, 100}
+				expect(area(drawnTriangles(GryMod.Flash.NewRoot(m)))).to.aboutEqual(50 * 100, 0.5)
+				m.root[1][1].r = 0
+				expect(area(drawnTriangles(GryMod.Flash.NewRoot(m)))).to.aboutEqual(100 * 100, 0.5)
 			end
 		},
 		{

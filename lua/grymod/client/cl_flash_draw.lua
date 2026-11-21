@@ -3,7 +3,7 @@
 -- Shapes are textured quads whose corners go through the accumulated 2D matrix of the clips above them
 -- (Flash matrices: x' = a*x + c*y + tx, y' = b*x + d*y + ty), so rotation, skew and scale are exact. Quads
 -- sharing a material are batched into one mesh. Colour transforms become the vertex colour (exact for the white
--- shapes the colour-set clips tint). Clip layers (masks) clip each quad against the mask polygon, cut into convex pieces
+-- shapes the colour-set clips tint). Clip layers (masks) clip each quad against the mask outlines, cut into convex pieces
 -- when it is concave (no stencil: it does not exist in every render target). A clip with a blend mode
 -- (the HUD uses "add") is drawn as a group, as Flash does: its content is composed normally in a render
 -- target, then that image is added to what is below.
@@ -334,50 +334,6 @@ local function drawText(movie, field, text, a, b, c, d, tx, ty, mr, mg, mb, ma, 
 	end
 end
 
--- The outline of a mask entry in stage pixels as {x1, y1, x2, y2, ...}, or nil when it has none, and the matrix
--- of the shape inside it when the mask is a clip (a clip used as a mask: the first outline found in it counts).
-local function maskOutline(movie, entry)
-	local definition = movie.chars[entry.id]
-
-	if entry.clip then
-		for _, child in ipairs(entry.clip:Entries()) do
-			local outline, inner = maskOutline(movie, child)
-
-			if outline then
-				local m = child.m
-
-				if inner then
-					-- compose the child's matrix with the one found deeper
-					m = {m[1] * inner[1] + m[3] * inner[2], m[2] * inner[1] + m[4] * inner[2],
-						m[1] * inner[3] + m[3] * inner[4], m[2] * inner[3] + m[4] * inner[4],
-						m[1] * inner[5] + m[3] * inner[6] + m[5], m[2] * inner[5] + m[4] * inner[6] + m[6]}
-				end
-
-				return outline, m
-			end
-		end
-
-		return nil
-	end
-
-	if not definition or not definition.p then
-		return nil
-	end
-
-	if definition.k == "morph" and definition.pe and entry.ratio then
-		local t = entry.ratio / 65535
-		local outline = {}
-
-		for i = 1, #definition.p do
-			outline[i] = definition.p[i] + (definition.pe[i] - definition.p[i]) * t
-		end
-
-		return outline
-	end
-
-	return definition.p
-end
-
 -- Cutting an outline into convex pieces. The pieces are lists of vertex numbers of the outline (they do not change
 -- with the matrix: an affine map keeps convexity), found once per outline: ear clipping into triangles, then
 -- neighbouring triangles are joined while the result stays convex (Hertel-Mehlhorn), so an outline with one
@@ -567,16 +523,137 @@ function Flash.MaskPieces(outline)
 	return convexPieces(outline) or nil
 end
 
-local function beginMask(movie, entry, a, b, c, d, tx, ty)
-	local outline, inner = maskOutline(movie, entry)
+-- The contours of a mask shape, each one {outline = {x1, y1, ...}, pieces = ...} (the outline in the shape's own
+-- coordinates, its convex pieces as vertex numbers), or false when one of its outlines cannot be cut. A shape has
+-- one outline (`p`) or several separate ones (`ps`: the bars of the lost signal, two rectangles...): the mask is
+-- their union, which the pieces of all of them make up since the contours do not overlap.
+local function cutContours(outlines)
+	local contours = {}
 
-	if not outline then
+	if #outlines == 0 then
 		return false
 	end
 
-	local pieces = convexPieces(outline)
+	for i = 1, #outlines do
+		local pieces = convexPieces(outlines[i])
 
-	if not pieces then
+		if not pieces then
+			return false
+		end
+
+		contours[i] = {outline = outlines[i], pieces = pieces}
+	end
+
+	return contours
+end
+
+-- A morph mask has a new outline at every ratio of its timeline: the contours of each ratio are kept, up to this many
+-- ratios per shape (the ratios come from the movie, a few dozen at most), then the shape starts again.
+local MORPH_CACHE_LIMIT = 512
+
+-- The contours of one mask shape at the given ratio (a morph only): nil when it has no outline, false when it has
+-- one that cannot be cut.
+local function shapeContours(definition, ratio)
+	if ratio and definition.k == "morph" and (definition.pe or definition.pes) then
+		local cache = definition.maskMorph
+
+		if not cache then
+			cache = {count = 0}
+			definition.maskMorph = cache
+		end
+
+		local contours = cache[ratio]
+
+		if contours == nil then
+			local starts = definition.ps or {definition.p}
+			local ends = definition.pes or {definition.pe}
+
+			if cache.count >= MORPH_CACHE_LIMIT then
+				cache = {count = 0}
+				definition.maskMorph = cache
+			end
+
+			local t = ratio / 65535
+			local outlines = {}
+
+			for i = 1, #starts do
+				local from, to = starts[i], ends[i]
+				local outline = {}
+
+				for k = 1, #from do
+					outline[k] = from[k] + (to[k] - from[k]) * t
+				end
+
+				outlines[i] = outline
+			end
+
+			contours = cutContours(outlines)
+			cache[ratio] = contours
+			cache.count = cache.count + 1
+		end
+
+		return contours
+	end
+
+	local contours = definition.maskContours
+
+	if contours == nil then
+		if definition.ps then
+			contours = cutContours(definition.ps)
+		elseif definition.p then
+			contours = cutContours({definition.p})
+		else
+			return nil
+		end
+
+		definition.maskContours = contours
+	end
+
+	return contours
+end
+
+-- How many ratios of a morph mask have their contours kept: tests.
+function Flash.MaskMorphCached(definition)
+	return definition.maskMorph and definition.maskMorph.count or 0
+end
+
+-- The contours of a mask entry (see shapeContours; nil when it has no outline), and the matrix of the shape inside
+-- it when the mask is a clip (a clip used as a mask: the first shape with an outline in it counts).
+local function maskContours(movie, entry)
+	if entry.clip then
+		for _, child in ipairs(entry.clip:Entries()) do
+			local contours, inner = maskContours(movie, child)
+
+			if contours ~= nil then
+				local m = child.m
+
+				if inner then
+					-- compose the child's matrix with the one found deeper
+					m = {m[1] * inner[1] + m[3] * inner[2], m[2] * inner[1] + m[4] * inner[2],
+						m[1] * inner[3] + m[3] * inner[4], m[2] * inner[3] + m[4] * inner[4],
+						m[1] * inner[5] + m[3] * inner[6] + m[5], m[2] * inner[5] + m[4] * inner[6] + m[6]}
+				end
+
+				return contours, m
+			end
+		end
+
+		return nil
+	end
+
+	local definition = movie.chars[entry.id]
+
+	if not definition then
+		return nil
+	end
+
+	return shapeContours(definition, entry.ratio)
+end
+
+local function beginMask(movie, entry, a, b, c, d, tx, ty)
+	local contours, inner = maskContours(movie, entry)
+
+	if not contours then
 		return false
 	end
 
@@ -597,35 +674,43 @@ local function beginMask(movie, entry, a, b, c, d, tx, ty)
 			ea * inner[5] + ec * inner[6] + etx, eb * inner[5] + ed * inner[6] + ety
 	end
 
-	for k = 1, #pieces do
-		local piece = pieces[k]
-		local target = maskPieces[maskFirst + k - 1]
+	local slot = 0
 
-		if not target then
-			target = {}
-			maskPieces[maskFirst + k - 1] = target
+	for contourIndex = 1, #contours do
+		local contour = contours[contourIndex]
+		local outline, pieces = contour.outline, contour.pieces
+
+		for k = 1, #pieces do
+			local piece = pieces[k]
+			slot = slot + 1
+			local target = maskPieces[maskFirst + slot - 1]
+
+			if not target then
+				target = {}
+				maskPieces[maskFirst + slot - 1] = target
+			end
+
+			local points = #piece
+			local area = 0
+
+			for i = 1, points do
+				local o = piece[i]
+				local x, y = outline[o * 2 - 1], outline[o * 2]
+				target[i * 2 - 1] = ea * x + ec * y + etx
+				target[i * 2] = eb * x + ed * y + ety
+			end
+
+			for i = 1, points do
+				local j = i % points + 1
+				area = area + target[i * 2 - 1] * target[j * 2] - target[j * 2 - 1] * target[i * 2]
+			end
+
+			target.n = points
+			target.sign = area >= 0 and 1 or -1
 		end
-
-		local points = #piece
-		local area = 0
-
-		for i = 1, points do
-			local o = piece[i]
-			local x, y = outline[o * 2 - 1], outline[o * 2]
-			target[i * 2 - 1] = ea * x + ec * y + etx
-			target[i * 2] = eb * x + ed * y + ety
-		end
-
-		for i = 1, points do
-			local j = i % points + 1
-			area = area + target[i * 2 - 1] * target[j * 2] - target[j * 2 - 1] * target[i * 2]
-		end
-
-		target.n = points
-		target.sign = area >= 0 and 1 or -1
 	end
 
-	maskCount = #pieces
+	maskCount = slot
 
 	return true
 end
