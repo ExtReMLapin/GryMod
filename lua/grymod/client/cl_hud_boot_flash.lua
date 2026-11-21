@@ -22,15 +22,9 @@ Boot.DURATION = {initialize = 89 / 30, reboot = 3.97 + 0.67}
 
 local STAGE_W, STAGE_H = 1024, 768
 
--- The movies hold localisation keys (@ui_init_text01): the English texts of the original game.
-local STRINGS = include("grymod/flash/hud_boot_strings.lua") or {}
-
+-- The movies hold localisation keys (@ui_init_text01): the English texts of the original game (Flash.Localise).
 function Boot.Localise(text)
-	if not isstring(text) or string.sub(text, 1, 1) ~= "@" then
-		return text
-	end
-
-	return STRINGS[string.lower(string.sub(text, 2))] or text
+	return Flash.Localise(text)
 end
 
 local Sequence = {}

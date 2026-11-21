@@ -36,6 +36,48 @@ return {
 			end
 		},
 		{
+			name = "the localisation keys of the movies (@ui_...) are English words, in every converted movie, never a raw key",
+			func = function(state)
+				local F = GryMod.Flash
+				expect(F.Localise("@ui_MALFUNCTION")).to.equal("MALFUNCTION")
+				expect(F.Localise("@ui_ZOOM")).to.equal("ZOOM")
+				expect(F.Localise("@ui_NW")).to.equal("NW")
+				expect(F.Localise("@ui_init_text01")).to.equal("Loading Control Unit ")
+				expect(F.Localise("plain")).to.equal("plain")
+				expect(F.Localise(nil)).to.equal(nil)
+				-- a key nobody wrote the text of: readable, without the @ and the prefix
+				expect(F.Localise("@ui_SOME_NEW_KEY")).to.equal("SOME NEW KEY")
+
+				local movies = {"hud_ammohealthenergysuit", "hud_binoculars", "hud_radarcompassstealth", "hud_quickmenu",
+					"hud_grenadedetect", "hud_crosshair", "hud_initialize", "hud_reboot", "hud_lost"}
+				local bad = {}
+
+				for _, name in ipairs(movies) do
+					local movie = F.Load(name)
+					expect(movie).to.exist()
+
+					for id, definition in pairs(movie.chars) do
+						if definition.k == "text" and isstring(definition.t) and string.find(F.Localise(definition.t), "@", 1, true) then
+							bad[#bad + 1] = name .. "/" .. id .. " " .. definition.t
+						end
+					end
+				end
+
+				expect(table.concat(bad, ", ")).to.equal("")
+			end
+		},
+		{
+			name = "a text field made from a key starts with the English text, and SetText keeps what it is given",
+			func = function(state)
+				local m = movie()
+				m.chars[1].t = "@ui_MALFUNCTION"
+				local box = GryMod.Flash.NewRoot(m):Child("Box")
+				expect(box:Child("Digit").text).to.equal("MALFUNCTION")
+				box:SetText("Digit", "@raw")
+				expect(box:Child("Digit").text).to.equal("@raw")
+			end
+		},
+		{
 			name = "a text field starts with its initial text",
 			func = function(state)
 				local root = GryMod.Flash.NewRoot(movie())

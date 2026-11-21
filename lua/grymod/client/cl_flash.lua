@@ -20,6 +20,20 @@ local MAX_JUMPS = 8 -- frame actions jumping to each other
 
 local movies = {}
 
+-- The movies hold localisation keys ("@ui_ZOOM") where the engine of the original game writes its English texts.
+-- The texts are in grymod/flash/hud_boot_strings.lua (lower case keys); a key without a text shows its name.
+local STRINGS = include("grymod/flash/hud_boot_strings.lua") or {}
+
+function Flash.Localise(text)
+	if not isstring(text) or string.sub(text, 1, 1) ~= "@" then
+		return text
+	end
+
+	local key = string.lower(string.sub(text, 2))
+
+	return STRINGS[key] or (string.gsub(string.gsub(string.sub(text, 2), "^ui_", ""), "_", " "))
+end
+
 -- Makes a movie available under a name (tests, or data built at runtime).
 function Flash.Register(name, data)
 	movies[name] = data
@@ -158,7 +172,7 @@ function Clip:_add(depth, id, op, inherit)
 		entry.clip.parent = self
 		entry.clip.entry = entry
 	elseif definition.k == "text" then
-		entry.text = definition.t or ""
+		entry.text = Flash.Localise(definition.t or "")
 	end
 
 	self.list[depth] = entry

@@ -1,5 +1,5 @@
--- The English texts of the boot sequences (HUD_Initialize, HUD_Reboot, HUD_Lost), from the original game's
--- ui_text_messages. Keys in lower case.
+-- The English texts of the movies' localisation keys (the boot sequences, the compass, the binoculars, the
+-- malfunction), from the original game's ui_text_messages. Keys in lower case.
 return {
 	["ui_charging_fuel_cells"] = "CHARGING FUEL CELLS",
 	["ui_cpu_voltage"] = "CPU VOLTAGE",
@@ -37,5 +37,17 @@ return {
 	["ui_init_text14"] = "Initialize Equipment ",
 	["ui_init_text15"] = "Map coordinates loaded",
 	["ui_init_receivingdata"] = "RECEIVING DATA",
+	["ui_malfunction"] = "MALFUNCTION",
+	["ui_mode"] = "MODE",
+	["ui_vis"] = "VIS",
+	["ui_zoom"] = "ZOOM",
+	["ui_n"] = "N",
+	["ui_ne"] = "NE",
+	["ui_e"] = "E",
+	["ui_se"] = "SE",
+	["ui_s"] = "S",
+	["ui_sw"] = "SW",
+	["ui_w"] = "W",
+	["ui_nw"] = "NW",
 	["ui_menu_crysystems"] = "CRYNET SYSTEMS"
 }

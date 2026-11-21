@@ -172,7 +172,7 @@ return {
 				expect(Boot.Localise("@ui_init_text01")).to.equal("Loading Control Unit ")
 				expect(Boot.Localise("@UI_SYSTEM_OVERRUN")).to.equal("SYSTEM OVERRUN")
 				expect(Boot.Localise("plain")).to.equal("plain")
-				expect(Boot.Localise("@ui_nothing_like_this")).to.equal("@ui_nothing_like_this")
+				expect(Boot.Localise("@ui_nothing_like_this")).to.equal("nothing like this")
 				expect(Boot.Localise(nil)).to.equal(nil)
 
 				for _, kind in ipairs({"initialize", "reboot", "lost"}) do
