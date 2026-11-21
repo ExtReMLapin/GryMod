@@ -577,6 +577,9 @@ end
 -- outline is added in the Post hook. So the arms and the gun fade away like the third person body does.
 F.FirstPersonEdge = 0.45
 
+-- from this opacity of the plain model up the arms are drawn as they are: no refraction under them, no translucent draw
+F.NearlyPlain = 0.99
+
 -- how bent the picture is in first person (the arms are close to the camera, the bend is seen larger)
 F.FirstPersonBend = 1.5
 
@@ -599,7 +602,7 @@ local function startFirstPerson(ent, ply)
 	s.firstPerson = true
 
 	-- the refraction first, unless the plain model is still all there (the very start of the change)
-	if base < 0.99 and ent:IsValid() then
+	if base < F.NearlyPlain and ent:IsValid() then
 		-- one copy of the screen per frame, for the view model (the hands come right after it)
 		if ent == ply:GetViewModel() then
 			render.UpdateRefractTexture()
@@ -615,8 +618,12 @@ local function startFirstPerson(ent, ply)
 		drawing = false
 	end
 
-	-- the engine's draw comes next: part transparent, or switched off
-	render.SetBlend(base >= F.Invisible and base or 0)
+	-- the engine's draw comes next: part transparent, or switched off; with the plain model nearly all there (the end of the change, where the
+	-- refraction has stopped too) it is left OPAQUE: the engine draws a translucent model flat and dark, even at 99.7 %, and the gun was a black
+	-- shape for the last frame before the plain draw came back (measured on the last frames of a deactivation)
+	if base < F.NearlyPlain then
+		render.SetBlend(base >= F.Invisible and base or 0)
+	end
 end
 
 local function endFirstPerson(ent, ply)

@@ -691,6 +691,39 @@ return {
 			end
 		},
 		{
+			name = "first person, at the very end of the change: with the plain model nearly all there the engine's draw stays OPAQUE (a translucent model is drawn flat and dark: the gun was a black shape for a frame)",
+			func = function(state)
+				local log = recordRender()
+				local F = GryMod.CloakFX
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+
+				-- a level whose plain opacity is above the threshold: no refraction, and no translucent draw
+				setState(me, 0.003, 0)
+				local _, base = F.Visibility(0.003, 0)
+				expect(base >= F.NearlyPlain).to.beTrue()
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(vm.draws).to.equal(0)
+				for _, value in ipairs(log.blend) do
+					expect(value).to.equal(1)
+				end
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(leftClean(log)).to.beTrue()
+
+				-- just under the threshold it is still the old way: the refraction, then the model part transparent
+				setState(me, 0.03, 0)
+				_, base = F.Visibility(0.03, 0)
+				expect(base < F.NearlyPlain).to.beTrue()
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(vm.draws).to.equal(1)
+				expect(log.blend[#log.blend]).to.aboutEqual(base, 0.001)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
 			name = "first person, camouflaged and still: only the refraction shows, the engine's draw is switched off, the state comes back at the end",
 			func = function(state)
 				local log = recordRender()
