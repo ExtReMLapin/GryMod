@@ -55,9 +55,12 @@ end
 -- the game plays at most 8 armor hits at a time (maxpb 8), and the mix leaves 60 ms between two: a shotgun's pellets or a
 -- burst would stack into one loud noise (see GryMod.SoundMix.MayPlay). A hit that is refused uses up no file of the shuffle.
 net.Receive("gry_armor_hit_sound",function()
-	if not GryMod.SoundMix.MayPlay("armor_hit", GryMod.SoundMix.Now()) then return end
+	local ok, count = GryMod.SoundMix.MayPlay("armor_hit", GryMod.SoundMix.Now())
 
-	GryMod.PlaySound(Sound(GryMod.NextArmorHitSound()))
+	if not ok then return end
+
+	-- the hits that stack are quieter (GryMod.SoundMix.Limits.armor_hit.stack): they would clip together
+	GryMod.PlaySound(Sound(GryMod.NextArmorHitSound()), GryMod.SoundMix.StackScale("armor_hit", count))
 end)
 
 

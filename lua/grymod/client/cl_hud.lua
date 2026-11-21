@@ -9,13 +9,13 @@ local SoundsEnabled = CreateClientConVar("gry_sounds", "1", true, false, "Play t
 local meta = FindMetaTable("Player")
 
 -- Every GryMod sound goes through here, so players can switch them off (gry_sounds 0) and the mix sets their volume
--- (cl_sound_mix.lua)
-function GryMod.PlaySound(path)
+-- (cl_sound_mix.lua); scale (default 1) multiplies it (the armor hits that stack)
+function GryMod.PlaySound(path, scale)
 	if not SoundsEnabled:GetBool() then
 		return false
 	end
 
-	GryMod.SoundMix.Emit(path, GryMod.SoundMix.Volume(path))
+	GryMod.SoundMix.Emit(path, GryMod.SoundMix.Volume(path) * (scale or 1))
 
 	return true
 end

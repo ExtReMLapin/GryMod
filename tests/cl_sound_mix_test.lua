@@ -360,6 +360,70 @@ return {
 			end
 		},
 		{
+			name = "MayPlay also tells how many plays of the kind are going, the new one included",
+			func = function(state)
+				local ok, count = GryMod.SoundMix.MayPlay("armor_hit", 50)
+				expect(ok).to.beTrue()
+				expect(count).to.equal(1)
+				ok, count = GryMod.SoundMix.MayPlay("armor_hit", 50.07)
+				expect(count).to.equal(2)
+				-- a refused play has no count; a kind without a limit counts nothing
+				expect(GryMod.SoundMix.MayPlay("armor_hit", 50.08)).to.beFalse()
+				ok, count = GryMod.SoundMix.MayPlay("something_else", 50)
+				expect(ok).to.beTrue()
+				expect(count).to.equal(1)
+				-- the first two are over after length seconds: the next one is alone again
+				ok, count = GryMod.SoundMix.MayPlay("armor_hit", 51)
+				expect(count).to.equal(1)
+			end
+		},
+		{
+			name = "stacked armor hits are played quieter: the k-th at the same time at 1/k of the volume (8 at 0.63 peak up to 2.9 of full scale otherwise)",
+			func = function(state)
+				local limit = GryMod.SoundMix.Limits.armor_hit
+				expect(limit.stack).to.equal(1)
+				expect(GryMod.SoundMix.StackScale("armor_hit", 1)).to.equal(1)
+				expect(GryMod.SoundMix.StackScale("armor_hit", 2)).to.equal(0.5)
+				expect(GryMod.SoundMix.StackScale("armor_hit", 8)).to.equal(0.125)
+				expect(GryMod.SoundMix.StackScale("something_else", 8)).to.equal(1)
+				expect(GryMod.SoundMix.StackScale("armor_hit", nil)).to.equal(1)
+
+				local now = 200
+				stub(GryMod.SoundMix, "Now", function() return now end)
+				local scales = {}
+				stub(GryMod, "PlaySound", function(path, scale) scales[#scales + 1] = scale end)
+
+				for i = 0, 7 do
+					now = 200 + i * 0.07
+					receive("gry_armor_hit_sound")
+				end
+
+				for i = 1, 8 do
+					expect(scales[i]).to.aboutEqual(1 / i, 0.0001)
+				end
+
+				-- they are over: the next hit is full volume again
+				now = 202
+				receive("gry_armor_hit_sound")
+				expect(scales[9]).to.equal(1)
+			end
+		},
+		{
+			name = "PlaySound takes a scale (default 1) that multiplies the volume of the mix",
+			func = function(state)
+				local calls = {}
+				stub(GryMod.SoundMix, "Emit", function(path, volume) calls[#calls + 1] = volume end)
+				GryMod.PlaySound("grymod/suit/suit_armor_108.wav")
+				GryMod.PlaySound("grymod/suit/suit_armor_108.wav", 0.5)
+				GryMod.PlaySound("grymod/suit/suit_armor_108.wav", nil)
+				expect(calls[2]).to.aboutEqual(calls[1] / 2, 0.0001)
+				expect(calls[3]).to.equal(calls[1])
+				-- a voice (volume 1) is scaled too
+				GryMod.PlaySound("grymod/suit/suit_maximum_armor.wav", 0.25)
+				expect(calls[4]).to.equal(0.25)
+			end
+		},
+		{
 			name = "the ground loop volume is the mix's volume times the height above the ground, never above the mix's volume",
 			func = function(state)
 				local base = GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav")

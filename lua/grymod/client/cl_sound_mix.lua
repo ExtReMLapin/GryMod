@@ -95,9 +95,13 @@ Mix.PitchOctaves = {
 }
 
 -- how many plays of a kind may be heard together (max, as the game's maxpb: mat_armor_fp has 8), how soon after the last
--- one (gap, s), and how long a play is counted as playing (length, s: the longest file of the kind, 0.68 s)
+-- one (gap, s), how long a play is counted as playing (length, s: the longest file of the kind, 0.68 s) and how much
+-- quieter the plays that stack are (stack: the k-th play going at once is played at k^-stack of its volume).
+-- The armor hits peak at 0 dBFS and the mix plays them at 0.63: measured on the 13 files, two hits at once reach 1.26 of
+-- full scale, four 1.7 to 2.5, eight 2 to 2.9 (clipped by the engine). With 1/k the sum of a dense burst stays at about
+-- 1.0 (its median) and a hit alone, or after the others are over, is at its own volume.
 Mix.Limits = {
-	armor_hit = {max = 8, gap = 0.06, length = 0.7}
+	armor_hit = {max = 8, gap = 0.06, length = 0.7, stack = 1}
 }
 
 local history = {}
@@ -161,13 +165,14 @@ function Mix.Now()
 	return SysTime()
 end
 
--- Whether a play of this kind may start now: it is counted if it does. At most limit.max plays at a time (a play lasts
--- limit.length) and limit.gap seconds after the last one. A kind with no limit always plays.
+-- Whether a play of this kind may start now: it is counted if it does, and the second result is how many plays of the
+-- kind are going, this one included. At most limit.max plays at a time (a play lasts limit.length) and limit.gap seconds
+-- after the last one. A kind with no limit always plays (and counts as 1).
 function Mix.MayPlay(name, now)
 	local limit = Mix.Limits[name]
 
 	if not limit then
-		return true
+		return true, 1
 	end
 
 	local starts = history[name]
@@ -196,7 +201,18 @@ function Mix.MayPlay(name, now)
 
 	starts[#starts + 1] = now
 
-	return true
+	return true, #starts
+end
+
+-- the volume factor of the k-th play of a kind going at once (1 for a kind without a stack rule)
+function Mix.StackScale(name, count)
+	local limit = Mix.Limits[name]
+
+	if not limit or not limit.stack or not count or count < 1 then
+		return 1
+	end
+
+	return count ^ -limit.stack
 end
 
 function Mix.ResetLimits()
