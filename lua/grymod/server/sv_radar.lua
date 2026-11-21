@@ -25,13 +25,24 @@ local enabled = CreateConVar("gry_radar_contacts", "1", bit.bor(FCVAR_ARCHIVE, F
 local INTERVAL = 0.2
 
 -- The state of the AI as the original's alert level: 2 when the NPC is fighting the player, 1 when it is alerted (it heard
--- something, is looking for him, or fights someone else), 0 otherwise.
+-- something, is looking for him, or fights someone else), 0 otherwise. Having the player as enemy is level 2 whatever the
+-- state says: the machines have no useful one (MEASURED on gm_construct: a floor turret that shoots the player stays in
+-- NPC_STATE_IDLE with the player as its enemy; a ceiling turret and a camera stay in NPC_STATE_NONE); only a lost player
+-- (ALERT, which can keep the last enemy) stays level 1, and a dead NPC is nothing.
 function Radar.Level(state, enemyIsPlayer)
-	if state == NPC_STATE_COMBAT then
-		return enemyIsPlayer and 2 or 1
+	if state == NPC_STATE_DEAD then
+		return 0
 	end
 
 	if state == NPC_STATE_ALERT then
+		return 1
+	end
+
+	if enemyIsPlayer then
+		return 2
+	end
+
+	if state == NPC_STATE_COMBAT then
 		return 1
 	end
 
@@ -81,6 +92,7 @@ function Radar.Describe(npc, ply)
 		state = npc:GetNPCState(),
 		enemyIsPlayer = enemy == ply,
 		health = npc:Health(),
+		maxHealth = npc:GetMaxHealth(),
 		x = pos.x, y = pos.y, z = pos.z,
 		yaw = npc:GetAngles().y
 	}
@@ -146,7 +158,9 @@ function Radar.Step(origin, descs, st, now)
 		local d = descs[i]
 		local key = d.key
 
-		if d.health <= 0 or d.state == NPC_STATE_DEAD then
+		-- dead: no health left, unless it never had any (MEASURED: a rollermine has 0 of 0 health all its life and is removed
+		-- when it is destroyed, so 0 health says nothing about it)
+		if d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0) or d.state == NPC_STATE_DEAD then
 			st.tagged[key] = nil
 			st.markers[key] = nil
 		else

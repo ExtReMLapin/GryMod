@@ -208,6 +208,7 @@ return {
 				local d = npc(500, {state = NPC_STATE_COMBAT, enemyIsPlayer = true})
 				step({d}, st)
 				d.state = NPC_STATE_IDLE
+				d.enemyIsPlayer = false -- it lost the player (an idle NPC that still had him as enemy would count as fighting)
 				expect(#step({d}, st)).to.equal(1)
 				d.health = 0
 				expect(#step({d}, st)).to.equal(0)
@@ -321,6 +322,86 @@ return {
 				expect(d.enemyIsPlayer).to.equal(e:GetEnemy() == p)
 				expect(math.abs(d.x - e:GetPos().x) < 0.01).to.beTrue()
 				expect(math.abs(d.yaw - 90) < 1).to.beTrue()
+			end
+		},
+		{
+			name = "the alert level: the NPC that has the player as enemy is level 2 whatever state it reports (machines have none), a lost player stays 1",
+			func = function(state)
+				expect(R.Level(NPC_STATE_IDLE, true)).to.equal(2)
+				expect(R.Level(NPC_STATE_NONE, true)).to.equal(2)
+				expect(R.Level(NPC_STATE_SCRIPT, true)).to.equal(2)
+				expect(R.Level(NPC_STATE_COMBAT, true)).to.equal(2)
+				expect(R.Level(NPC_STATE_ALERT, true)).to.equal(1)
+				expect(R.Level(NPC_STATE_DEAD, true)).to.equal(0)
+				expect(R.Level(NPC_STATE_IDLE, false)).to.equal(0)
+			end
+		},
+		{
+			name = "a floor turret that stays idle with the player as enemy is on the radar as fighting (measured: state IDLE, enemy the player)",
+			func = function(state)
+				local st = newState()
+				local d = npc(GATE - 10, {class = "npc_turret_floor", health = 100, maxHealth = 100, state = NPC_STATE_IDLE, enemyIsPlayer = true})
+				local list = step({d}, st)
+				expect(#list).to.equal(1)
+				expect(list[1].sub).to.equal(4)
+				expect(list[1].type).to.equal(3)
+				expect(st.tagged[d.key]).to.beTrue()
+			end
+		},
+		{
+			name = "a rollermine has no health (0 of 0, measured): chasing the player it is a contact, without an enemy it is none, a dead NPC with max health is still gone",
+			func = function(state)
+				local chasing = npc(GATE - 10, {class = "npc_rollermine", health = 0, maxHealth = 0, state = NPC_STATE_COMBAT, enemyIsPlayer = true})
+				local list = step({chasing})
+				expect(#list).to.equal(1)
+				expect(list[1].sub).to.equal(4)
+				expect(list[1].type).to.equal(3)
+				expect(list[1].big).to.beFalse()
+				local idle = npc(GATE - 10, {class = "npc_rollermine", health = 0, maxHealth = 0, state = NPC_STATE_IDLE, enemyIsPlayer = false})
+				expect(#step({idle})).to.equal(0)
+				local dead = npc(GATE - 10, {health = 0, maxHealth = 50, state = NPC_STATE_COMBAT, enemyIsPlayer = true})
+				expect(#step({dead})).to.equal(0)
+				local gone = npc(GATE - 10, {class = "npc_rollermine", health = 0, maxHealth = 0, state = NPC_STATE_DEAD})
+				expect(#step({gone})).to.equal(0)
+			end
+		},
+		{
+			name = "a real rollermine is described with its max health, and a chasing one (state forced) is a contact",
+			func = function(state)
+				local p = ply()
+				local e = spawnNPC("npc_rollermine", p:GetPos() + Vector(-300, 0, 20))
+				e:AddEntityRelationship(p, D_HT, 99)
+				local d = R.Describe(e, p)
+				expect(d.maxHealth).to.equal(e:GetMaxHealth())
+				expect(d.hostile).to.beTrue()
+				d.state, d.enemyIsPlayer = NPC_STATE_COMBAT, true
+				local list = R.Step(p:GetPos(), {d}, newState(), 0)
+				expect(#list).to.equal(1)
+				expect(list[1].type).to.equal(3)
+				expect(list[1].sub).to.equal(4)
+			end
+		},
+		{
+			name = "friendly NPCs (D_LI) around the player, alerted or fighting, are no contact and nothing is sent",
+			func = function(state)
+				local p = ply()
+				p.GryRadarWant = true
+				local friends = {}
+				for i = 1, 3 do
+					local e = spawnNPC("npc_citizen", p:GetPos() + Vector(-250 - 40 * i, 0, 10))
+					e:AddEntityRelationship(p, D_LI, 99)
+					e:SetNPCState(i == 1 and NPC_STATE_ALERT or NPC_STATE_COMBAT)
+					friends[#friends + 1] = e
+				end
+				local d = R.Describe(friends[1], p)
+				expect(d.hostile).to.beFalse()
+				local list = R.Step(p:GetPos(), {R.Describe(friends[1], p), R.Describe(friends[2], p), R.Describe(friends[3], p)}, newState(), 0)
+				expect(#list).to.equal(0)
+				startRecording()
+				local ok, err = pcall(R.Tick, p, 10)
+				stopRecording()
+				assert(ok, err)
+				expect(#sent).to.equal(0)
 			end
 		},
 		{
