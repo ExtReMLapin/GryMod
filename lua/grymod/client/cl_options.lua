@@ -80,6 +80,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Tag an NPC aimed at for half a second (the radar shows it)", "gry_binoculars_tag")
 	Panel:CheckBox("Outline the NPC being scanned during the last 0.3 s of the scan (needs the tag option above)", "gry_binoculars_silhouette")
 	Panel:CheckBox("Binoculars sound mood: explosions, collisions and vehicles are lowered while they are up", "gry_binoculars_mood")
+	Panel:CheckBox("Binoculars zoom stages 2x, 4x, 8x with the mouse wheel, 0.2 s between them (off: the Half-Life 2 zoom). Changes how the mouse feels", "gry_binoculars_stages")
 
 	Panel:CheckBox("Screen effects: heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change", "gry_screenfx")
 	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)

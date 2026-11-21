@@ -37,7 +37,9 @@ local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, 
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
 local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "The original's cryvision sound mood while the binoculars are up: explosions, collisions and vehicles are lowered (in and out in half a second)")
 local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC being scanned through the binoculars is outlined in the last 0.3 s of the scan (needs the tag switch: the scan is the tag's)")
+local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s between them (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
 
+function Bino.StagesEnabled() return StagesConVar:GetBool() end
 function Bino.SilhouetteEnabled() return SilhouetteConVar:GetBool() end
 function Bino.MoodEnabled() return MoodConVar:GetBool() end
 function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
@@ -415,7 +417,9 @@ Bino.Sounds = {
 	select = "grymod/binoculars/binocular_select.wav",
 	deselect = "grymod/binoculars/binocular_deselect.wav",
 	loop = "grymod/binoculars/binocular_ambience.wav",
-	locked = "grymod/binoculars/binocular_tagged.wav"
+	locked = "grymod/binoculars/binocular_tagged.wav",
+	zoom_in = "grymod/binoculars/binocular_zoom_in.wav",
+	zoom_out = "grymod/binoculars/binocular_zoom_out.wav"
 }
 
 -- What to do when the binoculars go from wanted to not wanted or back: a list of cue names.
@@ -644,6 +648,155 @@ function Bino.SilhouetteValid(entity)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
+-- The zoom stages (option): in the original the zoom class (vtable 0x3927e0b8) has the stages 2x, 4x, 8x of Binoculars.xml,
+-- the wheel steps them (sounds 7 in / 8 out, FUN_3917f9f0 / FUN_3917fad0) and the field of view moves in a straight line
+-- over zoom_in_time / zoom_out_time (0.2 s, FUN_3917b430). The engine's zoom here is the suit's: one fixed field of view
+-- eased over 0.4 s. Owning the view while the binoculars are up needs a CalcView (the field of view), PlayerBindPress (the
+-- wheel) and AdjustMouseSensitivity (the engine scales the mouse for ITS field of view, 25 degrees, not ours). All of it
+-- is a state machine in the pure functions below; the hooks only feed it. DEDUCED: the stages are magnifications (the ratio
+-- of the tangents of the half fields, as the label's rule), the first stage is up at the opening, the wheel stops at the ends
+-- (the original's stage change wraps, whether the wheel does was not read), and the stage starts again at 2x each time.
+-- ---------------------------------------------------------------------------------------------------------
+
+Bino.ZOOM_STAGES = {2, 4, 8}
+Bino.ZOOM_IN_TIME = 0.2
+Bino.ZOOM_OUT_TIME = 0.2
+-- how long the override goes on at most after the key is let go, waiting for the engine's own return to the base
+Bino.ZOOM_HOLD_MAX = 0.6
+-- the film's mode (X02, X04, X06) of each stage: the original's last stage reads X06 (FUN_391cd590), not X08
+Bino.StageModes = {1, 2, 3}
+
+-- The field of view (degrees) of a magnification at a base field of view.
+function Bino.StageFov(base, factor)
+	return math.deg(2 * math.atan(math.tan(math.rad(base) / 2) / factor))
+end
+
+local function validFov(fov)
+	return type(fov) == "number" and fov == fov and fov > 0 and fov < 180
+end
+
+-- The film's mode for the field of view in force: the last stage whose magnification it has reached, the first one before
+-- any (the label is decided every frame from the field of view, so it changes in the middle of a transition).
+function Bino.StageModeFor(base, fov)
+	local mode = Bino.StageModes[1]
+
+	if not validFov(base) or not validFov(fov) then
+		return mode
+	end
+
+	local factor = math.tan(math.rad(base) / 2) / math.tan(math.rad(fov) / 2)
+
+	for i, stage in ipairs(Bino.ZOOM_STAGES) do
+		if factor >= stage - 1e-6 then
+			mode = Bino.StageModes[i]
+		end
+	end
+
+	return mode
+end
+
+function Bino.NewZoom()
+	return {stage = 0, active = false, fov = nil, from = 0, to = 0, start = 0, duration = 0, closeStart = nil}
+end
+
+function Bino.ZoomReset(z)
+	z.stage, z.active, z.fov, z.from, z.to, z.start, z.duration, z.closeStart = 0, false, nil, 0, 0, 0, 0, nil
+end
+
+local function zoomFovAt(z, now)
+	if z.duration <= 0 then
+		return z.to
+	end
+
+	return z.from + (z.to - z.from) * math.Clamp((now - z.start) / z.duration, 0, 1)
+end
+
+-- One frame of the zoom: wanted is whether the binoculars are up, base the field of view without zoom, engineFov the one the
+-- engine is using (it eases back to the base after the key is let go). Returns the field of view to give the view, or nil
+-- when the override is not needed (nothing up, or over).
+function Bino.ZoomStep(z, now, wanted, base, engineFov)
+	if wanted then
+		z.closeStart = nil
+
+		if z.stage == 0 then
+			z.stage = 1
+		end
+	elseif z.stage ~= 0 then
+		z.stage = 0
+		z.closeStart = now
+	end
+
+	if not z.active then
+		if not wanted then
+			return nil
+		end
+
+		z.active, z.fov, z.from, z.to, z.start, z.duration = true, base, base, base, now, 0
+	end
+
+	-- the field of view the stage wants (the base once the key is let go): a change starts a straight line from where it is
+	local target = z.stage > 0 and Bino.StageFov(base, Bino.ZOOM_STAGES[z.stage]) or base
+
+	if math.abs(target - z.to) > 1e-6 then
+		local current = zoomFovAt(z, now)
+		z.from, z.to, z.start = current, target, now
+		z.duration = target < current and Bino.ZOOM_IN_TIME or Bino.ZOOM_OUT_TIME
+	end
+
+	z.fov = zoomFovAt(z, now)
+
+	-- back at the base: the override ends once the engine's own return is done (it eases over 0.4 s), or too long after
+	if z.stage == 0 and z.fov >= base - 1e-6 then
+		local engineBack = type(engineFov) ~= "number" or engineFov >= base - 0.5
+
+		if engineBack or now - (z.closeStart or now) >= Bino.ZOOM_HOLD_MAX then
+			Bino.ZoomReset(z)
+
+			return nil
+		end
+	end
+
+	return z.fov
+end
+
+-- The wheel: invprev (up) goes to the next stage, invnext (down) to the previous. Returns whether the key is the wheel's and
+-- a stage is up (the key is then taken, even at an end), and the cue of the sound when the stage changed.
+function Bino.ZoomWheel(z, bind)
+	if z.stage == 0 or (bind ~= "invprev" and bind ~= "invnext") then
+		return false
+	end
+
+	local stage = z.stage + (bind == "invprev" and 1 or -1)
+
+	if stage < 1 or stage > #Bino.ZOOM_STAGES then
+		return true
+	end
+
+	z.stage = stage
+
+	return true, bind == "invprev" and "zoom_in" or "zoom_out"
+end
+
+-- The fraction of the normal mouse sensitivity for the field of view in force (the engine's formula for its own zoom:
+-- fov / default fov * zoom_sensitivity_ratio), nil while the stages are not up.
+function Bino.SensitivityScale(z, base, ratio)
+	if not z.active or not z.fov then
+		return nil
+	end
+
+	return z.fov / base * ratio
+end
+
+-- The film's mode for the label: the stage's while the stages are up, else the Half-Life 2 zoom's own rule.
+function Bino.ZoomLabelMode(z, base, engineFov)
+	if z.active and z.fov then
+		return Bino.StageModeFor(base, z.fov)
+	end
+
+	return Bino.ZoomModeFor(base, engineFov)
+end
+
+-- ---------------------------------------------------------------------------------------------------------
 -- In the game: the Half-Life 2 suit zoom (the zoom key) shows the binoculars
 -- ---------------------------------------------------------------------------------------------------------
 
@@ -654,6 +807,9 @@ local fed = {}
 local missing = false
 local scan = Bino.NewScan()
 Bino.ScanState = scan
+-- the zoom stages' state (see Bino.ZoomStep)
+local zoom = Bino.NewZoom()
+Bino.ZoomState = zoom
 -- the entities this player has tagged (the server keeps them until their death, or the player's)
 local tagged = setmetatable({}, {__mode = "k"})
 
@@ -735,11 +891,11 @@ end
 
 local function feed(ply, dt)
 	local defaultFov = ply:GetInfoNum("fov_desired", 75)
-	local zoom = Bino.ZoomModeFor(defaultFov, ply:GetFOV())
+	local zoomMode = Bino.ZoomLabelMode(zoom, defaultFov, ply:GetFOV())
 
-	if fed.zoom ~= zoom then
-		fed.zoom = zoom
-		binoculars:SetZoomMode(zoom)
+	if fed.zoom ~= zoomMode then
+		fed.zoom = zoomMode
+		binoculars:SetZoomMode(zoomMode)
 	end
 
 	local north, west = Bino.PositionStrings(ply:GetPos())
@@ -861,6 +1017,96 @@ hook.Add("PreDrawHalos", "GRYBINOCULARSSILHOUETTE", function()
 	Bino.DrawSilhouette()
 end)
 
+-- ---------------------------------------------------------------------------------------------------------
+-- The zoom stages' hooks (option gry_binoculars_stages, see Bino.ZoomStep). They only act while the stages are on, the
+-- binoculars element is on and the zoom key is held (or its field of view is on its way back), and give the view back
+-- to the other addons' hooks the rest of the time.
+-- ---------------------------------------------------------------------------------------------------------
+
+function Bino.Now() return RealTime() end
+
+-- The engine's own scale of the mouse for a zoomed field of view (the Half-Life 2 client's zoom_sensitivity_ratio, 1 by default).
+function Bino.ZoomRatio()
+	local convar = GetConVar("zoom_sensitivity_ratio")
+
+	return convar and convar:GetFloat() or 1
+end
+
+local function stagesOn()
+	return Bino.StagesEnabled() and Bino.Enabled() and not missing
+end
+
+-- CalcView: the view with the stage's field of view, or nothing (the state is dropped as soon as the stages are not wanted).
+function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
+	if not stagesOn() then
+		if zoom.active then
+			Bino.ZoomReset(zoom)
+		end
+
+		return nil
+	end
+
+	local wanted = Bino.Wanted(ply)
+
+	if not wanted and not zoom.active then
+		return nil
+	end
+
+	local stageFov = Bino.ZoomStep(zoom, Bino.Now(), wanted, ply:GetInfoNum("fov_desired", 75), fov)
+
+	if not stageFov then
+		return nil
+	end
+
+	return {origin = origin, angles = angles, fov = stageFov, znear = znear, zfar = zfar}
+end
+
+-- The sound of a stage step, through the mix like the others (nothing with the binoculars' sounds off).
+function Bino.PlayZoomSound(cue)
+	if Bino.SoundsEnabled() then
+		GryMod.PlaySound(Bino.Sounds[cue])
+	end
+end
+
+-- PlayerBindPress: the wheel (invprev / invnext) steps the stage while the binoculars are up; the press and the release are
+-- taken (the weapon is not changed), the other keys go on to the game.
+function Bino.BindPress(ply, bind, pressed)
+	if (bind ~= "invprev" and bind ~= "invnext") or zoom.stage == 0 or not stagesOn() or not Bino.Wanted(ply) then
+		return nil
+	end
+
+	if pressed then
+		local _, cue = Bino.ZoomWheel(zoom, bind)
+
+		if cue then
+			Bino.PlayZoomSound(cue)
+		end
+	end
+
+	return true
+end
+
+-- AdjustMouseSensitivity: the fraction of the normal sensitivity for the field of view in force, nothing to leave the engine's.
+function Bino.AdjustSensitivity(ply)
+	if not zoom.active or not Bino.StagesEnabled() then
+		return nil
+	end
+
+	return Bino.SensitivityScale(zoom, ply:GetInfoNum("fov_desired", 75), Bino.ZoomRatio())
+end
+
+hook.Add("CalcView", "GRYBINOCULARSZOOM", function(ply, origin, angles, fov, znear, zfar)
+	return Bino.CalcView(ply, origin, angles, fov, znear, zfar)
+end)
+
+hook.Add("PlayerBindPress", "GRYBINOCULARSZOOM", function(ply, bind, pressed)
+	return Bino.BindPress(ply, bind, pressed)
+end)
+
+hook.Add("AdjustMouseSensitivity", "GRYBINOCULARSZOOM", function()
+	return Bino.AdjustSensitivity(LocalPlayer())
+end)
+
 -- The Half-Life 2 suit zoom has its own overlay (CHudZoom, the black ring); our binoculars replace it while they
 -- are on. Hiding the element does not stop the zoom itself (see the HUD element list of the wiki).
 hook.Add("HUDShouldDraw", "GRYBINOCULARSHIDEZOOM", function(name)
@@ -880,4 +1126,5 @@ function Bino.Reset()
 	Bino.AudioReset()
 	Bino.MoodStep(false)
 	Bino.ScanReset(scan)
+	Bino.ZoomReset(zoom)
 end

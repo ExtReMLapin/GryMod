@@ -1033,6 +1033,432 @@ return {
 			end
 		},
 		{
+			name = "the zoom stages are the original's 2x, 4x, 8x, in 0.2 s each way; a stage's field of view is the base field of view divided by its magnification (the ratio of the tangents of the half fields)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(#M.ZOOM_STAGES).to.equal(3)
+				expect(M.ZOOM_STAGES[1]).to.equal(2)
+				expect(M.ZOOM_STAGES[2]).to.equal(4)
+				expect(M.ZOOM_STAGES[3]).to.equal(8)
+				expect(M.ZOOM_IN_TIME).to.equal(0.2)
+				expect(M.ZOOM_OUT_TIME).to.equal(0.2)
+
+				for _, base in ipairs({75, 90, 100, 110}) do
+					expect(M.StageFov(base, 1)).to.aboutEqual(base, 1e-9)
+					local previous = base
+
+					for _, factor in ipairs(M.ZOOM_STAGES) do
+						local fov = M.StageFov(base, factor)
+						expect(fov < previous).to.beTrue()
+						previous = fov
+						expect(math.tan(math.rad(base) / 2) / math.tan(math.rad(fov) / 2)).to.aboutEqual(factor, 1e-6)
+					end
+				end
+
+				-- one number to hold on to: 100 degrees at 2x
+				expect(M.StageFov(100, 2)).to.aboutEqual(61.58, 0.01)
+			end
+		},
+		{
+			name = "the label of a stage follows the film's mode (1, 2, 3 read X02, X04, X06: the original's 8x reads X06), decided from the field of view in force, so it changes in the middle of a transition",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local base = 100
+
+				expect(M.StageModeFor(base, M.StageFov(base, 2))).to.equal(1)
+				expect(M.StageModeFor(base, M.StageFov(base, 4))).to.equal(2)
+				expect(M.StageModeFor(base, M.StageFov(base, 8))).to.equal(3)
+				-- not zoomed yet: the first label, not X00
+				expect(M.StageModeFor(base, base)).to.equal(1)
+				-- between 2x and 4x it is still the first stage's, and past 8x it stays at the last
+				expect(M.StageModeFor(base, M.StageFov(base, 3))).to.equal(1)
+				expect(M.StageModeFor(base, M.StageFov(base, 6))).to.equal(2)
+				expect(M.StageModeFor(base, M.StageFov(base, 20))).to.equal(3)
+				-- nonsense gives the first
+				expect(M.StageModeFor(base, nil)).to.equal(1)
+				expect(M.StageModeFor(base, 0 / 0)).to.equal(1)
+			end
+		},
+		{
+			name = "opening: the field of view goes from the base to 2x in a straight line over 0.2 s, then stays",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				local base = 100
+				local stage1 = M.StageFov(base, 2)
+
+				expect(M.ZoomStep(z, 10, false, base, base)).to.beNil()
+				expect(z.active).to.beFalse()
+
+				expect(M.ZoomStep(z, 10, true, base, base)).to.aboutEqual(base, 1e-9)
+				expect(z.stage).to.equal(1)
+				expect(M.ZoomStep(z, 10.05, true, base, 80)).to.aboutEqual(base + (stage1 - base) * 0.25, 1e-6)
+				expect(M.ZoomStep(z, 10.1, true, base, 60)).to.aboutEqual((base + stage1) / 2, 1e-6)
+				expect(M.ZoomStep(z, 10.2, true, base, 30)).to.aboutEqual(stage1, 1e-6)
+				expect(M.ZoomStep(z, 15, true, base, 25)).to.aboutEqual(stage1, 1e-6)
+			end
+		},
+		{
+			name = "the wheel steps through the stages: in goes to the next (sound zoom_in), out to the previous (sound zoom_out), a straight 0.2 s from where the field of view is; at an end it does nothing (no sound) but the wheel is still taken",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				local base = 100
+				local f1, f2, f3 = M.StageFov(base, 2), M.StageFov(base, 4), M.StageFov(base, 8)
+
+				M.ZoomStep(z, 0, true, base, base)
+				M.ZoomStep(z, 1, true, base, f1)
+
+				local handled, cue = M.ZoomWheel(z, "invprev")
+				expect(handled).to.beTrue()
+				expect(cue).to.equal("zoom_in")
+				expect(z.stage).to.equal(2)
+				expect(M.ZoomStep(z, 1, true, base, f1)).to.aboutEqual(f1, 1e-6)
+				expect(M.ZoomStep(z, 1.1, true, base, f1)).to.aboutEqual((f1 + f2) / 2, 1e-6)
+				expect(M.ZoomStep(z, 1.2, true, base, f1)).to.aboutEqual(f2, 1e-6)
+
+				-- a second step in the middle of the first goes on from where the field of view is
+				handled, cue = M.ZoomWheel(z, "invprev")
+				expect(cue).to.equal("zoom_in")
+				expect(z.stage).to.equal(3)
+				M.ZoomStep(z, 5, true, base, f1)
+				expect(M.ZoomStep(z, 5.1, true, base, f1)).to.aboutEqual((f2 + f3) / 2, 1e-6)
+				M.ZoomStep(z, 5.2, true, base, f1)
+
+				-- at the last stage: taken, nothing happens
+				handled, cue = M.ZoomWheel(z, "invprev")
+				expect(handled).to.beTrue()
+				expect(cue).to.beNil()
+				expect(z.stage).to.equal(3)
+
+				-- out, twice, then the end at the first
+				handled, cue = M.ZoomWheel(z, "invnext")
+				expect(cue).to.equal("zoom_out")
+				expect(z.stage).to.equal(2)
+				handled, cue = M.ZoomWheel(z, "invnext")
+				expect(cue).to.equal("zoom_out")
+				expect(z.stage).to.equal(1)
+				handled, cue = M.ZoomWheel(z, "invnext")
+				expect(handled).to.beTrue()
+				expect(cue).to.beNil()
+				expect(z.stage).to.equal(1)
+
+				-- other keys are not the wheel's; and with no zoom up the wheel is not ours
+				expect(M.ZoomWheel(z, "+attack")).to.beFalse()
+				expect(M.ZoomWheel(z, "slot1")).to.beFalse()
+				expect(M.ZoomWheel(M.NewZoom(), "invprev")).to.beFalse()
+			end
+		},
+		{
+			name = "closing: the field of view goes back to the base in a straight 0.2 s; then the override ends only once the engine's own return is over (or after 0.6 s), and a new opening in the middle goes on from where it is",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local base = 100
+				local f3 = M.StageFov(base, 8)
+
+				local function zoomed(z, now)
+					M.ZoomStep(z, now, true, base, base)
+					M.ZoomWheel(z, "invprev")
+					M.ZoomWheel(z, "invprev")
+					M.ZoomStep(z, now + 1, true, base, base)
+					expect(M.ZoomStep(z, now + 2, true, base, base)).to.aboutEqual(f3, 1e-6)
+				end
+
+				-- the engine is back at the base at once (the engine's field of view is the base): the override ends when ours does
+				local z = M.NewZoom()
+				zoomed(z, 0)
+				expect(M.ZoomStep(z, 10, false, base, base)).to.aboutEqual(f3, 1e-6)
+				expect(M.ZoomStep(z, 10.1, false, base, base)).to.aboutEqual((f3 + base) / 2, 1e-6)
+				expect(M.ZoomStep(z, 10.2, false, base, base)).to.beNil()
+				expect(z.active).to.beFalse()
+				expect(z.stage).to.equal(0)
+				expect(M.ZoomStep(z, 11, false, base, base)).to.beNil()
+
+				-- the engine is still coming back (25 up to 100): ours holds the base until it is there
+				z = M.NewZoom()
+				zoomed(z, 0)
+				M.ZoomStep(z, 10, false, base, 25)
+				expect(M.ZoomStep(z, 10.2, false, base, 40)).to.aboutEqual(base, 1e-6)
+				expect(M.ZoomStep(z, 10.3, false, base, 70)).to.aboutEqual(base, 1e-6)
+				expect(M.ZoomStep(z, 10.4, false, base, 99.8)).to.beNil()
+				expect(z.active).to.beFalse()
+
+				-- an engine that never gets back (another addon's field of view): ours lets go after 0.6 s from the release
+				z = M.NewZoom()
+				zoomed(z, 0)
+				M.ZoomStep(z, 10, false, base, 25)
+				expect(M.ZoomStep(z, 10.5, false, base, 25)).to.aboutEqual(base, 1e-6)
+				expect(M.ZoomStep(z, 10.7, false, base, 25)).to.beNil()
+				expect(z.active).to.beFalse()
+
+				-- the key pressed again half way through the closing: the first stage, from the field of view in force
+				z = M.NewZoom()
+				zoomed(z, 0)
+				M.ZoomStep(z, 10, false, base, 25)
+				local middle = M.ZoomStep(z, 10.1, false, base, 25)
+				local f1 = M.StageFov(base, 2)
+				expect(M.ZoomStep(z, 10.1, true, base, 25)).to.aboutEqual(middle, 1e-6)
+				expect(z.stage).to.equal(1)
+				expect(M.ZoomStep(z, 10.2, true, base, 25)).to.aboutEqual((middle + f1) / 2, 1e-6)
+				expect(M.ZoomStep(z, 10.3, true, base, 25)).to.aboutEqual(f1, 1e-6)
+			end
+		},
+		{
+			name = "a new base field of view (the player changes fov_desired while zoomed) moves the target of the stage",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				M.ZoomStep(z, 0, true, 90, 90)
+				expect(M.ZoomStep(z, 1, true, 90, 90)).to.aboutEqual(M.StageFov(90, 2), 1e-6)
+				M.ZoomStep(z, 2, true, 110, 90)
+				expect(M.ZoomStep(z, 3, true, 110, 90)).to.aboutEqual(M.StageFov(110, 2), 1e-6)
+			end
+		},
+		{
+			name = "the mouse is slowed as the field of view narrows: the fraction of the normal sensitivity is fov / base times the engine's zoom ratio, and nothing is said while no stage is up",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				local base = 100
+				expect(M.SensitivityScale(z, base, 1)).to.beNil()
+				M.ZoomStep(z, 0, true, base, base)
+				M.ZoomStep(z, 5, true, base, 25)
+				expect(M.SensitivityScale(z, base, 1)).to.aboutEqual(M.StageFov(base, 2) / base, 1e-6)
+				expect(M.SensitivityScale(z, base, 0.5)).to.aboutEqual(M.StageFov(base, 2) / base * 0.5, 1e-6)
+				M.ZoomWheel(z, "invprev")
+				M.ZoomWheel(z, "invprev")
+				M.ZoomStep(z, 6, true, base, 25)
+				M.ZoomStep(z, 7, true, base, 25)
+				expect(M.SensitivityScale(z, base, 1)).to.aboutEqual(M.StageFov(base, 8) / base, 1e-6)
+				M.ZoomReset(z)
+				expect(M.SensitivityScale(z, base, 1)).to.beNil()
+			end
+		},
+		{
+			name = "the label comes from the zoom in force: the stage's mode while the stages are up, the old rule (the engine's field of view) otherwise",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				-- no stages up: the engine's 25 degrees at a base of 100 is X04 as before
+				expect(M.ZoomLabelMode(z, 100, 25)).to.equal(M.ZoomModeFor(100, 25))
+				M.ZoomStep(z, 0, true, 100, 100)
+				M.ZoomWheel(z, "invprev")
+				M.ZoomWheel(z, "invprev")
+				M.ZoomStep(z, 5, true, 100, 25)
+				M.ZoomStep(z, 6, true, 100, 25)
+				-- 8x is the third mode (X06), whatever the engine says
+				expect(M.ZoomLabelMode(z, 100, 25)).to.equal(3)
+				expect(M.ZoomLabelMode(z, 100, 100)).to.equal(3)
+			end
+		},
+		{
+			name = "CalcView: with the stages on and the binoculars wanted it gives the view the stage's field of view and leaves the rest of the view as it was; in every other case it returns nothing (the other addons' CalcView hooks are not touched)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local now, wanted, enabled, stages, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.Now
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
+				local want, hud, on = true, true, true
+
+				local ok, err = pcall(function()
+					M.Now = function() return now end
+					M.Wanted = function() return want end
+					M.Enabled = function() return hud end
+					M.StagesEnabled = function() return on end
+					M.ZoomReset(M.ZoomState)
+
+					-- on and wanted
+					local view = M.CalcView(ply, origin, angles, 100, 3, 8000)
+					expect(view).toNot.beNil()
+					expect(view.fov).to.aboutEqual(100, 1e-6)
+					expect(view.origin).to.equal(origin)
+					expect(view.angles).to.equal(angles)
+					expect(view.znear).to.equal(3)
+					expect(view.zfar).to.equal(8000)
+					now = 0.2
+					expect(M.CalcView(ply, origin, angles, 40, 3, 8000).fov).to.aboutEqual(M.StageFov(100, 2), 1e-6)
+
+					-- the switch off while it is up: the state goes and nothing is returned
+					on = false
+					expect(M.CalcView(ply, origin, angles, 40, 3, 8000)).to.beNil()
+					expect(M.ZoomState.active).to.beFalse()
+					on = true
+
+					-- the HUD (or the binoculars element) off: nothing, and the state goes
+					now = 1
+					expect(M.CalcView(ply, origin, angles, 40, 3, 8000)).toNot.beNil()
+					hud = false
+					expect(M.CalcView(ply, origin, angles, 40, 3, 8000)).to.beNil()
+					expect(M.ZoomState.active).to.beFalse()
+					hud = true
+
+					-- not wanted and nothing up: nothing
+					want = false
+					M.ZoomReset(M.ZoomState)
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000)).to.beNil()
+				end)
+
+				M.Now, M.Wanted, M.Enabled, M.StagesEnabled = clock, wanted, enabled, stages
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the mouse hook: the sensitivity of the zoom in force while the stages are up, nothing (the engine's own) otherwise",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local wanted, enabled, stages, clock, ratio = M.Wanted, M.Enabled, M.StagesEnabled, M.Now, M.ZoomRatio
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local now = 0
+
+				local ok, err = pcall(function()
+					M.Now = function() return now end
+					M.Wanted = function() return true end
+					M.Enabled = function() return true end
+					M.StagesEnabled = function() return true end
+					M.ZoomRatio = function() return 1 end
+					M.ZoomReset(M.ZoomState)
+
+					expect(M.AdjustSensitivity(ply)).to.beNil()
+					M.CalcView(ply, Vector(), Angle(), 100, 1, 1)
+					now = 5
+					M.CalcView(ply, Vector(), Angle(), 25, 1, 1)
+					expect(M.AdjustSensitivity(ply)).to.aboutEqual(M.StageFov(100, 2) / 100, 1e-6)
+
+					M.StagesEnabled = function() return false end
+					expect(M.AdjustSensitivity(ply)).to.beNil()
+				end)
+
+				M.Wanted, M.Enabled, M.StagesEnabled, M.Now, M.ZoomRatio = wanted, enabled, stages, clock, ratio
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the wheel key: with the stages on and the binoculars up the wheel steps the stage, plays the zoom sound through GryMod.PlaySound (nothing with the sounds off) and is swallowed; otherwise the key goes on to the game",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local wanted, enabled, stages, clock, sounds, playSound = M.Wanted, M.Enabled, M.StagesEnabled, M.Now, M.SoundsEnabled, GryMod.PlaySound
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local played = {}
+				local want, on, sound = true, true, true
+
+				local ok, err = pcall(function()
+					M.Now = function() return 0 end
+					M.Wanted = function() return want end
+					M.Enabled = function() return true end
+					M.StagesEnabled = function() return on end
+					M.SoundsEnabled = function() return sound end
+					GryMod.PlaySound = function(path) played[#played + 1] = path return true end
+					M.ZoomReset(M.ZoomState)
+					M.CalcView(ply, Vector(), Angle(), 100, 1, 1)
+
+					expect(M.BindPress(ply, "invprev", true)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(2)
+					expect(played[1]).to.equal(M.Sounds.zoom_in)
+					expect(M.BindPress(ply, "invnext", true)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(1)
+					expect(played[2]).to.equal(M.Sounds.zoom_out)
+
+					-- the release of the wheel key does not step again, but is swallowed with its press
+					expect(M.BindPress(ply, "invprev", false)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(1)
+					expect(#played).to.equal(2)
+
+					-- at an end: swallowed, no sound
+					expect(M.BindPress(ply, "invnext", true)).to.beTrue()
+					expect(#played).to.equal(2)
+
+					-- sounds off: it steps in silence
+					sound = false
+					expect(M.BindPress(ply, "invprev", true)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(2)
+					expect(#played).to.equal(2)
+					sound = true
+
+					-- other keys are not ours
+					expect(M.BindPress(ply, "+attack", true)).to.beNil()
+					-- stages off or binoculars down: the wheel goes to the game
+					on = false
+					expect(M.BindPress(ply, "invprev", true)).to.beNil()
+					on = true
+					want = false
+					expect(M.BindPress(ply, "invprev", true)).to.beNil()
+				end)
+
+				M.Wanted, M.Enabled, M.StagesEnabled, M.Now, M.SoundsEnabled, GryMod.PlaySound = wanted, enabled, stages, clock, sounds, playSound
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "Reset puts the zoom stages away with everything else, and the zoom sounds are files that exist with a level in the mix",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.ZoomState
+				z.stage, z.active, z.fov = 2, true, 40
+				M.Reset()
+				expect(z.stage).to.equal(0)
+				expect(z.active).to.beFalse()
+
+				for _, key in ipairs({"zoom_in", "zoom_out"}) do
+					local path = M.Sounds[key]
+					expect(isstring(path)).to.beTrue()
+					expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+					expect(GryMod.SoundMix.Original[path]).toNot.beNil()
+				end
+			end
+		},
+		{
+			name = "the stages are on three hooks of the game under one name each (CalcView, PlayerBindPress, AdjustMouseSensitivity) and have their own switch (gry_binoculars_stages, saved, OFF by default: it changes the feel of the mouse) with a check box",
+			func = function(state)
+				local hooks = hook.GetTable()
+				expect(hooks.CalcView and hooks.CalcView["GRYBINOCULARSZOOM"]).toNot.beNil()
+				expect(hooks.PlayerBindPress and hooks.PlayerBindPress["GRYBINOCULARSZOOM"]).toNot.beNil()
+				expect(hooks.AdjustMouseSensitivity and hooks.AdjustMouseSensitivity["GRYBINOCULARSZOOM"]).toNot.beNil()
+
+				local convar = GetConVar("gry_binoculars_stages")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0")
+				expect(isfunction(GryMod.FlashBinoculars.StagesEnabled)).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_binoculars_stages"]).to.beTrue()
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)
