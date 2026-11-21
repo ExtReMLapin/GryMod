@@ -51,6 +51,64 @@ return {
 	end,
 	cases = {
 		{
+			name = "SpeedRunSpeed: the speed sprint runs at the top speed above a fifth of the bar, only a little above the plain sprint between 0 and a fifth (the game's x1.4 against the top x2.85), and a little less empty (x1.3); classic keeps the top speed until empty",
+			func = function(state)
+				local M = GryMod.Mech
+				-- the game's multipliers of the plain sprint (1 = 400 here, 2.85 = 600 here): 1.4 -> 443.2, 1.3 -> 432.4
+				local low = 400 + (1.4 - 1) / (2.85 - 1) * 200
+				local empty = 400 + (1.3 - 1) / (2.85 - 1) * 200
+
+				expect(M.SpeedRunSpeed(100)).to.equal(600)
+				expect(M.SpeedRunSpeed(20.5)).to.equal(600)
+				expect(near(M.SpeedRunSpeed(20), low)).to.beTrue()
+				expect(near(M.SpeedRunSpeed(1), low)).to.beTrue()
+				expect(near(M.SpeedRunSpeed(0), empty)).to.beTrue()
+				expect(M.SpeedRunSpeed(0) < M.SpeedRunSpeed(1)).to.beTrue()
+				expect(M.SpeedRunSpeed(1) < M.SpeedRunSpeed(21)).to.beTrue()
+				-- it is always above the plain sprint (400)
+				expect(M.SpeedRunSpeed(0) > 400).to.beTrue()
+
+				GryMod.Config.Mechanics = "classic"
+				expect(M.SpeedRunSpeed(100)).to.equal(600)
+				expect(M.SpeedRunSpeed(5)).to.equal(600)
+				expect(M.SpeedRunSpeed(0)).to.equal(400)
+			end
+		},
+		{
+			name = "in the speed mode the run speed follows the energy at every frame (top above a fifth, lower under it, a bit lower empty), and other modes keep the plain 400",
+			func = function(state)
+				local p = ply()
+				local M = GryMod.Mech
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				expect(thinkHook("GryMod run speed") ~= nil).to.beTrue()
+
+				p:SetNWFloat("GryEnergy", 60)
+				thinkHook("GryMod run speed")()
+				expect(p:GetRunSpeed()).to.equal(600)
+
+				p:SetNWFloat("GryEnergy", 10)
+				thinkHook("GryMod run speed")()
+				expect(near(p:GetRunSpeed(), M.SpeedRunSpeed(10))).to.beTrue()
+				expect(p:GetRunSpeed() < 600).to.beTrue()
+				expect(p:GetRunSpeed() > 400).to.beTrue()
+
+				p:SetNWFloat("GryEnergy", 0)
+				thinkHook("GryMod run speed")()
+				expect(near(p:GetRunSpeed(), M.SpeedRunSpeed(0))).to.beTrue()
+
+				-- back up: the top speed again
+				p:SetNWFloat("GryEnergy", 80)
+				thinkHook("GryMod run speed")()
+				expect(p:GetRunSpeed()).to.equal(600)
+
+				-- another mode: nothing of this
+				p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
+				p:SetNWFloat("GryEnergy", 5)
+				thinkHook("GryMod run speed")()
+				expect(p:GetRunSpeed()).to.equal(400)
+			end
+		},
+		{
 			name = "the mechanics are the Crysis ones by default, and gry_mechanics classic brings the old numbers back",
 			func = function(state)
 				local convar = GetConVar("gry_mechanics")

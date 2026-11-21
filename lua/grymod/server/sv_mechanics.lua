@@ -52,6 +52,45 @@ function Mech.SpeedDrain(energy)
 	return 0
 end
 
+-- The run speed of the speed mode, which follows the energy (the game's speed multiplier of the plain sprint: x2.85 at the top
+-- above a fifth of the bar, x1.4 from empty to a fifth, x1.3 empty; research-mech/SPEEDS.md). The plain sprint is 400 and the
+-- top is 600 here, so the multipliers are put on that line (1 -> 400, 2.85 -> 600): x1.4 is 443.2 and x1.3 is 432.4, always
+-- above the plain sprint. The earlier rule kept the top speed until the bar was empty, then fell back to 400.
+Mech.SPRINT_RUN = 400
+Mech.SPEED_RUN = 600
+
+local function multiplierSpeed(multiplier)
+	return Mech.SPRINT_RUN + (multiplier - 1) / (2.85 - 1) * (Mech.SPEED_RUN - Mech.SPRINT_RUN)
+end
+
+function Mech.SpeedRunSpeed(energy)
+	if not Mech.IsCrysis() then
+		return energy > 0 and Mech.SPEED_RUN or Mech.SPRINT_RUN
+	end
+
+	if energy > 20 then
+		return Mech.SPEED_RUN
+	elseif energy > 0 then
+		return multiplierSpeed(1.4)
+	end
+
+	return multiplierSpeed(1.3)
+end
+
+-- The run speed of a player in the speed mode follows the energy at every frame (the one place that sets it while in the mode:
+-- the mode change sets the top speed, see SetNanosuitMode).
+hook.Add("Think", "GryMod run speed", function()
+	for _, ply in ipairs(player.GetAll()) do
+		if ply.Nanosuit_mode == GryMod.Modes.SPEED then
+			local run = Mech.SpeedRunSpeed(ply:GetNWFloat("GryEnergy"))
+
+			if ply:GetRunSpeed() ~= run then
+				ply:SetRunSpeed(run)
+			end
+		end
+	end
+end)
+
 -- Energy per second of the cloak: half of 10 per metre a second moving (speed in units a second), at least 0.5.
 function Mech.CloakDrain(speed)
 	if not Mech.IsCrysis() then

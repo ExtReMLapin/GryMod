@@ -214,9 +214,8 @@ hook.Add("Think", "GrySpeedThink", function()
 		local amnt_to_drain = GryMod.Mech.SpeedDrain(amnt) * FrameTime()
 
 		if GryMod.IsSpeedSprinting(v) then
-			if amnt_to_drain > amnt or amnt <= 0 then
-				v:SetRunSpeed(400)
-			else
+			-- an empty bar or a drain that cannot be paid: nothing is taken (the run speed follows the energy, sv_mechanics.lua)
+			if amnt_to_drain <= amnt and amnt > 0 then
 				v:SetNWFloat("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
 			end

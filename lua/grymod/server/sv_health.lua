@@ -44,10 +44,7 @@ hook.Add("GryUseEnergy", "grymod energy usage", function(ply)
 	local amnt = ply:GetNWFloat("GryEnergy")
 	ply.next_energy_regen = CurTime() + GryMod.Mech.EnergyRechargeDelay()
 	ply.energy_on_use = amnt
-
-	if ply.Nanosuit_mode == GryMod.Modes.SPEED and (amnt <= 0 or GryMod.Mech.SpeedDrain(amnt) * FrameTime() > amnt) then
-		ply:SetRunSpeed(400)
-	end
+	-- the run speed of the speed mode follows the energy in its own Think hook (sv_mechanics.lua)
 end)
 
 
@@ -207,10 +204,6 @@ hook.Add("Think", "GryMod health think", function()
 					ply:SetNWFloat("GryEnergy", math.min(100, curenergy + rate * FrameTime()))
 				else
 					ply:SetNWFloat("GryEnergy", math.min(100, ply.energy_on_use + (CurTime() - ply.next_energy_regen) * GryMod.Mech.EnergyRechargeRate(ply.Nanosuit_mode, false)))
-				end
-
-				if ply.Nanosuit_mode == GryMod.Modes.SPEED then
-					ply:SetRunSpeed(600)
 				end
 			end
 		end
