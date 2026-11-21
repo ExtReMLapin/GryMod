@@ -163,6 +163,95 @@ function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
 	return false
 end
 
+-- Does a press of the attack key fire a shot? Pure: when the weapon may fire next (its next primary fire time), the time
+-- now, the magazine (Clip1, -1 without one), the ammo type of the primary fire (-1 for none) and the reserve of that ammo,
+-- all of them read BEFORE the weapon ran the press. A click while a weapon is being drawn (the Half-Life 2 selector's
+-- confirmation click, then another one), while it cools down, with an empty magazine or with no grenade left fires nothing:
+-- the camouflage must not end for it (measured: the press reaches the KeyPress hook all the same, and the magazine and the
+-- next fire time do not move). Numbers the weapon does not give count as "may fire": the press keeps its old meaning.
+function GryMod.AttackShoots(nextFire, now, clip1, ammoType, reserve)
+	if (nextFire or 0) > now then
+		return false
+	end
+
+	if clip1 == 0 then
+		return false -- the weapon reloads, nothing is fired
+	end
+
+	if (clip1 or -1) < 0 and (ammoType or -1) >= 0 and (reserve or 0) <= 0 then
+		return false -- no magazine and nothing in reserve (the frag grenade with no grenade)
+	end
+
+	return true
+end
+
+-- Has the weapon fired since these numbers were read? Pure: the next primary fire time and the magazine then, and now. A shot
+-- moves the next fire time on or lowers the magazine (a weapon with no magazine reports -1 and only moves the time).
+function GryMod.ShotSince(nextBefore, clipBefore, nextNow, clipNow)
+	if (nextNow or 0) > (nextBefore or 0) + 0.001 then
+		return true
+	end
+
+	return (clipBefore or -1) >= 0 and (clipNow or -1) < clipBefore
+end
+
+-- The numbers of the weapon in hand at the last command of the player that pressed no attack key. The KeyPress hook comes
+-- AFTER the weapon ran the press, a few commands later (measured: at the KeyPress and at the start of the command before it the
+-- next fire time had already moved on by the shot and the magazine had dropped), so what the weapon could do is read from here.
+-- Taken only in the camouflage (the hook returns at once otherwise).
+local pre = {}
+local live = {}
+
+local function readWeapon(ply, weapon, into)
+	local primary, secondary = weapon:GetPrimaryAmmoType(), weapon:GetSecondaryAmmoType()
+
+	into.weapon = weapon
+	into.nextPrimary = weapon:GetNextPrimaryFire()
+	into.nextSecondary = weapon:GetNextSecondaryFire()
+	into.clip = weapon:Clip1()
+	into.primaryType = primary
+	into.primaryReserve = ply:GetAmmoCount(primary)
+	into.secondaryReserve = ply:GetAmmoCount(secondary)
+
+	return into
+end
+
+function GryMod.CloakSnapshot(ply)
+	local weapon = ply:GetActiveWeapon()
+
+	if IsValid(weapon) then
+		readWeapon(ply, weapon, pre)
+	else
+		pre.weapon = nil
+	end
+end
+
+hook.Add("StartCommand", "GryCloakSnapshot", function(ply, cmd)
+	if ply.NanosuitMode == GryMod.Modes.CLOAK and not cmd:KeyDown(IN_ATTACK) and not cmd:KeyDown(IN_ATTACK2) then
+		GryMod.CloakSnapshot(ply)
+	end
+end)
+
+-- The numbers to judge a press by: the snapshot of this weapon, or, when there is none (the weapon came, or the camouflage
+-- began, in the last command), its live numbers with the times unknown, so that the press counts as it always did.
+local function numbers(ply, weapon)
+	if pre.weapon == weapon then
+		return pre
+	end
+
+	readWeapon(ply, weapon, live)
+	live.nextPrimary, live.nextSecondary = 0, 0
+
+	return live
+end
+
+-- The press of the attack key fires a shot now (GryMod.AttackShoots on the numbers of the weapon in hand).
+local function attackNow(ply, weapon)
+	local n = numbers(ply, weapon)
+
+	return GryMod.AttackShoots(n.nextPrimary, CurTime(), n.clip, n.primaryType, n.primaryReserve)
+end
+
 -- The right click of the weapon the player holds fires a shot now (GryMod.AltFireShoots on its real numbers).
 local function altFireNow(ply)
 	local weapon = ply:GetActiveWeapon()
@@ -171,24 +260,69 @@ local function altFireNow(ply)
 		return false
 	end
 
-	return GryMod.AltFireShoots(
-		weapon:GetClass(),
-		weapon:Clip1(),
-		ply:GetAmmoCount(weapon:GetPrimaryAmmoType()),
-		ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
-	)
+	local n = numbers(ply, weapon)
+
+	if n.nextSecondary > CurTime() then
+		return false -- the weapon is being drawn
+	end
+
+	return GryMod.AltFireShoots(weapon:GetClass(), n.clip, n.primaryReserve, n.secondaryReserve)
 end
 
--- Shooting ends the camouflage: the left click always, the right click when the weapon fires with it.
+local function endCloak(ply)
+	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
+	net.Start("gry_empty_energy")
+	net.SendToServer() -- too lazy to fight cheaters
+end
+
+-- How long a press that came too early (the weapon is being drawn) is followed, in seconds.
+local ATTACK_WATCH = 2
+
+-- A press that came while the weapon could not fire yet, and is still held: the weapon fires as soon as it is ready, and that
+-- shot ends the camouflage. One timer set for the moment the weapon is ready, not a check at every frame. readyAt and clip
+-- are the weapon's next fire time and magazine when the press came.
+local function watchHeldAttack(ply, weapon, readyAt, clip, since)
+	local wait = math.Clamp(readyAt - CurTime(), 0, ATTACK_WATCH) + 0.03
+
+	timer.Simple(wait, function()
+		if ply.NanosuitMode ~= GryMod.Modes.CLOAK or not ply:KeyDown(IN_ATTACK) then
+			return
+		end
+
+		if not IsValid(weapon) or ply:GetActiveWeapon() ~= weapon then
+			return
+		end
+
+		if GryMod.ShotSince(readyAt, clip, weapon:GetNextPrimaryFire(), weapon:Clip1()) then
+			endCloak(ply)
+		elseif CurTime() < readyAt + 0.05 and CurTime() - since < ATTACK_WATCH then
+			watchHeldAttack(ply, weapon, readyAt, clip, since) -- the timer came a little early
+		end
+	end)
+end
+
+-- Shooting ends the camouflage: a press of the attack key when the weapon fires with it, a right click when the weapon fires
+-- with it (GryMod.AltFireShoots).
 function GryMod.CloackAttack(ply, key)
 	if ply.NanosuitMode ~= GryMod.Modes.CLOAK then
 		return
 	end
 
-	if key == IN_ATTACK or (key == IN_ATTACK2 and CloakAltFire:GetBool() and altFireNow(ply)) then
-		ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
-		net.Start("gry_empty_energy")
-		net.SendToServer() -- too lazy to fight cheaters
+	if key == IN_ATTACK then
+		local weapon = ply:GetActiveWeapon()
+
+		if not IsValid(weapon) then
+			return
+		end
+
+		if attackNow(ply, weapon) then
+			endCloak(ply)
+		else
+			local n = numbers(ply, weapon)
+			watchHeldAttack(ply, weapon, n.nextPrimary, n.clip, CurTime())
+		end
+	elseif key == IN_ATTACK2 and CloakAltFire:GetBool() and altFireNow(ply) then
+		endCloak(ply)
 	end
 end
 
