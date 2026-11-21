@@ -255,10 +255,10 @@ return {
 			end
 		},
 		{
-			name = "the sparks: only while the cloak goes in or out, always at the faint intensity a camouflaged player who stands still shows (the transition texture's last value squared, about 5 %); nothing when plain, nothing once done, moving or not",
+			name = "the sparks: only while the cloak goes in or out, always at the owner's chosen intensity, 15 % (the original's still value was about 5 %, too faint to see); nothing when plain, nothing once done, moving or not",
 			func = function(state)
 				local F = GryMod.CloakFX
-				expect(F.SparkRest).to.aboutEqual((55 / 255) ^ 2, 0.002)
+				expect(F.SparkRest).to.equal(0.15)
 				expect(F.SparkStrength(0)).to.equal(0)
 				expect(F.SparkStrength(1)).to.equal(0)
 				expect(F.SparkStrength(-1)).to.equal(0)
@@ -729,6 +729,7 @@ return {
 				expect(leftClean(log)).to.beTrue()
 
 				-- just under the threshold it is still the old way: the refraction, then the model part transparent
+				vm.draws = 0 -- (the faint sparks layer of the first draw is not what is looked at here)
 				setState(me, 0.03)
 				_, base = F.Visibility(0.03)
 				expect(base < F.NearlyPlain).to.beTrue()
@@ -1170,7 +1171,8 @@ return {
 				expect(drawn).to.equal(0)
 				expect(log.screenCopies).to.equal(0)
 				for _, value in ipairs(log.blend) do
-					expect(value).to.equal(1)
+					-- the engine's draw is the plain one; only the older sparks layer, at its faint intensity, is under 1
+					expect(value == 1 or value <= F.SparkRest).to.beTrue()
 				end
 			end
 		}

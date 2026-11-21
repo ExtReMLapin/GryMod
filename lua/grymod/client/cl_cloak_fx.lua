@@ -98,10 +98,10 @@ function F.TransitionCurve(level)
 	return (TRANSITION[i + 1] + (TRANSITION[i + 2] - TRANSITION[i + 1]) * t) / 255
 end
 
--- The sparks: only while the cloak goes in or out, always at the intensity a camouflaged player who stands still shows (the transition texture's
--- last value squared, about 5 %), the same from the first frame to the last: not the flash of the start, nor the motion on the screen. Nothing
--- when plain, nothing once the change is done, whether he moves or not.
-F.SparkRest = F.TransitionCurve(1) ^ 2
+-- The sparks: only while the cloak goes in or out, always at the same intensity from the first frame to the last: not the flash of the start, nor the
+-- motion on the screen. Nothing when plain, nothing once the change is done, whether he moves or not. The original's own value for a camouflaged
+-- player who stands still (the transition texture's last value squared) is about 5 %: too faint to be seen, the owner chose 15 %.
+F.SparkRest = 0.15
 
 -- level (0 plain, 1 camouflaged) -> refraction amount, opacity of the plain model drawn over it, strength of the sparks (0 to 1). No table: this
 -- runs for every camouflaged player at every frame.
