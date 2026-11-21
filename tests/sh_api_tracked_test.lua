@@ -214,7 +214,7 @@ return {
 					scan = {"yes", 1},
 					radar = {"sometimes", 5, true, "ALWAYS"},
 					relation = {"enemy", 5, true, "Ally"},
-					type = {"alien", 0, 4, 1.5, true},
+					type = {"alien", 0, 5, 1.5, true}, -- 4 is the "device" type (mines), valid since the radar got its objects
 					label = {5, true, ""},
 					shape = {"circle", 5},
 					size = {"huge", 5, true}
