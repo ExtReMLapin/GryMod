@@ -343,11 +343,14 @@ return {
 				hook.GetTable().EntityTakeDamage["GryMod radar"](p, dmg)
 				expect(next(R.State(p).markers)).to.beNil()
 
-				-- an NPC hurt by the player is not a marker, and zero damage tells nothing
+				-- a hit the armor took all of (damage 0 by the time this hook runs) still marks the NPC
 				dmg:SetAttacker(e)
 				dmg:SetDamage(0)
 				hook.GetTable().EntityTakeDamage["GryMod radar"](p, dmg)
-				expect(next(R.State(p).markers)).to.beNil()
+				expect(R.State(p).markers[e]).toNot.beNil()
+				R.Reset(p)
+
+				-- an NPC hurt by the player is not a marker
 				dmg:SetDamage(10)
 				hook.GetTable().EntityTakeDamage["GryMod radar"](e, dmg)
 				expect(next(R.State(p).markers)).to.beNil()

@@ -238,8 +238,10 @@ function Radar.Reset(ply)
 	end
 end
 
+-- A hit counts whatever its amount: the suit's armor can take all of it before this hook runs (sv_mechanics.lua scales the
+-- damage; the hooks run in no fixed order), and the original's hit event does not look at what the armor absorbed either.
 hook.Add("EntityTakeDamage", "GryMod radar", function(victim, dmg)
-	if not IsValid(victim) or not victim:IsPlayer() or dmg:GetDamage() <= 0 then
+	if not IsValid(victim) or not victim:IsPlayer() then
 		return
 	end
 

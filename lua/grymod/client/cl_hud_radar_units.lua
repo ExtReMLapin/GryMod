@@ -318,8 +318,3 @@ function Radar.Feed(panel, ply, dt)
 
 	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase))
 end
-
--- A death or a respawn: the server forgets the contacts and says so (an empty list), this forgets the last ones at once.
-function Radar.ForgetContacts()
-	Radar.Snapshot = {}
-end
