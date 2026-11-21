@@ -650,6 +650,160 @@ return {
 				expect(min).to.equal(-20)
 				expect(max).to.equal(12)
 			end
+		},
+		{
+			name = "the sound moods: cryvision is the original's (priority 70, 500 ms in and out) and lowers only the categories SoundMoods.xml lowers",
+			func = function(state)
+				local mood = GryMod.SoundMix.Moods.cryvision
+				expect(mood).toNot.beNil()
+				expect(mood.priority).to.equal(70)
+				expect(mood.fadeIn).to.equal(0.5)
+				expect(mood.fadeOut).to.equal(0.5)
+
+				-- the five categories that are not at 1 in the mood (the others are listed at their full volume)
+				local expected = {["3rd_weapon_explos"] = 0.7, collision = 0.5, phys_lots = 0.5, veh_special = 0.6, vehicle_sounds = 0.5}
+				local count = 0
+
+				for category, volume in pairs(mood.volumes) do
+					count = count + 1
+					expect(expected[category]).to.aboutEqual(volume, 1e-6)
+				end
+
+				expect(count).to.equal(5)
+			end
+		},
+		{
+			name = "a mood fades in linearly over its time, from nothing, and the gain of a category is 1 + (volume - 1) * weight; the categories it does not lower stay at 1",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 100
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+				expect(Mix.MoodGain("collision")).to.equal(1)
+				Mix.MoodSet("cryvision", true)
+				expect(Mix.MoodGain("collision")).to.equal(1)
+				now = 100.25
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.75, 1e-6)
+				expect(Mix.MoodGain("3rd_weapon_explos")).to.aboutEqual(0.85, 1e-6)
+				expect(Mix.MoodGain("amb")).to.equal(1)
+				expect(Mix.MoodGain(nil)).to.equal(1)
+				now = 100.5
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.5, 1e-6)
+				now = 160
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.5, 1e-6)
+				expect(Mix.MoodGain("vehicle_sounds")).to.aboutEqual(0.5, 1e-6)
+				expect(Mix.MoodGain("veh_special")).to.aboutEqual(0.6, 1e-6)
+				Mix.MoodReset()
+			end
+		},
+		{
+			name = "setting a mood that is already going changes nothing (the fade does not start again); switching it off fades out from where it was, at the same rate",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 10
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+				Mix.MoodSet("cryvision", true)
+				now = 10.25
+				Mix.MoodSet("cryvision", true)
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.75, 1e-6)
+				-- off at half way: 0.25 s to come back to nothing, not 0.5
+				Mix.MoodSet("cryvision", false)
+				now = 10.375
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.875, 1e-6)
+				now = 10.5
+				expect(Mix.MoodGain("collision")).to.equal(1)
+				now = 11
+				expect(Mix.MoodGain("collision")).to.equal(1)
+				-- and on again goes down from there
+				Mix.MoodSet("cryvision", true)
+				now = 11.25
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.75, 1e-6)
+				Mix.MoodReset()
+				expect(Mix.MoodGain("collision")).to.equal(1)
+			end
+		},
+		{
+			name = "of the moods that are on, the one of the highest priority decides; an unknown mood is refused",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 5
+				stub(Mix, "Now", function() return now end)
+				stub(Mix.Moods, "test_high", {priority = 90, fadeIn = 0.5, fadeOut = 0.5, volumes = {collision = 0.1}})
+				stub(Mix.Moods, "test_low", {priority = 10, fadeIn = 0.5, fadeOut = 0.5, volumes = {collision = 0.9, amb = 0.2}})
+				Mix.MoodReset()
+				Mix.MoodSet("test_low", true)
+				Mix.MoodSet("cryvision", true)
+				now = 6
+				-- cryvision (70) over test_low (10)
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.5, 1e-6)
+				Mix.MoodSet("test_high", true)
+				now = 7
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.1, 1e-6)
+				Mix.MoodSet("test_high", false)
+				now = 8
+				expect(Mix.MoodGain("collision")).to.aboutEqual(0.5, 1e-6)
+				expect(Mix.MoodSet("nope", true)).to.beFalse()
+				Mix.MoodReset()
+			end
+		},
+		{
+			name = "the category of a sound the engine emits: impacts of the physics folder are collisions, explosions are explosions, the vehicles' own sounds are vehicle sounds; the addon's sounds and the others have none",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				expect(Mix.CategoryOf("physics/concrete/concrete_impact_hard1.wav")).to.equal("collision")
+				expect(Mix.CategoryOf("Physics/Wood/wood_box_impact_hard1.wav")).to.equal("collision")
+				expect(Mix.CategoryOf("weapons/explode3.wav")).to.equal("3rd_weapon_explos")
+				expect(Mix.CategoryOf("ambient/explosions/explode_4.wav")).to.equal("3rd_weapon_explos")
+				expect(Mix.CategoryOf("vehicles/v8/v8_idle_loop1.wav")).to.equal("vehicle_sounds")
+				expect(Mix.CategoryOf("weapons/smg1/smg1_fire1.wav")).to.beNil()
+				expect(Mix.CategoryOf("grymod/suit/suit_armor_108.wav")).to.beNil()
+				expect(Mix.CategoryOf("player/footsteps/concrete1.wav")).to.beNil()
+				expect(Mix.CategoryOf(nil)).to.beNil()
+			end
+		},
+		{
+			name = "the engine's sound hook lowers the volume of a sound of a lowered category while a mood is on, and touches nothing otherwise",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 1
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+
+				-- no mood: nothing changes, the hook returns nothing
+				local data = {SoundName = "physics/concrete/concrete_impact_hard1.wav", Volume = 0.8}
+				expect(Mix.DuckEmitted(data)).to.beNil()
+				expect(data.Volume).to.equal(0.8)
+
+				Mix.MoodSet("cryvision", true)
+				now = 2
+				expect(Mix.DuckEmitted(data)).to.beTrue()
+				expect(data.Volume).to.aboutEqual(0.4, 1e-6)
+
+				-- a sound script name that resolves to a file in a lowered folder is judged by the file
+				local viaScript = {OriginalSoundName = "Physics.ImpactHard", SoundName = "physics/metal/metal_solid_impact_hard1.wav", Volume = 1}
+				expect(Mix.DuckEmitted(viaScript)).to.beTrue()
+				expect(viaScript.Volume).to.aboutEqual(0.5, 1e-6)
+
+				-- a sound of no lowered category, the addon's own, or no name: untouched
+				for _, name in ipairs({"weapons/smg1/smg1_fire1.wav", "grymod/suit/suit_armor_108.wav", ""}) do
+					local other = {SoundName = name, Volume = 1}
+					expect(Mix.DuckEmitted(other)).to.beNil()
+					expect(other.Volume).to.equal(1)
+				end
+
+				expect(Mix.DuckEmitted({Volume = 1})).to.beNil()
+
+				-- a sound of a vehicle is a vehicle sound whatever its file
+				local car = {SoundName = "ambient/machines/engine1.wav", Volume = 1, Entity = {IsValid = function() return true end, IsVehicle = function() return true end}}
+				expect(Mix.DuckEmitted(car)).to.beTrue()
+				expect(car.Volume).to.aboutEqual(0.5, 1e-6)
+
+				-- the hook is the game's EntityEmitSound, under one name
+				local hooks = hook.GetTable().EntityEmitSound
+				expect(hooks and hooks["GRYMODSOUNDMOOD"]).toNot.beNil()
+				Mix.MoodReset()
+			end
 		}
 	}
 }

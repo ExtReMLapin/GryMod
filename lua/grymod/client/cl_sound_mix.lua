@@ -250,3 +250,172 @@ function Mix.Emit(path, volume)
 
 	return false
 end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Sound moods. The original game's mixer (Libs/SoundMoods/SoundMoods.xml) has moods: while one is on, each sound category
+-- of the game has the volume the mood gives it, and the mood comes in and goes out over a time (the fades below), the one
+-- of the highest priority deciding when several are on. Here the engine's own sounds cannot be told apart by category, so
+-- a mood lowers the sounds that the EntityEmitSound hook sees and that the file name puts in a lowered category
+-- (Mix.CategoryOf: DEDUCED, the original's banks are not the folders of this game). Out of reach, MEASURED on a listen
+-- server (a logging EntityEmitSound hook saw the client's own EmitSound calls and nothing of a prop's impact or an EmitSound
+-- of the server): every sound the SERVER emits (the impacts of props, the engines of vehicles, env_explosion), and the sounds
+-- that do not go through an entity (ambient_generic, the music, streams). The engine's own mix groups
+-- (scripts/soundmixers.txt: Physics, Vehicles, Explosions) would reach them, but snd_setmixer does not exist in this build
+-- and a soundmixers.txt of the addon would replace the whole game's. Only moods that lower something are listed.
+-- ---------------------------------------------------------------------------------------------------------
+
+-- cryvision: the binoculars (the original's CryVision mode), priority 70, in 500 ms and out 500 ms (FUN_3917fc90 asks the
+-- mood table for it with the binoculars; the fades are the table's). SoundMoods.xml lists every category of the game in it
+-- and gives a volume to five: explosions of the third-person weapons 0.7, collisions 0.5, the "lots of physics" 0.5, the
+-- special vehicles 0.6 and the vehicle sounds 0.5 (the others are at 1, as is the music: MusicVolume 1 against the
+-- default mood's 0.8, which this game's music cannot follow).
+Mix.Moods = {
+	cryvision = {
+		priority = 70,
+		fadeIn = 0.5,
+		fadeOut = 0.5,
+		volumes = {
+			["3rd_weapon_explos"] = 0.7,
+			collision = 0.5,
+			phys_lots = 0.5,
+			veh_special = 0.6,
+			vehicle_sounds = 0.5
+		}
+	}
+}
+
+-- the moods that are on or fading: name -> {from (the weight when the last change came), target (1 or 0), start}
+local moods = {}
+
+-- the weight (0 to 1) of a mood now: linear, at the rate of its fade
+local function moodWeight(name, state, now)
+	local mood = Mix.Moods[name]
+	local elapsed = math.max(0, now - state.start)
+
+	if state.target == 1 then
+		return math.min(1, state.from + elapsed / mood.fadeIn)
+	end
+
+	return math.max(0, state.from - elapsed / mood.fadeOut)
+end
+
+-- Switches a mood on or off (nothing happens when it already is). Returns false for a mood that does not exist.
+function Mix.MoodSet(name, on)
+	if Mix.Moods[name] == nil then
+		return false
+	end
+
+	local target = on and 1 or 0
+	local state = moods[name]
+	local now = Mix.Now()
+
+	if state and state.target == target then
+		return true
+	end
+
+	if not state and target == 0 then
+		return true
+	end
+
+	moods[name] = {from = state and moodWeight(name, state, now) or 0, target = target, start = now}
+
+	return true
+end
+
+function Mix.MoodReset()
+	moods = {}
+end
+
+-- The gain (0 to 1) of a category now: 1 + (the volume the mood gives it - 1) * the mood's weight, the mood being the
+-- one of the highest priority among those that have a weight. 1 for a category the mood does not lower or no mood.
+function Mix.MoodGain(category)
+	if not category or next(moods) == nil then
+		return 1
+	end
+
+	local now = Mix.Now()
+	local best, bestWeight, bestPriority
+
+	for name, state in pairs(moods) do
+		local weight = moodWeight(name, state, now)
+		local priority = Mix.Moods[name].priority
+
+		if weight <= 0 and state.target == 0 then
+			-- fully out: forgotten
+			moods[name] = nil
+		elseif weight > 0 and (not bestPriority or priority > bestPriority) then
+			best, bestWeight, bestPriority = name, weight, priority
+		end
+	end
+
+	if not best then
+		return 1
+	end
+
+	local volume = Mix.Moods[best].volumes[category]
+
+	if volume == nil then
+		return 1
+	end
+
+	return 1 + (volume - 1) * bestWeight
+end
+
+-- The category (of the original's mixer) that a sound of the engine belongs to, by its name; nil for none. DEDUCED from the
+-- folders: the physics sounds are collisions, the vehicles' are vehicle sounds, a name with "explo" is an explosion. The
+-- addon's own sounds (grymod/) are never lowered.
+function Mix.CategoryOf(name)
+	if type(name) ~= "string" or name == "" then
+		return nil
+	end
+
+	-- the characters that give a sound its behaviour (*, #, ^, ), <, >...) are not part of the path
+	name = Mix.Normalize((string.gsub(name, "^[%*#%^%)%(<>%$%?@!~`]+", "")))
+
+	if string.sub(name, 1, 7) == "grymod/" then
+		return nil
+	end
+
+	if string.sub(name, 1, 8) == "physics/" then
+		return "collision"
+	end
+
+	if string.sub(name, 1, 9) == "vehicles/" then
+		return "vehicle_sounds"
+	end
+
+	if string.find(name, "explo", 1, true) then
+		return "3rd_weapon_explos"
+	end
+
+	return nil
+end
+
+-- What EntityEmitSound does: while a mood is on, the volume of a sound of a lowered category is multiplied by the gain
+-- (the hook returns true when it changed the data, as the game wants). A sound of a vehicle is a vehicle sound whatever
+-- its file.
+function Mix.DuckEmitted(data)
+	if next(moods) == nil then
+		return nil
+	end
+
+	local category = Mix.CategoryOf(data.SoundName) or Mix.CategoryOf(data.OriginalSoundName)
+
+	if not category and IsValid(data.Entity) and data.Entity.IsVehicle and data.Entity:IsVehicle() then
+		category = "vehicle_sounds"
+	end
+
+	local gain = Mix.MoodGain(category)
+
+	if gain >= 1 then
+		return nil
+	end
+
+	data.Volume = (data.Volume or 1) * gain
+
+	return true
+end
+
+hook.Add("EntityEmitSound", "GRYMODSOUNDMOOD", function(data)
+	return Mix.DuckEmitted(data)
+end)

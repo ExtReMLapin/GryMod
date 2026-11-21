@@ -758,6 +758,104 @@ return {
 			end
 		},
 		{
+			name = "the cryvision sound mood follows the binoculars: on while they are up and the switch is on, off when they go or the switch goes, and Reset puts it out",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local Mix = GryMod.SoundMix
+				local moodSet, enabled = Mix.MoodSet, M.MoodEnabled
+				local calls = {}
+
+				local ok, err = pcall(function()
+					Mix.MoodSet = function(name, on) calls[#calls + 1] = name .. (on and ":on" or ":off") return true end
+					M.MoodEnabled = function() return true end
+					M.MoodStep(true)
+					M.MoodStep(false)
+					expect(calls[1]).to.equal("cryvision:on")
+					expect(calls[2]).to.equal("cryvision:off")
+
+					-- the switch off while the binoculars are up
+					M.MoodEnabled = function() return false end
+					M.MoodStep(true)
+					expect(calls[3]).to.equal("cryvision:off")
+
+					-- Reset: the mood goes out whatever else
+					M.MoodEnabled = function() return true end
+					calls = {}
+					M.Reset()
+					expect(calls[#calls]).to.equal("cryvision:off")
+				end)
+
+				Mix.MoodSet, M.MoodEnabled = moodSet, enabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the mood is a real fade through the mix: on, half a second later the physics sounds are at half volume; the binoculars closing brings them back in half a second",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local Mix = GryMod.SoundMix
+				local now = 0
+				local clock, enabled = Mix.Now, M.MoodEnabled
+
+				local ok, err = pcall(function()
+					Mix.Now = function() return now end
+					M.MoodEnabled = function() return true end
+					Mix.MoodReset()
+					M.MoodStep(true)
+					now = 0.5
+					expect(Mix.MoodGain("collision")).to.aboutEqual(0.5, 1e-6)
+					M.MoodStep(false)
+					now = 1
+					expect(Mix.MoodGain("collision")).to.equal(1)
+				end)
+
+				Mix.Now, M.MoodEnabled = clock, enabled
+				Mix.MoodReset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the mood has its own switch (gry_binoculars_mood, saved, on by default) with a check box in the options",
+			func = function(state)
+				local convar = GetConVar("gry_binoculars_mood")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(isfunction(GryMod.FlashBinoculars.MoodEnabled)).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_binoculars_mood"]).to.beTrue()
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

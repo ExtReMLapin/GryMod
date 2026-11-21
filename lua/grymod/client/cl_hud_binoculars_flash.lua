@@ -35,7 +35,9 @@ local AimConVar = CreateClientConVar("gry_binoculars_aim", "1", true, false, "Th
 local HorizonConVar = CreateClientConVar("gry_binoculars_horizon", "1", true, false, "The binoculars' horizon ladder follows where you look")
 local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, false, "The dark vignette of the binoculars fades out as they close, in the 14 frames of the original's film (off: it goes with the picture, at once)")
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
+local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "The original's cryvision sound mood while the binoculars are up: explosions, collisions and vehicles are lowered (in and out in half a second)")
 
+function Bino.MoodEnabled() return MoodConVar:GetBool() end
 function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
 function Bino.AimRules() return AimConVar:GetBool() end
 function Bino.HorizonEnabled() return HorizonConVar:GetBool() end
@@ -522,6 +524,12 @@ function Bino.AudioStep(wanted)
 	end
 end
 
+-- The cryvision sound mood (GryMod.SoundMix.Moods): on while the binoculars are up, off when they go (or the switch is off).
+-- Said every frame: the mix does nothing for a mood that is already in the state asked for.
+function Bino.MoodStep(wanted)
+	GryMod.SoundMix.MoodSet("cryvision", wanted and Bino.MoodEnabled() or false)
+end
+
 -- The sound of a scan that ends on an entity (binocular_target_locked, at the pitch of its event).
 function Bino.PlayLocked()
 	if Bino.SoundsEnabled() then
@@ -738,6 +746,7 @@ end
 hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	if not enabled() then
 		Bino.AudioStep(false)
+		Bino.MoodStep(false)
 		Bino.ScanReset(scan)
 
 		return
@@ -753,6 +762,7 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	if not binoculars then
 		if not wanted then
 			Bino.AudioStep(false)
+			Bino.MoodStep(false)
 
 			return
 		end
@@ -771,6 +781,7 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	end
 
 	Bino.AudioStep(wanted)
+	Bino.MoodStep(wanted)
 
 	if wanted then
 		binoculars:Show()
@@ -815,5 +826,6 @@ function Bino.Reset()
 	missing = false
 	Bino.StopLoop()
 	Bino.AudioReset()
+	Bino.MoodStep(false)
 	Bino.ScanReset(scan)
 end
