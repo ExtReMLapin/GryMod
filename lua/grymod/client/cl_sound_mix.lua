@@ -21,22 +21,25 @@ Mix.MaxGain = 12
 -- physics event mat_armor_fp (-10 dB) that Client:OnHit plays in the single-player game, the quick menu sounds the HUD's
 -- own events (modification_menu_appear -16, disappear -13, preset_navigation_beep -15, temperature_beep -12) and the
 -- error beep suit_usage_error (-15). hud_reboot.wav is the sum of the event's two layers stored 1 dB lower (its peak
--- would pass full scale): -11 dB instead of the event's -12.
+-- would pass full scale): -11 dB instead of the event's -12. The files that were resampled (the engine only plays 11025,
+-- 22050 and 44100 Hz) and whose filtered signal passed full scale were scaled down by tools/extract_sounds.py (up to 1.27 dB, the
+-- armor hits 05 to 16, the stop and the malfunction): their level is the event's plus that amount, so that they play at the
+-- event's level (-9.38 instead of -10 for fp_05...).
 Mix.Original = {
 	["grymod/suit/suit_bullet_impact_fp_02.wav"] = -10,
 	["grymod/suit/suit_bullet_impact_fp_03.wav"] = -10,
 	["grymod/suit/suit_bullet_impact_fp_04.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_05.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_06.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_07.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_09.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_10.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_11.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_13.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_14.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_15.wav"] = -10,
-	["grymod/suit/suit_bullet_impact_fp_16.wav"] = -10,
-	["grymod/suit/servo_speed_stop_fp_2.wav"] = -34,
+	["grymod/suit/suit_bullet_impact_fp_05.wav"] = -9.38,
+	["grymod/suit/suit_bullet_impact_fp_06.wav"] = -8.73,
+	["grymod/suit/suit_bullet_impact_fp_07.wav"] = -9.45,
+	["grymod/suit/suit_bullet_impact_fp_09.wav"] = -9.49,
+	["grymod/suit/suit_bullet_impact_fp_10.wav"] = -8.81,
+	["grymod/suit/suit_bullet_impact_fp_11.wav"] = -8.93,
+	["grymod/suit/suit_bullet_impact_fp_13.wav"] = -9.21,
+	["grymod/suit/suit_bullet_impact_fp_14.wav"] = -9.64,
+	["grymod/suit/suit_bullet_impact_fp_15.wav"] = -9.44,
+	["grymod/suit/suit_bullet_impact_fp_16.wav"] = -9.44,
+	["grymod/suit/servo_speed_stop_fp_2.wav"] = -33.92,
 	["grymod/suit/servo_speed_stop_01_underwater.wav"] = -27,
 	["grymod/suit/servo_speed_loop_01c.wav"] = -27,
 	["grymod/suit/servo_speed_loop_01_underwater.wav"] = -17,
@@ -44,12 +47,12 @@ Mix.Original = {
 	["grymod/suit/suit_armor_108.wav"] = -14,
 	["grymod/suit/suit_strength_101_r.wav"] = -18,
 	["grymod/suit/suit_cloak_chameleon_101_r.wav"] = -16,
-	["grymod/suit/suit_sound_137.wav"] = -19,
+	["grymod/suit/suit_sound_137.wav"] = -18.96,
 	["grymod/suit/suit_medical_use_new.wav"] = -18,
 	["grymod/suit/suit_usage_error.wav"] = -15,
 	["grymod/hud/hud_activate_01.wav"] = -18,
 	["grymod/hud/hud_reboot.wav"] = -11,
-	["grymod/hud/hud_malfunction_hit.wav"] = -14,
+	["grymod/hud/hud_malfunction_hit.wav"] = -13.74,
 	["grymod/menu/modification_menu_appear.wav"] = -16,
 	["grymod/menu/modification_menu_dissapear.wav"] = -13,
 	["grymod/menu/preset_navigation_beep_02.wav"] = -15,
@@ -76,11 +79,11 @@ Mix.Original = {
 	["grymod/water/drown_feedback_05.wav"] = -15,
 	["grymod/water/drown_feedback_06.wav"] = -15,
 	["grymod/water/drown_feedback_07.wav"] = -15,
-	["grymod/water/dive_in_slow_01.wav"] = -15,
+	["grymod/water/dive_in_slow_01.wav"] = -14.99,
 	["grymod/water/dive_in_fast_01.wav"] = -9,
 	["grymod/water/dive_in_fast_02.wav"] = -9,
 	["grymod/water/dive_in_fast_03.wav"] = -9,
-	["grymod/water/dive_out.wav"] = -17.9,
+	["grymod/water/dive_out.wav"] = -17.88,
 	["grymod/water/ambience_underwater_loop_02.wav"] = -16
 }
 

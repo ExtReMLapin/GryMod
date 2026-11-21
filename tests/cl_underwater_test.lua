@@ -254,8 +254,8 @@ return {
 				end
 
 				-- the dive out layer is at 0.507874 (-5.9 dB) of the event's -12
-				expect(GryMod.SoundMix.Original[GryMod.SoundMix.Normalize(U.Files.diveOut)]).to.equal(-17.9)
-				expect(GryMod.SoundMix.Volume(U.Files.diveOut, 6)).to.aboutEqual(0.2535, 0.001)
+				expect(GryMod.SoundMix.Original[GryMod.SoundMix.Normalize(U.Files.diveOut)]).to.equal(-17.88) -- -17.9, the file scaled down 0.02 dB
+				expect(GryMod.SoundMix.Volume(U.Files.diveOut, 6)).to.aboutEqual(0.254, 0.001)
 				expect(GryMod.SoundMix.Volume(U.Files.ambience, 6)).to.aboutEqual(0.316, 0.01)
 			end
 		},

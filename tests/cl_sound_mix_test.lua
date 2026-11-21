@@ -58,12 +58,12 @@ local played = {
 	["grymod/suit/suit_strength_101_r.wav"] = 0.25,
 	["grymod/suit/suit_armor_108.wav"] = 0.40,
 	["grymod/suit/suit_cloak_chameleon_101_r.wav"] = 0.32,
-	["grymod/suit/suit_sound_137.wav"] = 0.22,
+	["grymod/suit/suit_sound_137.wav"] = 0.225,
 	["grymod/suit/suit_medical_use_new.wav"] = 0.25,
 	["grymod/suit/suit_usage_error.wav"] = 0.35,
 	["grymod/hud/hud_activate_01.wav"] = 0.25,
 	["grymod/hud/hud_reboot.wav"] = 0.56, -- the stored file is 1 dB under the sum of the event's two layers: -11 dB, not -12
-	["grymod/hud/hud_malfunction_hit.wav"] = 0.40,
+	["grymod/hud/hud_malfunction_hit.wav"] = 0.41, -- the file was scaled down 0.26 dB: -13.74
 	["grymod/menu/modification_menu_appear.wav"] = 0.32,
 	["grymod/menu/modification_menu_dissapear.wav"] = 0.45,
 	["grymod/menu/preset_navigation_beep_02.wav"] = 0.35,
@@ -79,6 +79,21 @@ local played = {
 local voices = {
 	"grymod/suit/suit_maximum_armor.wav", "grymod/suit/suit_maximum_speed.wav", "grymod/suit/suit_maximum_strength.wav",
 	"grymod/suit/suit_energy_critical.wav", "grymod/suit/suit_modification_engaged.wav"
+}
+
+-- The files that were resampled to a valid rate (11025, 22050 or 44100 Hz) and scaled down to stay under full scale
+-- (tools/extract_sounds.py): how many dB the mix's level was raised for them. The armor hits are -10 dB plus this.
+local armorHeadroom = {
+	["grymod/suit/suit_bullet_impact_fp_05.wav"] = 0.62,
+	["grymod/suit/suit_bullet_impact_fp_06.wav"] = 1.27,
+	["grymod/suit/suit_bullet_impact_fp_07.wav"] = 0.55,
+	["grymod/suit/suit_bullet_impact_fp_09.wav"] = 0.51,
+	["grymod/suit/suit_bullet_impact_fp_10.wav"] = 1.19,
+	["grymod/suit/suit_bullet_impact_fp_11.wav"] = 1.07,
+	["grymod/suit/suit_bullet_impact_fp_13.wav"] = 0.79,
+	["grymod/suit/suit_bullet_impact_fp_14.wav"] = 0.36,
+	["grymod/suit/suit_bullet_impact_fp_15.wav"] = 0.56,
+	["grymod/suit/suit_bullet_impact_fp_16.wav"] = 0.56,
 }
 
 local savedMode, savedLocalPlayer
@@ -136,7 +151,8 @@ return {
 			func = function(state)
 				-- the 13 armor hits (the physics event mat_armor_fp, -10 dB)
 				for _, path in ipairs(GryMod.ArmorHitSounds) do
-					expectVolume(path, 0.63)
+					expectVolume(path, 10 ^ ((-10 + (armorHeadroom[path] or 0) + 6) / 20))
+					expect(GryMod.SoundMix.Original[path]).to.aboutEqual(-10 + (armorHeadroom[path] or 0), 0.0051)
 				end
 
 				for path, volume in pairs(played) do

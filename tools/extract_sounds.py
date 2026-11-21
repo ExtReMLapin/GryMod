@@ -6,8 +6,15 @@ It reads Game/Sounds.pak (FMOD FSB3 banks: interface_suit, interface_bank00, phy
 suit voices, MPEG-1 Layer II) and writes sound/grymod/{suit,hud,menu,binoculars,water}/*.wav under the addon (or --out).
 The underwater sounds come from physics_player_foley.fsb (ADPCM) and environment_amb_natural.fsb (the ambience loop is
 MPEG-1 Layer II inside the bank: its frames are decoded as they are, 383 frames of 1152 samples = the header's sample count).
-Needs numpy and scipy (only for the reboot sound, whose two layers are summed at 44.1 kHz) and ffmpeg (the voices and the
-ambience loop).
+The Source engine only plays a WAV of 11025, 22050 or 44100 Hz with EmitSound ("Invalid sample rate (32000) for sound"):
+a sample of another rate (32000, 16000, 8000, 4000...) is resampled to the next valid rate up (32000 and 16000 to 44100 and
+22050), with the exact rational ratio and a Kaiser filter of about 90 dB (scipy.signal.resample_poly); the duration and the
+pitch are the original's (the frame count is round(frames x ratio)). A looping sample is resampled as a periodic signal so that
+its ends stay joined. If the resampled signal passes full scale (the banks' samples are often clipped already, and the filter
+rings), the file is scaled down to full scale and the factor is printed: the mix table must be raised by the same dB
+(GryMod.SoundMix.Original). --manifest writes the original and delivered rates and these factors as JSON.
+Needs numpy and scipy (the resampling, and the reboot sound whose two layers are summed at 44.1 kHz) and ffmpeg (the voices
+and the ambience loop).
 Nothing from the game is kept in the repository except the WAV files this writes.
 
 The banks hold IMA ADPCM: blocks of 36 bytes per channel, the four-byte groups of the channels interleaved. A block holds
@@ -99,6 +106,40 @@ def decode_ima(h):
     return out[:h["frames"]]
 
 
+VALID_RATES = (11025, 22050, 44100)
+# the loops are resampled as periodic signals
+LOOPS = ("servo_speed_loop_01c", "servo_speed_loop_01_underwater", "ambience_underwater_loop_02", "binocular_ambience")
+
+
+def valid_rate(rate):
+    """The next rate up that the engine plays (11025, 22050 or 44100)."""
+    return next(r for r in VALID_RATES if rate <= r)
+
+
+def to_valid_rate(pcm, rate, loop=False):
+    """(pcm, rate, headroom_db): the sample at a valid rate. headroom_db is how much it was scaled down (0 = not at all)."""
+    target = valid_rate(rate)
+
+    if target == rate:
+        return pcm, rate, 0.0
+
+    g = math.gcd(target, rate)
+    up, down = target // g, rate // g
+    x = signal.resample_poly(pcm.astype(np.float64) / 32768, up, down, axis=0, window=("kaiser", 9.0),
+                             padtype="wrap" if loop else "constant")
+    frames = int(round(pcm.shape[0] * up / down))
+    x = x[:frames]
+    peak = np.abs(x).max()
+    headroom = 0.0
+
+    if peak > 32767 / 32768:
+        scale = (32767 / 32768) / peak
+        x = x * scale
+        headroom = -20 * math.log10(scale)
+
+    return np.clip(np.round(x * 32768), -32768, 32767).astype(np.int16), target, headroom
+
+
 def write_wav(path, pcm, rate):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     w = wave.open(path, "wb")
@@ -166,6 +207,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("game", help="the demo's Game folder (with Sounds.pak and Localized/english.pak)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
+    parser.add_argument("--manifest", help="write the original and delivered rates and the scaling of every file as JSON")
     parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
     args = parser.parse_args()
     sounds = zipfile.ZipFile(os.path.join(args.game, "Sounds.pak"))
@@ -184,10 +226,18 @@ def main():
         # the bank cuts the names at 30 characters
         return samples[next(n for n in samples if n.lower() == name.lower() or (len(n) >= 29 and name.lower().startswith(n.lower())))]
 
+    manifest = []
+
     def save(folder, name, pcm, rate):
         path = os.path.join(args.out, "sound", "grymod", folder, name + ".wav")
+        source_rate, source_frames = rate, pcm.shape[0]
+        pcm, rate, headroom = to_valid_rate(pcm, rate, name in LOOPS)
         write_wav(path, pcm, rate)
-        print("%-70s %7d frames %5d Hz %d ch" % (os.path.relpath(path, args.out), pcm.shape[0], rate, pcm.shape[1]))
+        manifest.append(dict(file="grymod/%s/%s.wav" % (folder, name), source_rate=source_rate, rate=rate,
+                             channels=pcm.shape[1], source_frames=source_frames, frames=pcm.shape[0],
+                             headroom_db=round(headroom, 2)))
+        print("%-70s %7d frames %5d Hz (from %d Hz) %d ch%s" % (os.path.relpath(path, args.out), pcm.shape[0], rate,
+              source_rate, pcm.shape[1], "  scaled down %.2f dB" % headroom if headroom else ""))
 
     def plain(folder, entries):
         for name, bank_name, source in entries:
@@ -240,6 +290,10 @@ def main():
 
     assert pcm.shape[0] == h["frames"] and rate == h["rate"], (pcm.shape, rate, h["frames"], h["rate"])
     save("water", name, pcm, rate)
+
+    if args.manifest:
+        import json
+        json.dump(manifest, open(args.manifest, "w"), indent=1)
 
 
 if __name__ == "__main__":
