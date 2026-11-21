@@ -97,6 +97,84 @@ return {
 			end
 		},
 		{
+			-- The weapon slot of the movie is drawn with the blend mode "add" (its icons shine on what is behind), the grenade
+			-- slot is not, and its hand grenade icons are added by themselves. The 40 mm icon moved to the grenade slot has to
+			-- be added too, or it is a dark blue shape on a bright background.
+			name = "the 40 mm icon of the grenade slot is added like the hand grenade icon and the weapon slot icons, whatever the theme",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local movie = GryMod.Flash.Load("hud_ammohealthenergysuit")
+				local BLEND_ADD = 8
+
+				for name, colours in pairs(M.Themes) do
+					local hud = M.New(movie, colours)
+
+					hud:SetAmmo(3, 0, 3, 3, "explosivegrenade", "Auto")
+					local hand = slot(hud, "GrenadeMode").clip.list[1]
+					expect(hand.blend).to.equal(BLEND_ADD)
+
+					hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5)
+					local icon = slot(hud, "GrenadeMode").clip.list[1]
+					expect(icon.id ~= hand.id).to.beTrue()
+					expect(icon.blend).to.equal(BLEND_ADD)
+
+					-- the tint is the theme's outline colour, the one of the hand grenade and of the weapon slot icons
+					local tint = icon.clip.names.Colorset.cx
+					for part = 1, 3 do expect(tint[4 + part]).to.equal(colours.Line[part]) end
+					local weapon = slot(hud, "AmmoMode")
+					expect(weapon.blend).to.equal(BLEND_ADD)
+					local weaponTint = weapon.clip.list[1].clip.names.Colorset.cx
+					for part = 1, 3 do expect(weaponTint[4 + part]).to.equal(colours.Line[part]) end
+				end
+			end
+		},
+		{
+			name = "the blend of the 40 mm icon follows the launcher: back to the hand grenades the icon is the hand grenade one, again with the launcher it is added again",
+			func = function(state)
+				local hud = newHud()
+				local BLEND_ADD = 8
+
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5)
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto")
+				expect(slot(hud, "GrenadeMode").clip.list[1].blend).to.equal(BLEND_ADD)
+				expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal("explosivegrenade")
+
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5)
+				expect(slot(hud, "GrenadeMode").clip.list[1].blend).to.equal(BLEND_ADD)
+				expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal("Grenade")
+			end
+		},
+		{
+			name = "the 40 mm icon stays added while the movie rebuilds its clips, and with a new theme",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local hud = newHud()
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5)
+				hud:Destroy(1)
+
+				for _ = 1, 60 do
+					hud:Update(1 / 30)
+				end
+
+				hud:Destroy(0)
+
+				for _ = 1, 90 do
+					hud:Update(1 / 30)
+				end
+
+				local icon = slot(hud, "GrenadeMode").clip.list[1]
+				expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal("Grenade")
+				expect(icon.blend).to.equal(8)
+
+				-- a new theme builds a new HUD: the launcher's icon is added there too, in the new colour
+				local other = M.New(GryMod.Flash.Load("hud_ammohealthenergysuit"), M.Themes.default)
+				other:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5)
+				local tinted = slot(other, "GrenadeMode").clip.list[1]
+				expect(tinted.blend).to.equal(8)
+				expect(tinted.clip.names.Colorset.cx[5]).to.equal(M.Themes.default.Line[1])
+			end
+		},
+		{
 			name = "the icons stay while the movie rebuilds its clips (a malfunction and its reboot)",
 			func = function(state)
 				local hud = newHud()

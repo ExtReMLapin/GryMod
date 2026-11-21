@@ -295,8 +295,14 @@ local function iconSets(movie)
 	return found
 end
 
+local BLEND_ADD = 8
+
 -- Makes the slot `name` of `parent` hold the character `id` (when it does not already) on the frame `frame`.
-local function fillSlot(parent, name, id, frame)
+-- `add`: the icon (depth 1 of the slot's frame) is drawn with the blend mode "add". The weapon slot of the movie is
+-- added as a whole, the grenade slot is not (its hand grenade icons are added one by one), so an icon of the weapon
+-- slot shown in the grenade slot has to be added by itself: normal blended it is a dark shape (the theme's outline
+-- colour at full strength) next to the other icons, which are brightened by what is behind them.
+local function fillSlot(parent, name, id, frame, add)
 	local entry = parent.names[name]
 
 	if not entry or not id then
@@ -313,6 +319,13 @@ local function fillSlot(parent, name, id, frame)
 
 	if entry and entry.clip then
 		entry.clip:GotoAndStop(frame)
+
+		local icon = add and entry.clip.list[1]
+
+		if icon and icon.blend ~= BLEND_ADD then
+			icon.blend = BLEND_ADD
+			entry.clip:_touch()
+		end
 	end
 end
 
@@ -382,7 +395,7 @@ function HUD:_applyAmmo()
 	-- a launcher shows the 40 mm grenade where the hand grenades are, the hand grenade weapon its own icon in the
 	-- weapon slot
 	if ammo.launcher ~= nil then
-		fillSlot(player, "GrenadeMode", sets.mode, "Grenade")
+		fillSlot(player, "GrenadeMode", sets.mode, "Grenade", true)
 	else
 		fillSlot(player, "GrenadeMode", sets.hand, ammo.grenadeType)
 	end
