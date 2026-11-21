@@ -17,8 +17,11 @@ Radar.FRAME = {
 -- The movie turns radar pixels into its own coordinates: x = n * 110 + 10 and y = n * 110 - 3.5, with n over the 94 pixels
 -- of the radar's square; so the centre of the radar is at (65, 51.5) and one radar pixel is 110 / 94 movie pixels.
 Radar.UNITS_PIXEL = 110 / 94
-Radar.UNITS_CENTRE_X = 65
-Radar.UNITS_CENTRE_Y = 51.5
+-- The script's arithmetic gives (65, 51.5), but the player is not drawn there: MEASURED on two screenshots of the game (the movie's own
+-- vertical line and the base of the view cone, against icons whose movie coordinates were known), the centre of the radar is at
+-- (64.1, 52.3) in the Units clip: a unit straight ahead sits on the line. 1 pixel of the film is about 4.6 pixels at 4K.
+Radar.UNITS_CENTRE_X = 64.1
+Radar.UNITS_CENTRE_Y = 52.3
 
 -- The pulse of the alerted icons: the phase turns 3 radians a second and the alpha is cos * 0.35 + 0.65 (30 to 100 %).
 Radar.PULSE_SPEED = 3

@@ -25,6 +25,12 @@ end
 
 local PX = 110 / 94 -- movie pixels per radar pixel: x = n * 110 + 10 with n over 94 pixels
 
+-- The centre of the radar in the Units clip: where the player is, on the movie's own vertical line and at the middle of the cone. MEASURED on
+-- two screenshots of the game (the line and the cone's base against icons whose movie coordinates were known): (64.1, 52.3), not the (65, 51.5)
+-- that the original script's arithmetic gives (x * 110 + 10, y * 110 - 3.5 with the radar's square 94 pixels wide): about 1 pixel of the film
+-- to the right and 0.8 above, visible as a unit straight ahead that is off the line.
+local CX, CY = 64.1, 52.3
+
 local function one(contacts, plyYaw, phase)
 	local list = GryMod.FlashRadar.Contacts(Vector(0, 0, 0), plyYaw or 0, contacts, phase or 0)
 
@@ -40,28 +46,28 @@ return {
 				-- 37.5 m is half the radius: 21.5 radar pixels
 				local e = one({contact(37.5, 0)})
 				expect(e).toNot.beNil()
-				expect(e.x).to.aboutEqual(65, 0.01)
-				expect(e.y).to.aboutEqual(51.5 - 21.5 * PX, 0.01)
+				expect(e.x).to.aboutEqual(CX, 0.01)
+				expect(e.y).to.aboutEqual(CY - 21.5 * PX, 0.01)
 
 				e = one({contact(0, 37.5)})
-				expect(e.x).to.aboutEqual(65 + 21.5 * PX, 0.01)
-				expect(e.y).to.aboutEqual(51.5, 0.01)
+				expect(e.x).to.aboutEqual(CX + 21.5 * PX, 0.01)
+				expect(e.y).to.aboutEqual(CY, 0.01)
 
 				e = one({contact(-37.5, 0)})
-				expect(e.x).to.aboutEqual(65, 0.01)
-				expect(e.y).to.aboutEqual(51.5 + 21.5 * PX, 0.01)
+				expect(e.x).to.aboutEqual(CX, 0.01)
+				expect(e.y).to.aboutEqual(CY + 21.5 * PX, 0.01)
 			end
 		},
 		{
 			name = "turning the player turns the radar: yaw 90 looks along +y",
 			func = function(state)
 				local e = one({{id = 1, x = 0, y = metres(37.5), z = 0, yaw = 90, type = 1, sub = 4}}, 90)
-				expect(e.x).to.aboutEqual(65, 0.01)
-				expect(e.y).to.aboutEqual(51.5 - 21.5 * PX, 0.01)
+				expect(e.x).to.aboutEqual(CX, 0.01)
+				expect(e.y).to.aboutEqual(CY - 21.5 * PX, 0.01)
 
 				-- a unit at the player's right after the turn is at -x
 				e = one({{id = 1, x = metres(37.5), y = 0, z = 0, yaw = 0, type = 1, sub = 4}}, 90)
-				expect(e.x).to.aboutEqual(65 + 21.5 * PX, 0.01)
+				expect(e.x).to.aboutEqual(CX + 21.5 * PX, 0.01)
 			end
 		},
 		{
@@ -185,20 +191,20 @@ return {
 			func = function(state)
 				local e = one({contact(300, 0, {marker = true, sub = 2})})
 				expect(e).toNot.beNil()
-				expect(e.x).to.aboutEqual(65, 0.05)
-				expect(e.y).to.aboutEqual(51.5 - 42 * PX, 0.05)
+				expect(e.x).to.aboutEqual(CX, 0.05)
+				expect(e.y).to.aboutEqual(CY - 42 * PX, 0.05)
 
 				-- far to the right: the right edge (62 pixels)
 				e = one({contact(0, 400, {marker = true})})
-				expect(e.x).to.aboutEqual(65 + 62 * PX, 0.05)
-				expect(e.y).to.aboutEqual(51.5, 0.05)
+				expect(e.x).to.aboutEqual(CX + 62 * PX, 0.05)
+				expect(e.y).to.aboutEqual(CY, 0.05)
 
 				-- diagonal ahead left: on the border, still up and left
 				e = one({contact(400, -400, {marker = true})})
-				expect(e.x < 65).to.beTrue()
-				expect(e.y < 51.5).to.beTrue()
-				expect(e.x >= 65 - 58 * PX - 0.05).to.beTrue()
-				expect(e.y >= 51.5 - 42 * PX - 0.05).to.beTrue()
+				expect(e.x < CX).to.beTrue()
+				expect(e.y < CY).to.beTrue()
+				expect(e.x >= CX - 58 * PX - 0.05).to.beTrue()
+				expect(e.y >= CY - 42 * PX - 0.05).to.beTrue()
 			end
 		},
 		{
