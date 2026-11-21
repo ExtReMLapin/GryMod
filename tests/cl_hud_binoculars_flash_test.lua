@@ -1165,7 +1165,7 @@ return {
 			end
 		},
 		{
-			name = "the zoom stages are the original's 2x, 4x, 8x, in 0.2 s each way; a stage's field of view is the base field of view divided by its magnification (the ratio of the tangents of the half fields)",
+			name = "the zoom stages are the original's 2x, 4x, 8x, 0.2 s to open and to close and 0.055 s from one stage to the next; a stage's field of view is the base field of view divided by its magnification (the ratio of the tangents of the half fields)",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				expect(#M.ZOOM_STAGES).to.equal(3)
@@ -1174,6 +1174,7 @@ return {
 				expect(M.ZOOM_STAGES[3]).to.equal(8)
 				expect(M.ZOOM_IN_TIME).to.equal(0.2)
 				expect(M.ZOOM_OUT_TIME).to.equal(0.2)
+				expect(M.ZOOM_STEP_TIME).to.equal(0.055)
 
 				for _, base in ipairs({75, 90, 100, 110}) do
 					expect(M.StageFov(base, 1)).to.aboutEqual(base, 1e-9)
@@ -1246,7 +1247,9 @@ return {
 				expect(cue).to.equal("zoom_in")
 				expect(z.stage).to.equal(2)
 				expect(M.ZoomStep(z, 1, true, base, f1)).to.aboutEqual(f1, 1e-6)
-				expect(M.ZoomStep(z, 1.1, true, base, f1)).to.aboutEqual((f1 + f2) / 2, 1e-6)
+				-- a step between two stages takes 0.055 s (the zoom class's default stage time, DEDUCED), not the 0.2 s of the opening
+				expect(M.ZoomStep(z, 1.0275, true, base, f1)).to.aboutEqual((f1 + f2) / 2, 1e-6)
+				expect(M.ZoomStep(z, 1.055, true, base, f1)).to.aboutEqual(f2, 1e-6)
 				expect(M.ZoomStep(z, 1.2, true, base, f1)).to.aboutEqual(f2, 1e-6)
 
 				-- a second step in the middle of the first goes on from where the field of view is
@@ -1254,7 +1257,8 @@ return {
 				expect(cue).to.equal("zoom_in")
 				expect(z.stage).to.equal(3)
 				M.ZoomStep(z, 5, true, base, f1)
-				expect(M.ZoomStep(z, 5.1, true, base, f1)).to.aboutEqual((f2 + f3) / 2, 1e-6)
+				expect(M.ZoomStep(z, 5.0275, true, base, f1)).to.aboutEqual((f2 + f3) / 2, 1e-6)
+				expect(M.ZoomStep(z, 5.055, true, base, f1)).to.aboutEqual(f3, 1e-6)
 				M.ZoomStep(z, 5.2, true, base, f1)
 
 				-- at the last stage: taken, nothing happens
@@ -1279,6 +1283,23 @@ return {
 				expect(M.ZoomWheel(z, "+attack")).to.beFalse()
 				expect(M.ZoomWheel(z, "slot1")).to.beFalse()
 				expect(M.ZoomWheel(M.NewZoom(), "invprev")).to.beFalse()
+			end
+		},
+		{
+			name = "a wheel step in the middle of the opening goes on from the field of view in force over 0.055 s; the opening itself stays at 0.2 s",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				local base = 100
+				local f1, f2 = M.StageFov(base, 2), M.StageFov(base, 4)
+
+				M.ZoomStep(z, 0, true, base, base)
+				local middle = M.ZoomStep(z, 0.1, true, base, base)
+				expect(middle).to.aboutEqual((base + f1) / 2, 1e-6)
+				M.ZoomWheel(z, "invprev")
+				expect(M.ZoomStep(z, 0.1, true, base, base)).to.aboutEqual(middle, 1e-6)
+				expect(M.ZoomStep(z, 0.1275, true, base, base)).to.aboutEqual((middle + f2) / 2, 1e-6)
+				expect(M.ZoomStep(z, 0.155, true, base, base)).to.aboutEqual(f2, 1e-6)
 			end
 		},
 		{

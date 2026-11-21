@@ -37,7 +37,7 @@ local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, 
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
 local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "The original's cryvision sound mood while the binoculars are up: explosions, collisions and vehicles are lowered (in and out in half a second)")
 local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC scanned through the binoculars is outlined in pale blue from the last 0.3 s of its scan until the binoculars come down (at most 8 at once; needs the tag switch: the scan is the tag's)")
-local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s between them (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
+local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s to open and close and 0.055 s between two stages (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
 
 function Bino.StagesEnabled() return StagesConVar:GetBool() end
 function Bino.SilhouetteEnabled() return SilhouetteConVar:GetBool() end
@@ -717,6 +717,9 @@ end
 Bino.ZOOM_STAGES = {2, 4, 8}
 Bino.ZOOM_IN_TIME = 0.2
 Bino.ZOOM_OUT_TIME = 0.2
+-- a step from one stage to the next: the zoom class's stage time, default 0.055 s (0x3927dfec), which Binoculars.xml does not set
+-- (DEDUCED, research note 8.3); opening and closing keep zoom_in_time / zoom_out_time
+Bino.ZOOM_STEP_TIME = 0.055
 -- how long the override goes on at most after the key is let go, waiting for the engine's own return to the base
 Bino.ZOOM_HOLD_MAX = 0.6
 -- the film's mode (X02, X04, X06) of each stage: the original's last stage reads X06 (FUN_391cd590), not X08
@@ -752,11 +755,11 @@ function Bino.StageModeFor(base, fov)
 end
 
 function Bino.NewZoom()
-	return {stage = 0, active = false, fov = nil, from = 0, to = 0, start = 0, duration = 0, closeStart = nil}
+	return {stage = 0, active = false, fov = nil, from = 0, to = 0, start = 0, duration = 0, closeStart = nil, lastStage = 0}
 end
 
 function Bino.ZoomReset(z)
-	z.stage, z.active, z.fov, z.from, z.to, z.start, z.duration, z.closeStart = 0, false, nil, 0, 0, 0, 0, nil
+	z.stage, z.active, z.fov, z.from, z.to, z.start, z.duration, z.closeStart, z.lastStage = 0, false, nil, 0, 0, 0, 0, nil, 0
 end
 
 local function zoomFovAt(z, now)
@@ -795,8 +798,17 @@ function Bino.ZoomStep(z, now, wanted, base, engineFov)
 
 	if math.abs(target - z.to) > 1e-6 then
 		local current = zoomFovAt(z, now)
+		-- opening (from no stage) and closing (to none) take 0.2 s, a step between two stages 0.055 s
+		local stepping = z.stage ~= 0 and z.lastStage ~= 0
+
 		z.from, z.to, z.start = current, target, now
-		z.duration = target < current and Bino.ZOOM_IN_TIME or Bino.ZOOM_OUT_TIME
+		z.lastStage = z.stage
+
+		if stepping then
+			z.duration = Bino.ZOOM_STEP_TIME
+		else
+			z.duration = target < current and Bino.ZOOM_IN_TIME or Bino.ZOOM_OUT_TIME
+		end
 	end
 
 	z.fov = zoomFovAt(z, now)
