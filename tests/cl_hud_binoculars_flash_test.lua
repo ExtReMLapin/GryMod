@@ -856,6 +856,183 @@ return {
 			end
 		},
 		{
+			name = "the silhouette's target: the entity being scanned, only in the last 0.3 s of the countdown, and only while the caller finds it valid",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.SILHOUETTE_SECONDS).to.equal(0.3)
+				local e = {}
+				local always = function() return true end
+
+				-- no scan, no entity: none
+				expect(M.SilhouetteTarget(M.NewScan(), always)).to.beNil()
+
+				local function target(timer, valid)
+					return M.SilhouetteTarget({current = e, timer = timer}, valid or always)
+				end
+
+				expect(target(0.55)).to.beNil()
+				expect(target(0.31)).to.beNil()
+				expect(target(0.3)).to.equal(e)
+				expect(target(0.15)).to.equal(e)
+				expect(target(0.001)).to.equal(e)
+				-- a finished scan has no timer left
+				expect(target(0)).to.beNil()
+				expect(target(0.2, function() return false end)).to.beNil()
+				expect(M.SilhouetteTarget({current = nil, timer = 0.2}, always)).to.beNil()
+			end
+		},
+		{
+			name = "an NPC that is alive is a valid silhouette target; a dead one, one that is not an NPC and an invalid one are not",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local function npc(valid, isNpc, health)
+					return {IsValid = function() return valid end, IsNPC = function() return isNpc end, Health = function() return health end}
+				end
+
+				expect(M.SilhouetteValid(npc(true, true, 40))).to.beTrue()
+				expect(M.SilhouetteValid(npc(true, true, 0))).to.beFalse()
+				expect(M.SilhouetteValid(npc(true, false, 40))).to.beFalse()
+				expect(M.SilhouetteValid(npc(false, true, 40))).to.beFalse()
+				expect(M.SilhouetteValid(nil)).to.beFalse()
+			end
+		},
+		{
+			name = "the silhouette is a halo on the scanned NPC in the last 0.3 s: nothing before, nothing after, nothing for a dead NPC, nothing with the switch off or the binoculars down",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local add, enabled, wanted, hudEnabled = halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled
+				local calls = {}
+				local alive = true
+				local npc = {IsValid = function() return true end, IsNPC = function() return true end, Health = function() return alive and 40 or 0 end}
+				local st = M.ScanState
+
+				local ok, err = pcall(function()
+					halo.Add = function(entities, color, blurx, blury, passes, additive, ignorez)
+						calls[#calls + 1] = {entities = entities, color = color, blurx = blurx, blury = blury, passes = passes, additive = additive, ignorez = ignorez}
+					end
+
+					M.SilhouetteEnabled = function() return true end
+					M.Wanted = function() return true end
+					M.Enabled = function() return true end
+					M.ScanReset(st)
+
+					-- no scan: nothing
+					M.DrawSilhouette()
+					expect(#calls).to.equal(0)
+
+					-- scanning, 0.5 s left: nothing
+					st.current, st.timer = npc, 0.5
+					M.DrawSilhouette()
+					expect(#calls).to.equal(0)
+
+					-- 0.2 s left: one halo, on the NPC
+					st.timer = 0.2
+					M.DrawSilhouette()
+					expect(#calls).to.equal(1)
+					expect(#calls[1].entities).to.equal(1)
+					expect(calls[1].entities[1]).to.equal(npc)
+					expect(calls[1].color.r > 0 and calls[1].color.a > 0).to.beTrue()
+					expect(calls[1].passes >= 1).to.beTrue()
+					-- through walls: no (what is aimed at is seen)
+					expect(calls[1].ignorez).to.beFalse()
+
+					-- dead: nothing
+					alive = false
+					M.DrawSilhouette()
+					expect(#calls).to.equal(1)
+					alive = true
+
+					-- the switch off, the binoculars down, the HUD off: nothing
+					M.SilhouetteEnabled = function() return false end
+					M.DrawSilhouette()
+					M.SilhouetteEnabled = function() return true end
+					M.Wanted = function() return false end
+					M.DrawSilhouette()
+					M.Wanted = function() return true end
+					M.Enabled = function() return false end
+					M.DrawSilhouette()
+					expect(#calls).to.equal(1)
+				end)
+
+				M.ScanReset(st)
+				halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled = add, enabled, wanted, hudEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the binoculars closing in the middle of a scan (or a reset) takes the silhouette away with the scan",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local add, enabled, wanted, hudEnabled = halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled
+				local count = 0
+				local npc = {IsValid = function() return true end, IsNPC = function() return true end, Health = function() return 40 end}
+				local st = M.ScanState
+
+				local ok, err = pcall(function()
+					halo.Add = function() count = count + 1 end
+					M.SilhouetteEnabled = function() return true end
+					M.Wanted = function() return true end
+					M.Enabled = function() return true end
+
+					st.current, st.timer = npc, 0.2
+					M.DrawSilhouette()
+					expect(count).to.equal(1)
+					M.Reset()
+					expect(st.current).to.beNil()
+					M.DrawSilhouette()
+					expect(count).to.equal(1)
+				end)
+
+				M.ScanReset(st)
+				halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled = add, enabled, wanted, hudEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the silhouette is drawn from the game's PreDrawHalos, under one name, and has its own switch (gry_binoculars_silhouette, saved, on by default) with a check box",
+			func = function(state)
+				local hooks = hook.GetTable().PreDrawHalos
+				expect(hooks and hooks["GRYBINOCULARSSILHOUETTE"]).toNot.beNil()
+
+				local convar = GetConVar("gry_binoculars_silhouette")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(isfunction(GryMod.FlashBinoculars.SilhouetteEnabled)).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_binoculars_silhouette"]).to.beTrue()
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

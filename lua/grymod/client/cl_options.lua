@@ -78,6 +78,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Horizon ladder that follows where you look", "gry_binoculars_horizon")
 	Panel:CheckBox("Dark vignette fading out as the binoculars close (off: it goes at once)", "gry_binoculars_vignette")
 	Panel:CheckBox("Tag an NPC aimed at for half a second (the radar shows it)", "gry_binoculars_tag")
+	Panel:CheckBox("Outline the NPC being scanned during the last 0.3 s of the scan (needs the tag option above)", "gry_binoculars_silhouette")
 	Panel:CheckBox("Binoculars sound mood: explosions, collisions and vehicles are lowered while they are up", "gry_binoculars_mood")
 
 	Panel:CheckBox("Screen effects: heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change", "gry_screenfx")

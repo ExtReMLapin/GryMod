@@ -36,7 +36,9 @@ local HorizonConVar = CreateClientConVar("gry_binoculars_horizon", "1", true, fa
 local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, false, "The dark vignette of the binoculars fades out as they close, in the 14 frames of the original's film (off: it goes with the picture, at once)")
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
 local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "The original's cryvision sound mood while the binoculars are up: explosions, collisions and vehicles are lowered (in and out in half a second)")
+local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC being scanned through the binoculars is outlined in the last 0.3 s of the scan (needs the tag switch: the scan is the tag's)")
 
+function Bino.SilhouetteEnabled() return SilhouetteConVar:GetBool() end
 function Bino.MoodEnabled() return MoodConVar:GetBool() end
 function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
 function Bino.AimRules() return AimConVar:GetBool() end
@@ -611,6 +613,37 @@ function Bino.ScanStep(st, target, dt, accepts)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
+-- The silhouette: for the last 0.3 s of a scan (CHUDRadar::UpdateScanner, constant 0x392644c4; FUN_391cffa0 highlights the
+-- entity, the CryVision silhouette) the entity being scanned is outlined. The scan state machine owns the countdown, so the
+-- silhouette is read from it: it goes with the scan (the end, a reset, the binoculars closing).
+-- ---------------------------------------------------------------------------------------------------------
+
+Bino.SILHOUETTE_SECONDS = 0.3
+
+-- The outline: DEDUCED, the colour and the thickness of the engine's CryVision pass were not read (it is in the shader
+-- chain of PostEffectsGame.cfx, not in the game's code): the radar's hostile red, a thin glow of two passes of 3 pixels.
+Bino.SilhouetteColor = Color(255, 64, 48, 255)
+Bino.SILHOUETTE_BLUR = 3
+Bino.SILHOUETTE_PASSES = 2
+
+-- The entity to outline for this scan state, or nil: the one being scanned, with at most 0.3 s of the countdown left (and
+-- some), while valid(entity) says it still may be (alive).
+function Bino.SilhouetteTarget(st, valid)
+	local entity = st.current
+
+	if entity ~= nil and st.timer > 0 and st.timer <= Bino.SILHOUETTE_SECONDS + EPSILON and valid(entity) then
+		return entity
+	end
+
+	return nil
+end
+
+-- An NPC that is alive and exists.
+function Bino.SilhouetteValid(entity)
+	return entity ~= nil and IsValid(entity) and entity:IsNPC() and entity:Health() > 0
+end
+
+-- ---------------------------------------------------------------------------------------------------------
 -- In the game: the Half-Life 2 suit zoom (the zoom key) shows the binoculars
 -- ---------------------------------------------------------------------------------------------------------
 
@@ -620,6 +653,7 @@ local fed = {}
 -- the movie could not be loaded: the Half-Life 2 zoom overlay must stay then
 local missing = false
 local scan = Bino.NewScan()
+Bino.ScanState = scan
 -- the entities this player has tagged (the server keeps them until their death, or the player's)
 local tagged = setmetatable({}, {__mode = "k"})
 
@@ -807,6 +841,24 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	-- the stage is 1366 x 768: scaled to the screen height, centred
 	local scale = ScrH() / 768
 	binoculars:Draw((ScrW() - 1366 * scale) / 2, 0, scale)
+end)
+
+-- The outline of the entity being scanned (see Bino.SilhouetteTarget): a halo, drawn only while the binoculars are wanted
+-- (asked here too: this runs before the HUD paints the frame in which the key is let go).
+function Bino.DrawSilhouette()
+	if not Bino.SilhouetteEnabled() or not Bino.Enabled() or not Bino.Wanted(LocalPlayer()) then
+		return
+	end
+
+	local entity = Bino.SilhouetteTarget(scan, Bino.SilhouetteValid)
+
+	if entity then
+		halo.Add({entity}, Bino.SilhouetteColor, Bino.SILHOUETTE_BLUR, Bino.SILHOUETTE_BLUR, Bino.SILHOUETTE_PASSES, true, false)
+	end
+end
+
+hook.Add("PreDrawHalos", "GRYBINOCULARSSILHOUETTE", function()
+	Bino.DrawSilhouette()
 end)
 
 -- The Half-Life 2 suit zoom has its own overlay (CHudZoom, the black ring); our binoculars replace it while they
