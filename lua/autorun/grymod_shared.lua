@@ -72,6 +72,7 @@ if SERVER then
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
 	include("grymod/sh_api_tracked.lua")
+	include("grymod/server/sv_movement.lua")
 	include("grymod/server/sv_mechanics.lua")
 	include("grymod/server/sv_health.lua")
 	include("grymod/server/sv_feedback.lua")

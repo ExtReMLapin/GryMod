@@ -91,13 +91,8 @@ function meta:SetNanosuitMode(mode, networked)
 
 	local oldMode = self.Nanosuit_mode or GryMod.Modes.ARMOR
 
-	if mode == GryMod.Modes.SPEED then
-		self:SetWalkSpeed(400)
-		self:SetRunSpeed(600)
-	else
-		self:SetWalkSpeed(200)
-		self:SetRunSpeed(400)
-	end
+	-- the speeds of the mode: GryMod's own or, with gry_movement, the original game's (sv_movement.lua)
+	GryMod.Movement.Apply(self, mode)
 
 	if (mode == GryMod.Modes.STRENGTH) then
 		self:SetJumpPower(500)

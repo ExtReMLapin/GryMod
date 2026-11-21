@@ -56,20 +56,30 @@ end
 -- above a fifth of the bar, x1.4 from empty to a fifth, x1.3 empty; research-mech/SPEEDS.md). The plain sprint is 400 and the
 -- top is 600 here, so the multipliers are put on that line (1 -> 400, 2.85 -> 600): x1.4 is 443.2 and x1.3 is 432.4, always
 -- above the plain sprint. The earlier rule kept the top speed until the bar was empty, then fell back to 400.
-Mech.SPRINT_RUN = 400
-Mech.SPEED_RUN = 600
+-- With the base speeds option (gry_movement, sv_movement.lua) the line is the original's own: the plain sprint 266 and the top 757.
+local function bounds()
+	if GryMod.Movement then
+		return GryMod.Movement.Bounds()
+	end
+
+	return 400, 600
+end
 
 local function multiplierSpeed(multiplier)
-	return Mech.SPRINT_RUN + (multiplier - 1) / (2.85 - 1) * (Mech.SPEED_RUN - Mech.SPRINT_RUN)
+	local plain, top = bounds()
+
+	return plain + (multiplier - 1) / (2.85 - 1) * (top - plain)
 end
 
 function Mech.SpeedRunSpeed(energy)
+	local plain, top = bounds()
+
 	if not Mech.IsCrysis() then
-		return energy > 0 and Mech.SPEED_RUN or Mech.SPRINT_RUN
+		return energy > 0 and top or plain
 	end
 
 	if energy > 20 then
-		return Mech.SPEED_RUN
+		return top
 	elseif energy > 0 then
 		return multiplierSpeed(1.4)
 	end

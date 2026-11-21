@@ -16,7 +16,8 @@ Settings.List = {
 	{name = "gry_energy_net", kind = "bool"},
 	{name = "gry_mechanics", kind = "choice", values = {"crysis", "classic"}},
 	{name = "gry_cloak_ai", kind = "bool"},
-	{name = "gry_radar_allies_always", kind = "bool"}
+	{name = "gry_radar_allies_always", kind = "bool"},
+	{name = "gry_movement", kind = "bool"}
 }
 
 local byName = {}
