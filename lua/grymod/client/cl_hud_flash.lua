@@ -226,13 +226,58 @@ end
 
 -- setAmmo + updateTextColor of the player HUD. mag: rounds in the magazine (-1 = no ammo system),
 -- reserve: rounds left, size: magazine capacity, grenades: how many, grenadeType: a GrenadeMode label.
-function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode)
+function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launcher)
 	local ammo = self.ammo
+	ammo.launcher = launcher ~= nil and number(launcher, 0) or nil
 	ammo.mag, ammo.reserve, ammo.size = number(mag, 0), number(reserve, 0), number(size, 0)
 	ammo.grenades = number(grenades, 0)
 	ammo.grenadeType = grenadeType or ammo.grenadeType
 	ammo.fireMode = fireMode or ammo.fireMode
 	self:_applyAmmo()
+end
+
+-- The two icon sets of the movie: the hand grenades (GrenadeMode, one frame per kind) and the weapon slot
+-- (AmmoMode, one frame per fire mode; its "Grenade" frame is the 40 mm grenade). Each slot can show the other set.
+local iconIds = setmetatable({}, {__mode = "k"})
+
+local function iconSets(movie)
+	local found = iconIds[movie]
+
+	if not found then
+		found = {}
+
+		for id, definition in pairs(movie.chars) do
+			if definition.k == "sprite" and definition.labels then
+				if definition.labels.explosivegrenade then found.hand = id end
+				if definition.labels.Claymore then found.mode = id end
+			end
+		end
+
+		iconIds[movie] = found
+	end
+
+	return found
+end
+
+-- Makes the slot `name` of `parent` hold the character `id` (when it does not already) on the frame `frame`.
+local function fillSlot(parent, name, id, frame)
+	local entry = parent.names[name]
+
+	if not entry or not id then
+		return
+	end
+
+	if entry.id ~= id then
+		local depth = entry.depth
+		local op = {d = depth, c = id, n = name, m = entry.m, cx = entry.cx, bl = entry.blend}
+		parent:_remove(depth)
+		parent:_add(depth, id, op)
+		entry = parent.names[name]
+	end
+
+	if entry and entry.clip then
+		entry.clip:GotoAndStop(frame)
+	end
 end
 
 function HUD:_applyAmmo()
@@ -263,7 +308,7 @@ function HUD:_applyAmmo()
 
 	if small then
 		small:SetText("MagAmmo", infinite and " " or tostring(math.floor(clampNumber(ammo.reserve))))
-		small:SetText("GrenadeAmmo", tostring(math.floor(clampNumber(ammo.grenades))))
+		small:SetText("GrenadeAmmo", tostring(math.floor(clampNumber(ammo.launcher or ammo.grenades))))
 	end
 
 	local primary = texts and texts:Child("PrimaryAmmo")
@@ -296,16 +341,20 @@ function HUD:_applyAmmo()
 		end
 	end
 
-	local grenadeMode = player:Child("GrenadeMode")
+	local sets = iconSets(self.root.movie)
 
-	if grenadeMode then
-		grenadeMode:GotoAndStop(ammo.grenadeType)
+	-- a launcher shows the 40 mm grenade where the hand grenades are, the hand grenade weapon its own icon in the
+	-- weapon slot
+	if ammo.launcher ~= nil then
+		fillSlot(player, "GrenadeMode", sets.mode, "Grenade")
+	else
+		fillSlot(player, "GrenadeMode", sets.hand, ammo.grenadeType)
 	end
 
-	local fireMode = player:Child("AmmoMode")
-
-	if fireMode then
-		fireMode:GotoAndStop(ammo.fireMode)
+	if ammo.fireMode == "HandGrenade" then
+		fillSlot(player, "AmmoMode", sets.hand, ammo.grenadeType)
+	else
+		fillSlot(player, "AmmoMode", sets.mode, ammo.fireMode)
 	end
 end
 
@@ -460,7 +509,7 @@ local FIRE_MODE_ICONS = {}
 
 for _, label in ipairs({"Single", "Burst", "Auto", "Grenade", "Incendiary", "Tranquilizer", "infinity", "Shotgun",
 	"Narrow", "Mine", "Repairkit", "Moac", "Moar", "TACCannon", "C4", "Gauss", "Gunner", "Missle", "Mounted",
-	"NoGun", "Claymore"}) do
+	"NoGun", "Claymore", "HandGrenade"}) do
 	FIRE_MODE_ICONS[label] = true
 end
 
@@ -468,7 +517,7 @@ end
 local STOCK_WEAPON_ICON = {
 	weapon_pistol = "Single", weapon_357 = "Single", weapon_crossbow = "Single",
 	weapon_smg1 = "Auto", weapon_ar2 = "Auto", weapon_flechettegun = "Auto",
-	weapon_shotgun = "Shotgun", weapon_rpg = "Missle", weapon_frag = "Grenade", weapon_slam = "Mine",
+	weapon_shotgun = "Shotgun", weapon_rpg = "Missle", weapon_frag = "HandGrenade", weapon_slam = "Mine",
 	weapon_medkit = "Repairkit",
 	weapon_crowbar = "NoGun", weapon_stunstick = "NoGun", weapon_physcannon = "NoGun", weapon_physgun = "NoGun",
 	weapon_fists = "NoGun", gmod_tool = "NoGun", gmod_camera = "NoGun", weapon_bugbait = "NoGun"
@@ -628,6 +677,30 @@ function Module.FireModeFor(weapon)
 	return "Single"
 end
 
+-- The grenades a launcher weapon holds (the SMG's secondary fire), or nil when the weapon has none. The ammo
+-- must be a grenade one that is not the hand grenade's: the AR2's secondary is an energy ball.
+function Module.LauncherFor(ply, weapon)
+	weapon = validWeapon(weapon)
+
+	if not weapon or not weapon.GetSecondaryAmmoType then
+		return nil
+	end
+
+	local type = weapon:GetSecondaryAmmoType()
+
+	if not type or type < 0 then
+		return nil
+	end
+
+	local name = string.lower(game.GetAmmoName(type) or "")
+
+	if name == "grenade" or not string.find(name, "grenade", 1, true) then
+		return nil
+	end
+
+	return ply:GetAmmoCount(type)
+end
+
 -- magazine, reserve, magazine size, grenades and fire mode icon of what the player holds. -1 = no ammo system.
 function Module.AmmoFor(ply, weapon)
 	weapon = validWeapon(weapon)
@@ -727,10 +800,11 @@ local function feed(ply)
 	end
 
 	local mag, reserve, size, grenades, fireMode = Module.AmmoFor(ply, ply:GetActiveWeapon())
+	local launcher = Module.LauncherFor(ply, ply:GetActiveWeapon())
 
-	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode then
-		fed.mag, fed.reserve, fed.size, fed.grenades, fed.fireMode = mag, reserve, size, grenades, fireMode
-		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode)
+	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher then
+		fed.mag, fed.reserve, fed.size, fed.grenades, fed.fireMode, fed.launcher = mag, reserve, size, grenades, fireMode, launcher
+		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher)
 	end
 end
 

@@ -270,7 +270,7 @@ return {
 				expect(icon("weapon_357")).to.equal("Single")
 				expect(icon("weapon_shotgun")).to.equal("Shotgun")
 				expect(icon("weapon_rpg")).to.equal("Missle")
-				expect(icon("weapon_frag")).to.equal("Grenade")
+				expect(icon("weapon_frag")).to.equal("HandGrenade")
 				expect(icon("weapon_slam")).to.equal("Mine")
 				expect(icon("weapon_medkit")).to.equal("Repairkit")
 				expect(icon("weapon_crowbar")).to.equal("NoGun")
