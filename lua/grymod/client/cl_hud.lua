@@ -50,6 +50,47 @@ local function playModeVoice(path)
 	end)
 end
 
+-- The sound of the HUD event "mode" (cl_api_hud_events.lua): the activation sound of the mode entered, then its voice. The picture
+-- (the tint of cl_mode_fx.lua) is played by the same event.
+GryMod.ModeSounds = {
+	[GryMod.Modes.ARMOR] = {"grymod/suit/suit_armor_108.wav", "grymod/suit/suit_maximum_armor.wav"},
+	[GryMod.Modes.SPEED] = {"grymod/suit/suit_speed_activate_07_good.wav", "grymod/suit/suit_maximum_speed.wav"},
+	[GryMod.Modes.STRENGTH] = {"grymod/suit/suit_strength_101_r.wav", "grymod/suit/suit_maximum_strength.wav"},
+	[GryMod.Modes.CLOAK] = {"grymod/suit/suit_cloak_chameleon_101_r.wav", "grymod/suit/suit_modification_engaged.wav"}
+}
+
+function GryMod.PlayModeSound(mode)
+	local files = GryMod.ModeSounds[mode]
+
+	if not files then
+		return false
+	end
+
+	GryMod.PlaySound(Sound(files[1]))
+	playModeVoice(files[2])
+
+	return true
+end
+
+-- Tells the HUD that the suit changed to this mode (the event plays the tint and the sound together). The tint is asked for only
+-- when the change is a real one (GryMod.ModeFX.TintDue); `quiet` keeps the sound out (the camouflage's sound waits for a view model).
+local function modeEvent(mode, quiet)
+	local API, FX = GryMod.API, GryMod.ModeFX
+	local name = FX and FX.NameOf(mode)
+
+	if not (API and API.HUDEvent and name) then
+		return false
+	end
+
+	local data = {mode = name, tint = FX.TintNow(LocalPlayer().NanosuitMode, mode)}
+
+	if quiet then
+		data.sound = false
+	end
+
+	return API.HUDEvent("mode", data)
+end
+
 function meta:SetNanosuitMode(mode, networked)
 	-- the same mode again does nothing, unless the mode on the client is only the default guess (AssumeDefaultMode below): then the first one set is real
 	if mode == LocalPlayer().NanosuitMode and not LocalPlayer().NanosuitModeAssumed then
@@ -61,23 +102,13 @@ function meta:SetNanosuitMode(mode, networked)
 		timer.Remove("GryModModeVoice")
 	end
 
-	if mode == GryMod.Modes.ARMOR then
-		GryMod.PlaySound(Sound("grymod/suit/suit_armor_108.wav"))
-		playModeVoice("grymod/suit/suit_maximum_armor.wav")
-	end
+	-- the tint and the sound of the mode: one HUD event (the camouflage's own picture is cl_cloak_fx.lua's)
+	local viewModelThere = IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel())
 
-	if mode == GryMod.Modes.SPEED then
-		GryMod.PlaySound(Sound("grymod/suit/suit_speed_activate_07_good.wav"))
-		playModeVoice("grymod/suit/suit_maximum_speed.wav")
-	end
-
-	if mode == GryMod.Modes.STRENGTH then
-		GryMod.PlaySound(Sound("grymod/suit/suit_strength_101_r.wav"))
-		playModeVoice("grymod/suit/suit_maximum_strength.wav")
-	end
+	modeEvent(mode, mode == GryMod.Modes.CLOAK and not viewModelThere)
 
 	if mode == GryMod.Modes.CLOAK then
-		if IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
+		if viewModelThere then
 			-- the view model and the hands are made camouflaged by cl_cloak_fx.lua; the old material only with gry_cloak_fx 0
 			if not GryMod.CloakFX.Enabled() then
 				LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
@@ -87,9 +118,6 @@ function meta:SetNanosuitMode(mode, networked)
 					LocalPlayer():GetHands():SetMaterial("cloak/organic")
 				end
 			end
-
-			GryMod.PlaySound(Sound("grymod/suit/suit_cloak_chameleon_101_r.wav"))
-			playModeVoice("grymod/suit/suit_modification_engaged.wav")
 		end
 	elseif IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 		LocalPlayer():GetViewModel():SetMaterial("")
@@ -477,9 +505,9 @@ local function endCloak(ply)
 	net.SendToServer() -- too lazy to fight cheaters
 
 	-- the bar is emptied by the server: that is no armor hit, but the glitch of firing out of the camouflage plays on purpose
-	-- (cl_damage_fx.lua, gry_decloak_glitch)
-	if GryMod.DamageFx then
-		GryMod.DamageFx.Decloak(GryMod.DamageFx.State, RealTime())
+	-- (the HUD event "decloak": cl_damage_fx.lua, gry_decloak_glitch)
+	if GryMod.API and GryMod.API.HUDEvent then
+		GryMod.API.HUDEvent("decloak")
 	end
 end
 

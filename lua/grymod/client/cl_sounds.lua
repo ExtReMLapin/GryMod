@@ -52,15 +52,34 @@ function GryMod.ResetArmorHitSounds()
 	armorHitLast = nil
 end
 
--- the game plays at most 8 armor hits at a time (maxpb 8), and the mix leaves 60 ms between two: a shotgun's pellets or a
--- burst would stack into one loud noise (see GryMod.SoundMix.MayPlay). A hit that is refused uses up no file of the shuffle.
-net.Receive("gry_armor_hit_sound",function()
+-- Every sound of this file belongs to a HUD event of the extension API (cl_api_hud_events.lua): the triggers below call the event,
+-- and the event plays the picture and the sound together. The functions Play... and Start... are what the events run.
+local function hudEvent(name, data)
+	local API = GryMod.API
+
+	if API and API.HUDEvent then
+		return API.HUDEvent(name, data)
+	end
+
+	return false
+end
+
+-- The sound of the armor hit event. The game plays at most 8 armor hits at a time (maxpb 8), and the mix leaves 60 ms between two:
+-- a shotgun's pellets or a burst would stack into one loud noise (see GryMod.SoundMix.MayPlay). A hit that is refused uses up no file
+-- of the shuffle.
+function GryMod.PlayArmorHitSound()
 	local ok, count = GryMod.SoundMix.MayPlay("armor_hit", GryMod.SoundMix.Now())
 
 	if not ok then return end
 
 	-- the hits that stack are quieter (GryMod.SoundMix.Limits.armor_hit.stack): they would clip together
 	GryMod.PlaySound(Sound(GryMod.NextArmorHitSound()), GryMod.SoundMix.StackScale("armor_hit", count))
+end
+
+-- The server says a hit was heard: the sound alone (the picture of an armor hit follows the energy it costs, see
+-- cl_damage_fx.lua: the game's two rules are not the same, so the two triggers each ask for their half of the event).
+net.Receive("gry_armor_hit_sound",function()
+	hudEvent("armor_hit", {visual = false})
 end)
 
 
@@ -85,7 +104,8 @@ GryMod.RegenSound = {
 	SetChannel = function(channel) healingSound = channel end
 }
 
-net.Receive("gry_stop_health_regen",function ()
+-- The regen_stop event: the repair sound fades out over a second.
+function GryMod.StopRegenSound()
 	if not IsValid(healingSound) then return end
 	local overtime = CurTime() + 1
 	hook.Add("Think", "GryModSoundhealthregenfadeaway", function()
@@ -102,12 +122,10 @@ net.Receive("gry_stop_health_regen",function ()
 		end
 
 	end)
+end
 
-
-
-end)
-
-net.Receive("gry_start_health_regen",function ()
+-- The regen_start event: the repair sound plays from the beginning.
+function GryMod.StartRegenSound()
 	if not IsValid(healingSound) or not GryMod.SoundsEnabled() or not RegenEnabled:GetBool() then return end
 	-- a fade-out still running would pause the sound again a moment after it starts
 	hook.Remove("Think", "GryModSoundhealthregenfadeaway")
@@ -115,6 +133,15 @@ net.Receive("gry_start_health_regen",function ()
 	-- a sound that played to its end is still at its end: play it from the beginning every time
 	healingSound:SetTime(0)
 	healingSound:Play()
+end
+
+-- the server starts and stops the repair sound (sv_health.lua)
+net.Receive("gry_stop_health_regen",function ()
+	hudEvent("regen_stop")
+end)
+
+net.Receive("gry_start_health_regen",function ()
+	hudEvent("regen_start")
 end)
 
 
@@ -189,6 +216,11 @@ end
 
 local lastCriticalAt
 
+-- The sound of the energy_critical event (the Think hook below says when).
+function GryMod.PlayEnergyCritical()
+	GryMod.PlaySound(Sound("grymod/suit/suit_energy_critical.wav"))
+end
+
 -- forget the last play (the tests start from a voice that was never played)
 function GryMod.ResetEnergyCritical()
 	lastCriticalAt = nil
@@ -210,7 +242,7 @@ hook.Add("Think", "GryModSounds", function()
 	if lastenergy ~= nil then
 		if GryMod.EnergyCriticalDue(lastenergy, energy, lastCriticalAt, now) then
 			lastCriticalAt = now
-			GryMod.PlaySound(Sound("grymod/suit/suit_energy_critical.wav"))
+			hudEvent("energy_critical")
 		end
 
 		lastenergy = energy

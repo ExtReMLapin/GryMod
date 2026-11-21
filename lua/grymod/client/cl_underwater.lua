@@ -114,10 +114,50 @@ function U.Enabled()
 	return FxConVar:GetBool()
 end
 
+local state = {submerged = nil, cycle = {t = 0}, since = 0, lastBreath = nil, lastDrown = nil, now = 0}
+
+-- The three sounds that are events of the extension API (cl_api_hud_events.lua: dive_in, dive_out, drown): the triggers below say
+-- when, the events run these. The loop and the breathing are a state, not an event: they follow the water level while it lasts.
+local function hudEvent(name, data)
+	local API = GryMod.API
+
+	if API and API.HUDEvent then
+		return API.HUDEvent(name, data)
+	end
+
+	return false
+end
+
+-- The splash of the head going under; fall is the downward speed (default: a gentle entry).
+function U.PlayDiveIn(fall)
+	if not U.Enabled() then
+		return
+	end
+
+	GryMod.PlaySound(Sound(U.DiveInFile(math.max(0, tonumber(fall) or 0), math.random())))
+end
+
+-- The sound of the head coming out.
+function U.PlayDiveOut()
+	if not U.Enabled() then
+		return
+	end
+
+	GryMod.PlaySound(Sound(U.Files.diveOut))
+end
+
+-- A gasp of a drowning player, never the same file twice in a row.
+function U.PlayDrown()
+	if not U.Enabled() then
+		return
+	end
+
+	state.lastDrown = U.Pick(U.Files.drown, state.lastDrown, math.random())
+	GryMod.PlaySound(Sound(state.lastDrown))
+end
+
 local TICK = 0.1
 local TIMER = "GryUnderwater"
-
-local state = {submerged = nil, cycle = {t = 0}, since = 0, lastBreath = nil, lastDrown = nil, now = 0}
 
 local function stopLoop()
 	if IsValid(channel) then
@@ -244,7 +284,7 @@ function U.Poll()
 	if submerged then
 		if change == "dive_in" then
 			local fall = math.max(0, -ply:GetVelocity().z)
-			GryMod.PlaySound(Sound(U.DiveInFile(fall, math.random())))
+			hudEvent("dive_in", {fall = fall})
 		end
 
 		enter()
@@ -258,7 +298,7 @@ function U.Poll()
 	end
 
 	if change == "dive_out" and alive then
-		GryMod.PlaySound(Sound(U.Files.diveOut))
+		hudEvent("dive_out")
 	end
 end
 
@@ -270,12 +310,7 @@ end
 
 -- the server hurt the drowning player: a gasp
 net.Receive("gry_drown_tick", function()
-	if not U.Enabled() then
-		return
-	end
-
-	state.lastDrown = U.Pick(U.Files.drown, state.lastDrown, math.random())
-	GryMod.PlaySound(Sound(state.lastDrown))
+	hudEvent("drown")
 end)
 
 hook.Add("Think", "GryModUnderwater", U.Poll)

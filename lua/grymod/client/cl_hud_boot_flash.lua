@@ -150,6 +150,7 @@ local snd_reboot, snd_activate, snd_malfunction =
 local sequences = {}
 local current -- the kind that is on, or nil
 local malfunctioning = false
+local shutdown = false -- the "disabled" event holds its shutdown animation over the hidden HUD
 local hasSpawned = false -- the player has already spawned since this Lua state was made (a new map makes a new one)
 
 -- Switch: the log of the start at every spawn (the old behaviour) instead of the first one only.
@@ -228,8 +229,9 @@ function Boot.Spawned()
 		return
 	end
 
-	if begin("initialize") then
-		play(snd_reboot)
+	-- the log of the start and its sound are the HUD event "boot" (it follows the HUD boot sequences option itself)
+	if GryMod.API and GryMod.API.HUDEvent then
+		GryMod.API.HUDEvent("boot")
 	end
 end
 
@@ -303,6 +305,7 @@ function Boot.Reset()
 	release()
 	current = nil
 	malfunctioning = false
+	shutdown = false
 end
 
 -- The pictures are rebuilt (a new colour): the sequence that is on starts again from its beginning with the new
@@ -325,15 +328,61 @@ end
 local lastTime
 local wasAlive = false
 
+-- The HUD changes its state: the game says so by calling the HUD events (a malfunction is "lost", its end "reboot"). A return to
+-- normal while nothing was wrong is no reboot. 2 is the flicker of a light shock.
 hook.Add("GryMod_HUDStatus", "GRYBOOT", function(status)
-	Boot.OnStatus(status)
+	local API = GryMod.API
+
+	if not (API and API.HUDEvent) then
+		return
+	end
+
+	if status == 1 then
+		API.HUDEvent("lost")
+	elseif status == 0 and malfunctioning then
+		API.HUDEvent("reboot")
+	end
 end)
+
+-- The "disabled" event: the shutdown animation plays (with its sound) over a HUD that is hidden; Stop ends it, "enabled" reboots.
+function Boot.Malfunctioning()
+	return malfunctioning
+end
+
+function Boot.Shutdown()
+	shutdown = true
+	Boot.OnStatus(1)
+end
+
+function Boot.ShutdownHeld()
+	return shutdown
+end
+
+-- Ends whatever is on, with no sound: the sequences and the shutdown.
+function Boot.Stop()
+	current = nil
+	malfunctioning = false
+	shutdown = false
+end
+
+-- The suit is back after a "disabled": the reboot sequence (silent, as in the original game).
+function Boot.Restart()
+	Boot.Stop()
+
+	if enabled() then
+		begin("reboot")
+	end
+end
 
 hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 	local ply = LocalPlayer()
 	local alive = IsValid(ply) and ply:Alive()
+	local Hud = GryMod.FlashHUD
+	local normal = Hud and Hud.Enabled()
+	-- the shutdown of the "disabled" event is drawn while the HUD itself is hidden
+	local held = not normal and shutdown and Hud and Hud.HudWanted and Hud.HudWanted()
 
-	if not (GryMod.FlashHUD and GryMod.FlashHUD.Enabled()) then
+	if not normal and not held then
 		if alive and not wasAlive then
 			Boot.NoteSpawn()
 		end
@@ -346,12 +395,14 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 		return
 	end
 
-	-- the first spawn starts the log (every spawn with gry_boot_every_spawn); dying ends whatever was on
-	if alive and not wasAlive then
-		Boot.Spawned()
-	elseif not alive then
-		current = nil
-		malfunctioning = false
+	if normal then
+		-- the first spawn starts the log (every spawn with gry_boot_every_spawn); dying ends whatever was on
+		if alive and not wasAlive then
+			Boot.Spawned()
+		elseif not alive then
+			current = nil
+			malfunctioning = false
+		end
 	end
 
 	wasAlive = alive
@@ -403,12 +454,18 @@ function Boot.RegisterEvents()
 		if enabled() and begin("initialize") then
 			play(snd_reboot)
 		end
-	end)
+	end, {
+		label = "Boot log",
+		follows = {{"gry_hud_boot", "the start-up and reboot sequences"}, {"gry_sounds", "the start-up sound"}}
+	})
 
 	-- the suit is down: the emergency shutdown animation (HUD_Lost) with its sound, until a "reboot"
 	API.RegisterHUDEvent("lost", function()
 		Boot.OnStatus(1)
-	end)
+	end, {
+		label = "Emergency shutdown",
+		follows = {{"gry_hud_boot", "the start-up and reboot sequences"}, {"gry_sounds", "the malfunction sound"}}
+	})
 
 	-- the suit comes back: the reboot sequence (silent, as in the original game)
 	API.RegisterHUDEvent("reboot", function()
@@ -419,7 +476,10 @@ function Boot.RegisterEvents()
 		elseif enabled() then
 			begin("reboot")
 		end
-	end)
+	end, {
+		label = "Reboot",
+		follows = {{"gry_hud_boot", "the start-up and reboot sequences"}}
+	})
 
 	-- a malfunction of the HUD for data.seconds (5 by default, from 0.1 to 60): the shutdown animation, then the reboot
 	API.RegisterHUDEvent("malfunction", function(data)
@@ -427,7 +487,10 @@ function Boot.RegisterEvents()
 
 		Boot.OnStatus(1)
 		timer.Create(API_MALFUNCTION_TIMER, seconds, 1, Boot.EndApiMalfunction)
-	end)
+	end, {
+		label = "Malfunction",
+		follows = {{"gry_hud_boot", "the start-up and reboot sequences"}, {"gry_sounds", "the malfunction sound"}}
+	})
 end
 
 Boot.RegisterEvents()

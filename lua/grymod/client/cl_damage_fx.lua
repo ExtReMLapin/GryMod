@@ -7,6 +7,10 @@
 --
 -- The HUD jump is the switch gry_hud_damagefx (one of the HUD elements, see cl_hud_options.lua); the screen effects are
 -- the switch gry_screenfx. Nothing runs when nothing is happening: the screen hook only exists while an effect plays.
+--
+-- These effects are HUD events of the extension API (cl_api_hud_events.lua: armor_hit, decloak, low_health, jam). The functions
+-- here are what an event runs (FX.Events); the game's own triggers (the observer below, the shot out of the camouflage) call the
+-- event through FX.Emit, so that a picture and its sound have ONE path (the armor hit's sound is played by the same event).
 
 GryMod = GryMod or {}
 
@@ -30,6 +34,16 @@ FX.LOW_BAND = 0.25
 FX.INTERFERENCE_DISTORTION = 20
 FX.INTERFERENCE_DECAY = 4
 FX.INTERFERENCE_FLOOR = 0.5
+-- The jam event (the HUD interference kept going): how long it lasts by default and at most (seconds), and how hard the HUD shakes
+-- (stage pixels, the unit of the interference's distortion).
+FX.JAM_SECONDS = 2
+FX.JAM_MAX_SECONDS = 60
+FX.JAM_STRENGTH = 12
+
+-- The clock of the effects: replaceable, the tests freeze it.
+function FX.Now()
+	return RealTime()
+end
 
 local function number(value)
 	if type(value) ~= "number" or value ~= value then
@@ -134,6 +148,7 @@ end
 
 function FX.Reset(state)
 	state.jolt = 0
+	state.jamLeft = nil
 	state.armorAt, state.lowAt, state.lowLevel, state.emptiedUntil = nil, nil, nil, nil
 	state.health, state.energy = nil, nil
 	FX.Sync(state, 0)
@@ -181,7 +196,6 @@ function FX.Observe(state, sample, now, options)
 		return
 	end
 
-	local started = false
 	local dropped = lastEnergy and energy < lastEnergy
 	local emptied = false
 
@@ -195,29 +209,98 @@ function FX.Observe(state, sample, now, options)
 	end
 
 	if sample.armor and dropped and not emptied and not sample.malfunction and FX.ArmorShake(lastEnergy - energy) > 0 then
-		started = FX.ArmorImpact(state, now, options)
+		-- the picture only: the sound of an armor hit is the server's decision (sv_health.lua, Mech.ArmorHitSoundDue), it comes with
+		-- the same event (cl_sounds.lua) and has its own rule: the two rules of the original game are not the same
+		FX.Emit("armor_hit", {sound = false}, state, now, options)
 	end
 
-	if options.screen then
-		local level = FX.LowHealthLevel(health, sample.max, lastHealth)
+	local level = FX.LowHealthLevel(health, sample.max, lastHealth)
 
-		if level > 0 then
-			state.lowAt, state.lowLevel = now, level
-			started = true
+	if level > 0 then
+		FX.Emit("low_health", {level = level}, state, now, options)
+	end
+end
 
-			if level == 2 then
-				FX.Shake(1, 40, 0.4)
-			end
-		end
+-- Says that a HUD event is due: the game's own triggers call the extension API like any addon does (cl_api_hud_events.lua plays
+-- the event with the state of the local player). The state, the time and the options come along for the tests, which put another
+-- Emit here to run the event on a state of their own.
+function FX.Emit(name, data)
+	local API = GryMod.API
+
+	if API and API.HUDEvent then
+		return API.HUDEvent(name, data)
 	end
 
-	if started then
+	return false
+end
+
+-- The low health effect, level 1 (the 20-25 % band) or 2 (under 20 %: the shake as well): the red tint and the blur. The screen
+-- switch only. Returns whether it started.
+function FX.LowHealth(state, level, now, options)
+	if (level ~= 1 and level ~= 2) or not options.screen then
+		return false
+	end
+
+	state.lowAt, state.lowLevel = now, level
+
+	if level == 2 then
+		FX.Shake(1, 40, 0.4)
+	end
+
+	FX.Sync(state, now)
+
+	return true
+end
+
+-- The jam: the HUD trembles for this many seconds (the interference kept up at JAM_STRENGTH, then it falls away). The HUD jump
+-- switch only. Returns whether it started.
+function FX.Jam(state, seconds, options)
+	if not options.hud then
+		return false
+	end
+
+	state.jamLeft = math.Clamp(tonumber(seconds) or FX.JAM_SECONDS, 0.1, FX.JAM_MAX_SECONDS)
+
+	return true
+end
+
+-- What each HUD event runs, on a state: function(state, now, data, options). The extension API's handlers are in
+-- cl_api_hud_events.lua and call these with the state of the local player.
+FX.Events = {}
+
+-- data.visual = false: no picture (the sound alone), data.sound = false: no sound (the picture alone)
+function FX.Events.armor_hit(state, now, data, options)
+	if data.visual ~= false and FX.ArmorImpact(state, now, options) then
 		FX.Sync(state, now)
 	end
+
+	if data.sound ~= false and GryMod.PlayArmorHitSound then
+		GryMod.PlayArmorHitSound()
+	end
+end
+
+function FX.Events.decloak(state, now, data, options)
+	FX.Decloak(state, now, options)
+end
+
+function FX.Events.low_health(state, now, data, options)
+	FX.LowHealth(state, data.level, now, options)
+end
+
+function FX.Events.jam(state, now, data, options)
+	FX.Jam(state, data.seconds, options)
 end
 
 -- The jump of the HUD this frame (stage pixels), and the decay of its strength. The two random numbers are for the tests.
 function FX.HudOffset(state, dt, rx, ry)
+	-- a jam keeps the interference at its strength while it lasts
+	local jam = state.jamLeft
+
+	if jam and jam > 0 then
+		state.jolt = math.max(state.jolt, FX.JAM_STRENGTH)
+		state.jamLeft = jam - dt
+	end
+
 	if state.jolt <= 0 then
 		return 0, 0
 	end

@@ -888,11 +888,35 @@ end
 function Module.SuitOn(ply)
 	local API = GryMod.API
 
+	-- the HUD events "disabled" (until "enabled" or "reset") hide the HUD of this screen only: the suit itself is unchanged
+	if Module.LocalOff then
+		return false
+	end
+
 	if not (API and API.IsSuitEnabled) or not IsValid(ply) then
 		return true
 	end
 
 	return API.IsSuitEnabled(ply)
+end
+
+-- The HUD events "disabled" and "enabled" (cl_api_hud_events.lua): the HUD of this screen is hidden, or shown again.
+Module.LocalOff = false
+
+function Module.SetLocalOff(off)
+	Module.LocalOff = off == true
+end
+
+function Module.IsLocalOff()
+	return Module.LocalOff == true
+end
+
+-- Whether the player wants a HUD at all (gry_hud) and the movie is there, whatever the state of the suit: the shutdown animation
+-- of the "disabled" event is drawn while the HUD itself is hidden.
+function Module.HudWanted()
+	local convar = GetConVar("gry_hud")
+
+	return (not convar or convar:GetBool()) and Module.Available()
 end
 
 -- Whether the HUD is on (gry_hud, and the suit is on) and can be drawn.

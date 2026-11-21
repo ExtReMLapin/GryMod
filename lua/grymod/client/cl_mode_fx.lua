@@ -9,11 +9,12 @@
 -- The camouflage has its own effect (cl_cloak_fx.lua, the graph "suit_cloakmode", 1.7 s) and is not repeated here. The
 -- graphs also hold a white and a dark red fade-in, but nothing starts it in the demo's data: it is not drawn.
 --
--- How it works: a Think hook reads the mode of the local player (the field NanosuitMode that cl_hud.lua keeps, so nothing
--- depends on a network message) and starts the effect of the mode when it changes. Not played the first time the mode is
--- seen, while the player is dead, in the first second after a respawn (the server puts the suit back in armor then),
--- nor while the suit is down (sv_malfunction.lua forces armor mode). The post effect hook exists only while an effect
--- runs and takes itself away at the end. Switch: gry_screenfx, the same as the damage effects of cl_damage_fx.lua.
+-- How it works: the tint is part of the HUD event "mode" (cl_api_hud_events.lua), which plays it together with the mode's
+-- activation sound. Player:SetNanosuitMode (cl_hud.lua) calls the event at every change of mode, and asks for the tint (data.tint)
+-- only when TintDue says so: not the first time the mode is known, not while the player is dead, in the first second after a
+-- respawn (the server puts the suit back in armor then), nor while the suit is down (sv_malfunction.lua forces armor mode). A Think
+-- hook only keeps the bookkeeping those rules need. The post effect hook exists only while an effect runs and takes itself away at
+-- the end. Switch: gry_screenfx, the same as the damage effects of cl_damage_fx.lua.
 
 GryMod = GryMod or {}
 
@@ -171,23 +172,63 @@ function FX.Start(state, mode, now)
 end
 
 --------------------------------------------------------------------------------------------------------------------
--- Watching the player
+-- The HUD event "mode" (cl_api_hud_events.lua): the tint of the mode entered and the mode's activation sound, played together.
+-- Player:SetNanosuitMode (cl_hud.lua) is the trigger and asks for the tint only when the change is a real one (TintDue).
 --------------------------------------------------------------------------------------------------------------------
 
--- Looks at the player once a frame: sample = {mode, alive, malfunction}, now in seconds, enabled = the switch. Returns the mode
--- whose effect it started, if any. The first mode seen is only the reference, and a mode followed while dead or with the
--- switch off is not played later.
-function FX.Observe(state, sample, now, enabled)
-	local mode = sample.mode
+-- The modes the event knows, by the name data.mode uses.
+FX.NAMES = {armor = Modes.ARMOR, speed = Modes.SPEED, strength = Modes.STRENGTH, cloak = Modes.CLOAK}
 
+-- The mode a data.mode value means: its name ("armor", "speed", "strength", "cloak") or its number (GryMod.Modes); nil for
+-- anything else (the drop is no mode).
+function FX.ModeFromData(value)
+	if isstring(value) then
+		return FX.NAMES[value]
+	end
+
+	for _, mode in pairs(FX.NAMES) do
+		if value == mode then
+			return mode
+		end
+	end
+
+	return nil
+end
+
+-- The name data.mode carries for a mode number, or nil for what is no mode.
+function FX.NameOf(mode)
+	for name, value in pairs(FX.NAMES) do
+		if value == mode then
+			return name
+		end
+	end
+
+	return nil
+end
+
+-- Whether a change of the suit from `previous` to `mode` gets the tint (the sound plays in any case). sample = {alive, malfunction}.
+-- Not for a mode without a tint, the same mode again, or the first mode known (nothing before it); not while dead, nor in the
+-- first second after a respawn (the server's own change back to armor), nor while the suit is down (sv_malfunction.lua forces armor
+-- mode).
+function FX.TintDue(state, previous, mode, sample, now)
+	if not PROFILES[mode] or previous == nil or previous == mode then
+		return false
+	end
+
+	if not sample.alive or sample.malfunction then
+		return false
+	end
+
+	return state.aliveAt ~= nil and now - state.aliveAt >= FX.SPAWN_GRACE
+end
+
+-- Looks at the player once a frame: sample = {alive, malfunction}, now in seconds. It only keeps the state's bookkeeping: since when the
+-- player has been alive (TintDue), and takes the effect back when the suit turns out to be down a moment after it started.
+function FX.Observe(state, sample, now)
 	if not sample.alive then
 		state.aliveAt = nil
 
-		if mode ~= nil then
-			state.mode = mode
-		end
-
-		return nil
+		return
 	end
 
 	if not state.aliveAt then
@@ -199,26 +240,18 @@ function FX.Observe(state, sample, now, enabled)
 		state.starts[state.startedMode] = nil
 		state.startedMode = nil
 	end
+end
 
-	if mode == nil then
-		return nil
-	end
-
-	local previous = state.mode
-	state.mode = mode
-
-	if previous == nil or previous == mode or not enabled or sample.malfunction then
-		return nil
-	end
-
-	if now - state.aliveAt < FX.SPAWN_GRACE or not PROFILES[mode] then
-		return nil
+-- Starts the tint of a mode on a state and remembers it (Observe may take it back). Returns whether the mode has a tint.
+function FX.Play(state, mode, now)
+	if not PROFILES[mode] then
+		return false
 	end
 
 	FX.Start(state, mode, now)
 	state.startedMode, state.startedAt = mode, now
 
-	return mode
+	return true
 end
 
 local switch = GetConVar("gry_screenfx") or CreateClientConVar("gry_screenfx", "1", true, false,
@@ -231,7 +264,21 @@ end
 FX.State = FX.State or FX.NewState()
 
 -- one table, filled in again each frame: no garbage
-local sample = {mode = nil, alive = false, malfunction = false}
+local sample = {alive = false, malfunction = false}
+
+-- Whether the local player's change of mode from `previous` to `mode` gets the tint, from what the player is now.
+function FX.TintNow(previous, mode)
+	local ply = LocalPlayer()
+
+	if not IsValid(ply) then
+		return false
+	end
+
+	sample.alive = ply:Alive()
+	sample.malfunction = ply:GetNW2Bool("GryMalfunction", false)
+
+	return FX.TintDue(FX.State, previous, mode, sample, FX.Now())
+end
 
 hook.Add("Think", HOOK, function()
 	local ply = LocalPlayer()
@@ -240,9 +287,8 @@ hook.Add("Think", HOOK, function()
 		return
 	end
 
-	sample.mode = ply.NanosuitMode
 	sample.alive = ply:Alive()
 	sample.malfunction = ply:GetNW2Bool("GryMalfunction", false)
 
-	FX.Observe(FX.State, sample, FX.Now(), FX.Enabled())
+	FX.Observe(FX.State, sample, FX.Now())
 end)

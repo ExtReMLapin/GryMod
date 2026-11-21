@@ -33,14 +33,14 @@ local function r3(mode, t)
 end
 
 -- a sample the way the Think hook builds it
-local function sample(mode, alive, malfunction)
-	return {mode = mode, alive = alive ~= false, malfunction = malfunction == true}
+local function sample(alive, malfunction)
+	return {alive = alive ~= false, malfunction = malfunction == true}
 end
 
--- a state that has seen one sample at time 0 and has been alive for a long time
-local function seen(mode)
+-- a state that has seen the player alive since a long time ago
+local function seen()
 	local state = FX.NewState()
-	FX.Observe(state, sample(mode), -100, true)
+	FX.Observe(state, sample(), -100)
 
 	return state
 end
@@ -123,87 +123,77 @@ return {
 			end
 		},
 		{
-			name = "Observe: the first sample is only the reference, a change to another mode starts that mode's effect",
+			name = "TintDue: a real change to a mode that has a tint gets it; the same mode again, the first mode known (nothing before it), or a mode without a tint does not",
 			func = function(state)
-				local fresh = FX.NewState()
-				expect(FX.Observe(fresh, sample(Modes.ARMOR), 0, true)).to.beNil()
-				expect(FX.Observe(fresh, sample(Modes.ARMOR), 5, true)).to.beNil()
-				expect(FX.Observe(fresh, sample(Modes.SPEED), 10, true)).to.equal(Modes.SPEED)
-				expect(FX.Observe(fresh, sample(Modes.SPEED), 11, true)).to.beNil()
-				expect(FX.Observe(fresh, sample(Modes.STRENGTH), 20, true)).to.equal(Modes.STRENGTH)
-				expect(FX.Observe(fresh, sample(Modes.ARMOR), 30, true)).to.equal(Modes.ARMOR)
+				local s = seen()
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(), 10)).to.beTrue()
+				expect(FX.TintDue(s, Modes.SPEED, Modes.STRENGTH, sample(), 10)).to.beTrue()
+				expect(FX.TintDue(s, Modes.CLOAK, Modes.ARMOR, sample(), 10)).to.beTrue()
+				expect(FX.TintDue(s, Modes.SPEED, Modes.SPEED, sample(), 10)).to.beFalse()
+				expect(FX.TintDue(s, nil, Modes.SPEED, sample(), 10)).to.beFalse()
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.CLOAK, sample(), 10)).to.beFalse()
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.DROP, sample(), 10)).to.beFalse()
+				expect(FX.TintDue(s, Modes.ARMOR, nil, sample(), 10)).to.beFalse()
 			end
 		},
 		{
-			name = "Observe: the camouflage starts nothing here, leaving it starts the effect of the mode entered",
+			name = "TintDue: nothing while dead, nor in the first second after the respawn (the server puts the suit back in armor)",
 			func = function(state)
-				local s = seen(Modes.ARMOR)
-				expect(FX.Observe(s, sample(Modes.CLOAK), 10, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.SPEED), 20, true)).to.equal(Modes.SPEED)
-				expect(FX.Observe(s, sample(Modes.CLOAK), 30, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.ARMOR), 40, true)).to.equal(Modes.ARMOR)
+				local s = seen()
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(false), 10)).to.beFalse()
+
+				-- the observer sees the player die, then come back
+				FX.Observe(s, sample(false), 10)
+				expect(s.aliveAt).to.beNil()
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 11)).to.beFalse() -- never seen alive yet
+
+				FX.Observe(s, sample(true), 12)
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 12.5)).to.beFalse()
+				expect(FX.TintDue(s, Modes.ARMOR, Modes.SPEED, sample(true), 13)).to.beTrue()
 			end
 		},
 		{
-			name = "Observe: nothing while dead (the mode is followed silently), nor in the first second after the respawn",
+			name = "TintDue: no tint while the suit is down (the server forces armor mode)",
 			func = function(state)
-				local s = seen(Modes.SPEED)
-
-				-- dies, and the server puts the suit back in armor before the player is alive again
-				expect(FX.Observe(s, sample(Modes.SPEED, false), 10, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.ARMOR, false), 11, true)).to.beNil()
-
-				-- alive: the mode is already armor, nothing changes
-				expect(FX.Observe(s, sample(Modes.ARMOR, true), 12, true)).to.beNil()
-
-				-- the mode message arrives a moment after the player is alive: still the spawn
-				expect(FX.Observe(s, sample(Modes.SPEED, true), 12.5, true)).to.beNil()
-
-				-- a real choice later is played
-				expect(FX.Observe(s, sample(Modes.STRENGTH, true), 13.5, true)).to.equal(Modes.STRENGTH)
+				local s = seen()
+				expect(FX.TintDue(s, Modes.SPEED, Modes.ARMOR, sample(true, true), 10)).to.beFalse()
+				expect(FX.TintDue(s, Modes.SPEED, Modes.ARMOR, sample(true, false), 10)).to.beTrue()
 			end
 		},
 		{
-			name = "Observe: no effect while the suit is down (the server forces armor mode), and none for it afterwards",
+			name = "Play starts the tint and remembers it; the malfunction flag that shows a moment after the forced armor mode takes it back (seen live: mode first, flag 50 ms later)",
 			func = function(state)
-				local s = seen(Modes.SPEED)
-				expect(FX.Observe(s, sample(Modes.ARMOR, true, true), 10, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.ARMOR, true, false), 11, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.SPEED, true, false), 20, true)).to.equal(Modes.SPEED)
-			end
-		},
-		{
-			name = "Observe: the malfunction flag that shows a moment after the forced armor mode takes the effect back (seen live: mode first, flag 50 ms later)",
-			func = function(state)
-				local s = seen(Modes.SPEED)
-				expect(FX.Observe(s, sample(Modes.ARMOR, true, false), 10, true)).to.equal(Modes.ARMOR)
+				local s = seen()
+				expect(FX.Play(s, Modes.ARMOR, 10)).to.beTrue()
 				expect(FX.Params(s, 10.02)).toNot.beNil()
 
-				expect(FX.Observe(s, sample(Modes.ARMOR, true, true), 10.05, true)).to.beNil()
+				FX.Observe(s, sample(true, true), 10.05)
 				expect(FX.Params(s, 10.05)).to.beNil()
 
 				-- a flag that comes long after leaves a normal effect alone
-				local late = seen(Modes.ARMOR)
-				expect(FX.Observe(late, sample(Modes.SPEED, true, false), 10, true)).to.equal(Modes.SPEED)
-				FX.Observe(late, sample(Modes.SPEED, true, true), 10.35, true)
+				local late = seen()
+				FX.Play(late, Modes.SPEED, 10)
+				FX.Observe(late, sample(true, true), 10.35)
 				expect(FX.Params(late, 10.35)).toNot.beNil()
+
+				-- no tint for the camouflage
+				expect(FX.Play(seen(), Modes.CLOAK, 10)).to.beFalse()
 			end
 		},
 		{
-			name = "Observe: the switch off plays nothing, and turning it on later does not replay a past change",
+			name = "the event's mode data: the names and the numbers of the four modes, nothing else",
 			func = function(state)
-				local s = seen(Modes.ARMOR)
-				expect(FX.Observe(s, sample(Modes.SPEED), 10, false)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.SPEED), 11, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.ARMOR), 20, true)).to.equal(Modes.ARMOR)
-			end
-		},
-		{
-			name = "Observe: a missing mode (the server has not said yet) changes nothing",
-			func = function(state)
-				local s = seen(Modes.SPEED)
-				expect(FX.Observe(s, sample(nil), 10, true)).to.beNil()
-				expect(FX.Observe(s, sample(Modes.SPEED), 11, true)).to.beNil()
+				expect(FX.ModeFromData("armor")).to.equal(Modes.ARMOR)
+				expect(FX.ModeFromData("speed")).to.equal(Modes.SPEED)
+				expect(FX.ModeFromData("strength")).to.equal(Modes.STRENGTH)
+				expect(FX.ModeFromData("cloak")).to.equal(Modes.CLOAK)
+				expect(FX.ModeFromData(Modes.SPEED)).to.equal(Modes.SPEED)
+				expect(FX.ModeFromData(Modes.ARMOR)).to.equal(Modes.ARMOR)
+				expect(FX.ModeFromData(Modes.DROP)).to.beNil()
+				expect(FX.ModeFromData("nonsense")).to.beNil()
+				expect(FX.ModeFromData(nil)).to.beNil()
+				expect(FX.NameOf(Modes.STRENGTH)).to.equal("strength")
+				expect(FX.NameOf(Modes.DROP)).to.beNil()
 			end
 		},
 		{
@@ -319,12 +309,11 @@ return {
 			end
 		},
 		{
-			name = "the Think hook reads the player's mode: a change of mode starts the effect and the post hook",
+			name = "the Think hook only keeps the bookkeeping (since when the player is alive): a change of mode alone starts nothing, the event does",
 			func = function(state)
 				local now = 1000
 				local me = fakeMe(Modes.ARMOR, true, false)
 				stub(FX, "Now", function() return now end)
-				stub(FX, "Enabled", function() return true end)
 				stub(_G, "LocalPlayer", function() return me end)
 				stub(_G, "DrawColorModify", function() end)
 				stub(FX, "State", FX.NewState())
@@ -332,44 +321,39 @@ return {
 				local think = hook.GetTable().Think.GryModeFx
 				expect(isfunction(think)).to.beTrue()
 
-				think() -- the reference
-				expect(paintHook()).to.beNil()
+				think()
+				expect(FX.State.aliveAt).to.equal(1000)
 
 				me.NanosuitMode = Modes.SPEED
 				now = 1010
 				think()
-				expect(isfunction(paintHook())).to.beTrue()
+				expect(paintHook()).to.beNil()
 			end
 		},
 		{
-			name = "the Think hook does nothing without a player, with the switch off, or while the suit is down",
+			name = "the Think hook does nothing without a player; the live decision (TintNow) reads the player: alive for a while, not down",
 			func = function(state)
 				local now = 1000
 				local me = fakeMe(Modes.ARMOR, true, false)
-				local enabled = true
 				stub(FX, "Now", function() return now end)
-				stub(FX, "Enabled", function() return enabled end)
 				stub(_G, "LocalPlayer", function() return nil end)
 				stub(FX, "State", FX.NewState())
 
 				local think = hook.GetTable().Think.GryModeFx
 				think() -- no player: no error
+				expect(FX.TintNow(Modes.ARMOR, Modes.SPEED)).to.beFalse()
 
 				_G.LocalPlayer = function() return me end
 				think()
-
-				enabled = false
-				me.NanosuitMode = Modes.SPEED
 				now = 1010
-				think()
-				expect(paintHook()).to.beNil()
+				expect(FX.TintNow(Modes.ARMOR, Modes.SPEED)).to.beTrue()
 
-				enabled = true
-				me.NanosuitMode = Modes.STRENGTH
 				me.GetNW2Bool = function(_, name) return name == "GryMalfunction" end
-				now = 1020
-				think()
-				expect(paintHook()).to.beNil()
+				expect(FX.TintNow(Modes.ARMOR, Modes.SPEED)).to.beFalse()
+
+				me.GetNW2Bool = function() return false end
+				me.Alive = function() return false end
+				expect(FX.TintNow(Modes.ARMOR, Modes.SPEED)).to.beFalse()
 			end
 		},
 		{

@@ -5,6 +5,7 @@
 local FX = GryMod.DamageFx
 
 local realShake
+local realEmit
 local savedDecloak
 
 local function sample(health, energy, armor, max)
@@ -25,10 +26,18 @@ return {
 	groupName = "GryMod damage feedback",
 	beforeAll = function(state)
 		realShake = FX.Shake
+		realEmit = FX.Emit
 		savedDecloak = GetConVar("gry_decloak_glitch"):GetString()
+	end,
+	beforeEach = function(state)
+		-- the observer says what it saw through FX.Emit (the HUD event, played on the live state): here the event runs on the state under test
+		FX.Emit = function(name, data, st, now, options)
+			FX.Events[name](st, now, data, options)
+		end
 	end,
 	afterEach = function(state)
 		FX.Shake = realShake
+		FX.Emit = realEmit
 		hook.Remove("RenderScreenspaceEffects", "GryDamageFx")
 		pcall(function() GetConVar("gry_decloak_glitch"):SetString(savedDecloak) end)
 	end,
