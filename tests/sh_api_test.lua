@@ -47,7 +47,7 @@ return {
 			end
 		},
 		{
-			name = "Has tells which parts exist: the wave A parts and the weapon registry yes, the tracked registry (not there yet) no, junk no",
+			name = "Has tells which parts exist: the wave A parts, the weapon registry and the tracked entity registry yes, junk no",
 			func = function()
 				local API = GryMod.API
 
@@ -56,7 +56,7 @@ return {
 				expect(API.Has("hudevents")).to.beTrue()
 				expect(API.Has("safecall")).to.beTrue()
 				expect(API.Has("weapons")).to.beTrue()
-				expect(API.Has("tracked")).to.beFalse()
+				expect(API.Has("tracked")).to.beTrue()
 				expect(API.Has("nothing at all")).to.beFalse()
 				expect(API.Has(nil)).to.beFalse()
 				expect(API.Has(42)).to.beFalse()
