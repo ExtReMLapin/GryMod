@@ -297,13 +297,20 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `scan` | boolean, `true` by default | the binoculars may tag it; `false`: they cannot (the lock sound does not play, the server refuses the tag) |
 | `radar` | `"always"`, `"hostile"`, `"scan"`, `"never"` | when the radar lists it (below); nothing: the radar's usual rules |
 | `relation` | `"auto"` (default), `"ally"`, `"neutral"`, `"hostile"`, or `function(ply, ent)` | what it is to the player; `"auto"`: the NPC's real attitude |
-| `type` | `"human"`, `"flying"`, `"machine"` or 1, 2, 3 | the icon of the radar: a soldier, a flying unit, a machine; nothing: the class decides (unknown classes are `"human"`) |
+| `type` | `"human"`, `"flying"`, `"machine"`, `"device"` or 1, 2, 3, 4 | the icon of the radar: a soldier, a flying unit, a machine or a vehicle (a rectangle with a square), a device (a rectangle with a disc: GryMod's Combine mine); nothing: the class decides (unknown classes are `"human"`) |
 | `size` | `"normal"`, `"big"` | `"big"` draws the icon twice the size (the Strider's); nothing: the class decides |
 | `label` | text, or `function(ent)` | a name for the entity. Stored; no part of the HUD shows it yet |
 | `shape` | `"unit"` (default), `"dot"`, `"rect"`, `"triangle"` | how it is drawn on the radar. Only `"unit"` (the radar's soldier, machine and flying icons) is drawn today; the other shapes are accepted and stored, never an error (`"rect"` is for vehicles, `"triangle"` for dangers) |
 | `danger` | a table (below) | the entity is a projectile or a trap the player must be warned about (the grenade warning) |
 | `indicator` | `"warning"`, `"marker"`, `"none"` | how a danger shows on the screen. `"warning"` (the default for an entry with `danger`) is the grenade-detect warning: an icon with the label and the distance. `"marker"` and `"none"` are accepted and stored: the warning does not draw them, and no marker is drawn yet |
 | `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
+
+A vehicle or a device (an entity that is neither an NPC nor a nextbot) is a radar contact when its entry gives it a `radar` rule (the stock entries
+for the Buggy and the Jalopy, `prop_vehicle_jeep`, the airboat, the Combine APC and crane, and for the Combine mine use `"scan"`: on the radar once
+the binoculars scanned it), unless the player sits in it or the administrators' switch `gry_radar_objects` is off. A vehicle takes the colour of its
+DRIVER (nobody or a neutral: grey, a friend: blue, a hostile: red) unless its entry has a `relation` of its own; the mine is hostile until the player has
+put it down with the gravity gun (`m_bPlacedByPlayer`). The seats of the spawn menu (`prop_vehicle_prisoner_pod`) are not registered: another
+addon registers its own vehicles through this function.
 
 At least one of `class`, `base` and `match` is needed. The entity matches when ANY of the ones you give matches, tried in this order
 of cost: the class, then the base, then the function (which is not called when the class or the base matched). Entries are tried by

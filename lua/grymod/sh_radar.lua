@@ -29,7 +29,7 @@ S.MAX_CONTACTS = 48
 S.SUB_ALLY = 5
 
 -- The message: positions in steps of 8 units (a third of a metre), 13 bits each (the map is within 32768 units), the
--- facing in 512 steps of the circle, 68 bits for a contact.
+-- facing in 512 steps of the circle, 69 bits for a contact (the icon type has three bits: 1 to 4 are used, see the movie's Units clip).
 S.POS_STEP = 8
 S.POS_BITS = 13
 S.YAW_STEPS = 512
@@ -78,7 +78,7 @@ function S.Write(contacts)
 		local c = contacts[i]
 
 		net.WriteUInt(c.id, 13)
-		net.WriteUInt(c.type, 2)
+		net.WriteUInt(c.type, 3)
 		net.WriteUInt(c.sub, 3)
 		net.WriteBool(c.marker and true or false)
 		net.WriteBool(c.big and true or false)
@@ -98,7 +98,7 @@ function S.Read()
 		local c = {}
 
 		c.id = net.ReadUInt(13)
-		c.type = net.ReadUInt(2)
+		c.type = net.ReadUInt(3)
 		c.sub = net.ReadUInt(3)
 		c.marker = net.ReadBool()
 		c.big = net.ReadBool()

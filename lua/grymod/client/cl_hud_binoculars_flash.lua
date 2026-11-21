@@ -1001,11 +1001,43 @@ function Bino.IsMissing()
 	return missing
 end
 
--- An entity whose own position reads as a distance: the living (NPCs, players) and vehicles. A prop's origin can be
+-- A vehicle or a mine (what is neither an NPC nor a nextbot and that the registry of tracked entities gives a radar rule) that the radar may
+-- list, so that the binoculars may scan it: the server decides in the end (Radar.Scan), this only spares the sound of a lock it would
+-- refuse. Not the vehicle the player sits in; nothing with the switch gry_radar_objects off.
+function Bino.IsObject(entity)
+	if not IsValid(entity) or entity:IsNPC() or entity:IsNextBot() or entity:IsPlayer() then
+		return false
+	end
+
+	local switch = GetConVar("gry_radar_objects")
+
+	if switch and not switch:GetBool() then
+		return false
+	end
+
+	local API = GryMod.API
+	local tracked = API and API.GetTracked and API.GetTracked(entity)
+
+	if not tracked or tracked.radar == nil or tracked.radar == "never" or tracked.scan == false then
+		return false
+	end
+
+	local ply = LocalPlayer()
+
+	if IsValid(ply) and entity:IsVehicle() and ply:GetVehicle() == entity then
+		return false
+	end
+
+	return true
+end
+
+-- An entity whose own position reads as a distance: the living (NPCs, players), vehicles and the mines. A prop's origin can be
 -- anywhere in it and a brush entity's far off the surface that was hit: they read as the point hit.
 local function aimable(entity)
-	return IsValid(entity) and not entity:IsWorld() and (entity:IsNPC() or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle())
+	return IsValid(entity) and not entity:IsWorld() and (entity:IsNPC() or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle() or Bino.IsObject(entity))
 end
+
+Bino.Aimable = aimable
 
 local trace = {}
 local traced = {}
@@ -1071,7 +1103,8 @@ function Bino.Scannable(entity, isTagged)
 		if entity:Health() <= 0 and entity:GetMaxHealth() > 0 then
 			return false
 		end
-	else
+	elseif not Bino.IsObject(entity) then
+		-- (a vehicle or a mine: no health to look at)
 		return false
 	end
 

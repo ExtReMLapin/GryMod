@@ -39,8 +39,9 @@ local SHAPE = set({"unit", "dot", "rect", "triangle"})
 local SIZE = set({"normal", "big"})
 local INDICATOR = set({"warning", "marker", "none"})
 
--- The icons of the radar's movie: 1 ground units (infantry), 2 flying, 3 machines.
-local TYPE_NAMES = {human = 1, flying = 2, machine = 3}
+-- The icons of the radar's movie: 1 ground units (infantry), 2 flying, 3 machines and vehicles (the rectangles), 4 devices (a rectangle
+-- with a disc: the original's HUD code never produces it, GryMod uses it for the Combine mine).
+local TYPE_NAMES = {human = 1, flying = 2, machine = 3, device = 4}
 
 local MAX_NAME = 64
 local MAX_LABEL = 32 -- the text of the warning's movie is short
@@ -151,7 +152,7 @@ local CHECK = {
 			return TYPE_NAMES[v]
 		end
 
-		if isnumber(v) and v == math.floor(v) and v >= 1 and v <= 3 then
+		if isnumber(v) and v == math.floor(v) and v >= 1 and v <= 4 then
 			return v
 		end
 	end,
@@ -339,7 +340,7 @@ local function build(class, ent)
 end
 
 -- The first entry that matches the entity, or nil. The entry is the stored one, not a copy: read it, do not change it. Its fields:
--- key, priority, scan (bool), radar, relation, type (the radar's icon, 1 to 3), label, shape, size (nil when not given), danger
+-- key, priority, scan (bool), radar, relation, type (the radar's icon, 1 to 4), label, shape, size (nil when not given), danger
 -- (a table: label, type, armed, range, ownerOf, ownMissile), indicator, class, base, match.
 function API.GetTracked(ent)
 	if order[1] == nil then

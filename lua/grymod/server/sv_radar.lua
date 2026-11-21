@@ -9,6 +9,10 @@
 --     player) show only when scanned or when they hurt him;
 --   - the NPC that hurt the player is marked for 10 s, on the border of the radar if it is out of it;
 --   - the icon type: 1 ground, 2 flying, 3 machines (the registry's `type` and `size`: the stock classes are entries too).
+--   - the vehicles (the rectangle icons, type 3) and the Combine mines (type 4, a rectangle with a disc) are contacts once the binoculars
+--     scanned them (the registry gives them radar = "scan"): a vehicle in the colour of its DRIVER (nobody or a neutral: grey, a friend:
+--     blue, a hostile: red), never the one the player sits in; a mine is hostile, and an ally once the player has taken it with the
+--     gravity gun and put it down (m_bPlacedByPlayer); one switch, gry_radar_objects (the administrators' option);
 --   - the registry of tracked entities (GryMod.API.RegisterTracked, sh_api_tracked.lua) overrides all this for the NPCs and
 --     nextbots it matches: the icon type and size, the relation, when the contact is listed (radar = "always", "hostile",
 --     "scan" or "never") and whether the binoculars may tag it (scan = false); an entity that is not registered is as above.
@@ -32,6 +36,10 @@ local enabled = CreateConVar("gry_radar_contacts", "1", bit.bor(FCVAR_ARCHIVE, F
 -- replicated and archived like the other server options, so that the options panel of an administrator shows the real value
 local alliesAlways = CreateConVar("gry_radar_allies_always", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
 	"The allies of the player (NPCs that like him) are on the radar at once, in blue; 0 treats them like the hostiles: only when alerted or fighting within 26 m, or scanned")
+
+-- The vehicles and the mines (every entity that is not an NPC and that the registry gives a radar rule): on the radar once scanned.
+local objects = CreateConVar("gry_radar_objects", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
+	"The radar shows the vehicles and the Combine mines once the binoculars have scanned them; 0 leaves them off the radar")
 
 local INTERVAL = 0.2
 
@@ -89,6 +97,50 @@ local function trackedOf(ent)
 	return API and API.GetTracked and API.GetTracked(ent) or nil
 end
 
+-- Whether the radar lists vehicles and mines at all.
+function Radar.ObjectsEnabled()
+	return objects:GetBool()
+end
+
+-- The driver of a vehicle (the player or the NPC at the wheel), or nil. A field of Radar so that a test can replace it (the methods of
+-- a real entity cannot be overridden on the instance).
+function Radar.DriverOf(ent)
+	if isfunction(ent.GetDriver) then
+		local driver = ent:GetDriver()
+
+		if IsValid(driver) then
+			return driver
+		end
+	end
+
+	return nil
+end
+
+-- Whether the player sits in this vehicle.
+function Radar.Sits(ply, ent)
+	return IsValid(ply) and ent:IsVehicle() and ply:GetVehicle() == ent
+end
+
+-- A contact that is neither an NPC nor a nextbot: a vehicle or a mine, whatever the registry gives a radar rule (a vehicle of another
+-- addon registered through the API is one too). Never the player, never what the player sits in.
+function Radar.IsObject(ent, ply, tracked)
+	if not IsValid(ent) or ent:IsNPC() or ent:IsNextBot() or ent:IsPlayer() or not Radar.ObjectsEnabled() then
+		return false
+	end
+
+	tracked = tracked or trackedOf(ent)
+
+	if not tracked or tracked.radar == nil or tracked.radar == "never" then
+		return false
+	end
+
+	if Radar.Sits(ply, ent) then
+		return false
+	end
+
+	return true
+end
+
 -- A nextbot has none of the NPC's functions: it has no state and no enemy.
 local function npcState(npc)
 	if isfunction(npc.GetNPCState) then
@@ -99,7 +151,7 @@ local function npcState(npc)
 end
 
 -- What the rules need to know about an NPC (or a registered nextbot), for one player. The fields type, big, radar and noScan are
--- there only when the registry has an entry for it: type (the icon, 1 to 3) and big replace the ones of its class, radar says when
+-- there only when the registry has an entry for it: type (the icon, 1 to 4) and big replace the ones of its class, radar says when
 -- it is listed (see Step), noScan that the binoculars may not tag it. The relation comes through the relation chain, which asks the
 -- registry too.
 function Radar.Describe(npc, ply)
@@ -107,6 +159,16 @@ function Radar.Describe(npc, ply)
 	local enemy = isfunction(npc.GetEnemy) and npc:GetEnemy() or nil
 	local relation = GryMod.Friendly.Relation(ply, npc)
 	local tracked = trackedOf(npc)
+
+	-- a vehicle is the colour of its driver (nobody, or a driver that is neither friend nor foe: neutral); an entry that says what the
+	-- vehicle is to the player (a relation of its own) is not overridden
+	if relation == "neutral" and npc:IsVehicle() then
+		local driver = Radar.DriverOf(npc)
+
+		if driver and driver ~= ply then
+			relation = GryMod.Friendly.Relation(ply, driver)
+		end
+	end
 
 	local d = {
 		key = npc,
@@ -186,7 +248,8 @@ function Radar.Scan(ply, npc)
 		if npc:Health() <= 0 and npc:GetMaxHealth() > 0 then
 			return false
 		end
-	else
+	elseif not Radar.IsObject(npc, ply, tracked) then
+		-- (a vehicle or a mine: no health to look at, see IsObject)
 		return false
 	end
 
@@ -340,7 +403,7 @@ function Radar.Tick(ply, now)
 		local descs, seen = {}, {}
 
 		for _, ent in ipairs(ents.FindInSphere(origin, S.ScanUnits())) do
-			if ent ~= ply and (ent:IsNPC() or ent:IsNextBot() and trackedOf(ent)) then
+			if ent ~= ply and (ent:IsNPC() or ent:IsNextBot() and trackedOf(ent) or Radar.IsObject(ent, ply)) then
 				descs[#descs + 1] = Radar.Describe(ent, ply)
 				seen[ent] = true
 			end

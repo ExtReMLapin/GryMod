@@ -45,6 +45,14 @@ register("hl2_machines", {
 	type = "machine"
 })
 
+-- The vehicles: the rectangle icons of the radar, once the binoculars have scanned them (radar = "scan"), in the colour of their driver
+-- (the relation of the driver, GryMod's Radar.Describe). The Buggy and the Jalopy are both prop_vehicle_jeep. A seat of the spawn menu
+-- is prop_vehicle_prisoner_pod and is not here on purpose: another addon registers its own vehicles through the API.
+register("hl2_vehicles", {
+	class = {"prop_vehicle_jeep", "prop_vehicle_airboat", "prop_vehicle_apc", "prop_vehicle_crane"},
+	type = "machine", radar = "scan"
+})
+
 register("hl2_antlion_guards", {class = {"npc_antlionguard", "npc_antlionguardian"}, size = "big"})
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -113,8 +121,14 @@ register("hl2_bomb", {
 })
 
 -- combine_mine: m_iMineState 1 on the ground, 3 armed (a foe is near), 4 triggered (it clicks, then jumps)
+-- It is also a radar contact once scanned: the type 4 icon (a rectangle with a disc, never produced by the original's HUD code).
 register("hl2_mine", {
 	class = "combine_mine",
+	type = "device", radar = "scan",
+	-- hostile, until the player has taken it with the gravity gun and put it down: then it is his (m_bPlacedByPlayer)
+	relation = function(ply, ent)
+		return ent:GetInternalVariable("m_bPlacedByPlayer") == true and "ally" or "hostile"
+	end,
 	danger = {
 		label = "MINE", type = "mine",
 		armed = function(ent)
