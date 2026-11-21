@@ -24,6 +24,13 @@ local function texts(clip)
 	return found
 end
 
+-- the alpha multiplier (0..1) of a clip's colour transform, 1 when it has none
+local function alphaOf(clip)
+	local cx = clip.entry and clip.entry.cx
+
+	return cx and cx[4] or 1
+end
+
 return {
 	groupName = "GryMod compass and radar (Flash)",
 	cases = {
@@ -198,6 +205,197 @@ return {
 			name = "a missing movie gives no panel instead of an error",
 			func = function(state)
 				expect(GryMod.FlashRadar.New(nil)).to.beNil()
+			end
+		},
+		-- SetNoise: the port of the movie's setNoiseValue(v) (the minimap's progress veil uses it). Each case names the change that breaks it.
+		{
+			name = "SetNoise(v) shows the noise clip looping at alpha v * 50 % and dims the units to (1 - v) * 100 % (no SetNoise)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.4)
+				local noise = panel.main:Child("Noise")
+				expect(noise.visible).to.beTrue()
+				expect(noise.playing).to.beTrue()
+				expect(noise:CurrentLabel()).to.equal("loop")
+				expect(alphaOf(noise)).to.aboutEqual(0.2, 0.001)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(0.6, 0.001)
+				expect(panel.noise).to.aboutEqual(0.4, 0.0001)
+			end
+		},
+		{
+			name = "SetNoise(v, true) leaves the units at 100 % (the keepUnits argument is ignored)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.6, true)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(alphaOf(panel.main:Child("Noise"))).to.aboutEqual(0.3, 0.001)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+			end
+		},
+		{
+			name = "SetNoise(0) hides the noise, stops its loop and puts the units back to 100 % (v = 0 does not restore)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.8)
+				panel:SetNoise(0)
+				local noise = panel.main:Child("Noise")
+				expect(noise.visible).to.beFalse()
+				expect(noise.playing).to.beFalse()
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+				expect(panel.noise).to.equal(0)
+			end
+		},
+		{
+			name = "SetNoise clamps v to 0..1 and reads nil and NaN as 0 (no clamp)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(3)
+				expect(panel.noise).to.equal(1)
+				expect(alphaOf(panel.main:Child("Noise"))).to.aboutEqual(0.5, 0.001)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(0, 0.001)
+				panel:SetNoise(-2)
+				expect(panel.noise).to.equal(0)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				panel:SetNoise(0.5)
+				panel:SetNoise(0 / 0)
+				expect(panel.noise).to.equal(0)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				panel:SetNoise(0.5)
+				panel:SetNoise(nil)
+				expect(panel.noise).to.equal(0)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+			end
+		},
+		{
+			name = "the noise survives a change of frame of the movie, _resolve applies it again (_resolve resets the noise to the malfunction's)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.4)
+				panel.main:GotoAndStop("normal") -- the clips are rebuilt
+				panel:Update(0)
+				local noise = panel.main:Child("Noise")
+				expect(noise.visible).to.beTrue()
+				expect(alphaOf(noise)).to.aboutEqual(0.2, 0.001)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(0.6, 0.001)
+				expect(noise.playing).to.beTrue()
+			end
+		},
+		{
+			name = "the keepUnits choice survives a change of frame too",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.6, true)
+				panel.main:GotoAndStop("normal")
+				panel:Update(0)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+			end
+		},
+		{
+			name = "a malfunction and SetNoise give the stronger of the two noises (_resolve takes the malfunction's alone)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.2)
+				panel:Destroy(1)
+				local noise, units = panel.main:Child("Noise"), panel.main:Child("Units")
+				expect(noise.visible).to.beTrue()
+				expect(alphaOf(noise)).to.aboutEqual(0.3, 0.001) -- the malfunction's fixed 0.6 is stronger than 0.2
+				expect(alphaOf(units)).to.aboutEqual(0.4, 0.001)
+
+				panel:SetNoise(0.9)
+				expect(alphaOf(noise)).to.aboutEqual(0.45, 0.001)
+				expect(alphaOf(units)).to.aboutEqual(0.1, 0.001)
+
+				panel:SetNoise(0.1)
+				expect(alphaOf(noise)).to.aboutEqual(0.3, 0.001)
+				expect(alphaOf(units)).to.aboutEqual(0.4, 0.001)
+			end
+		},
+		{
+			name = "with keepUnits a malfunction still dims the units, and the end of the malfunction leaves SetNoise's noise",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetNoise(0.5, true)
+				panel:Destroy(1)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(0.4, 0.001)
+				panel:Destroy(0)
+
+				for _ = 1, 90 do panel:Update(1 / 30) end
+
+				expect(panel.main:CurrentLabel()).to.equal("on")
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(alphaOf(panel.main:Child("Noise"))).to.aboutEqual(0.25, 0.001)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+			end
+		},
+		{
+			name = "Destroy(1) keeps its fixed 0.6 when SetNoise was never used, and Destroy(0) with no SetNoise hides the noise",
+			func = function(state)
+				local panel = newPanel()
+				panel:Destroy(1)
+				expect(panel.noise or 0).to.equal(0)
+				expect(alphaOf(panel.main:Child("Noise"))).to.aboutEqual(0.3, 0.001)
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(0.4, 0.001)
+				expect(panel.main:Child("Noise").playing).to.beTrue()
+
+				panel:Destroy(0)
+
+				for _ = 1, 90 do panel:Update(1 / 30) end
+
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+			end
+		},
+		-- the text of the zone field: the progress text wins over the sector name, neither erases the other
+		{
+			name = "the progress text shows in the Zone field instead of the sector, and the sector comes back when it goes (no progressText)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetSector("gm_construct")
+				panel:SetProgressText("40%")
+				expect(panel.progressText).to.equal("40%")
+				expect(panel.zone:Child("Zone").text).to.equal("40%")
+				expect(panel.sector).to.equal("gm_construct")
+				panel:SetProgressText(nil)
+				expect(panel.progressText).to.beNil()
+				expect(panel.zone:Child("Zone").text).to.equal("gm_construct")
+			end
+		},
+		{
+			name = "SetSector does not erase the progress text (SetSector writes the field unconditionally)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetProgressText("7%")
+				panel:SetSector("gm_bigcity")
+				expect(panel.zone:Child("Zone").text).to.equal("7%")
+				expect(panel.sector).to.equal("gm_bigcity")
+				panel:SetProgressText(nil)
+				expect(panel.zone:Child("Zone").text).to.equal("gm_bigcity")
+			end
+		},
+		{
+			name = "the progress text alone leaves the field empty when it goes and there is no sector",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetProgressText("50%")
+				expect(panel.zone:Child("Zone").text).to.equal("50%")
+				panel:SetProgressText(nil)
+				expect(panel.zone:Child("Zone").text).to.equal("")
+			end
+		},
+		{
+			name = "_refresh writes the progress text again after the movie rebuilt the field, else the sector (_refresh only knows the sector)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetSector("gm_construct")
+				panel:SetProgressText("12%")
+				panel.zone:SetText("Zone", "rebuilt") -- what a rebuilt clip would show
+				panel:_refresh()
+				expect(panel.zone:Child("Zone").text).to.equal("12%")
+				panel:SetProgressText(nil)
+				panel.zone:SetText("Zone", "rebuilt")
+				panel:_refresh()
+				expect(panel.zone:Child("Zone").text).to.equal("gm_construct")
 			end
 		}
 	}

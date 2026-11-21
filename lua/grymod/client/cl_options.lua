@@ -247,6 +247,83 @@ function GryMod.AdminOptions(Panel)
 	GryMod.AdminOption(Panel, "Toggle infinite armor", nil, "button", {command = "gry_Armor"})
 end
 
+-- Tells the player what the cache button did (a notice on the screen).
+local function minimapNotice(text, kind)
+	if notification and notification.AddLegacy then
+		notification.AddLegacy(text, kind, 4)
+	end
+end
+
+-- The button that clears the minimap's cache: the files of the current level, made again the next time the radar needs them. It asks the
+-- Cache module (another file, which may be missing or fail): nothing here may raise.
+local function clearMinimapCache()
+	local cache = GryMod.Minimap and GryMod.Minimap.Cache
+
+	if not cache or not isfunction(cache.Clear) or not isfunction(cache.Key) then
+		minimapNotice("The minimap cache is not available.", NOTIFY_ERROR)
+
+		return
+	end
+
+	local ok, result, reason = pcall(function()
+		return cache.Clear(cache.Key())
+	end)
+
+	-- the generator remembers the last request it made: without this, asking for the same tiles again would find the request already done
+	-- and make nothing (the files are gone)
+	local gen = GryMod.Minimap.Gen
+
+	if gen and isfunction(gen.Cancel) then
+		pcall(gen.Cancel)
+	end
+
+	if ok and result ~= false then
+		minimapNotice("The minimap cache of this level was cleared; the map is made again as you play.", NOTIFY_GENERIC)
+	else
+		minimapNotice("The minimap cache could not be cleared: " .. tostring(ok and reason or result), NOTIFY_ERROR)
+	end
+end
+
+-- The map behind the radar: the switch, how sharp it is (pixels per metre of the tiles; the distance is the radar range above), the size of
+-- one tile, how much time the generator may take in a frame, and the button that clears the cache. The
+-- settings are written when the player changes a control, never when the panel opens.
+function GryMod.MinimapOptions(Panel)
+	Panel:Help("Minimap")
+
+	Panel:CheckBox("Draw the map of the level behind the radar", "gry_minimap")
+	Panel:NumSlider("Map definition (pixels per metre of the map tiles; more is sharper and takes longer to make)", "gry_minimap_definition", 1, 16, 0)
+
+	Panel:Help("Map tile size (pixels)")
+
+	local tileBox = vgui.Create("DComboBox")
+	tileBox.GryConVar = "gry_minimap_tile"
+	tileBox:SetSortItems(false)
+	tileBox:AddChoice("512 (small tiles, quick to make)", "512")
+	tileBox:AddChoice("1024 (the default)", "1024")
+	tileBox:AddChoice("2048 (big tiles, fewer but each takes longer)", "2048")
+
+	-- show the size that is saved without writing it: the text and the choice are set by hand, OnSelect is put on after
+	local current = GryMod.Minimap.Settings and GryMod.Minimap.Settings.TileRes() or 1024
+
+	for id = 1, 3 do
+		if tileBox:GetOptionData(id) == tostring(current) then
+			tileBox:SetValue((tileBox:GetOptionText(id)))
+			tileBox.selected = id
+		end
+	end
+
+	tileBox.OnSelect = function(_, _, _, data)
+		RunConsoleCommand("gry_minimap_tile", tostring(data))
+	end
+	Panel:AddItem(tileBox)
+
+	Panel:NumSlider("Map generator time per frame (milliseconds)", "gry_minimap_budget_ms", 1, 30, 0)
+
+	local clearButton = Panel:Button("Clear the minimap cache")
+	clearButton.GryMinimapClear = true
+	clearButton.DoClick = clearMinimapCache
+end
+
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
 function GryMod.GryOptionschute(Panel)
 	Panel:AddControl("Label", {
@@ -272,6 +349,7 @@ function GryMod.GryOptionschute(Panel)
 	Panel:CheckBox("Camouflage: firing out of it plays the glitch (flash, HUD jump, shake) at any energy, not only above 20 %", "gry_decloak_glitch")
 
 	GryMod.GryHUDOptions(Panel)
+	GryMod.MinimapOptions(Panel)
 
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)
