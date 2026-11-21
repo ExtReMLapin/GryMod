@@ -102,6 +102,8 @@ function GryMod.GryOptionschute(Panel)
 	-- the original game's levels plus this gain (0 dB: as quiet as in the game, +12 dB: the loud ones at full volume)
 	Panel:NumSlider("Interface and suit sound level (dB)", "gry_sound_volume", -20, 12, 0)
 	Panel:CheckBox("Repair sound when the health comes back", "gry_sound_regen")
+	Panel:CheckBox("Underwater sounds: dive in and out, breathing, gasps, ambience", "gry_underwater_fx")
+	Panel:CheckBox("Drowning: 60 s of breath, then the suit energy, then health (server; off: the engine's drowning)", "gry_drown_rules")
 	-- the rules of the suit (server setting, for the host or an admin): the original game's numbers, or GryMod's earlier ones
 	Panel:AddControl("ComboBox", {
 		Label = "Suit rules (server)",

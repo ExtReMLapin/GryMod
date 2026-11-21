@@ -51,7 +51,27 @@ Mix.Original = {
 	["cry_open.wav"] = -16,
 	["cry_close.wav"] = -13,
 	["cry_select.wav"] = -12,
-	["cry_hover.wav"] = -16
+	["cry_hover.wav"] = -16,
+	-- the underwater sounds (cl_underwater.lua): the level of each event of the game's player foley bank, and for the dive
+	-- sounds the level of the layer that plays (the slow dive in and the dive out sit at half their layer's level, -6 dB)
+	["grymod/uw_underwater_feedback_01.mp3"] = -29,
+	["grymod/uw_underwater_feedback_02.mp3"] = -29,
+	["grymod/uw_underwater_feedback_03.mp3"] = -29,
+	["grymod/uw_underwater_feedback_04.mp3"] = -29,
+	["grymod/uw_underwater_feedback_05.mp3"] = -29,
+	["grymod/uw_drown_feedback_01.mp3"] = -15,
+	["grymod/uw_drown_feedback_02.mp3"] = -15,
+	["grymod/uw_drown_feedback_03.mp3"] = -15,
+	["grymod/uw_drown_feedback_04.mp3"] = -15,
+	["grymod/uw_drown_feedback_05.mp3"] = -15,
+	["grymod/uw_drown_feedback_06.mp3"] = -15,
+	["grymod/uw_drown_feedback_07.mp3"] = -15,
+	["grymod/uw_dive_in_slow_01.mp3"] = -15,
+	["grymod/uw_dive_in_fast_01.mp3"] = -9,
+	["grymod/uw_dive_in_fast_02.mp3"] = -9,
+	["grymod/uw_dive_in_fast_03.mp3"] = -9,
+	["grymod/uw_dive_out.mp3"] = -18,
+	["grymod/uw_ambience_loop.wav"] = -16
 }
 
 -- how many plays of a kind may be heard together (max, as the game's maxpb), how soon after the last one (gap, s), and how

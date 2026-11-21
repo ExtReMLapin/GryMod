@@ -23,6 +23,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_hud.lua")
 	AddCSLuaFile("grymod/client/cl_sound_mix.lua")
 	AddCSLuaFile("grymod/client/cl_sounds.lua")
+	AddCSLuaFile("grymod/client/cl_underwater.lua")
 	AddCSLuaFile("grymod/client/cl_options.lua")
 	AddCSLuaFile("grymod/client/cl_flash.lua")
 	AddCSLuaFile("grymod/client/cl_flash_draw.lua")
@@ -53,6 +54,7 @@ if SERVER then
 	include("grymod/server/sv_feedback.lua")
 	include("grymod/server/sv_system.lua")
 	include("grymod/server/sv_malfunction.lua")
+	include("grymod/server/sv_underwater.lua")
 	include("grymod/server/sv_cloak_ai.lua")
 
 	if GryMod.Workshop == false then
@@ -176,5 +178,6 @@ if CLIENT then
 	include("grymod/client/cl_flash_prewarm.lua")
 	include("grymod/client/cl_hud.lua")
 	include("grymod/client/cl_sounds.lua")
+	include("grymod/client/cl_underwater.lua")
 	include("grymod/client/cl_options.lua")
 end
