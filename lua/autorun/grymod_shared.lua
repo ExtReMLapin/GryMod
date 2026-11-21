@@ -38,6 +38,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_hud_radar_units.lua")
 	AddCSLuaFile("grymod/sh_radar.lua")
 	AddCSLuaFile("grymod/sh_server_options.lua")
+	AddCSLuaFile("grymod/client/cl_admin_option.lua")
 	AddCSLuaFile("grymod/client/cl_hud_quickmenu_flash.lua")
 	AddCSLuaFile("grymod/client/cl_key_binder.lua")
 	AddCSLuaFile("grymod/client/cl_menu_key.lua")
@@ -246,5 +247,6 @@ if CLIENT then
 	include("grymod/client/cl_sounds.lua")
 	include("grymod/client/cl_underwater.lua")
 	include("grymod/sh_server_options.lua")
+	include("grymod/client/cl_admin_option.lua")
 	include("grymod/client/cl_options.lua")
 end
