@@ -1113,6 +1113,84 @@ return {
 					error(err, 0)
 				end
 			end
+		},
+		{
+			name = "Read (the real one, on a stand-in player): each fact of the world reaches its reason; a player at 0 health is dead even for the frame in which the engine still says alive (measured: health and the weapon go one frame before Alive)",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local read = state.saved.read
+				local localPlayer, enabled = LocalPlayer, M.Enabled
+				local cursor, keyboard, pauseMenu, console, hasFocus = vgui.CursorVisible, vgui.GetKeyboardFocus, gui.IsGameUIVisible, gui.IsConsoleVisible, system.HasFocus
+				local weapon = {}
+				local facts
+
+				local function fresh()
+					facts = {alive = true, health = 100, typing = false, malfunction = false, vehicle = false, third = false, view = true, observer = 0,
+						frozen = false, water = 0, weapon = weapon, cursor = false, panel = false, pause = false, console = false, focus = true}
+				end
+
+				local ply = {
+					IsValid = function() return true end,
+					Alive = function() return facts.alive end,
+					Health = function() return facts.health end,
+					IsTyping = function() return facts.typing end,
+					GetNWBool = function(_, name) return name == "GryMalfunction" and facts.malfunction end,
+					InVehicle = function() return facts.vehicle end,
+					ShouldDrawLocalPlayer = function() return facts.third end,
+					GetViewEntity = function(self) return facts.view and self or {} end,
+					GetObserverMode = function() return facts.observer end,
+					IsFrozen = function() return facts.frozen end,
+					WaterLevel = function() return facts.water end,
+					GetActiveWeapon = function() return facts.weapon end
+				}
+
+				local ok, err = pcall(function()
+					LocalPlayer = function() return ply end
+					M.Enabled = function() return true end
+					-- (a calm screen: panels removed by an earlier case are still on it until the next frame)
+					vgui.CursorVisible = function() return facts.cursor end
+					vgui.GetKeyboardFocus = function() return facts.panel and {IsValid = function() return true end} or nil end
+					gui.IsGameUIVisible = function() return facts.pause end
+					gui.IsConsoleVisible = function() return facts.console end
+					system.HasFocus = function() return facts.focus end
+
+					fresh()
+					Z.State.weapon = weapon
+					Z.State.frame = FrameNumber()
+					local sit = read({})
+					expect(sit.valid).to.beTrue()
+					expect(Z.Reason(sit, true)).to.beNil()
+
+					for _, case in ipairs({
+						{"alive", false, "death"}, {"health", 0, "death"}, {"health", -20, "death"}, {"typing", true, "chat"},
+						{"malfunction", true, "malfunction"}, {"vehicle", true, "vehicle"}, {"third", true, "thirdperson"}, {"view", false, "viewentity"},
+						{"observer", 5, "observer"}, {"frozen", true, "frozen"}, {"water", 3, "water"}, {"weapon", {}, "weapon"},
+						{"cursor", true, "ui"}, {"panel", true, "ui"}, {"pause", true, "pause"}, {"console", true, "console"}, {"focus", false, "focus"}
+					}) do
+						fresh()
+						facts[case[1]] = case[2]
+						expect(Z.Reason(read({}), true)).to.equal(case[3])
+					end
+
+					-- the HUD in its lost state is a suit that is down too
+					fresh()
+					local boot = GryMod.FlashBoot
+					local lost = boot.IsLost
+					boot.IsLost = function() return true end
+					local reason = Z.Reason(read({}), true)
+					boot.IsLost = lost
+					expect(reason).to.equal("malfunction")
+				end)
+
+				LocalPlayer, M.Enabled = localPlayer, enabled
+				vgui.CursorVisible, vgui.GetKeyboardFocus, gui.IsGameUIVisible, gui.IsConsoleVisible, system.HasFocus = cursor, keyboard, pauseMenu, console, hasFocus
+				Z.State.weapon = nil
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }

@@ -171,7 +171,8 @@ function Zoom.Read(sit)
 
 	local Bino, menu, boot = GryMod.FlashBinoculars, GryMod.FlashMenu, GryMod.FlashBoot
 
-	sit.alive = ply:Alive()
+	-- (a player killed is at 0 health, and has lost the weapon, one frame before Alive() says so: measured)
+	sit.alive = ply:Alive() and ply:Health() > 0
 	sit.enabled = Bino ~= nil and Bino.Enabled() and not (Bino.IsMissing and Bino.IsMissing())
 	sit.quickmenu = menu ~= nil and menu.IsOpen() or false
 	sit.pause = gui.IsGameUIVisible()
