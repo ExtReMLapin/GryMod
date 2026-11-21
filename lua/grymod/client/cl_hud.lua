@@ -208,16 +208,17 @@ end
 GryMod.SelectorState = {
 	TIMEOUT = 1.2, -- the engine's own timeout, from the last notch
 	GRACE = 0.5, -- a click this long after the close is still taken for the confirmation the player meant
+	CONFIRM = 0.25, -- the press of a confirming click reaches KeyPress up to this long after the bind (measured: the same millisecond)
 }
 
 local Sel = GryMod.SelectorState
 
 function Sel.New()
-	return {notchAt = nil, steps = 0, known = true}
+	return {notchAt = nil, steps = 0, known = true, confirmedAt = nil}
 end
 
 function Sel.Reset(s)
-	s.notchAt, s.steps, s.known = nil, 0, true
+	s.notchAt, s.steps, s.known, s.confirmedAt = nil, 0, true, nil
 end
 
 -- "open" (the selector is up: the engine takes the click), "late" (it closed on its own a moment ago), or "none".
@@ -281,12 +282,31 @@ function Sel.Attack(s, now)
 	Sel.Reset(s)
 
 	if phase == "open" then
+		s.confirmedAt = now -- the press may still come to KeyPress as IN_ATTACK (Sel.ConfirmsPress)
+
 		return "confirm", known and steps or nil
 	elseif phase == "late" then
 		return "late", known and steps or nil
 	end
 
 	return "shot", nil
+end
+
+-- The press of the attack key that reaches KeyPress (IN_ATTACK) at this time is the selector's confirming click: the bind came a
+-- moment ago and was a confirmation, or the selector is up and the bind has not come yet. Measured with a real mouse (the owner's
+-- game): the click 0.277 s after the last notch reached KeyPress as IN_ATTACK in the same millisecond as the bind, the weapon
+-- fired nothing (magazine and next fire time unchanged) and changed 18 ms later. (Posted window messages are eaten by the engine
+-- and never reach KeyPress: they are not the real path.) The confirmation is used up by this press.
+function Sel.ConfirmsPress(s, now)
+	local confirmed = s.confirmedAt ~= nil and now >= s.confirmedAt and now - s.confirmedAt < Sel.CONFIRM
+
+	if confirmed or Sel.Phase(s, now) == "open" then
+		Sel.Reset(s)
+
+		return true
+	end
+
+	return false
 end
 
 -- The weapon the selection ends on. entries: {id, slot, pos, selectable} of the weapons of the player; the engine walks them by
@@ -434,31 +454,6 @@ local function watchHeldAttack(ply, weapon, readyAt, clip, since)
 	end)
 end
 
--- Shooting ends the camouflage: a press of the attack key when the weapon fires with it, a right click when the weapon fires
--- with it (GryMod.AltFireShoots).
-function GryMod.CloackAttack(ply, key)
-	if ply.NanosuitMode ~= GryMod.Modes.CLOAK then
-		return
-	end
-
-	if key == IN_ATTACK then
-		local weapon = ply:GetActiveWeapon()
-
-		if not IsValid(weapon) then
-			return
-		end
-
-		if attackNow(ply, weapon) then
-			endCloak(ply)
-		else
-			local n = numbers(ply, weapon)
-			watchHeldAttack(ply, weapon, n.nextPrimary, n.clip, CurTime())
-		end
-	elseif key == IN_ATTACK2 and CloakAltFire:GetBool() and altFireNow(ply) then
-		endCloak(ply)
-	end
-end
-
 -- Switch: in the camouflage, the click that comes a moment after the weapon selector closed on its own is taken for the click that
 -- confirms the selection (it selects the weapon the wheel was on, and fires nothing) instead of a shot that ends the camouflage.
 local SelectorGuard = CreateClientConVar("gry_cloak_selector_guard", "1", true, false, "In the camouflage, a click a moment after the weapon selector closed by itself (1.2 s after the last notch of the wheel) confirms the selection instead of firing the weapon in hand and ending the camouflage")
@@ -536,6 +531,49 @@ function GryMod.CloakSelectorBind(ply, bind, pressed, code)
 end
 
 hook.Add("PlayerBindPress", "GryCloakSelector", GryMod.CloakSelectorBind)
+
+-- The confirming click of the selector reached KeyPress: it is no shot. When it stays held the new weapon (it comes a few
+-- milliseconds later) may fire as soon as it is drawn: the same watch as a press during the draw, on the weapon then in hand.
+local function watchAfterConfirmation(ply)
+	timer.Simple(0.1, function()
+		if ply.NanosuitMode ~= GryMod.Modes.CLOAK or not ply:KeyDown(IN_ATTACK) then
+			return
+		end
+
+		local weapon = ply:GetActiveWeapon()
+
+		if IsValid(weapon) then
+			watchHeldAttack(ply, weapon, weapon:GetNextPrimaryFire(), weapon:Clip1(), CurTime())
+		end
+	end)
+end
+
+-- Shooting ends the camouflage: a press of the attack key when the weapon fires with it, a right click when the weapon fires
+-- with it (GryMod.AltFireShoots).
+function GryMod.CloackAttack(ply, key)
+	if ply.NanosuitMode ~= GryMod.Modes.CLOAK then
+		return
+	end
+
+	if key == IN_ATTACK then
+		local weapon = ply:GetActiveWeapon()
+
+		if not IsValid(weapon) then
+			return
+		end
+
+		if SelectorGuard:GetBool() and Sel.ConfirmsPress(selectorState, CurTime()) then
+			watchAfterConfirmation(ply) -- the selector's click: no shot, unless it stays held and the new weapon fires
+		elseif attackNow(ply, weapon) then
+			endCloak(ply)
+		else
+			local n = numbers(ply, weapon)
+			watchHeldAttack(ply, weapon, n.nextPrimary, n.clip, CurTime())
+		end
+	elseif key == IN_ATTACK2 and CloakAltFire:GetBool() and altFireNow(ply) then
+		endCloak(ply)
+	end
+end
 
 -- (The stealth bar of the compass panel used to count every NPC within 1280 units here, friends included. It now shows the
 -- awareness of the hostile NPCs the server sends as radar contacts: cl_hud_radar_units.lua, Radar.StealthTarget.)

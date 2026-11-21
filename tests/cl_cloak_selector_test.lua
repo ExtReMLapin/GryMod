@@ -22,6 +22,7 @@ end
 
 local sent
 local selected
+local timers
 local clock
 local savedConVar
 
@@ -40,7 +41,7 @@ local function fakeWeapons(ply)
 		function weapon:Clip1() return 30 end
 		function weapon:GetPrimaryAmmoType() return 1 end
 		function weapon:GetSecondaryAmmoType() return 2 end
-		function weapon:GetNextPrimaryFire() return CurTime() - 1 end
+		function weapon:GetNextPrimaryFire() return self.np or (CurTime() - 1) end
 		function weapon:GetNextSecondaryFire() return CurTime() - 1 end
 
 		list[#list + 1] = weapon
@@ -61,7 +62,7 @@ local function fakePlayer(mode, activeClass)
 
 	function ply:GetWeapons() return self.weapons end
 	function ply:GetActiveWeapon() return self.active end
-	function ply:KeyDown() return false end
+	function ply:KeyDown(key) return key == IN_ATTACK and self.held == true end
 	function ply:GetAmmoCount() return 100 end
 	function ply:SetNanosuitMode(newMode, networked)
 		self.modeSet[#self.modeSet + 1] = {newMode, networked}
@@ -99,12 +100,13 @@ return {
 	beforeEach = function(state)
 		sent = {}
 		selected = {}
+		timers = {}
 		clock = 100
 
 		local ok, err = pcall(function()
 			stub(net, "Start", function(name) sent[#sent + 1] = name end)
 			stub(net, "SendToServer", function() end)
-			stub(timer, "Simple", function() end)
+			stub(timer, "Simple", function(delay, func) timers[#timers + 1] = {delay = delay, func = func} end)
 			stub(_G, "CurTime", function() return clock end)
 			stub(input, "SelectWeapon", function(weapon) selected[#selected + 1] = weapon end)
 
@@ -363,6 +365,104 @@ return {
 				clock = clock + 1.4
 				expect(GryMod.CloakSelectorBind(ply, "+attack", true, 107)).to.beNil()
 				expect(#selected).to.equal(0)
+			end
+		},
+		{
+			name = "THE OWNER'S SEQUENCE (real mouse): two notches, the click 0.277 s after the last one reaches KeyPress as IN_ATTACK with the weapon ready, and the camouflage stays",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_smg1")
+
+				expect(GryMod.CloakSelectorBind(ply, "invprev", true, 112)).to.beNil()
+				clock = clock + 0.055
+				expect(GryMod.CloakSelectorBind(ply, "invprev", true, 112)).to.beNil()
+				clock = clock + 0.277
+				expect(GryMod.CloakSelectorBind(ply, "+attack", true, 107)).to.beNil() -- the selector is up: the engine takes it
+				GryMod.CloackAttack(ply, IN_ATTACK) -- and still delivers IN_ATTACK to KeyPress (measured with a real mouse)
+
+				expect(#ply.modeSet).to.equal(0)
+				expect(#sent).to.equal(0)
+			end
+		},
+		{
+			name = "the same with KeyPress before the bind: the click inside the window is the confirmation whatever the order",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_smg1")
+
+				GryMod.CloakSelectorBind(ply, "invprev", true, 112)
+				clock = clock + 0.3
+				GryMod.CloackAttack(ply, IN_ATTACK)
+				expect(GryMod.CloakSelectorBind(ply, "+attack", true, 107)).to.beNil()
+				expect(#ply.modeSet).to.equal(0)
+				expect(#sent).to.equal(0)
+			end
+		},
+		{
+			name = "the confirmation is used up once: the next press (not in a selector) with the weapon ready is a shot",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_smg1")
+
+				GryMod.CloakSelectorBind(ply, "invprev", true, 112)
+				clock = clock + 0.3
+				GryMod.CloakSelectorBind(ply, "+attack", true, 107)
+				GryMod.CloackAttack(ply, IN_ATTACK)
+				expect(#ply.modeSet).to.equal(0)
+
+				clock = clock + 0.1
+				GryMod.CloackAttack(ply, IN_ATTACK)
+				expect(#ply.modeSet).to.equal(1)
+			end
+		},
+		{
+			name = "a press long after a confirmation (0.5 s), with the weapon ready, is a real shot",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_smg1")
+
+				GryMod.CloakSelectorBind(ply, "invprev", true, 112)
+				clock = clock + 0.3
+				GryMod.CloakSelectorBind(ply, "+attack", true, 107)
+				clock = clock + 0.5
+				GryMod.CloackAttack(ply, IN_ATTACK)
+				expect(#ply.modeSet).to.equal(1)
+			end
+		},
+		{
+			name = "with the option off a press inside the window ends the camouflage as it did",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_smg1")
+
+				GetConVar("gry_cloak_selector_guard"):SetString("0")
+				GryMod.CloakSelectorBind(ply, "invprev", true, 112)
+				clock = clock + 0.3
+				GryMod.CloakSelectorBind(ply, "+attack", true, 107)
+				GryMod.CloackAttack(ply, IN_ATTACK)
+				expect(#ply.modeSet).to.equal(1)
+			end
+		},
+		{
+			name = "a confirming click that stays held: when the new weapon really fires, the camouflage ends (one timer)",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_smg1")
+
+				GryMod.CloakSelectorBind(ply, "invprev", true, 112)
+				clock = clock + 0.3
+				GryMod.CloakSelectorBind(ply, "+attack", true, 107)
+				ply.held = true
+				GryMod.CloackAttack(ply, IN_ATTACK)
+				expect(#ply.modeSet).to.equal(0)
+				expect(#timers).to.equal(1)
+
+				-- the weapon came (the pistol), is ready, and the key is still down: nothing fired yet, the watch goes on
+				ply.active = weaponNamed(ply, "weapon_pistol")
+				clock = clock + 0.1
+				timers[1].func()
+				expect(#ply.modeSet).to.equal(0)
+				expect(#timers).to.equal(2)
+
+				-- then the weapon fires
+				ply.active.np = clock + 0.15
+				clock = clock + 0.1
+				timers[2].func()
+				expect(#ply.modeSet).to.equal(1)
 			end
 		},
 		{
