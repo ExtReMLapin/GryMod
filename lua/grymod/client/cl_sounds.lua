@@ -1,26 +1,57 @@
 
-local armorHitSoundsGROUND = {"suit/suit_bullet_impact_01.mp3",
-"suit/suit_bullet_impact_02.mp3",
-"suit/suit_bullet_impact_03.mp3",
-"suit/suit_bullet_impact_15.mp3",
-"suit/suit_bullet_impact_16.mp3"}
+-- The armor hit: the game's suit_armor_use event plays these 13 files as a shuffle (every one once before any plays
+-- again), whatever the water. (The earlier GryMod split them in two lists, one for the water; the game's event has no
+-- such split.) The server decides when (sv_health.lua, Mech.ArmorHitSoundDue).
+GryMod.ArmorHitSounds = {
+	"suit/suit_bullet_impact_01.mp3",
+	"suit/suit_bullet_impact_02.mp3",
+	"suit/suit_bullet_impact_03.mp3",
+	"suit/suit_bullet_impact_05.mp3",
+	"suit/suit_bullet_impact_06.mp3",
+	"suit/suit_bullet_impact_07.mp3",
+	"suit/suit_bullet_impact_09.mp3",
+	"suit/suit_bullet_impact_10.mp3",
+	"suit/suit_bullet_impact_11.mp3",
+	"suit/suit_bullet_impact_13.mp3",
+	"suit/suit_bullet_impact_14.mp3",
+	"suit/suit_bullet_impact_15.mp3",
+	"suit/suit_bullet_impact_16.mp3"
+}
 
+local armorHitBag = {}
+local armorHitLast
 
-local armorHitSoundsUNDERWATER = {"suit/suit_bullet_impact_05.mp3",
-"suit/suit_bullet_impact_06.mp3",
-"suit/suit_bullet_impact_07.mp3",
-"suit/suit_bullet_impact_09.mp3",
-"suit/suit_bullet_impact_10.mp3",
-"suit/suit_bullet_impact_11.mp3",
-"suit/suit_bullet_impact_13.mp3",
-"suit/suit_bullet_impact_14.mp3",}
+-- the next file of the shuffle: a new random order once the 13 have played, never starting with the last one played
+function GryMod.NextArmorHitSound()
+	if #armorHitBag == 0 then
+		for i, path in ipairs(GryMod.ArmorHitSounds) do
+			armorHitBag[i] = path
+		end
+
+		for i = #armorHitBag, 2, -1 do
+			local j = math.random(i)
+			armorHitBag[i], armorHitBag[j] = armorHitBag[j], armorHitBag[i]
+		end
+
+		if armorHitBag[#armorHitBag] == armorHitLast then
+			local j = math.random(#armorHitBag - 1)
+			armorHitBag[#armorHitBag], armorHitBag[j] = armorHitBag[j], armorHitBag[#armorHitBag]
+		end
+	end
+
+	armorHitLast = table.remove(armorHitBag)
+
+	return armorHitLast
+end
+
+-- forget the shuffle (the tests start from a full new one)
+function GryMod.ResetArmorHitSounds()
+	armorHitBag = {}
+	armorHitLast = nil
+end
 
 net.Receive("gry_armor_hit_sound",function()
-	if (LocalPlayer():WaterLevel() < 3) then
-		GryMod.PlaySound(Sound(table.Random(armorHitSoundsGROUND)))
-	else
-		GryMod.PlaySound(Sound(table.Random(armorHitSoundsUNDERWATER)))
-	end
+	GryMod.PlaySound(Sound(GryMod.NextArmorHitSound()))
 end)
 
 
@@ -28,10 +59,19 @@ end)
 
 
 
+-- The repair sound (suit_medical_use_new, 5.95 s). The server starts it (sv_health.lua); gry_sound_regen switches it off.
+local RegenEnabled = CreateClientConVar("gry_sound_regen", "1", true, false, "Play the suit repair sound when the health comes back")
 local healingSound
 
 -- hackysound system
 sound.PlayFile("sound/suit/suit_medical_use_new.mp3", "noblock noplay", function(soundchannel, error, str ) healingSound = soundchannel end)
+
+-- for the tests: the channel can be replaced by a recording one
+GryMod.RegenSound = {
+	GetChannel = function() return healingSound end,
+	SetChannel = function(channel) healingSound = channel end
+}
+
 net.Receive("gry_stop_health_regen",function ()
 	if not IsValid(healingSound) then return end
 	local overtime = CurTime() + 1
@@ -55,10 +95,12 @@ net.Receive("gry_stop_health_regen",function ()
 end)
 
 net.Receive("gry_start_health_regen",function ()
-	if not IsValid(healingSound) or not GryMod.SoundsEnabled() then return end
+	if not IsValid(healingSound) or not GryMod.SoundsEnabled() or not RegenEnabled:GetBool() then return end
 	-- a fade-out still running would pause the sound again a moment after it starts
 	hook.Remove("Think", "GryModSoundhealthregenfadeaway")
 	healingSound:SetVolume(1)
+	-- a sound that played to its end is still at its end: play it from the beginning every time
+	healingSound:SetTime(0)
 	healingSound:Play()
 end)
 

@@ -4,7 +4,33 @@ local health_regen_speed = 17 -- per sec, the classic continuous regeneration
 util.AddNetworkString("gry_start_health_regen")
 util.AddNetworkString("gry_stop_health_regen")
 
+local Mech = GryMod.Mech
+
+-- The armor hit sound, from the original game (BasicActor.lua Client:OnHit, and the armor read by CPlayer): only the
+-- player hit hears it, for bullet damage over 10 (of the game's 200 health, so 5 percent of the maximum health),
+-- in armor mode, with the armor still over 10 after the hit (a tenth of the bar: the game's 20 of 200 energy).
+-- gry_mechanics classic keeps the earlier rule: any bullet while the bar is not empty.
+function Mech.ArmorHitSoundDue(mode, isBullet, damage, maxHealth, energyBefore, energyAfter)
+	if mode ~= GryMod.Modes.ARMOR or not isBullet then
+		return false
+	end
+
+	if not Mech.IsCrysis() then
+		return energyBefore > 0
+	end
+
+	return damage > 10 * maxHealth / 200 and energyAfter > 10
+end
+
+-- The repair sound (suit_medical_use_new) lasts 5.95 seconds and nothing in the game's code stops it before the end.
+Mech.RepairSoundSeconds = 5.95
+
+function Mech.RepairSoundPlaying(ply, now)
+	return Mech.IsCrysis() and ply.last_repair_sound ~= nil and now - ply.last_repair_sound < Mech.RepairSoundSeconds
+end
+
 hook.Add("PlayerSpawn", "GryMod_ENER_HLT_VARS", function(ply)
+	ply.last_repair_sound = nil
 	ply.next_health_regen = CurTime()
 	ply.health_on_dmg = ply:Health()
 	ply.should_heath_regen = false
@@ -26,7 +52,7 @@ end)
 
 
 hook.Add("PlayerDeath","grymod death stop healing sound", function (ply)
-	if (ply.should_heath_regen) then
+	if (ply.should_heath_regen or Mech.RepairSoundPlaying(ply, CurTime())) then
 		ply.should_heath_regen = false
 		net.Start("gry_stop_health_regen")
 		net.Send(ply)
@@ -42,6 +68,17 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 
 	local amt = dmginfo:GetDamage()
 
+	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
+		local energy = ply:GetNWFloat("GryEnergy")
+		-- what the bar holds once the hit is taken (the infinite armor takes nothing)
+		local energyAfter = GryMod.Config.InfiniteArmor and energy or math.max(0, energy - amt)
+
+		if Mech.ArmorHitSoundDue(ply.Nanosuit_mode, dmginfo:IsBulletDamage(), amt, ply:GetMaxHealth(), energy, energyAfter) then
+			net.Start("gry_armor_hit_sound")
+			net.Send(ply)
+		end
+	end
+
 	if ply.Nanosuit_mode == GryMod.Modes.ARMOR and GryMod.Config.InfiniteArmor then
 		-- the armor never runs out
 		dmginfo:SetDamage(0)
@@ -51,14 +88,6 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 
 	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
 		local energy = ply:GetNWFloat("GryEnergy")
-
-		if (energy > 0 and dmginfo:IsBulletDamage()) then
-			net.Start("gry_armor_hit_sound")
-			net.Send(ply)
-
-
-
-		end
 
 
 		if (amt > energy) then
@@ -92,6 +121,14 @@ hook.Add("Think", "GryMod health think", function()
 	for k, ply in pairs(player.GetAll()) do
 		if not ply:Alive() then continue end
 
+		-- The repair sound is not tied to the regeneration or to its steps (the game checks it every frame, with no
+		-- delay after a hit): armor mode, under 90 percent of the health, 30 seconds apart, played to its end.
+		if GryMod.Config.ShouldRegen and Mech.RepairSoundDue(ply:Health(), ply:GetMaxHealth(), ply.Nanosuit_mode, CurTime(), ply.last_repair_sound) then
+			ply.last_repair_sound = CurTime()
+			net.Start("gry_start_health_regen")
+			net.Send(ply)
+		end
+
 		if not GryMod.Config.ShouldRegen then
 			-- regeneration switched off (gry_Health): stop the healing sound if it was playing
 			if ply.should_heath_regen then
@@ -112,14 +149,6 @@ hook.Add("Think", "GryMod health think", function()
 				ply.next_health_tick = nil
 			elseif Mech.IsCrysis() then
 				local now = CurTime()
-
-				-- the repair sound is not tied to the steps: armor mode, under 90 percent of the health, 30 s apart
-				if Mech.RepairSoundDue(ply:Health(), ply:GetMaxHealth(), ply.Nanosuit_mode, now, ply.last_repair_sound) then
-					ply.last_repair_sound = now
-					ply.should_heath_regen = true
-					net.Start("gry_start_health_regen")
-					net.Send(ply)
-				end
 
 				-- health comes back in whole steps once a second (the fraction is carried to the next step)
 				if not ply.next_health_tick or now >= ply.next_health_tick then
