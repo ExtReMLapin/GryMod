@@ -953,7 +953,11 @@ function Module.Paint()
 		panel:SetHeading(Radar.BearingFromYaw(ply:EyeAngles().y))
 		panel:SetFOV(Radar.FovFrame(ply:GetFOV()))
 		panel:SetStealth(Radar.StealthFromCount(GryMod.RadarCount))
-		Radar.Feed(panel, ply, dt) -- the contacts (cl_hud_radar_units.lua)
+		-- the contacts (cl_hud_radar_units.lua); the radar still draws if that file did not load
+		if Radar.Feed then
+			Radar.Feed(panel, ply, dt)
+		end
+
 		panel:Update(dt)
 
 		if not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("radar") then
