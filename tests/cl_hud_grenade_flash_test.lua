@@ -16,9 +16,110 @@ local function near(a, b)
 	return math.abs(a - b) < 0.001
 end
 
+-- Stubs (saved first, put back in afterEach inside a pcall, even when a case fails halfway) and the fake entities of the
+-- following tests. The real entities are never touched: the warning is fed by fakes, the world search is a recorder.
+local saved = {}
+local fakes = {}
+
+local function stub(tbl, key, value)
+	saved[#saved + 1] = {tbl, key, tbl[key]}
+	tbl[key] = value
+end
+
+local function restore()
+	for i = #saved, 1, -1 do
+		local entry = saved[i]
+		entry[1][entry[2]] = entry[3]
+	end
+
+	saved = {}
+end
+
+local function fakeEntity(class)
+	local ent = {class = class, valid = true}
+
+	function ent:IsValid() return self.valid end
+	function ent:GetClass() return self.class end
+	function ent:GetOwner() return NULL end
+	function ent:GetNW2Entity() return NULL end
+	function ent:GetNW2Bool() return false end
+	function ent:GetPos() return Vector(100, 0, 0) end
+	function ent:WorldSpaceCenter() return Vector(100, 0, 0) end
+
+	fakes[#fakes + 1] = ent
+
+	return ent
+end
+
+local function fakePlayer()
+	return {EyePos = function() return Vector(0, 0, 0) end, IsValid = function() return true end}
+end
+
+-- The hooks the module follows the projectiles with, called directly (never through hook.Run: the other addons would get a fake).
+local function created(ent)
+	hook.GetTable()["OnEntityCreated"]["GRYGRENADEFOLLOW"](ent)
+end
+
+local function removed(ent)
+	hook.GetTable()["EntityRemoved"]["GRYGRENADEFOLLOW"](ent, false)
+end
+
+-- Replaces the world search by a recorder: `found[class]` is what it answers, `calls` the classes asked, in order.
+local function recordSearch(found)
+	local calls = {}
+
+	stub(ents, "FindByClass", function(class)
+		calls[#calls + 1] = class
+
+		return found and found[class] or {}
+	end)
+
+	return calls
+end
+
+local function entitiesOf(list)
+	local out = {}
+
+	for i, candidate in ipairs(list) do
+		out[i] = candidate.ent
+	end
+
+	return out
+end
+
+-- The candidates that are fakes of these tests (a real projectile standing in the world is none of their business).
+local function mine(list)
+	local out = {}
+
+	for _, candidate in ipairs(list) do
+		for _, fake in ipairs(fakes) do
+			if candidate.ent == fake then out[#out + 1] = candidate end
+		end
+	end
+
+	return out
+end
+
+local function has(list, ent)
+	for _, e in ipairs(entitiesOf(list)) do
+		if e == ent then return true end
+	end
+
+	return false
+end
+
 return {
 	groupName = "GryMod grenade warning (Flash)",
 	afterEach = function(state)
+		pcall(restore)
+
+		for _, ent in ipairs(fakes) do
+			ent.valid = false
+			pcall(GryMod.FlashGrenade.Forget, ent)
+		end
+
+		fakes = {}
+
 		if GryMod.API and GryMod.API.UnregisterTracked then
 			GryMod.API.UnregisterTracked("t_cl_trap")
 		end
@@ -534,6 +635,167 @@ return {
 					expect(G.Candidate(stub(third, true), third, {x = 0, y = 0, visible = true}).own).to.beTrue()
 					-- the line of sight reading is carried when given
 					expect(G.Candidate(stub(NULL, true), ply, {x = 0, y = 0, visible = true}, false).visible).to.beFalse()
+			end
+		},
+		{
+			name = "no search of the world: once the registry is settled, thirty frames of candidates never call ents.FindByClass (fails if a periodic scan comes back)",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local ply = fakePlayer()
+				G.Candidates(ply, {}) -- settles the registry once, with the real search
+				local calls = recordSearch()
+				local now = RealTime()
+				stub(_G, "RealTime", function() now = now + 0.25 return now end) -- far more than the old 0.2 s between two scans
+
+				for _ = 1, 30 do
+					G.Candidates(ply, {})
+				end
+
+				expect(#calls).to.equal(0)
+			end
+		},
+		{
+			name = "a projectile made after the load is followed from the hook OnEntityCreated alone (the search answers nothing); fails if the hook is not there or does not follow",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local ply = fakePlayer()
+				G.Candidates(ply, {})
+				recordSearch() -- finds nothing: only the event can have told the warning about it
+				local ent = fakeEntity("npc_grenade_frag")
+				expect(has(G.Candidates(ply, {}), ent)).to.beFalse()
+				created(ent)
+				local list = G.Candidates(ply, {})
+				list = mine(list)
+				expect(#list).to.equal(1)
+				expect(list[1].ent).to.equal(ent)
+				expect(list[1].class).to.equal("npc_grenade_frag")
+			end
+		},
+		{
+			name = "a projectile that is removed is forgotten at once, even while its entity still answers IsValid (the hook EntityRemoved is called before the end); fails if EntityRemoved does not forget it",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local ply = fakePlayer()
+				G.Candidates(ply, {})
+				recordSearch()
+				local ent, other = fakeEntity("npc_grenade_frag"), fakeEntity("combine_mine")
+				created(ent)
+				created(other)
+				expect(#mine(G.Candidates(ply, {}))).to.equal(2)
+				removed(ent)
+				local list = G.Candidates(ply, {})
+				expect(has(list, ent)).to.beFalse()
+				expect(has(list, other)).to.beTrue()
+				-- a projectile that goes without the hook (invalid) is not kept either
+				other.valid = false
+				expect(#mine(G.Candidates(ply, {}))).to.equal(0)
+			end
+		},
+		{
+			name = "a class registered later: the entities that stand already are looked for ONCE, per class of the registry, then the events alone follow; fails if no catch-up is made, or if it is made every frame",
+			func = function(state)
+				local G, API = GryMod.FlashGrenade, GryMod.API
+				local ply = fakePlayer()
+				G.Candidates(ply, {})
+				local ent = fakeEntity("t_cl_trap")
+				local calls = recordSearch({t_cl_trap = {ent}})
+				created(ent) -- no entry yet: not a projectile
+				expect(has(G.Candidates(ply, {}), ent)).to.beFalse()
+				expect(#calls).to.equal(0)
+
+				expect(API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "TRAP"}})).to.beTrue()
+				expect(has(G.Candidates(ply, {}), ent)).to.beTrue()
+				local asked = 0
+
+				for _, class in ipairs(calls) do
+					if class == "t_cl_trap" then asked = asked + 1 end
+				end
+
+				expect(asked).to.equal(1)
+				expect(#calls).to.equal(#API.DangerClasses())
+				local total = #calls
+
+				for _ = 1, 10 do
+					G.Candidates(ply, {})
+				end
+
+				expect(#calls).to.equal(total)
+			end
+		},
+		{
+			name = "a projectile that has no class yet when it is made is looked at again one frame on (one timer for all the ones of the frame); fails if it is judged at creation only, or one timer is made for each",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local ply = fakePlayer()
+				G.Candidates(ply, {})
+				recordSearch()
+				local timers = {}
+				stub(timer, "Simple", function(delay, fn) timers[#timers + 1] = {delay = delay, fn = fn} end)
+				local ent, other = fakeEntity("class C_BaseEntity"), fakeEntity("class C_BaseEntity")
+				created(ent)
+				created(other)
+				expect(has(G.Candidates(ply, {}), ent)).to.beFalse()
+				expect(#timers).to.equal(1)
+				expect(timers[1].delay).to.equal(0)
+				-- the class arrives with the first update of the entity
+				ent.class = "npc_grenade_frag"
+				timers[1].fn()
+				expect(has(G.Candidates(ply, {}), ent)).to.beTrue()
+				expect(has(G.Candidates(ply, {}), other)).to.beFalse() -- a prop of the client stays out
+			end
+		},
+		{
+			name = "the candidates are what the old search gave: only the projectiles whose entry draws a warning (the indicator), valid ones, with their class, distance and server mark",
+			func = function(state)
+				local G, API = GryMod.FlashGrenade, GryMod.API
+				local ply = fakePlayer()
+				G.Candidates(ply, {})
+				recordSearch()
+				local frag, trap, prop = fakeEntity("npc_grenade_frag"), fakeEntity("t_cl_trap"), fakeEntity("prop_physics")
+				API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "TRAP"}, indicator = "marker"})
+				created(frag)
+				created(trap)
+				created(prop)
+				local list = mine(G.Candidates(ply, {}))
+				expect(has(list, frag)).to.beTrue()
+				expect(has(list, trap)).to.beFalse() -- followed, but its entry has no warning
+				expect(has(list, prop)).to.beFalse() -- no entry
+				expect(#list).to.equal(1)
+				expect(list[1].class).to.equal("npc_grenade_frag")
+				expect(near(list[1].metres, 100 / 52.49)).to.beTrue()
+				expect(list[1].armed).to.beFalse()
+				-- the entry of the trap is given a warning: the same entity warns, nothing else was needed
+				API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "TRAP"}, indicator = "warning"})
+				expect(has(G.Candidates(ply, {}), trap)).to.beTrue()
+				-- and when the entry goes, so does the warning
+				API.UnregisterTracked("t_cl_trap")
+				expect(has(G.Candidates(ply, {}), trap)).to.beFalse()
+			end
+		},
+		{
+			name = "the projectiles that stand when the file is loaded (a hot reload) are looked for once at the load; fails if the load makes no catch-up",
+			func = function(state)
+				local ent = fakeEntity("npc_grenade_frag")
+				local calls = recordSearch({npc_grenade_frag = {ent}})
+				local old = GryMod.FlashGrenade
+				old.Reset()
+				local ok, err = pcall(include, "grymod/client/cl_hud_grenade_flash.lua")
+				local G = GryMod.FlashGrenade
+				pcall(restore) -- the search is the real one again before anything else runs
+				saved = {}
+				expect(ok).to.beTrue()
+				expect(err).to.beNil()
+				expect(#calls >= 1).to.beTrue()
+				recordSearch()
+				expect(has(G.Candidates(fakePlayer(), {}), ent)).to.beTrue()
+			end
+		},
+		{
+			name = "the module listens to the creation and the removal of entities (the hooks OnEntityCreated and EntityRemoved)",
+			func = function(state)
+				local hooks = hook.GetTable()
+				expect(isfunction(hooks["OnEntityCreated"]["GRYGRENADEFOLLOW"])).to.beTrue()
+				expect(isfunction(hooks["EntityRemoved"]["GRYGRENADEFOLLOW"])).to.beTrue()
 			end
 		},
 		{

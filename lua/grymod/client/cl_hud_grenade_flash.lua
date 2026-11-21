@@ -346,35 +346,101 @@ end
 
 local enabled = Grenade.Enabled
 
--- The grenades in the world are looked for five times a second; their positions are read every frame.
-local scanned = {}
-local nextScan = 0
+-- The projectiles are followed from their creation (the hooks below, as the server does in sv_grenade.lua): the world is never
+-- searched while the game runs. Their positions are read every frame. Measured on live entities: a networked entity already has its
+-- class and its model in OnEntityCreated; an entity that is out of the player's view is dormant, it stays in the client's list and
+-- is not made again when it comes back, so nothing is lost when it leaves and returns. Keys are weak: an entity that goes without
+-- its hook does not stay.
+local followed = setmetatable({}, {__mode = "k"})
+local pending = setmetatable({}, {__mode = "k"})
+local settling = false
+local seen -- the list of danger classes the world was last searched for (a new list is made at every change of the registry)
 
-local function scan()
-	local now = RealTime()
+-- The engine's class of an entity that does not have its own yet ("class C_BaseEntity")
+local function unresolved(class)
+	return class == "" or string.sub(class, 1, 6) == "class "
+end
 
-	if now < nextScan then
+-- Follows the entity when its class has a danger entry.
+function Grenade.Follow(ent)
+	local API = GryMod.API
+
+	if not IsValid(ent) or not API or not API.GetDanger then
 		return
 	end
 
-	nextScan = now + 0.2
-	scanned = {}
+	if API.GetDanger(ent:GetClass()) then
+		followed[ent] = true
+	end
+end
 
+function Grenade.Forget(ent)
+	followed[ent] = nil
+	pending[ent] = nil
+end
+
+-- One frame after a creation: the entities that had no class yet are judged again (one timer for all of the frame).
+local function settle()
+	settling = false
+
+	for ent in pairs(pending) do
+		pending[ent] = nil
+		Grenade.Follow(ent)
+	end
+end
+
+hook.Add("OnEntityCreated", "GRYGRENADEFOLLOW", function(ent)
+	local API = GryMod.API
+
+	if not IsValid(ent) or not API or not API.GetDanger then
+		return
+	end
+
+	local class = ent:GetClass()
+
+	if API.GetDanger(class) then
+		followed[ent] = true
+	elseif unresolved(class) then
+		pending[ent] = true
+
+		if not settling then
+			settling = true
+			timer.Simple(0, settle)
+		end
+	end
+end)
+
+hook.Add("EntityRemoved", "GRYGRENADEFOLLOW", function(ent)
+	followed[ent] = nil
+	pending[ent] = nil
+end)
+
+-- The entities that stand when the registry changes (and when this file is loaded: a hot reload, or the module started late) are
+-- looked for once, class by class; after that only the events follow. Each change of the registry makes a new list of classes
+-- (sh_api_tracked.lua), so one comparison tells whether it changed.
+local function catchUp()
 	local API = GryMod.API
 
 	if not API or not API.DangerClasses then
 		return
 	end
 
-	-- by class, through the registry: the classes that have a danger entry drawn as a warning
-	for _, class in ipairs(API.DangerClasses()) do
-		if API.GetDanger(class).indicator == "warning" then
-			for _, ent in ipairs(ents.FindByClass(class)) do
-				scanned[#scanned + 1] = ent
-			end
+	local classes = API.DangerClasses()
+
+	if classes == seen then
+		return
+	end
+
+	seen = classes
+
+	for _, class in ipairs(classes) do
+		for _, ent in ipairs(ents.FindByClass(class)) do
+			Grenade.Follow(ent)
 		end
 	end
 end
+
+catchUp()
 
 -- What Pick reads of an entity: its class, the distance in metres from the eye, whether it is on the screen (the point
 -- is its projection), the server's mark (sv_grenade.lua), whether it is the player's own (the engine's owner, or the
@@ -396,20 +462,35 @@ function Grenade.Candidate(ent, ply, point, visible)
 	}
 end
 
-local function candidates(ply, opts)
+-- The projectiles followed whose entry draws a warning (the registry's indicator, read now: an entry changed since the entity was
+-- made counts), as candidates for Pick.
+function Grenade.Candidates(ply, opts)
+	catchUp()
+
 	local list = {}
+	local API = GryMod.API
 
-	for _, ent in ipairs(scanned) do
+	if not API or not API.GetDanger then
+		return list
+	end
+
+	for ent in pairs(followed) do
 		if IsValid(ent) then
-			local point = ent:WorldSpaceCenter():ToScreen()
-			local visible
+			local entry = API.GetDanger(ent:GetClass())
 
-			-- the line of sight costs a ray: only for a projectile that is on the screen and active
-			if opts.los and point.visible and ent:GetNW2Bool("GryArmed") then
-				visible = lineOfSight(ent, ply)
+			if entry and entry.indicator == "warning" then
+				local point = ent:WorldSpaceCenter():ToScreen()
+				local visible
+
+				-- the line of sight costs a ray: only for a projectile that is on the screen and active
+				if opts.los and point.visible and ent:GetNW2Bool("GryArmed") then
+					visible = lineOfSight(ent, ply)
+				end
+
+				list[#list + 1] = Grenade.Candidate(ent, ply, point, visible)
 			end
-
-			list[#list + 1] = Grenade.Candidate(ent, ply, point, visible)
+		else
+			followed[ent] = nil
 		end
 	end
 
@@ -428,12 +509,11 @@ hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
 		return
 	end
 
-	scan()
 	-- the server's switch (a server without the module marks nothing: then every projectile counts)
 	armedSwitch = armedSwitch or GetConVar("gry_grenade_armed_only")
 	local switch = armedSwitch
 	local opts = Grenade.Options()
-	local best = Grenade.Pick(candidates(ply, opts), switch ~= nil and switch:GetBool(), opts)
+	local best = Grenade.Pick(Grenade.Candidates(ply, opts), switch ~= nil and switch:GetBool(), opts)
 
 	if not best then
 		if warning then
