@@ -85,6 +85,9 @@ function GryMod.GryHUDOptions(Panel)
 	-- server setting (the host or an admin): EMP, electric hits and heavy impacts put the suit down for a few seconds
 	Panel:CheckBox("Suit malfunctions: EMP and electric hits (server)", "gry_malfunction")
 
+	-- server setting: the grenade warning only for a projectile that is active (an armed grenade, a mine in the air...)
+	Panel:CheckBox("Grenade warning only for armed grenades, mines in the air... (server; off: also the ones lying around)", "gry_grenade_armed_only")
+
 	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)
 	Panel:Help("Preloading of the interface (only the elements above that are on)")
 	Panel:AddControl("ComboBox", {

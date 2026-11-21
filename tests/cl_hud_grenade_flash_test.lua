@@ -174,6 +174,9 @@ return {
 				expect(G.TypeFor("npc_grenade_frag")).to.equal("FRAG GRENADE")
 				expect(G.TypeFor("grenade_ar2")).to.equal("RIFLE GRENADE")
 				expect(G.TypeFor("rpg_missile")).to.equal("MISSILE")
+				expect(G.TypeFor("grenade_helicopter")).to.equal("BOMB")
+				expect(G.TypeFor("combine_mine")).to.equal("MINE")
+				expect(G.TypeFor("prop_combine_ball")).to.equal("ENERGY BALL")
 				expect(G.TypeFor("prop_physics")).to.equal(nil)
 				expect(G.TypeFor(nil)).to.equal(nil)
 			end
@@ -183,16 +186,31 @@ return {
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				local picked = G.Pick({
-					{class = "npc_grenade_frag", metres = 20, onScreen = true, own = false},
-					{class = "npc_grenade_frag", metres = 8, onScreen = false, own = false}, -- behind the camera
-					{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true}, -- thrown by the player
-					{class = "prop_physics", metres = 3, onScreen = true, own = false}, -- not a grenade
-					{class = "grenade_ar2", metres = 12, onScreen = true, own = false},
-					{class = "npc_grenade_frag", metres = G.RANGE + 1, onScreen = true, own = false} -- too far
+					{class = "npc_grenade_frag", metres = 20, onScreen = true, own = false, armed = true},
+					{class = "npc_grenade_frag", metres = 8, onScreen = false, own = false, armed = true}, -- behind the camera
+					{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = true}, -- thrown by the player
+					{class = "prop_physics", metres = 3, onScreen = true, own = false, armed = true}, -- not a grenade
+					{class = "grenade_ar2", metres = 12, onScreen = true, own = false, armed = true},
+					{class = "npc_grenade_frag", metres = G.RANGE + 1, onScreen = true, own = false, armed = true} -- too far
 				})
 				expect(picked.metres).to.equal(12)
 				expect(G.Pick({})).to.equal(nil)
 				expect(G.Pick(nil)).to.equal(nil)
+			end
+		},
+		{
+			name = "an inert projectile is not warned about, unless the switch asks for every one (the second argument false)",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local list = {
+					{class = "npc_grenade_frag", metres = 4, onScreen = true, own = false, armed = false}, -- lying there, not armed
+					{class = "combine_mine", metres = 9, onScreen = true, own = false, armed = false}, -- on the ground
+					{class = "npc_grenade_frag", metres = 15, onScreen = true, own = false, armed = true}
+				}
+				expect(G.Pick(list).metres).to.equal(15) -- armed only is the default
+				expect(G.Pick(list, true).metres).to.equal(15)
+				expect(G.Pick(list, false).metres).to.equal(4) -- the old behaviour
+				expect(G.Pick({{class = "combine_mine", metres = 9, onScreen = true, own = false, armed = false}})).to.equal(nil)
 			end
 		},
 		{

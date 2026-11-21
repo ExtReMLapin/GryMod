@@ -25,7 +25,9 @@ local TYPES = {
 	npc_grenade_frag = "FRAG GRENADE",
 	grenade_ar2 = "RIFLE GRENADE",
 	rpg_missile = "MISSILE",
-	grenade_helicopter = "BOMB"
+	grenade_helicopter = "BOMB",
+	combine_mine = "MINE",
+	prop_combine_ball = "ENERGY BALL"
 }
 
 function Grenade.TypeFor(class)
@@ -48,12 +50,14 @@ function Grenade.StagePosition(screenX, screenY, screenW, screenH, metres)
 	return (screenX - (screenW - STAGE_W * scale) / 2) / scale - half, screenY / scale - half
 end
 
--- The nearest of the candidates ({class, metres, onScreen, own}) that deserves a warning, or nil.
-function Grenade.Pick(candidates)
+-- The nearest of the candidates ({class, metres, onScreen, own, armed}) that deserves a warning, or nil. `armed` is
+-- the server's mark (sv_grenade.lua): an inert projectile (one lying around, a mine on the ground) is not warned about,
+-- unless armedOnly is false (the switch gry_grenade_armed_only, for debugging).
+function Grenade.Pick(candidates, armedOnly)
 	local best
 
 	for _, c in ipairs(candidates or {}) do
-		if TYPES[c.class] and c.onScreen and not c.own and c.metres <= Grenade.RANGE and (not best or c.metres < best.metres) then
+		if TYPES[c.class] and c.onScreen and not c.own and c.metres <= Grenade.RANGE and (armedOnly == false or c.armed) and (not best or c.metres < best.metres) then
 			best = c
 		end
 	end
@@ -202,6 +206,7 @@ end
 
 local warning
 local lastTime
+local armedSwitch
 
 -- The HUD is on and so is this piece (gry_hud_grenade).
 function Grenade.Enabled()
@@ -267,7 +272,10 @@ hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
 	end
 
 	scan()
-	local best = Grenade.Pick(candidates(ply))
+	-- the server's switch (a server without the module marks nothing: then every projectile counts)
+	armedSwitch = armedSwitch or GetConVar("gry_grenade_armed_only")
+	local switch = armedSwitch
+	local best = Grenade.Pick(candidates(ply), switch ~= nil and switch:GetBool())
 
 	if not best then
 		if warning then
