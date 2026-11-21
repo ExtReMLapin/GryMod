@@ -83,6 +83,18 @@ return {
 			end
 		},
 		{
+			name = "the pale halo of the scan also outlines a vehicle or a mine, as it does an NPC; a plain prop never",
+			func = function()
+				local Bino = GryMod.FlashBinoculars
+
+				expect(Bino.SilhouetteValid(fake("prop_vehicle_jeep", {vehicle = true}))).to.beTrue()
+				expect(Bino.SilhouetteValid(fake("prop_vehicle_airboat", {vehicle = true}))).to.beTrue()
+				expect(Bino.SilhouetteValid(fake("combine_mine"))).to.beTrue()
+				expect(Bino.SilhouetteValid(fake("prop_physics"))).to.beFalse()
+				expect(Bino.SilhouetteValid(fake("prop_vehicle_prisoner_pod", {vehicle = true}))).to.beFalse()
+			end
+		},
+		{
 			name = "Aimable: the vehicles and the mines read as a distance like the NPCs, a plain prop does not",
 			func = function()
 				local Bino = GryMod.FlashBinoculars

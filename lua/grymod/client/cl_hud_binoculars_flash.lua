@@ -715,9 +715,17 @@ function Bino.SilhouetteClear(set)
 	return set
 end
 
--- An NPC that is alive and exists.
+-- An NPC that is alive and exists, or a vehicle or a mine that the radar may list (Bino.IsObject): the halo outlines what the scan found.
 function Bino.SilhouetteValid(entity)
-	return entity ~= nil and IsValid(entity) and entity:IsNPC() and entity:Health() > 0
+	if entity == nil or not IsValid(entity) then
+		return false
+	end
+
+	if entity:IsNPC() then
+		return entity:Health() > 0
+	end
+
+	return isfunction(entity.IsNextBot) and Bino.IsObject(entity)
 end
 
 -- ---------------------------------------------------------------------------------------------------------

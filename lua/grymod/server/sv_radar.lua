@@ -154,6 +154,18 @@ end
 -- there only when the registry has an entry for it: type (the icon, 1 to 4) and big replace the ones of its class, radar says when
 -- it is listed (see Step), noScan that the binoculars may not tag it. The relation comes through the relation chain, which asks the
 -- registry too.
+-- The way an entity faces, in degrees: its own yaw, except for a vehicle, which faces 90 degrees from it (MEASURED: the Buggy and the
+-- airboat at yaw 0 face along +y, and their forward vector says so): the rectangle on the radar points where it drives.
+function Radar.Facing(ent)
+	if ent:IsVehicle() then
+		local forward = ent:GetForward()
+
+		return math.deg(math.atan2(forward.y, forward.x))
+	end
+
+	return ent:GetAngles().y
+end
+
 function Radar.Describe(npc, ply)
 	local pos = npc:GetPos()
 	local enemy = isfunction(npc.GetEnemy) and npc:GetEnemy() or nil
@@ -182,7 +194,7 @@ function Radar.Describe(npc, ply)
 		health = npc:Health(),
 		maxHealth = npc:GetMaxHealth(),
 		x = pos.x, y = pos.y, z = pos.z,
-		yaw = npc:GetAngles().y
+		yaw = Radar.Facing(npc)
 	}
 
 	if tracked then

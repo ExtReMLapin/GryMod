@@ -236,6 +236,25 @@ return {
 			end
 		},
 		{
+			name = "a vehicle's heading is the way it FACES (measured: the Buggy and the airboat face along the entity's right, 90 degrees from its yaw), so the rectangle points the right way on the radar; a mine keeps its own yaw",
+			func = function()
+				local jeep = spawnJeep()
+				jeep:SetAngles(Angle(0, 30, 0))
+
+				local f = jeep:GetForward()
+				local facing = math.deg(math.atan2(f.y, f.x))
+				local d = R.Describe(jeep, ply())
+
+				-- the facing is 120, not the 30 of the entity's own yaw
+				expect(math.abs(math.AngleDifference(d.yaw, facing)) < 0.5).to.beTrue()
+				expect(math.abs(math.AngleDifference(d.yaw, 120)) < 1).to.beTrue()
+
+				local mine = spawnMine()
+				mine:SetAngles(Angle(0, 30, 0))
+				expect(math.abs(math.AngleDifference(R.Describe(mine, ply()).yaw, 30)) < 0.5).to.beTrue()
+			end
+		},
+		{
 			name = "the colour of a vehicle is its driver's: a friendly citizen at the wheel is blue, a Combine soldier red",
 			func = function()
 				local jeep = spawnJeep()
