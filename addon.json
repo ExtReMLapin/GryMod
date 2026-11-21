@@ -11,7 +11,7 @@
 		".git*",
 		".github/*",
 		"tools/*",
-		"shaders/src/*",
+		"dev_resources/*",
 		"docs/*",
 		"tests/*",
 		"LICENSE"

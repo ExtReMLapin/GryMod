@@ -1,5 +1,5 @@
 -- Tests of the camouflage's pixel shader (cl_cloak_shader.lua), GLuaTest format, client realm. The shader is the original's own sparks
--- pass (CloakSparksPS), ported to the Source engine (shaders/src/grymod_cloak_*.hlsl): the 3D noise read three times in a chain, the spark
+-- pass (CloakSparksPS), ported to the Source engine (dev_resources/shaders/grymod_cloak_*.hlsl): the 3D noise read three times in a chain, the spark
 -- profile, the scan lines calculated from the pixel row. The Lua gives it the time, the variation, the strength; if the game cannot run it,
 -- a test draw tells and the older approximation (cl_cloak_lines.lua, the edge layer) stays. Nothing is shown on the screen by these cases.
 

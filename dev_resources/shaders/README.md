@@ -1,12 +1,13 @@
 # Shaders
 
-`src/` holds the HLSL of the camouflage's electric sparks (a port of Crysis' `CloakSparksPS`); `fxc/` holds the compiled `.vcs` the game loads
-(the Workshop package leaves `src/` out: gmad's white list takes `shaders/fxc/*.vcs`, not `.hlsl`).
+This folder (dev_resources, left out of the Workshop package and of the release zip) holds what is written before compilation: the HLSL of the
+camouflage's electric sparks (a port of Crysis' `CloakSparksPS`) and the code that converts and compiles. The compiled `.vcs` the game loads are
+the classic resources, in `shaders/fxc/` (gmad's white list takes `shaders/fxc/*.vcs`, not `.hlsl`).
 
 Build (only the developer or the CI; ShaderCompile and the Source SDK's shader headers are not in this repository):
 
-    python tools/build_shaders.py --compiler ShaderCompile.exe --headers <folder with common_ps_fxc.h> [--suffix _r2]
-    python tools/make_cloak_shader_textures.py <folder of the original's dds>      # the noise volume and the spark profile
+    python dev_resources/shaders/build_shaders.py --compiler ShaderCompile.exe --headers <folder with common_ps_fxc.h> [--suffix _r2]
+    python dev_resources/shaders/make_cloak_shader_textures.py <folder of the original's dds>      # the noise volume and the spark profile
 
 Things learned the hard way (all measured in the game):
 

@@ -3,8 +3,8 @@
 -- In Crysis the sparks of a camouflaged suit are the second pass of its cloak shader (CloakLayer.cfx, CloakSparksPS): the 128 cube of 3D
 -- noise is read three times in a chain, the result indexes a 256 colour profile at three offsets, and the sum, squared, is multiplied by a
 -- triangle wave of the screen row (the scan lines) and by max(speed, transition ^ 2). Source cannot run that with its stock materials, but
--- a custom pixel shader can be shipped since March 2025 (shaders/fxc/*.vcs): shaders/src/grymod_cloak_*.hlsl is the port, compiled by
--- tools/build_shaders.py, and the textures it reads (a real volume texture, the profile) come from tools/make_cloak_shader_textures.py.
+-- a custom pixel shader can be shipped since March 2025 (shaders/fxc/*.vcs): dev_resources/shaders/grymod_cloak_*.hlsl is the port, compiled by
+-- dev_resources/shaders/build_shaders.py, and the textures it reads (a real volume texture, the profile) come from dev_resources/shaders/make_cloak_shader_textures.py.
 --
 -- This file gives the shader what the original's engine gave it (the time, the variation, the strength, the random offset of the scan
 -- lines) and draws the entity through it, added to the picture. The game may not be able to run it (another graphics level, a driver),

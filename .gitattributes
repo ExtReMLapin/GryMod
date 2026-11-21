@@ -1,6 +1,7 @@
 # Left out of `git archive`, so out of the release zip (the Workshop package follows addon.json "ignore")
 tests/ export-ignore
 tools/ export-ignore
+dev_resources/ export-ignore
 docs/ export-ignore
 .github/ export-ignore
 .gitattributes export-ignore

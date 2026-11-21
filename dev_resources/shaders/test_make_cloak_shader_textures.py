@@ -1,4 +1,4 @@
-"""Tests of tools/make_cloak_shader_textures.py: the two textures the camouflage's pixel shader reads (the noise volume and the spark profile)."""
+"""Tests of dev_resources/shaders/make_cloak_shader_textures.py: the two textures the camouflage's pixel shader reads (the noise volume and the spark profile)."""
 import os
 import struct
 import tempfile
@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from tools import make_cloak_shader_textures as mcs
+import make_cloak_shader_textures as mcs
 from tools.flash2lua import vtf
 
 

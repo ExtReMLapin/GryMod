@@ -1,6 +1,6 @@
-"""Compiles the addon's shaders (shaders/src/*.hlsl) into shaders/fxc/*.vcs with ShaderCompile (https://github.com/SCell555/ShaderCompile).
+"""Compiles the addon's shaders (the .hlsl next to this file) into shaders/fxc/*.vcs with ShaderCompile (https://github.com/SCell555/ShaderCompile).
 
-    python tools/build_shaders.py --compiler PATH/ShaderCompile.exe --headers DIR_WITH_common_ps_fxc.h [--out shaders/fxc] [--suffix _r2]
+    python dev_resources/shaders/build_shaders.py --compiler PATH/ShaderCompile.exe --headers DIR_WITH_common_ps_fxc.h [--out shaders/fxc] [--suffix _r2]
 
 Only the developer (and the CI) compiles: the players get the .vcs. Neither the compiler nor the engine's shader headers (common_ps_fxc.h,
 common_vs_fxc.h, ... of the Source SDK 2013, as the guide https://github.com/meetric1/gmod_shader_guide carries them) are in this repository: pass
@@ -18,7 +18,8 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 NAME = re.compile(r"^(?P<base>.+)_(?P<stage>ps|vs)(?P<model>30|20b|2x)\.hlsl$")
 
 
@@ -71,7 +72,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--compiler", required=True, help="the ShaderCompile executable")
     parser.add_argument("--headers", required=True, help="the folder with the Source SDK's common_*.h")
-    parser.add_argument("--src", default=os.path.join(ROOT, "shaders", "src"))
+    parser.add_argument("--src", default=HERE)
     parser.add_argument("--out", default=os.path.join(ROOT, "shaders", "fxc"))
     parser.add_argument("--suffix", default="")
     args = parser.parse_args(argv)

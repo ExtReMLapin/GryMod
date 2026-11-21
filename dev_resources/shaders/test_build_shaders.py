@@ -1,10 +1,10 @@
-"""Tests of tools/build_shaders.py (the shader compiler is replaced by a small script that writes the files the real one would)."""
+"""Tests of dev_resources/shaders/build_shaders.py (the shader compiler is replaced by a small script that writes the files the real one would)."""
 import os
 import sys
 import tempfile
 import unittest
 
-from tools import build_shaders as bs
+import build_shaders as bs
 
 FAKE_COMPILER = r'''
 import os, sys
@@ -100,10 +100,10 @@ class PackagingTest(unittest.TestCase):
         """gmad's white list takes shaders/fxc/*.vcs and not .hlsl: the sources stay in the repository, the .vcs go to the players."""
         import json
 
-        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
         with open(os.path.join(root, "addon.json"), encoding="utf8") as f:
             ignore = json.load(f)["ignore"]
-        self.assertIn("shaders/src/*", ignore)
+        self.assertIn("dev_resources/*", ignore)
         self.assertFalse(any(pattern.startswith("shaders/fxc") or pattern == "*.vcs" for pattern in ignore))
         self.assertTrue(any(name.endswith(".vcs") for name in os.listdir(os.path.join(root, "shaders", "fxc"))))
 
