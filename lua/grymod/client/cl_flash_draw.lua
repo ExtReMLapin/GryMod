@@ -27,6 +27,7 @@ local function atlasMaterial(path)
 	local material = atlasMaterials[path]
 
 	if not material then
+		Flash.Stats.atlasLoads = Flash.Stats.atlasLoads + 1
 		material = Material(Flash.AtlasMaterialPath(path), "nocull smooth mips")
 		-- Flash blends translucent shapes in gamma space; the engine blends in linear space (washed-out, brighter
 		-- translucent panels) unless the shader writes the colour as it is.
@@ -40,6 +41,19 @@ end
 
 function Flash.ClearMaterialCache()
 	atlasMaterials = {}
+end
+
+-- The material of an atlas picture, made now when it is not (the preloading calls it ahead of the first drawing).
+Flash.AtlasMaterial = atlasMaterial
+
+-- Drops the material of one picture (the next drawing makes it again): tests.
+function Flash.ForgetAtlas(path)
+	atlasMaterials[path] = nil
+end
+
+-- Whether the picture has its material already (the next drawing that needs it costs nothing).
+function Flash.AtlasLoaded(path)
+	return atlasMaterials[path] ~= nil
 end
 
 local whitePaths = {}
@@ -401,7 +415,8 @@ local targetPool = {}
 local targetCount = 0
 local groupMaterials = {}
 
-Flash.Stats = {groupRenders = 0, groupReuses = 0}
+-- atlasLoads: pictures turned into materials (each one is a freeze of up to a second), targetCreates: render targets made
+Flash.Stats = {groupRenders = 0, groupReuses = 0, atlasLoads = 0, targetCreates = 0}
 
 local function powerOfTwo(n)
 	local p = 64
@@ -422,6 +437,7 @@ local function acquireTarget(width, height)
 	end
 
 	targetCount = targetCount + 1
+	Flash.Stats.targetCreates = Flash.Stats.targetCreates + 1
 
 	-- a float format: 8-bit render targets are decoded as sRGB when sampled, which would darken the image
 	return GetRenderTargetEx("grymod_flash_p" .. targetCount .. "_" .. key, width, height, RT_SIZE_NO_CHANGE,

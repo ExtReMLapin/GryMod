@@ -39,6 +39,16 @@ function Flash.Register(name, data)
 	movies[name] = data
 end
 
+-- Whether the movie is in memory already (loading it again costs nothing).
+function Flash.Loaded(name)
+	return movies[name] ~= nil
+end
+
+-- Forgets a movie loaded from its file (the next Load reads it again): tests.
+function Flash.Unload(name)
+	movies[name] = nil
+end
+
 -- The converted movie `grymod/flash/<name>.lua`, or nil when it does not exist.
 function Flash.Load(name)
 	if movies[name] then

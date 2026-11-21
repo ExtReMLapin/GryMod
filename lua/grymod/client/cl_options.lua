@@ -73,6 +73,18 @@ function GryMod.GryHUDOptions(Panel)
 
 	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)
 	Panel:Button("Switch every element back on", "gry_hud_reset")
+
+	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)
+	Panel:Help("Preloading of the interface (only the elements above that are on)")
+	Panel:AddControl("ComboBox", {
+		Label = "Preload",
+		MenuButton = 0,
+		Options = {
+			["At the loading screen (longer loading, no freeze later)"] = {gry_hud_prewarm = "1"},
+			["Spread over the first seconds of play (short freezes)"] = {gry_hud_prewarm = "2"},
+			["Never (each part freezes the game the first time it is used)"] = {gry_hud_prewarm = "0"}
+		}
+	})
 end
 
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
