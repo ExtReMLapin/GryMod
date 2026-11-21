@@ -64,24 +64,24 @@ Mix.Original = {
 	["grymod/binoculars/binocular_tagged.wav"] = -26,
 	-- the underwater sounds (cl_underwater.lua): the level of each event of the game's player foley bank, and for the dive
 	-- sounds the level of the layer that plays (the slow dive in and the dive out sit at half their layer's level, -6 dB)
-	["grymod/uw_underwater_feedback_01.mp3"] = -29,
-	["grymod/uw_underwater_feedback_02.mp3"] = -29,
-	["grymod/uw_underwater_feedback_03.mp3"] = -29,
-	["grymod/uw_underwater_feedback_04.mp3"] = -29,
-	["grymod/uw_underwater_feedback_05.mp3"] = -29,
-	["grymod/uw_drown_feedback_01.mp3"] = -15,
-	["grymod/uw_drown_feedback_02.mp3"] = -15,
-	["grymod/uw_drown_feedback_03.mp3"] = -15,
-	["grymod/uw_drown_feedback_04.mp3"] = -15,
-	["grymod/uw_drown_feedback_05.mp3"] = -15,
-	["grymod/uw_drown_feedback_06.mp3"] = -15,
-	["grymod/uw_drown_feedback_07.mp3"] = -15,
-	["grymod/uw_dive_in_slow_01.mp3"] = -15,
-	["grymod/uw_dive_in_fast_01.mp3"] = -9,
-	["grymod/uw_dive_in_fast_02.mp3"] = -9,
-	["grymod/uw_dive_in_fast_03.mp3"] = -9,
-	["grymod/uw_dive_out.mp3"] = -18,
-	["grymod/uw_ambience_loop.wav"] = -16
+	["grymod/water/underwater_feedback_01.wav"] = -29,
+	["grymod/water/underwater_feedback_02.wav"] = -29,
+	["grymod/water/underwater_feedback_03.wav"] = -29,
+	["grymod/water/underwater_feedback_04.wav"] = -29,
+	["grymod/water/underwater_feedback_05.wav"] = -29,
+	["grymod/water/drown_feedback_01.wav"] = -15,
+	["grymod/water/drown_feedback_02.wav"] = -15,
+	["grymod/water/drown_feedback_03.wav"] = -15,
+	["grymod/water/drown_feedback_04.wav"] = -15,
+	["grymod/water/drown_feedback_05.wav"] = -15,
+	["grymod/water/drown_feedback_06.wav"] = -15,
+	["grymod/water/drown_feedback_07.wav"] = -15,
+	["grymod/water/dive_in_slow_01.wav"] = -15,
+	["grymod/water/dive_in_fast_01.wav"] = -9,
+	["grymod/water/dive_in_fast_02.wav"] = -9,
+	["grymod/water/dive_in_fast_03.wav"] = -9,
+	["grymod/water/dive_out.wav"] = -17.9,
+	["grymod/water/ambience_underwater_loop_02.wav"] = -16
 }
 
 -- the pitch of the events that are not at the sample's own pitch, in octaves (the game's event property): the quick menu's
@@ -89,7 +89,9 @@ Mix.Original = {
 Mix.PitchOctaves = {
 	["grymod/menu/modification_menu_appear.wav"] = 0.3,
 	["grymod/menu/modification_menu_dissapear.wav"] = 0.3,
-	["grymod/binoculars/binocular_tagged.wav"] = 0.52
+	["grymod/binoculars/binocular_tagged.wav"] = 0.52,
+	-- the underwater ambience loop (event ambience_underwater): a loop channel, see GryMod.Underwater
+	["grymod/water/ambience_underwater_loop_02.wav"] = -0.75
 }
 
 -- how many plays of a kind may be heard together (max, as the game's maxpb: mat_armor_fp has 8), how soon after the last
@@ -141,6 +143,17 @@ function Mix.Pitch(path)
 	end
 
 	return math.Round(100 * 2 ^ octaves)
+end
+
+-- the playback rate of a file (1 = the sample's own), for the channels that are not played with EmitSound (the loops)
+function Mix.Rate(path)
+	local octaves = Mix.PitchOctaves[Mix.Normalize(path)]
+
+	if octaves == nil then
+		return 1
+	end
+
+	return 2 ^ octaves
 end
 
 -- the clock of the limits (replaced by the tests)

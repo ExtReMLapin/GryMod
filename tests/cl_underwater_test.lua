@@ -218,11 +218,24 @@ return {
 			end
 		},
 		{
-			name = "the files the sounds use are the 17 decoded ones plus the loop, all in the mix with the original's level",
+			name = "the files the sounds use are the 17 decoded ones plus the loop (WAV at the bank's own quality, under grymod/water), all in the mix with the original's level",
 			func = function(state)
 				expect(#U.Files.breath).to.equal(5)
 				expect(#U.Files.drown).to.equal(7)
 				expect(#U.Files.diveFast).to.equal(3)
+
+				local all = {U.Files.diveSlow, U.Files.diveOut, U.Files.ambience}
+
+				for _, list in ipairs({U.Files.breath, U.Files.drown, U.Files.diveFast}) do
+					for _, path in ipairs(list) do all[#all + 1] = path end
+				end
+
+				expect(#all).to.equal(18)
+
+				for _, path in ipairs(all) do
+					expect(path:find("^grymod/water/[%w_]+%.wav$") ~= nil).to.beTrue()
+					expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+				end
 
 				-- the original: underwater_feedback -29 dB, drown_feedback -15, dive_in -9 (the slow layer at half its level:
 				-- -15), dive_out -12 (layer at half: -18), the ambience loop -16; the volume at +6 dB is 10^((level+6)/20)
@@ -240,8 +253,38 @@ return {
 					expect(GryMod.SoundMix.Volume(path, 6)).to.aboutEqual(0.708, 0.01)
 				end
 
-				expect(GryMod.SoundMix.Volume(U.Files.diveOut, 6)).to.aboutEqual(0.251, 0.01)
+				-- the dive out layer is at 0.507874 (-5.9 dB) of the event's -12
+				expect(GryMod.SoundMix.Original[GryMod.SoundMix.Normalize(U.Files.diveOut)]).to.equal(-17.9)
+				expect(GryMod.SoundMix.Volume(U.Files.diveOut, 6)).to.aboutEqual(0.2535, 0.001)
 				expect(GryMod.SoundMix.Volume(U.Files.ambience, 6)).to.aboutEqual(0.316, 0.01)
+			end
+		},
+		{
+			name = "the ambience loop plays at the event's pitch, -0.75 octave: the channel gets that playback rate once it is created",
+			func = function(state)
+				expect(GryMod.SoundMix.Rate(U.Files.ambience)).to.aboutEqual(2 ^ -0.75, 0.0001)
+				expect(GryMod.SoundMix.Pitch(U.Files.ambience)).to.equal(59)
+				expect(GryMod.SoundMix.Rate("grymod/suit/suit_armor_108.wav")).to.equal(1)
+
+				local callback
+				stub(sound, "PlayFile", function(path, flags, func)
+					expect(path).to.equal("sound/" .. U.Files.ambience)
+					callback = func
+				end)
+				U.Ambience.Set(nil)
+				local ply = fakePlayer({level = 3})
+				stub(_G, "LocalPlayer", function() return ply end)
+				recordSounds()
+				U.Poll()
+				expect(callback ~= nil).to.beTrue()
+
+				local channel = fakeChannel()
+				local rates = {}
+				channel.SetPlaybackRate = function(self, rate) rates[#rates + 1] = rate end
+				callback(channel)
+				expect(#rates).to.equal(1)
+				expect(rates[1]).to.aboutEqual(2 ^ -0.75, 0.0001)
+				expect(countCalls(channel, "EnableLooping")).to.equal(1)
 			end
 		},
 		{

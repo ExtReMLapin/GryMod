@@ -1,10 +1,13 @@
-"""Extracts the suit, HUD, quick menu and binocular sounds of GryMod from the Crysis SP demo, at their original quality.
+"""Extracts the suit, HUD, quick menu, binocular and underwater sounds of GryMod from the Crysis SP demo, at their original quality.
 
     python tools/extract_sounds.py "C:/Program Files (x86)/Electronic Arts/Crytek/Crysis SP Demo/Game" --ffmpeg C:/ext/ffmpeg.exe
 
 It reads Game/Sounds.pak (FMOD FSB3 banks: interface_suit, interface_bank00, physics_bullets) and Localized/english.pak (the
-suit voices, MPEG-1 Layer II) and writes sound/grymod/{suit,hud,menu,binoculars}/*.wav under the addon (or --out).
-Needs numpy and scipy (only for the reboot sound, whose two layers are summed at 44.1 kHz) and ffmpeg (only for the voices).
+suit voices, MPEG-1 Layer II) and writes sound/grymod/{suit,hud,menu,binoculars,water}/*.wav under the addon (or --out).
+The underwater sounds come from physics_player_foley.fsb (ADPCM) and environment_amb_natural.fsb (the ambience loop is
+MPEG-1 Layer II inside the bank: its frames are decoded as they are, 383 frames of 1152 samples = the header's sample count).
+Needs numpy and scipy (only for the reboot sound, whose two layers are summed at 44.1 kHz) and ffmpeg (the voices and the
+ambience loop).
 Nothing from the game is kept in the repository except the WAV files this writes.
 
 The banks hold IMA ADPCM: blocks of 36 bytes per channel, the four-byte groups of the channels interleaved. A block holds
@@ -133,6 +136,12 @@ MENU = [
     ("preset_navigation_beep_02", "interface_suit", "preset_navigation_beep_02.WAV"),
     ("temperature_beep", "interface_suit", "temperature_beep.WAV"),
 ]
+WATER = ([("underwater_feedback_%02d" % n, "physics_player_foley", "underwater_feedback_%02d.wav" % n) for n in range(1, 6)]
+         + [("drown_feedback_%02d" % n, "physics_player_foley", "drown_feedback_%02d.wav" % n) for n in range(1, 8)]
+         + [("dive_in_slow_01", "physics_player_foley", "dive_in_slow_01.wav")]
+         + [("dive_in_fast_%02d" % n, "physics_player_foley", "dive_in_fast_%02d.wav" % n) for n in range(1, 4)]
+         + [("dive_out", "physics_player_foley", "dive_out.wav")])
+AMBIENCE = ("ambience_underwater_loop_02", "environment_amb_natural", "ambience_underwater_loop_02.wa")
 BINOCULARS = [(n, "interface_suit", n + ".wav") for n in (
     "binocular_select", "binocular_deselect", "binocular_ambience", "binocular_zoom_in", "binocular_zoom_out",
     "binocular_tagged")]
@@ -165,7 +174,7 @@ def main():
 
     def bank(name):
         if name not in banks:
-            folder = "physics" if name.startswith("physics") else "interface"
+            folder = "physics" if name.startswith("physics") else "environment" if name.startswith("environment") else "interface"
             banks[name] = {h["name"]: h for h in parse_fsb(sounds.read("Sounds/%s/%s.fsb" % (folder, name)))}
 
         return banks[name]
@@ -215,6 +224,22 @@ def main():
     save("hud", "hud_reboot", np.clip(np.round(mix * 32768), -32768, 32767).astype(np.int16), 44100)
     plain("menu", MENU)
     plain("binoculars", BINOCULARS)
+    plain("water", WATER)
+    name, bank_name, source = AMBIENCE
+    h = sample(bank_name, source)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        mp2 = os.path.join(tmp, "loop.mp2")
+        wav = os.path.join(tmp, "loop.wav")
+        open(mp2, "wb").write(h["bytes"])
+        subprocess.run([args.ffmpeg, "-v", "error", "-y", "-i", mp2, "-acodec", "pcm_s16le", wav], check=True)
+        w = wave.open(wav)
+        pcm = np.frombuffer(w.readframes(w.getnframes()), "<i2").reshape(-1, w.getnchannels())
+        rate = w.getframerate()
+        w.close()
+
+    assert pcm.shape[0] == h["frames"] and rate == h["rate"], (pcm.shape, rate, h["frames"], h["rate"])
+    save("water", name, pcm, rate)
 
 
 if __name__ == "__main__":

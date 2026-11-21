@@ -16,18 +16,18 @@ local FxConVar = CreateClientConVar("gry_underwater_fx", "1", true, false,
 -- the files (under sound/), in the mix with the levels of the original's events (cl_sound_mix.lua)
 U.Files = {
 	breath = {
-		"grymod/uw_underwater_feedback_01.mp3", "grymod/uw_underwater_feedback_02.mp3", "grymod/uw_underwater_feedback_03.mp3",
-		"grymod/uw_underwater_feedback_04.mp3", "grymod/uw_underwater_feedback_05.mp3"
+		"grymod/water/underwater_feedback_01.wav", "grymod/water/underwater_feedback_02.wav", "grymod/water/underwater_feedback_03.wav",
+		"grymod/water/underwater_feedback_04.wav", "grymod/water/underwater_feedback_05.wav"
 	},
 	drown = {
-		"grymod/uw_drown_feedback_01.mp3", "grymod/uw_drown_feedback_02.mp3", "grymod/uw_drown_feedback_03.mp3",
-		"grymod/uw_drown_feedback_04.mp3", "grymod/uw_drown_feedback_05.mp3", "grymod/uw_drown_feedback_06.mp3",
-		"grymod/uw_drown_feedback_07.mp3"
+		"grymod/water/drown_feedback_01.wav", "grymod/water/drown_feedback_02.wav", "grymod/water/drown_feedback_03.wav",
+		"grymod/water/drown_feedback_04.wav", "grymod/water/drown_feedback_05.wav", "grymod/water/drown_feedback_06.wav",
+		"grymod/water/drown_feedback_07.wav"
 	},
-	diveSlow = "grymod/uw_dive_in_slow_01.mp3",
-	diveFast = {"grymod/uw_dive_in_fast_01.mp3", "grymod/uw_dive_in_fast_02.mp3", "grymod/uw_dive_in_fast_03.mp3"},
-	diveOut = "grymod/uw_dive_out.mp3",
-	ambience = "grymod/uw_ambience_loop.wav"
+	diveSlow = "grymod/water/dive_in_slow_01.wav",
+	diveFast = {"grymod/water/dive_in_fast_01.wav", "grymod/water/dive_in_fast_02.wav", "grymod/water/dive_in_fast_03.wav"},
+	diveOut = "grymod/water/dive_out.wav",
+	ambience = "grymod/water/ambience_underwater_loop_02.wav"
 }
 
 -- The breathing cycle of the original (the signed timer of its drowning update): it counts up from 0 and the breath
@@ -155,6 +155,8 @@ local function startLoop()
 
 		channel = created
 		created:EnableLooping(true)
+		-- the ambience event plays at -0.75 octave (the mix's table)
+		created:SetPlaybackRate(GryMod.SoundMix.Rate(U.Files.ambience))
 
 		if state.submerged and U.Enabled() then
 			created:SetVolume(0)
