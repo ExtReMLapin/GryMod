@@ -93,10 +93,37 @@ function Grenade.ReadState(ent)
 	return s
 end
 
--- Marks one projectile (the bool is only sent when it changes).
+-- The first player among the values given (an owner, a thrower, an owner entity: any of them may be missing, not be a
+-- player, or be NULL). Measured on live entities: a missile fired by weapon_rpg has the player as its owner and as its
+-- owner entity, a rifle grenade or a thrown frag also as its thrower, an energy ball of the AR2 as its owner.
+function Grenade.PlayerOf(...)
+	for i = 1, select("#", ...) do
+		local value = select(i, ...)
+
+		if isentity(value) and IsValid(value) and value:IsPlayer() then
+			return value
+		end
+	end
+
+	return nil
+end
+
+-- Who threw or fired the projectile: a player, or nil.
+function Grenade.ThrowerOf(ent)
+	return Grenade.PlayerOf(ent:GetOwner(), (ent:GetInternalVariable("m_hThrower")), (ent:GetInternalVariable("m_hOwnerEntity")))
+end
+
+-- Marks one projectile (the values are only sent when they change). The thrower is written first, so a client that sees
+-- the projectile active already knows whose it is (a player's own missile must not warn that player).
 function Grenade.Update(ent)
 	if not IsValid(ent) then
 		return
+	end
+
+	local thrower = Grenade.ThrowerOf(ent) or NULL
+
+	if ent:GetNWEntity("GryThrower") ~= thrower then
+		ent:SetNWEntity("GryThrower", thrower)
 	end
 
 	local armed = Grenade.IsActive(ent:GetClass(), Grenade.ReadState(ent))

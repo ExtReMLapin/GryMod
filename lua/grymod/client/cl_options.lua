@@ -90,6 +90,10 @@ function GryMod.GryHUDOptions(Panel)
 
 	-- server setting: the grenade warning only for a projectile that is active (an armed grenade, a mine in the air...)
 	Panel:CheckBox("Grenade warning only for armed grenades, mines in the air... (server; off: also the ones lying around)", "gry_grenade_armed_only")
+	-- client settings: how far the grenade warning reaches, the player's own hand grenade, walls (the original has no range and warns through walls)
+	Panel:NumSlider("Grenade warning range (metres)", "gry_grenade_range", 5, 200, 0)
+	Panel:CheckBox("Grenade warning also for your own thrown grenade (only within 15 m; your own missiles never warn)", "gry_grenade_own")
+	Panel:CheckBox("Grenade warning only for what you can see (off: also through walls, as in the original game)", "gry_grenade_los")
 
 	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)
 	Panel:Help("Preloading of the interface (only the elements above that are on)")

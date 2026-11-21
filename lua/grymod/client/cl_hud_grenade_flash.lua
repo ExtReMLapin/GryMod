@@ -2,7 +2,9 @@
 -- hexagon follows a grenade coming at the player, with its type and its distance; it shrinks with the distance. The
 -- movie's functions (showGrenadeDetector, hideGrenadeDetector, setDistance, setGrenadeType) are ported by hand; the
 -- game's rules are from its code (research notes: research-ui/NOTES.md). What is not known from the original and
--- chosen here: the range, and which projectiles count (the Half-Life 2 grenade, rifle grenade and rocket).
+-- chosen here: which projectiles count (the Half-Life 2 ones). What the original does NOT do and was added here, each
+-- as a setting (docs/superpowers/plans/2026-11-21-grenade-range.md): a range (the original has none: the icon follows
+-- the last projectile made anywhere), silence for the projectiles the player fired, and an optional line of sight.
 
 GryMod = GryMod or {}
 
@@ -13,8 +15,40 @@ GryMod.FlashGrenade = Grenade
 
 Grenade.MOVIE = "hud_grenadedetect"
 
--- Metres from which a grenade is warned about (not in the original code we could read).
-Grenade.RANGE = 60
+-- Metres from which a grenade is warned about. CHOICE: the original code has no range at all (read: the per-frame
+-- function and the one that picks the projectile test nothing but the screen side). 40 m is a little more than where
+-- the icon stops shrinking (36.7 m: 100 percent minus 1.5 a metre, floor 45), the distance the movie was drawn for.
+-- The setting gry_grenade_range, 5 to 200.
+Grenade.DEFAULT_RANGE = 40
+Grenade.MIN_RANGE = 5
+Grenade.MAX_RANGE = 200
+
+function Grenade.ClampRange(metres)
+	metres = tonumber(metres)
+
+	if not metres then
+		return Grenade.DEFAULT_RANGE
+	end
+
+	return math.Clamp(metres, Grenade.MIN_RANGE, Grenade.MAX_RANGE)
+end
+
+-- The player's own hand grenade (the one thrown by weapon_frag, a bomb) only warns within this distance: one thrown away
+-- tells nothing, one that falls back on the player does. CHOICE (measured: a frag thrown flat goes 15 m at most before
+-- it comes back). The setting gry_grenade_own turns the own grenade's warning off.
+Grenade.OWN_RANGE = 15
+
+-- The projectiles a player FIRES: the player's own never warn (a missile that leaves, a rifle grenade, an energy ball).
+-- CHOICE: the original warns about them too (nothing there looks at who fired).
+Grenade.FIRED = {
+	rpg_missile = true,
+	grenade_ar2 = true,
+	prop_combine_ball = true
+}
+
+-- The line of sight is read at most this often for a projectile, and a view that was lost is kept this long.
+Grenade.LOS_EVERY = 0.2
+Grenade.LOS_HOLD = 0.5
 
 -- Nothing is warned about within this distance of the eye: a grenade that leaves the hand appears 0.7 m from the eye
 -- (the one thrown by weapon_frag) or at 0.9 m (a picked up one that is let go) and is 3 m away a tenth of a second
@@ -56,21 +90,64 @@ function Grenade.StagePosition(screenX, screenY, screenW, screenH, metres)
 	return (screenX - (screenW - STAGE_W * scale) / 2) / scale - half, screenY / scale - half
 end
 
--- The nearest of the candidates ({class, metres, onScreen, own, armed}) that deserves a warning, or nil. `armed` is
--- the server's mark (sv_grenade.lua): true for a projectile that is active and not held in the player's hands, so an
--- inert one (lying around, a mine on the ground) and the one in the hands are not warned about, unless armedOnly is
--- false (the switch gry_grenade_armed_only, for debugging). The player's own thrown grenade is warned about like an
--- enemy's, once it is more than MIN_OWN from the eye.
-function Grenade.Pick(candidates, armedOnly)
+-- Whether a candidate ({class, metres, onScreen, own, armed, visible}) deserves a warning. `armed` is the server's mark
+-- (sv_grenade.lua): true for a projectile that is active and not held in the player's hands, so an inert one (lying
+-- around, a mine on the ground) and the one in the hands are not warned about, unless armedOnly is false (the switch
+-- gry_grenade_armed_only, for debugging). opts: range (metres, default DEFAULT_RANGE), own (false: the player's own hand
+-- grenade never warns; default true), los (true: only a projectile seen from the eye, `visible` not false; default false,
+-- as in the original, which warns through walls).
+function Grenade.Warns(c, armedOnly, opts)
+	opts = opts or {}
+	local range = opts.range or Grenade.DEFAULT_RANGE
+
+	if not TYPES[c.class] or not c.onScreen or c.metres < Grenade.MIN_OWN or c.metres > range then
+		return false
+	end
+
+	if armedOnly ~= false and not c.armed then
+		return false
+	end
+
+	if c.own then
+		-- what the player fired goes away from them; the hand grenade is theirs to follow only while it is close
+		if Grenade.FIRED[c.class] or opts.own == false or c.metres > Grenade.OWN_RANGE then
+			return false
+		end
+	end
+
+	if opts.los and c.visible == false then
+		return false
+	end
+
+	return true
+end
+
+-- The nearest of the candidates that deserves a warning (see Warns), or nil.
+function Grenade.Pick(candidates, armedOnly, opts)
 	local best
 
 	for _, c in ipairs(candidates or {}) do
-		if TYPES[c.class] and c.onScreen and c.metres >= Grenade.MIN_OWN and c.metres <= Grenade.RANGE and (armedOnly == false or c.armed) and (not best or c.metres < best.metres) then
+		if Grenade.Warns(c, armedOnly, opts) and (not best or c.metres < best.metres) then
 			best = c
 		end
 	end
 
 	return best
+end
+
+-- The line of sight of one projectile, read through probe() (true: nothing in the way) at most every LOS_EVERY seconds,
+-- and kept for LOS_HOLD seconds after it was last seen (a grenade that flickers behind a railing does not blink the
+-- warning). `entry` is the projectile's own table, kept by the caller.
+function Grenade.LosStep(entry, now, probe)
+	if not entry.checked or now - entry.checked >= Grenade.LOS_EVERY then
+		entry.checked = now
+
+		if probe() then
+			entry.seen = now
+		end
+	end
+
+	return entry.seen ~= nil and now - entry.seen < Grenade.LOS_HOLD
 end
 
 local Instance = {}
@@ -216,6 +293,38 @@ local warning
 local lastTime
 local armedSwitch
 
+-- The settings (client, saved): the range in metres, the player's own hand grenade, the line of sight (the original warns
+-- through walls: off).
+local rangeVar = CreateClientConVar("gry_grenade_range", tostring(Grenade.DEFAULT_RANGE), true, false,
+	"Distance in metres under which a projectile coming is warned about", Grenade.MIN_RANGE, Grenade.MAX_RANGE)
+local ownVar = CreateClientConVar("gry_grenade_own", "1", true, false,
+	"The player's own hand grenade (thrown, within 15 m) is warned about too (0: never)", 0, 1)
+local losVar = CreateClientConVar("gry_grenade_los", "0", true, false,
+	"Warn only about a projectile in the line of sight (0: also through walls, as in the original game)", 0, 1)
+
+function Grenade.Options()
+	return {range = Grenade.ClampRange(rangeVar:GetFloat()), own = ownVar:GetBool(), los = losVar:GetBool()}
+end
+
+-- The line of sight of the projectiles, one table each (weak: they go with the entity).
+local sight = setmetatable({}, {__mode = "k"})
+
+local function lineOfSight(ent, ply)
+	local entry = sight[ent]
+
+	if not entry then
+		entry = {}
+		sight[ent] = entry
+	end
+
+	return Grenade.LosStep(entry, RealTime(), function()
+		local from, to = ply:EyePos(), ent:WorldSpaceCenter()
+		local hit = util.TraceLine({start = from, endpos = to, filter = {ply, ent}, mask = MASK_OPAQUE})
+
+		return not hit.Hit
+	end)
+end
+
 -- The HUD is on and so is this piece (gry_hud_grenade).
 function Grenade.Enabled()
 	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("grenade"))
@@ -245,28 +354,39 @@ local function scan()
 end
 
 -- What Pick reads of an entity: its class, the distance in metres from the eye, whether it is on the screen (the point
--- is its projection), the server's mark (sv_grenade.lua) and whether it is the player's own.
-function Grenade.Candidate(ent, ply, point)
+-- is its projection), the server's mark (sv_grenade.lua), whether it is the player's own (the engine's owner, or the
+-- thrower the server writes) and the line of sight when it was read (`visible`: true, false, or nil when not asked).
+function Grenade.Candidate(ent, ply, point, visible)
 	point = point or ent:WorldSpaceCenter():ToScreen()
 	local owner = ent:GetOwner()
+	local thrower = ent:GetNWEntity("GryThrower")
 
 	return {
 		ent = ent,
 		class = ent:GetClass(),
 		metres = ply:EyePos():Distance(ent:GetPos()) / 52.49,
 		onScreen = point.visible,
-		own = IsValid(owner) and owner == ply,
+		own = (IsValid(owner) and owner == ply) or (IsValid(thrower) and thrower == ply),
 		armed = ent:GetNWBool("GryArmed"),
+		visible = visible,
 		screen = point
 	}
 end
 
-local function candidates(ply)
+local function candidates(ply, opts)
 	local list = {}
 
 	for _, ent in ipairs(scanned) do
 		if IsValid(ent) then
-			list[#list + 1] = Grenade.Candidate(ent, ply)
+			local point = ent:WorldSpaceCenter():ToScreen()
+			local visible
+
+			-- the line of sight costs a ray: only for a projectile that is on the screen and active
+			if opts.los and point.visible and ent:GetNWBool("GryArmed") then
+				visible = lineOfSight(ent, ply)
+			end
+
+			list[#list + 1] = Grenade.Candidate(ent, ply, point, visible)
 		end
 	end
 
@@ -289,7 +409,8 @@ hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
 	-- the server's switch (a server without the module marks nothing: then every projectile counts)
 	armedSwitch = armedSwitch or GetConVar("gry_grenade_armed_only")
 	local switch = armedSwitch
-	local best = Grenade.Pick(candidates(ply), switch ~= nil and switch:GetBool())
+	local opts = Grenade.Options()
+	local best = Grenade.Pick(candidates(ply, opts), switch ~= nil and switch:GetBool(), opts)
 
 	if not best then
 		if warning then

@@ -103,6 +103,36 @@ return {
 			end
 		},
 		{
+			name = "the thrower of a projectile is the first player among its owner, its thrower and its owner entity (a missile, a rifle grenade and a thrown frag all have the player as owner: measured)",
+			func = function(state)
+				local p = ply()
+				local npc = {IsValid = function() return true end, IsPlayer = function() return false end}
+				expect(G.PlayerOf(p)).to.equal(p)
+				expect(G.PlayerOf(NULL, nil, p)).to.equal(p)
+				expect(G.PlayerOf(npc, p)).to.equal(p) -- an owner that is not a player is skipped
+				expect(G.PlayerOf(NULL, npc)).to.equal(nil)
+				expect(G.PlayerOf()).to.equal(nil)
+				expect(G.PlayerOf(nil, nil)).to.equal(nil)
+			end
+		},
+		{
+			name = "a projectile is marked with its thrower (GryThrower) when a player owns it, and with nobody when none does",
+			func = function(state)
+				local p = ply()
+				local mine = spawn("rpg_missile", p:EyePos() + p:GetForward() * 200)
+				mine:SetOwner(p)
+				G.Update(mine)
+				expect(mine:GetNWEntity("GryThrower")).to.equal(p)
+				local foe = spawn("rpg_missile", p:EyePos() + p:GetForward() * 200 + Vector(0, 100, 0))
+				G.Update(foe)
+				expect(IsValid(foe:GetNWEntity("GryThrower"))).to.beFalse()
+				-- the owner is lost later (the engine clears it): the mark follows
+				mine:SetOwner(NULL)
+				G.Update(mine)
+				expect(IsValid(mine:GetNWEntity("GryThrower"))).to.beFalse()
+			end
+		},
+		{
 			name = "an unknown class is never active",
 			func = function(state)
 				expect(G.IsActive("prop_physics", {speed = 999, detonate = 5, launched = true})).to.beFalse()
@@ -204,7 +234,10 @@ return {
 					GetVelocity = function() return Vector(0, 0, 0) end,
 					GetInternalVariable = function() return 1 end,
 					GetNWBool = function() return false end,
-					SetNWBool = function() end
+					SetNWBool = function() end,
+					GetOwner = function() return NULL end,
+					GetNWEntity = function() return NULL end,
+					SetNWEntity = function() end
 				}
 				G.Track(fake)
 				expect(G.TrackedCount()).to.equal(before + 2)

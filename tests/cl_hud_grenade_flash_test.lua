@@ -190,7 +190,7 @@ return {
 					{class = "npc_grenade_frag", metres = 8, onScreen = false, own = false, armed = true}, -- behind the camera
 					{class = "prop_physics", metres = 3, onScreen = true, own = false, armed = true}, -- not a grenade
 					{class = "grenade_ar2", metres = 12, onScreen = true, own = false, armed = true},
-					{class = "npc_grenade_frag", metres = G.RANGE + 1, onScreen = true, own = false, armed = true} -- too far
+					{class = "npc_grenade_frag", metres = G.DEFAULT_RANGE + 1, onScreen = true, own = false, armed = true} -- too far
 				})
 				expect(picked.metres).to.equal(12)
 				expect(G.Pick({})).to.equal(nil)
@@ -237,22 +237,136 @@ return {
 			end
 		},
 		{
+			name = "the range is a setting: 40 m by default (the original has none, see docs/superpowers/plans/2026-11-21-grenade-range.md), held between 5 and 200 m, and Pick obeys the one it is given",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				expect(G.DEFAULT_RANGE).to.equal(40)
+				expect(G.ClampRange(nil)).to.equal(40)
+				expect(G.ClampRange(1)).to.equal(5)
+				expect(G.ClampRange(500)).to.equal(200)
+				expect(G.ClampRange(75)).to.equal(75)
+				local far = {class = "npc_grenade_frag", metres = 30, onScreen = true, own = false, armed = true}
+				expect(G.Pick({far}, true, {range = 25})).to.equal(nil)
+				expect(G.Pick({far}, true, {range = 30}) ~= nil).to.beTrue()
+				expect(G.Pick({far}, true, {range = 100}) ~= nil).to.beTrue()
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 41, onScreen = true, own = false, armed = true}})).to.equal(nil)
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 39, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
+			end
+		},
+		{
+			name = "a projectile the player FIRED (missile, rifle grenade, energy ball) never warns, an enemy's does, and so does the player's own hand grenade",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				for _, class in ipairs({"rpg_missile", "grenade_ar2", "prop_combine_ball"}) do
+					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = true, armed = true}})).to.equal(nil)
+					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = true, armed = true}}, true, {own = true})).to.equal(nil)
+					expect(G.Pick({{class = class, metres = 12, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
+				end
+				-- the nearest is not the player's own missile but the enemy's behind it
+				local picked = G.Pick({
+					{class = "rpg_missile", metres = 5, onScreen = true, own = true, armed = true},
+					{class = "rpg_missile", metres = 20, onScreen = true, own = false, armed = true}
+				})
+				expect(picked.metres).to.equal(20)
+				expect(G.FIRED.rpg_missile).to.beTrue()
+				expect(G.FIRED.npc_grenade_frag).to.equal(nil)
+			end
+		},
+		{
+			name = "the player's own hand grenade: gry_grenade_own off silences it, and it only warns within 15 m (one thrown away does not tell, one that falls back on the player does)",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				expect(G.OWN_RANGE).to.equal(15)
+				local function own(metres, class) return {class = class or "npc_grenade_frag", metres = metres, onScreen = true, own = true, armed = true} end
+				expect(G.Pick({own(8)}, true, {own = false})).to.equal(nil)
+				expect(G.Pick({own(8)}, true, {own = true}) ~= nil).to.beTrue()
+				expect(G.Pick({own(8)}) ~= nil).to.beTrue() -- on by default
+				expect(G.Pick({own(15)}) ~= nil).to.beTrue()
+				expect(G.Pick({own(15.5)})).to.equal(nil)
+				expect(G.Pick({own(30)}, true, {range = 100})).to.equal(nil)
+				expect(G.Pick({own(9, "grenade_helicopter")}) ~= nil).to.beTrue()
+				expect(G.Pick({own(20, "grenade_helicopter")})).to.equal(nil)
+				-- an enemy's frag at 30 m still warns
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 30, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
+				-- and the own one beyond 15 m does not hide the enemy's
+				expect(G.Pick({own(16), {class = "npc_grenade_frag", metres = 35, onScreen = true, own = false, armed = true}}).metres).to.equal(35)
+			end
+		},
+		{
+			name = "line of sight (off by default, as in the original: the warning goes through walls): when on, a projectile that is not seen does not warn",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local hidden = {class = "npc_grenade_frag", metres = 10, onScreen = true, own = false, armed = true, visible = false}
+				local seen = {class = "npc_grenade_frag", metres = 20, onScreen = true, own = false, armed = true, visible = true}
+				expect(G.Pick({hidden, seen}).metres).to.equal(10) -- los off: through the wall
+				expect(G.Pick({hidden, seen}, true, {los = false}).metres).to.equal(10)
+				expect(G.Pick({hidden, seen}, true, {los = true}).metres).to.equal(20)
+				expect(G.Pick({hidden}, true, {los = true})).to.equal(nil)
+				-- no reading yet (nil): not held back
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 10, onScreen = true, own = false, armed = true}}, true, {los = true}) ~= nil).to.beTrue()
+			end
+		},
+		{
+			name = "the line of sight is probed at most 5 times a second per projectile, and a view lost is kept for half a second (hysteresis)",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local probes, clear = 0, true
+				local function probe() probes = probes + 1 return clear end
+				local entry = {}
+				expect(G.LosStep(entry, 0, probe)).to.beTrue()
+				expect(probes).to.equal(1)
+				-- every frame for a second: 5 probes more at most
+				for i = 1, 60 do
+					G.LosStep(entry, i / 60, probe)
+				end
+				expect(probes <= 6).to.beTrue()
+				expect(probes >= 5).to.beTrue()
+				-- a wall comes: seen for half a second more, then not
+				clear = false
+				local t = entry.seen -- the last time it was seen
+				expect(G.LosStep(entry, t + 0.21, probe)).to.beTrue() -- probed: blocked, but seen 0.21 s ago
+				expect(G.LosStep(entry, t + 0.42, probe)).to.beTrue() -- seen 0.42 s ago
+				expect(G.LosStep(entry, t + 0.63, probe)).to.beFalse() -- more than half a second
+				-- it is seen again at once
+				clear = true
+				expect(G.LosStep(entry, t + 0.84, probe)).to.beTrue()
+				-- a first probe that fails is not seen
+				clear = false
+				expect(G.LosStep({}, 5, probe)).to.beFalse()
+			end
+		},
+		{
+			name = "the settings exist: gry_grenade_range (40, 5 to 200), gry_grenade_own (1), gry_grenade_los (0)",
+			func = function(state)
+				local r, o, l = GetConVar("gry_grenade_range"), GetConVar("gry_grenade_own"), GetConVar("gry_grenade_los")
+				expect(r).toNot.beNil()
+				expect(o).toNot.beNil()
+				expect(l).toNot.beNil()
+				expect(r:GetMin()).to.equal(5)
+				expect(r:GetMax()).to.equal(200)
+				expect(r:GetDefault()).to.equal("40")
+				expect(o:GetDefault()).to.equal("1")
+				expect(l:GetDefault()).to.equal("0")
+			end
+		},
+		{
 			name = "a candidate is built from the entity: its class, its distance in metres, the server's mark and whether the player owns it",
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				local eye = Vector(0, 0, 0)
 				local me = {}
-				local function stub(owner, armed)
+				local function stub(owner, armed, thrown)
 					return {
 						IsValid = function() return true end,
 						GetClass = function() return "npc_grenade_frag" end,
 						GetPos = function() return Vector(524.9, 0, 0) end,
 						WorldSpaceCenter = function() return Vector(524.9, 0, 0) end,
 						GetOwner = function() return owner end,
-						GetNWBool = function(_, name) return name == "GryArmed" and armed end
+						GetNWBool = function(_, name) return name == "GryArmed" and armed end,
+						GetNWEntity = function(_, name) return name == "GryThrower" and thrown or NULL end
 					}
 				end
-				local ply = {EyePos = function() return eye end}
+				local ply = {EyePos = function() return eye end, IsValid = function() return true end}
 				local c = G.Candidate(stub(NULL, true), ply, {x = 100, y = 50, visible = true})
 				expect(c.class).to.equal("npc_grenade_frag")
 				expect(near(c.metres, 10)).to.beTrue()
@@ -261,6 +375,12 @@ return {
 				expect(c.onScreen).to.beTrue()
 				expect(G.Candidate(stub(NULL, false), ply, {x = 0, y = 0, visible = false}).armed).to.beFalse()
 				expect(G.Candidate(stub(NULL, false), ply, {x = 0, y = 0, visible = false}).onScreen).to.beFalse()
+					-- the thrower the server writes (GryThrower) counts as much as the engine's owner
+					expect(G.Candidate(stub(NULL, true, ply), ply, {x = 0, y = 0, visible = true}).own).to.beTrue()
+					expect(G.Candidate(stub(NULL, true, {}), ply, {x = 0, y = 0, visible = true}).own).to.beFalse()
+					expect(G.Candidate(stub(ply, true), ply, {x = 0, y = 0, visible = true}).own).to.beTrue()
+					-- the line of sight reading is carried when given
+					expect(G.Candidate(stub(NULL, true), ply, {x = 0, y = 0, visible = true}, false).visible).to.beFalse()
 			end
 		},
 		{
