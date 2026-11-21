@@ -12,6 +12,10 @@ S.METRES_PER_UNIT = 0.01905
 -- The radar's radius in metres, and the stage pixels it is drawn over (43 pixels for 75 m).
 S.RANGE = 75
 S.PIXELS = 43
+-- The player may choose another radius (the client's gry_radar_range, sent with its request): the original's is the constant 75 m, or the
+-- level's `mapRadius`; nothing in the demo changes it while playing. Between these, in metres.
+S.MIN_RANGE = 20
+S.MAX_RANGE = 100
 -- A hostile that is alerted is first noticed within 15 of these pixels (26.2 m).
 S.GATE_PIXELS = 15
 -- The entities are looked for in a box 1.3 times the radius around the player, so that nothing pops in at the edge.
@@ -34,16 +38,27 @@ S.POS_STEP = 8
 S.POS_BITS = 13
 S.YAW_STEPS = 512
 
-function S.GateMetres()
-	return S.GATE_PIXELS * S.RANGE / S.PIXELS
+-- A radius that is usable: a number in whole metres between the bounds; anything else (nothing, text, NaN, zero, negative: an older client
+-- that sends nothing) is the original's 75.
+function S.ClampRange(range)
+	if type(range) ~= "number" or range ~= range or range <= 0 then
+		return S.RANGE
+	end
+
+	return math.Clamp(math.floor(range + 0.5), S.MIN_RANGE, S.MAX_RANGE)
 end
 
-function S.GateUnits()
-	return S.GateMetres() / S.METRES_PER_UNIT
+-- What follows the radius, which defaults to the original's: the gate of the first notice (15 pixels of the radar) and the search radius.
+function S.GateMetres(range)
+	return S.GATE_PIXELS * (range or S.RANGE) / S.PIXELS
 end
 
-function S.ScanUnits()
-	return S.RANGE * S.SCAN_FACTOR / S.METRES_PER_UNIT
+function S.GateUnits(range)
+	return S.GateMetres(range) / S.METRES_PER_UNIT
+end
+
+function S.ScanUnits(range)
+	return (range or S.RANGE) * S.SCAN_FACTOR / S.METRES_PER_UNIT
 end
 
 local POS_LIMIT = 2 ^ (S.POS_BITS - 1)

@@ -106,6 +106,8 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Start-up log and sounds at every spawn (off: only at the first spawn after the map loads, as in the original)", "gry_boot_every_spawn")
 
 	-- client settings: how far the grenade warning reaches, the old warning for the player's own hand grenade, walls (the original has no range and warns through walls)
+	-- client setting: the radius of the radar's map (the original's is 75 m; a smaller one makes the icons of big things nearer their real size)
+	Panel:NumSlider("Radar range (metres; 75 is the original's, 40 to 75 are good values)", "gry_radar_range", 20, 100, 0)
 	Panel:NumSlider("Grenade warning range (metres)", "gry_grenade_range", 5, 200, 0)
 	Panel:CheckBox("Grenade warning also for the hand grenade you threw (only within 15 m). Off: a grenade you threw never warns; your own missiles never do", "gry_grenade_own_warn")
 	Panel:CheckBox("Grenade warning only for what you can see (off: also through walls, as in the original game)", "gry_grenade_los")

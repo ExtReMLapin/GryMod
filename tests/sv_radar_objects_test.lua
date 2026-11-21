@@ -345,6 +345,100 @@ return {
 			end
 		},
 		{
+			name = "the radar's range is the player's choice, 20 to 100 metres, 75 (the original's) by default: ClampRange, and the gate and the search radius that follow it",
+			func = function()
+				expect(S.MIN_RANGE).to.equal(20)
+				expect(S.MAX_RANGE).to.equal(100)
+				expect(S.ClampRange(nil)).to.equal(75)
+				expect(S.ClampRange(0)).to.equal(75)
+				expect(S.ClampRange(0 / 0)).to.equal(75)
+				expect(S.ClampRange("40")).to.equal(75)
+				expect(S.ClampRange(-5)).to.equal(75)
+				expect(S.ClampRange(10)).to.equal(20)
+				expect(S.ClampRange(500)).to.equal(100)
+				expect(S.ClampRange(40)).to.equal(40)
+				expect(S.ClampRange(40.4)).to.equal(40)
+
+				-- no argument is the original's 75 m: 15 pixels of 43 gate, 1.3 x the radius to look
+				local gate75 = 15 * 75 / 43 / S.METRES_PER_UNIT
+				expect(math.abs(S.GateUnits() - gate75) < 0.01).to.beTrue()
+				expect(math.abs(S.ScanUnits() - 75 * 1.3 / S.METRES_PER_UNIT) < 0.01).to.beTrue()
+				expect(math.abs(S.GateUnits(40) - 15 * 40 / 43 / S.METRES_PER_UNIT) < 0.01).to.beTrue()
+				expect(math.abs(S.ScanUnits(40) - 40 * 1.3 / S.METRES_PER_UNIT) < 0.01).to.beTrue()
+			end
+		},
+		{
+			name = "Step follows the range: a hostile alerted at 20 m is tagged with the original's 75 m (gate 26 m) and not with 40 m (gate 14 m); a tagged vehicle at 70 m is listed at 75 and not at 40 (search 52 m)",
+			func = function()
+				local function fresh() return {tagged = setmetatable({}, {__mode = "k"}), markers = setmetatable({}, {__mode = "k"})} end
+				local metres = 1 / S.METRES_PER_UNIT
+				local hostile = {key = {}, id = 800, class = "npc_combine_s", hostile = true, state = NPC_STATE_ALERT, enemyIsPlayer = false, health = 50,
+					x = 20 * metres, y = 0, z = 0, yaw = 0}
+
+				expect(#R.Step(Vector(0, 0, 0), {hostile}, fresh(), 0, false, 75)).to.equal(1)
+				expect(#R.Step(Vector(0, 0, 0), {hostile}, fresh(), 0, false, 40)).to.equal(0)
+				-- no range given: the original's
+				expect(#R.Step(Vector(0, 0, 0), {hostile}, fresh(), 0, false)).to.equal(1)
+
+				local st = fresh()
+				local key = {}
+				st.tagged[key] = true
+				local vehicle = {key = key, id = 801, class = "prop_vehicle_jeep", hostile = false, ally = false, state = NPC_STATE_NONE, enemyIsPlayer = false,
+					health = 0, maxHealth = 0, x = 70 * metres, y = 0, z = 0, yaw = 0, type = 3, radar = "scan"}
+
+				expect(#R.Step(Vector(0, 0, 0), {vehicle}, st, 0, false, 75)).to.equal(1)
+				expect(#R.Step(Vector(0, 0, 0), {vehicle}, st, 0, false, 40)).to.equal(0)
+			end
+		},
+		{
+			name = "the client's request carries its range (8 bits, metres): kept clamped for the player, 0 (an older client) is the original's 75",
+			func = function()
+				local p = ply()
+				local receiver = net.Receivers["gry_radar_want"]
+				expect(receiver ~= nil).to.beTrue()
+				local realBool, realUInt = net.ReadBool, net.ReadUInt
+				local results = {}
+
+				local ok, err = pcall(function()
+					net.ReadBool = function() return true end
+
+					for _, case in ipairs({{40, 40}, {0, 75}, {10, 20}, {250, 100}}) do
+						net.ReadUInt = function(bits) expect(bits).to.equal(8) return case[1] end
+						receiver(1, p)
+						results[#results + 1] = {p.GryRadarRange, case[2]}
+					end
+				end)
+
+				net.ReadBool, net.ReadUInt = realBool, realUInt
+				p.GryRadarRange = nil
+
+				if not ok then error(err, 0) end
+
+				for _, r in ipairs(results) do
+					expect(r[1]).to.equal(r[2])
+				end
+			end
+		},
+		{
+			name = "the tick uses the player's range: a scanned vehicle at 60 m is listed with 75 m and not with 40 m",
+			func = function()
+				local p = ply()
+				local jeep = spawnJeep(60 / S.METRES_PER_UNIT)
+
+				expect(R.Scan(p, jeep)).to.beTrue()
+
+				p.GryRadarRange = 75
+				expect(contactOf(tick(), jeep) ~= nil).to.beTrue()
+
+				p.GryRadarRange = 40
+				R.Reset(p)
+				expect(R.Scan(p, jeep)).to.beTrue()
+				expect(contactOf(tick(), jeep)).to.beNil()
+
+				p.GryRadarRange = nil
+			end
+		},
+		{
 			name = "a mine is hostile, and an ally once the player took it with the gravity gun and put it down (m_bPlacedByPlayer): blue on the radar",
 			func = function()
 				local p = ply()

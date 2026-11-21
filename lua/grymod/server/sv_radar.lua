@@ -290,9 +290,9 @@ end
 -- of its relation and state, whatever the allies switch says), "hostile" (the rules of the hostiles whatever its relation: alerted
 -- or fighting within 26 m, or scanned; the allies switch does not apply), "scan" (only once scanned: its alert, a marker and the
 -- allies switch do not list it), "never" (never listed); nothing: the rules above. `type` and `big` replace the ones of the class.
-function Radar.Step(origin, descs, st, now, alliesAlways)
-	local gate2 = S.GateUnits() ^ 2
-	local scan2 = S.ScanUnits() ^ 2
+function Radar.Step(origin, descs, st, now, alliesAlways, range)
+	local gate2 = S.GateUnits(range) ^ 2
+	local scan2 = S.ScanUnits(range) ^ 2
 	local list = {}
 
 	if alliesAlways == nil then
@@ -415,7 +415,9 @@ function Radar.Tick(ply, now)
 		local origin = ply:GetPos()
 		local descs, seen = {}, {}
 
-		for _, ent in ipairs(ents.FindInSphere(origin, S.ScanUnits())) do
+		local range = S.ClampRange(ply.GryRadarRange)
+
+		for _, ent in ipairs(ents.FindInSphere(origin, S.ScanUnits(range))) do
 			if ent ~= ply and (ent:IsNPC() or ent:IsNextBot() and trackedOf(ent) or Radar.IsObject(ent, ply)) then
 				descs[#descs + 1] = Radar.Describe(ent, ply)
 				seen[ent] = true
@@ -428,7 +430,7 @@ function Radar.Tick(ply, now)
 			end
 		end
 
-		list = Radar.Step(origin, descs, st, now)
+		list = Radar.Step(origin, descs, st, now, nil, range)
 	end
 
 	local last = st.sent
@@ -486,6 +488,8 @@ net.Receive("gry_radar_want", function(_, ply)
 	end
 
 	ply.GryRadarWant = net.ReadBool()
+	-- the radius the player chose, in metres (8 bits; 0 or nothing from an older client is the original's 75)
+	ply.GryRadarRange = S.ClampRange(net.ReadUInt(8))
 end)
 
 -- The client says which entity its binoculars scanned (13 bits, as the contacts' ids).

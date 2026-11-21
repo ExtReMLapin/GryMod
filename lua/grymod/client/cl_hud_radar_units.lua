@@ -16,6 +16,15 @@ Radar.FRAME = {
 
 -- The movie turns radar pixels into its own coordinates: x = n * 110 + 10 and y = n * 110 - 3.5, with n over the 94 pixels
 -- of the radar's square; so the centre of the radar is at (65, 51.5) and one radar pixel is 110 / 94 movie pixels.
+-- The radius of the radar is the player's choice (the original has a constant 75 m, or the level's mapRadius): 20 to 100 metres, 75 by default.
+-- A smaller radius makes the same pixels stand for fewer metres: the icons of big things (a vehicle) are then closer to their real size.
+local RangeConVar = CreateClientConVar("gry_radar_range", "75", true, false,
+	"Radius of the radar in metres (20 to 100). 75 is the original game's; 40 to 75 are good values: at 75 an icon of a vehicle stands for about 14 metres of ground", 20, 100)
+
+function Radar.Range()
+	return S.ClampRange(RangeConVar:GetFloat())
+end
+
 Radar.UNITS_PIXEL = 110 / 94
 -- The script's arithmetic gives (65, 51.5), but the player is not drawn there: MEASURED on two screenshots of the game (the movie's own
 -- vertical line and the base of the view cone, against icons whose movie coordinates were known), the centre of the radar is at
@@ -95,7 +104,7 @@ end
 -- ally, nil for the movie's own colours). A unit outside the frame or more
 -- than 500 m above or below is left out, except a marker (the unit that hurt the player), which is put on the border of
 -- the frame. `phase` is the pulse of the alerted icons.
-function Radar.Contacts(pos, yaw, contacts, phase)
+function Radar.Contacts(pos, yaw, contacts, phase, range)
 	local list = {}
 
 	if not contacts or not pos or not (yaw == yaw) then
@@ -104,7 +113,7 @@ function Radar.Contacts(pos, yaw, contacts, phase)
 
 	local radians = math.rad(yaw)
 	local cos, sin = math.cos(radians), math.sin(radians)
-	local pixels = S.METRES_PER_UNIT * S.PIXELS / S.RANGE
+	local pixels = S.METRES_PER_UNIT * S.PIXELS / (range or S.RANGE)
 	local pulse = 100 * (math.cos(phase or 0) * 0.35 + 0.65)
 	local px, py, pz = pos.x, pos.y, pos.z
 
@@ -333,7 +342,7 @@ end
 
 -- Whether the client wants the contacts: the HUD fed the radar within the last moments and its switches are on.
 local lastFeed = -1000
-local wanted
+local wanted, sentRange
 
 local function wantsContacts()
 	local options = GryMod.HUDOptions
@@ -341,18 +350,27 @@ local function wantsContacts()
 	return RealTime() - lastFeed < 1.5 and (not options or (options.Enabled("radar") and options.Enabled("radarunits")))
 end
 
-local function tellServer()
-	local want = wantsContacts()
+-- Tells the server whether this client wants the contacts and in which radius (8 bits, metres): at a change of either, and not otherwise.
+function Radar.TellServer(want)
+	local range = Radar.Range()
 
-	if want ~= wanted then
-		wanted = want
+	if want ~= wanted or (want and range ~= sentRange) then
+		wanted, sentRange = want, range
 		net.Start("gry_radar_want")
 		net.WriteBool(want)
+		net.WriteUInt(range, 8)
 		net.SendToServer()
 	end
 end
 
-timer.Create("GryMod radar want", 1, 0, tellServer)
+-- Forgets what was told (the tests).
+function Radar.ResetWant()
+	wanted, sentRange = nil, nil
+end
+
+timer.Create("GryMod radar want", 1, 0, function()
+	Radar.TellServer(wantsContacts())
+end)
 
 -- The stealth bar of the panel: the original asks its AI system for the detection level of the hostile AI around the player
 -- (0 to 1, the bar takes the higher of two such numbers; the ramp is the AI system's, see the research note, section 7). Here
@@ -431,7 +449,7 @@ function Radar.Feed(panel, ply, dt)
 
 	-- off to on at once (the timer notices the other way within a second)
 	if not wanted then
-		tellServer()
+		Radar.TellServer(wantsContacts())
 	end
 
 	local options = GryMod.HUDOptions
@@ -445,7 +463,7 @@ function Radar.Feed(panel, ply, dt)
 		return
 	end
 
-	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase))
+	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase, Radar.Range()))
 	Radar.Stealth = Radar.StealthStep(Radar.Stealth, Radar.StealthTarget(Radar.Snapshot), dt)
 	panel:SetStealth(Radar.Stealth)
 end

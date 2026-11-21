@@ -1,0 +1,165 @@
+-- Tests of the radar's range option on the client (gry_radar_range in cl_hud_radar_units.lua), GLuaTest format, client realm. The original's radar
+-- has a radius of 75 m (a constant, or the level's mapRadius: the demo's levels give none) and no zoom; GryMod lets the player choose 20 to 100
+-- metres, 75 by default, because at 75 m a vehicle's icon stands for about 14 m of ground. The radius changes where the icons are (the
+-- pixels of the radar are the same, the metres they stand for change) and what the server looks for (the range goes with the request).
+
+local OPTION = "gry_radar_range"
+
+local function option()
+	return GetConVar(OPTION)
+end
+
+local function contactAt(metres)
+	return {id = 1, x = metres / GryMod.RadarShared.METRES_PER_UNIT, y = 0, z = 0, yaw = 0, type = 1, sub = 4, marker = false, big = false}
+end
+
+local real = {}
+
+local function restoreNet()
+	if real.Start then
+		net.Start, net.WriteBool, net.WriteUInt, net.SendToServer = real.Start, real.WriteBool, real.WriteUInt, real.SendToServer
+		real.Start = nil
+	end
+end
+
+return {
+	groupName = "GryMod radar range (client)",
+	beforeEach = function(state)
+		state.value = option() and option():GetString()
+	end,
+	afterEach = function(state)
+		pcall(restoreNet)
+
+		if state.value and option() then
+			option():SetString(state.value)
+		end
+
+		local R = GryMod.FlashRadar
+
+		if R and R.ResetWant then
+			R.ResetWant()
+		end
+	end,
+	cases = {
+		{
+			name = "the option exists: saved, 75 metres by default (the original's), from 20 to 100",
+			func = function()
+				local c = option()
+
+				expect(c ~= nil).to.beTrue()
+				expect(c:GetDefault()).to.equal("75")
+				expect(c:GetMin()).to.equal(20)
+				expect(c:GetMax()).to.equal(100)
+			end
+		},
+		{
+			name = "Range reads the option as whole metres between 20 and 100, whatever the text",
+			func = function()
+				local R = GryMod.FlashRadar
+
+				option():SetString("40")
+				expect(R.Range()).to.equal(40)
+				option():SetString("40.6")
+				expect(R.Range()).to.equal(41)
+				option():SetString("5")
+				expect(R.Range()).to.equal(20)
+				option():SetString("900")
+				expect(R.Range()).to.equal(100)
+				-- text that is no number: the engine's own clamping of the convar (0 becomes its minimum), a usable value whatever it is
+				option():SetString("abc")
+				expect(R.Range() >= 20 and R.Range() <= 100).to.beTrue()
+			end
+		},
+		{
+			name = "Contacts: with a range the same distance is more or fewer pixels (20 m is 21.5 pixels of 43 at 40 m, 11.5 at 75 m), no range is the original's 75",
+			func = function()
+				local R = GryMod.FlashRadar
+				local PX = 110 / 94
+				local at75 = R.Contacts(Vector(0, 0, 0), 0, {contactAt(20)}, 0)[1]
+				local at40 = R.Contacts(Vector(0, 0, 0), 0, {contactAt(20)}, 0, 40)[1]
+				local atNil = R.Contacts(Vector(0, 0, 0), 0, {contactAt(20)}, 0, nil)[1]
+
+				expect(math.abs((R.UNITS_CENTRE_Y - at75.y) - 20 / 75 * 43 * PX) < 0.01).to.beTrue()
+				expect(math.abs((R.UNITS_CENTRE_Y - at40.y) - 20 / 40 * 43 * PX) < 0.01).to.beTrue()
+				expect(math.abs(atNil.y - at75.y) < 0.0001).to.beTrue()
+			end
+		},
+		{
+			name = "a unit just outside the radar at the chosen range is dropped, and comes back with a bigger one",
+			func = function()
+				local R = GryMod.FlashRadar
+
+				expect(R.Contacts(Vector(0, 0, 0), 0, {contactAt(60)}, 0, 40)[1]).to.beNil()
+				expect(R.Contacts(Vector(0, 0, 0), 0, {contactAt(60)}, 0, 100)[1] ~= nil).to.beTrue()
+			end
+		},
+		{
+			name = "the request to the server carries the range (8 bits, metres) and is sent again when the range changes, not otherwise",
+			func = function()
+				local R = GryMod.FlashRadar
+				expect(R.TellServer ~= nil and R.ResetWant ~= nil).to.beTrue()
+
+				local sent = {}
+				real.Start, real.WriteBool, real.WriteUInt, real.SendToServer = net.Start, net.WriteBool, net.WriteUInt, net.SendToServer
+
+				local ok, err = pcall(function()
+					net.Start = function(name) sent[#sent + 1] = {name = name} return true end
+					net.WriteBool = function(v) sent[#sent].want = v end
+					net.WriteUInt = function(v, bits) sent[#sent].range, sent[#sent].bits = v, bits end
+					net.SendToServer = function() end
+
+					R.ResetWant()
+					option():SetString("40")
+					R.TellServer(true)
+					R.TellServer(true)
+					option():SetString("60")
+					R.TellServer(true)
+					R.TellServer(false)
+					R.TellServer(false)
+				end)
+
+				pcall(restoreNet)
+
+				if not ok then error(err, 0) end
+
+				expect(#sent).to.equal(3)
+				expect(sent[1].name).to.equal("gry_radar_want")
+				expect(sent[1].want).to.beTrue()
+				expect(sent[1].range).to.equal(40)
+				expect(sent[1].bits).to.equal(8)
+				expect(sent[2].range).to.equal(60)
+				expect(sent[3].want).to.beFalse()
+			end
+		},
+		{
+			name = "the options panel has a slider for the range, with the recommended values in its label",
+			func = function()
+				local found
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DNumSlider" and child.Scratch and child.Scratch.m_strConVar == OPTION then
+								found = child:GetText()
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then error(err, 0) end
+
+				expect(found ~= nil).to.beTrue()
+				expect(string.find(found, "40", 1, true) ~= nil).to.beTrue()
+				expect(string.find(found, "75", 1, true) ~= nil).to.beTrue()
+			end
+		}
+	}
+}
