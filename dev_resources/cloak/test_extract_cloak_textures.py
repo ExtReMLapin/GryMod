@@ -1,4 +1,4 @@
-"""Tests for tools/extract_cloak_textures.py (the DDS decoder and the conversion to VTF). No game file is needed:
+"""Tests for dev_resources/cloak/extract_cloak_textures.py (the DDS decoder and the conversion to VTF). No game file is needed:
 the DDS files and the archive are built here.
 
     python -I -m unittest discover -s tools -p "test_extract_cloak_textures.py"
@@ -16,10 +16,10 @@ import zipfile
 import numpy as np
 
 # `python -I` does not put the repository on the path (tools/ has no __init__.py: a namespace package)
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 
-from tools import extract_cloak_textures as ect
-from tools.flash2lua import vtf
+from dev_resources.cloak import extract_cloak_textures as ect
+from dev_resources.flash2lua import vtf
 
 DDSD_MIPMAPCOUNT = 0x20000
 DDSD_DEPTH = 0x800000

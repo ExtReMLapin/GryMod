@@ -13,7 +13,7 @@ from html import unescape
 from dataclasses import dataclass, field
 from typing import Optional
 
-from tools.flash2lua import scripts
+from dev_resources.flash2lua import scripts
 
 TWIPS = 20.0
 PLACE_TAGS = ("PlaceObject2Tag", "PlaceObject3Tag")

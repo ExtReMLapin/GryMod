@@ -2,7 +2,7 @@
 engine loads by itself (no synchronous PNG decoding when a part of the interface comes up) and keeps four times
 smaller in video memory (DXT5: one byte per pixel, against four for the RGBA8 texture a PNG becomes).
 
-    python -m tools.flash2lua.vtf in.png out.vtf [--format dxt5|bgra8888] [--no-srgb] [--no-mips]
+    python -m dev_resources.flash2lua.vtf in.png out.vtf [--format dxt5|bgra8888] [--no-srgb] [--no-mips]
 
 Everything works on (height, width, 4) uint8 arrays. The colours of the atlases are sRGB-encoded (see rasterize.py),
 so a texture made from them carries the sRGB flag: the engine decodes it when it samples it, like it does for PNGs,

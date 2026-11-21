@@ -2,7 +2,7 @@
 import random
 import unittest
 
-from tools.flash2lua import pack
+from dev_resources.flash2lua import pack
 
 
 def overlaps(a, b):

@@ -1,6 +1,6 @@
 """Extracts the suit, HUD, quick menu, binocular and underwater sounds of GryMod from the Crysis SP demo, at their original quality.
 
-    python tools/extract_sounds.py "C:/Program Files (x86)/Electronic Arts/Crytek/Crysis SP Demo/Game" --ffmpeg C:/ext/ffmpeg.exe
+    python dev_resources/sounds/extract_sounds.py "C:/Program Files (x86)/Electronic Arts/Crytek/Crysis SP Demo/Game" --ffmpeg C:/ext/ffmpeg.exe
 
 It reads Game/Sounds.pak (FMOD FSB3 banks: interface_suit, interface_bank00, physics_bullets) and Localized/english.pak (the
 suit voices, MPEG-1 Layer II) and writes sound/grymod/{suit,hud,menu,binoculars,water}/*.wav under the addon (or --out).
@@ -208,7 +208,7 @@ def main():
     parser.add_argument("game", help="the demo's Game folder (with Sounds.pak and Localized/english.pak)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--manifest", help="write the original and delivered rates and the scaling of every file as JSON")
-    parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     args = parser.parse_args()
     sounds = zipfile.ZipFile(os.path.join(args.game, "Sounds.pak"))
     english = zipfile.ZipFile(os.path.join(args.game, "Localized", "english.pak"))

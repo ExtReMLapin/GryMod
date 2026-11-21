@@ -1,4 +1,4 @@
--- Draws the display list of a Flash clip (see cl_flash.lua) with the atlas bitmaps converted by tools/flash2lua.
+-- Draws the display list of a Flash clip (see cl_flash.lua) with the atlas bitmaps converted by dev_resources/flash2lua.
 --
 -- Shapes are textured quads whose corners go through the accumulated 2D matrix of the clips above them
 -- (Flash matrices: x' = a*x + c*y + tx, y' = b*x + d*y + ty), so rotation, skew and scale are exact. Quads
@@ -15,7 +15,7 @@ local BLEND_ADD = 8
 -- Debug switch: draw every blend mode as a normal alpha blend (FFDec's renderer does not honour them).
 Flash.IgnoreBlendModes = false
 
--- The atlases are textures made by tools/flash2lua (materials/grymod/flash/<name>.vtf, DXT5, with the mip levels in the
+-- The atlases are textures made by dev_resources/flash2lua (materials/grymod/flash/<name>.vtf, DXT5, with the mip levels in the
 -- file, and <name>.vmt): the engine loads them by itself, and keeps them one byte per pixel in video memory. The
 -- name in a movie's data has no extension. A path that ends in ".png" is still turned into a material the way the
 -- engine does it (decoding the picture and building its mip levels takes about 0.6 s for a 2048 x 4096 one): tests

@@ -4,7 +4,7 @@
 --
 --   1. the camouflaged player is drawn into the stencil buffer with no colour written (only where it is seen: the depth test
 --      is the world's, so what is behind a wall is not marked);
---   2. the picture materials/grymod/cloak/cloak_sparks, made by tools/make_cloak_sparks.py from the original game's own textures
+--   2. the picture materials/grymod/cloak/cloak_sparks, made by dev_resources/cloak/make_cloak_sparks.py from the original game's own textures
 --      (the shader CloakLayer.cfx: the 3D noise read through the spark profile, times the interlation, a triangle wave four screen
 --      rows to a period), is laid over the box that holds the player on the screen, added to the picture, only where the stencil is
 --      set. The picture is 8 cells side by side, one for each eighth of the change (the noise moves with it);

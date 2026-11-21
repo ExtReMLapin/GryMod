@@ -1,13 +1,13 @@
 """Reads the textures of the Crysis camouflage (the shader CloakLayer.cfx and the ones around it) from the game's own
 archives and writes them as VTF files, for GryMod to try. It holds no resource of the game, only code.
 
-    python tools/extract_cloak_textures.py "C:/Program Files (x86)/Electronic Arts/Crytek/Crysis SP Demo/Game" --out DIR
+    python dev_resources/cloak/extract_cloak_textures.py "C:/Program Files (x86)/Electronic Arts/Crytek/Crysis SP Demo/Game" --out DIR
         [--png DIR] [--manifest FILE] [--only name ...]
 
 The archives are ZIP files (Textures.pak, GameData.pak, Objects.pak). Every texture is decoded from its DDS (DXT1/3/5,
 ATI2, A8, L8 and the usual uncompressed layouts) and written as DIR/<name>.vtf: a VTF 7.2 in BGRA8888 (or I8 for the
 noise), no sRGB flag (these are data, not colours), with the clamp flags the shader's samplers ask for (a texture the
-shader repeats does not get CLAMPS/CLAMPT, tools/flash2lua/vtf.py writes both by default). Nothing is copied into
+shader repeats does not get CLAMPS/CLAMPT, dev_resources/flash2lua/vtf.py writes both by default). Nothing is copied into
 materials/: --out refuses a folder under a `materials` folder, a human decides what goes into the addon.
 
 What the conversions do:
@@ -34,9 +34,9 @@ from dataclasses import dataclass
 import numpy as np
 
 # `python -I` and `python tools/x.py` do not put the repository on the path (tools/ is a namespace package)
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 
-from tools.flash2lua import vtf  # noqa: E402
+from dev_resources.flash2lua import vtf  # noqa: E402
 
 DDSD_MIPMAPCOUNT = 0x20000
 DDSD_DEPTH = 0x800000

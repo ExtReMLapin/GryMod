@@ -21,7 +21,7 @@ Facts come from the data, the ActionScript dump and the module sources; the verd
 does with a function, how big the work is) are in unused_verdicts.py, each with the file that says it.
 
 Usage (from the repository root):
-  python tools/flash_audit/unused_elements.py --scripts-root D:/dev/crysis-hud-research/research-ui/scripts [--json] [--film hud_binoculars]
+  python dev_resources/flash_audit/unused_elements.py --scripts-root D:/dev/crysis-hud-research/research-ui/scripts [--json] [--film hud_binoculars]
 
 `--scripts-root` is the folder that holds `HUD_<Name>/scripts` (what FFDec writes with `-export script`). No game code is copied.
 """

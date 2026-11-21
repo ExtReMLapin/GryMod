@@ -4,7 +4,7 @@ import unittest
 
 from PIL import Image
 
-from tools.flash2lua import compare_pixels
+from dev_resources.flash2lua import compare_pixels
 
 
 def save(color_rows, path):

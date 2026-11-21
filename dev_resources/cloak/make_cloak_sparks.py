@@ -1,8 +1,8 @@
 """Pre-computes the picture of the camouflage's electric sparks from the original game's own textures, for GryMod.
 
-    python tools/make_cloak_sparks.py DDS_DIR [--out materials/grymod/cloak/cloak_sparks.vtf] [--preview FILE.png]
+    python dev_resources/cloak/make_cloak_sparks.py DDS_DIR [--out materials/grymod/cloak/cloak_sparks.vtf] [--preview FILE.png]
 
-DDS_DIR holds the originals that tools/extract_cloak_textures.py writes into its `dds` folder (noise3d.dds, cloak_sparks.dds,
+DDS_DIR holds the originals that dev_resources/cloak/extract_cloak_textures.py writes into its `dds` folder (noise3d.dds, cloak_sparks.dds,
 cloak_interlation.dds). This tool holds no resource of the game, only the arithmetic of the shader CloakLayer.cfx (pass 2,
 `CloakSparksPS`), which the Source engine cannot run:
 
@@ -28,10 +28,10 @@ import sys
 import numpy as np
 
 # `python -I` and `python tools/x.py` do not put the repository on the path (tools/ is a namespace package)
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 
-from tools import extract_cloak_textures as ect  # noqa: E402
-from tools.flash2lua import vtf  # noqa: E402
+from dev_resources.cloak import extract_cloak_textures as ect  # noqa: E402
+from dev_resources.flash2lua import vtf  # noqa: E402
 
 FRAMES = 8
 CELL = 512
@@ -164,7 +164,7 @@ def load_inputs(dds_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("dds_dir", help="the folder with noise3d.dds, cloak_sparks.dds and cloak_interlation.dds")
-    parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "materials", "grymod", "cloak", "cloak_sparks.vtf"))
+    parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "materials", "grymod", "cloak", "cloak_sparks.vtf"))
     parser.add_argument("--preview", help="also write the atlas as a PNG (needs Pillow)")
     args = parser.parse_args(argv)
 

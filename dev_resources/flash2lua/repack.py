@@ -1,6 +1,6 @@
 """Turn the PNG atlases of a converted movie into VTF textures (and their VMT materials), packed tighter.
 
-    python -m tools.flash2lua.repack --png-dir <folder with <movie>_<n>.png> [--format dxt5|bgra8888] movie ...
+    python -m dev_resources.flash2lua.repack --png-dir <folder with <movie>_<n>.png> [--format dxt5|bgra8888] movie ...
 
 The Lua data of a movie (lua/grymod/flash/<movie>.lua) says where each shape sits in its atlas. This reads the
 atlas pictures, cuts every shape out (with the pixel of bled colour around it), packs them again in the smallest
@@ -21,7 +21,7 @@ import re
 import numpy as np
 from PIL import Image
 
-from tools.flash2lua import pack, vtf
+from dev_resources.flash2lua import pack, vtf
 
 MATERIAL_DIR = "grymod/flash"
 FONT_NAME = "hud_font"

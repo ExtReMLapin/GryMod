@@ -1,7 +1,7 @@
 """Tests of the frame script classifier (no FFDec needed: it works on the ActionScript text)."""
 import unittest
 
-from tools.flash2lua import swfmodel
+from dev_resources.flash2lua import swfmodel
 
 
 class ClassifyScriptTest(unittest.TestCase):

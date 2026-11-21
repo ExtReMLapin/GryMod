@@ -1,4 +1,4 @@
-"""Tests for tools/make_cloak_sparks.py (the pre-computed picture of the camouflage's electric sparks). No game file is needed:
+"""Tests for dev_resources/cloak/make_cloak_sparks.py (the pre-computed picture of the camouflage's electric sparks). No game file is needed:
 the volume noise and the spark profile are small synthetic ones.
 
     python -I -m unittest discover -s tools -p "test_make_cloak_sparks.py"
@@ -11,10 +11,10 @@ import unittest
 import numpy as np
 
 # `python -I` does not put the repository on the path (tools/ has no __init__.py: a namespace package)
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 
-from tools import make_cloak_sparks as mcs
-from tools.flash2lua import vtf
+from dev_resources.cloak import make_cloak_sparks as mcs
+from dev_resources.flash2lua import vtf
 
 
 def ramp_volume(size=8):

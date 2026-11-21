@@ -1,5 +1,5 @@
 -- Contact sheet of the shapes of a converted movie, to compare two versions of its atlas (PNG against VTF, another
--- packing...) pixel by pixel with tools/flash2lua/compare_pixels.py. Run as a gmod-mcp lua_job in the CLIENT realm:
+-- packing...) pixel by pixel with dev_resources/flash2lua/compare_pixels.py. Run as a gmod-mcp lua_job in the CLIENT realm:
 --   lua_job {realm = "client", path = ".../tests/flash_atlas_job.lua",
 --            args = {movies = {"hud_quickmenu"}, scales = {0.5, 2.8}, tag = "before"}}
 -- Every shape of the movie is drawn at its stage size on a grid (the shapes of a movie are not placed anywhere

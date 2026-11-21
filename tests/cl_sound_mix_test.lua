@@ -82,7 +82,7 @@ local voices = {
 }
 
 -- The files that were resampled to a valid rate (11025, 22050 or 44100 Hz) and scaled down to stay under full scale
--- (tools/extract_sounds.py): how many dB the mix's level was raised for them. The armor hits are -10 dB plus this.
+-- (dev_resources/sounds/extract_sounds.py): how many dB the mix's level was raised for them. The armor hits are -10 dB plus this.
 local armorHeadroom = {
 	["grymod/suit/suit_bullet_impact_fp_05.wav"] = 0.62,
 	["grymod/suit/suit_bullet_impact_fp_06.wav"] = 1.27,

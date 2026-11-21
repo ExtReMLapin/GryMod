@@ -5,7 +5,7 @@ import unittest
 
 from PIL import Image
 
-from tools.flash2lua import glyphs
+from dev_resources.flash2lua import glyphs
 
 FFDEC = os.environ.get("FFDEC", r"D:\dev\crysis-hud-research\ffdec\ffdec-cli.exe")
 LOCALIZED_PAK = os.environ.get(

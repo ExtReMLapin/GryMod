@@ -1,5 +1,5 @@
 -- Renders the converted movies as they play (the first seconds of their timeline, and the HUD and radar panels
--- with values), to compare two states of the atlases pixel by pixel (tools/flash2lua/compare_pixels.py). Run as a
+-- with values), to compare two states of the atlases pixel by pixel (dev_resources/flash2lua/compare_pixels.py). Run as a
 -- gmod-mcp lua_job in the CLIENT realm:
 --   lua_job {realm = "client", path = ".../tests/flash_scenes_job.lua",
 --            args = {movies = {"hud_lost"}, times = {0.5, 2}, scale = 1, tag = "after"}}

@@ -5,7 +5,7 @@ import unittest
 
 from PIL import Image
 
-from tools.flash2lua import rasterize, swfmodel
+from dev_resources.flash2lua import rasterize, swfmodel
 
 FFDEC = os.environ.get("FFDEC", r"D:\dev\crysis-hud-research\ffdec\ffdec-cli.exe")
 SWF_DIR = os.environ.get("SWF_DIR", r"D:\dev\crysis-hud-research\extracted\Libs\UI")

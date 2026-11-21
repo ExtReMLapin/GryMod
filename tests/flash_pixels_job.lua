@@ -1,5 +1,5 @@
 -- Renders a converted Flash movie into a render target and saves it as a PNG, to compare with FFDec's render of
--- the same SWF (tools/flash2lua/compare_pixels.py). Run as a gmod-mcp lua_job in the CLIENT realm:
+-- the same SWF (dev_resources/flash2lua/compare_pixels.py). Run as a gmod-mcp lua_job in the CLIENT realm:
 --   lua_job {realm = "client", path = ".../tests/flash_pixels_job.lua",
 --            args = {movie = "hud_ammohealthenergysuit", out = "grymod_dev/flash_px.png"}}
 -- The atlases are VTF textures of the addon's materials folder, found when the addon is mounted. A branch that is not

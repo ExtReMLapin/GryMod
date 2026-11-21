@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from tools.flash2lua import vtf
+from dev_resources.flash2lua import vtf
 
 
 def gradient(w, h, seed=1):

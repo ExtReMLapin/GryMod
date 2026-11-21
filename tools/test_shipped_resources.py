@@ -4,7 +4,7 @@
 
 A file counts as used when the Lua code (outside the resource.AddFile lines, which only send it) names it, or when a used .vmt
 names it ($basetexture, $bumpmap, ...), and so on down the chain. materials/grymod/flash is left out: the pictures of the HUD
-are produced and checked by tools/flash2lua and tools/flash_audit. Exit code 1 and one line per problem on failure.
+are produced and checked by dev_resources/flash2lua and dev_resources/flash_audit. Exit code 1 and one line per problem on failure.
 """
 import os
 import re

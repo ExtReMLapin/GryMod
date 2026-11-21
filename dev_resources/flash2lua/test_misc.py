@@ -1,7 +1,7 @@
 """Small converter checks that need neither FFDec nor the demo."""
 import unittest
 
-from tools.flash2lua import convert, emit_lua, swfmodel
+from dev_resources.flash2lua import convert, emit_lua, swfmodel
 
 BACKSLASH = chr(92)
 
@@ -18,7 +18,7 @@ class EmitStringTest(unittest.TestCase):
 
 class ScriptEdgeTest(unittest.TestCase):
     def test_this_is_the_clip_itself_not_a_child(self):
-        from tools.flash2lua import scripts
+        from dev_resources.flash2lua import scripts
         self.assertEqual(scripts.classify_script('this.stop();'), [{"do": "stop"}])
         self.assertEqual(scripts.classify_script('this.gotoAndStop("a");'), [{"do": "stop"}, {"do": "goto", "label": "a"}])
         self.assertEqual(scripts.classify_script('Mover.gotoAndPlay("a");'),
@@ -93,7 +93,7 @@ class EditTextLayoutTest(unittest.TestCase):
         self.assertTrue(auto.auto_size)
 
     def test_only_what_matters_is_written(self):
-        from tools.flash2lua import lua_literal
+        from dev_resources.flash2lua import lua_literal
         data = lua_literal.parse(emit_lua.emit_lua(self.movie, {}, "grymod/flash"))["chars"]
         self.assertEqual((data[1].get("ml"), data[1].get("ww"), data[1].get("ld"), data[1].get("as")), (True, True, 2, None))
         self.assertEqual((data[2].get("ml"), data[2].get("ww"), data[2].get("ld"), data[2].get("as")), (None, None, None, None))

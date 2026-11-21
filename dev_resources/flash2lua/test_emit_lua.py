@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from tools.flash2lua import emit_lua, lua_literal, rasterize, swfmodel
+from dev_resources.flash2lua import emit_lua, lua_literal, rasterize, swfmodel
 
 FFDEC = os.environ.get("FFDEC", r"D:\dev\crysis-hud-research\ffdec\ffdec-cli.exe")
 SWF_DIR = os.environ.get("SWF_DIR", r"D:\dev\crysis-hud-research\extracted\Libs\UI")

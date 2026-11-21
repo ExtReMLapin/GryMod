@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 import make_cloak_shader_textures as mcs
-from tools.flash2lua import vtf
+from dev_resources.flash2lua import vtf
 
 
 def noise_volume():

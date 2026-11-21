@@ -6,7 +6,7 @@ lateral hand tremor), sampled by frames of 30 to 240 fps, and feeds it to:
   fixedN the same rule run on a fixed clock of 1/N s (the frame's counts spread evenly over the frame), the angle shown eased
 For each: the standard deviation of the angle, its peak-to-peak range and the number of direction reversals per second.
 
-Run: python -I tools/quickmenu_pointer_sim.py
+Run: python -I dev_resources/research/quickmenu_pointer_sim.py
 """
 
 import math

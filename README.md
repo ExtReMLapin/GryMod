@@ -84,10 +84,10 @@ spread with what you do, open on something you can use, blink on a hit; the dama
 a cross on an ally) and the start-up log at every spawn. The sounds of the start-up, malfunction and reboot are the
 demo's own interface sounds. How it works:
 
-* `tools/flash2lua/` converts the movies once, offline (Python, [FFDec](https://github.com/jindrapetrik/jpexs-decompiler)
+* `dev_resources/flash2lua/` converts the movies once, offline (Python, [FFDec](https://github.com/jindrapetrik/jpexs-decompiler)
   and the Crysis SP demo's `GameData.pak`): every shape becomes a picture in an atlas
   (`materials/grymod/flash/*.png`) and every timeline becomes Lua data (`lua/grymod/flash/*.lua`).
-  `tools/flash2lua/README.md` says how to run it. The generated files are committed: the game does not need
+  `dev_resources/flash2lua/README.md` says how to run it. The generated files are committed: the game does not need
   the converter or the demo.
 * `lua/grymod/client/cl_flash.lua` plays the timelines (30 images per second, any frame rate),
   `cl_flash_draw.lua` draws them; `cl_hud_flash.lua`, `cl_hud_radar_flash.lua`, `cl_hud_quickmenu_flash.lua`,

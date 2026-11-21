@@ -1,4 +1,4 @@
--- Flash timeline player: replays the movie clips of the Crysis HUD movies converted by tools/flash2lua
+-- Flash timeline player: replays the movie clips of the Crysis HUD movies converted by dev_resources/flash2lua
 -- (see that tool's emit_lua.lua for the data format).
 --
 -- A Clip is one running movie clip: a timeline (frames with display-list operations, labels and the few

@@ -9,7 +9,7 @@ Two checks that the conversion and the hand ports of the HUD did not make, and t
    game (`fscommand`) or copies text is dropped: each must be ported by hand, or written down as not needed.
 
 Usage:
-  python tools/flash_audit/film_audit.py --scripts D:/dev/crysis-hud-research/research-ui/scripts/HUD_Binoculars/scripts \
+  python dev_resources/flash_audit/film_audit.py --scripts D:/dev/crysis-hud-research/research-ui/scripts/HUD_Binoculars/scripts \
       --film lua/grymod/flash/hud_binoculars.lua [--stage 1366 768] [--min-share 0.35]
 
 `--scripts` is the folder FFDec writes with `-export script` (DefineSprite_N/frame_K/DoAction.as, frame_K/DoAction.as for the root).

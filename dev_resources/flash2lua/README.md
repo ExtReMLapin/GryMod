@@ -13,16 +13,16 @@ Run the tests (from the repository root; they are skipped when FFDec or the demo
     set SWF_DIR=path\to\extracted\Libs\UI
     set CRYSIS_GAMEDATA_PAK=path\to\GameData.pak
     set CRYSIS_LOCALIZED_PAK=path\to\Localized\english.pak
-    python -m unittest discover -s tools/flash2lua -t . -p "test_*.py"
+    python -m unittest discover -s dev_resources/flash2lua -t . -p "test_*.py"
 
 Regenerate the data (from the repository root; `lua/grymod/flash/` and `materials/grymod/flash/` are overwritten):
 
-    python -m tools.flash2lua.convert --pak "<...>\Crysis SP Demo\Game\GameData.pak" --ffdec <ffdec-cli.exe> ^
+    python -m dev_resources.flash2lua.convert --pak "<...>\Crysis SP Demo\Game\GameData.pak" --ffdec <ffdec-cli.exe> ^
         HUD_AmmoHealthEnergySuit HUD_RadarCompassStealth
 
 Compare a render of the game with FFDec's render of the same movie (pixel by pixel):
 
-    python -m tools.flash2lua.compare_pixels reference.png game.png --bg 51,51,51 --tolerance 48
+    python -m dev_resources.flash2lua.compare_pixels reference.png game.png --bg 51,51,51 --tolerance 48
 
 `lupa` (pip) is optional: with it the tests also load the generated Lua in a real LuaJIT.
 

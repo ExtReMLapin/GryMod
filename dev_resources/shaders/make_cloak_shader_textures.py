@@ -1,4 +1,4 @@
-"""Writes the textures the camouflage's pixel shader reads, from the originals that tools/extract_cloak_textures.py puts in its `dds` folder.
+"""Writes the textures the camouflage's pixel shader reads, from the originals that dev_resources/cloak/extract_cloak_textures.py puts in its `dds` folder.
 
     python dev_resources/shaders/make_cloak_shader_textures.py DDS_DIR [--out-dir materials/grymod/cloak]
 
@@ -19,8 +19,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 
-from tools import extract_cloak_textures as ect  # noqa: E402
-from tools.flash2lua import vtf  # noqa: E402
+from dev_resources.cloak import extract_cloak_textures as ect  # noqa: E402
+from dev_resources.flash2lua import vtf  # noqa: E402
 
 
 def noise_volume_bytes(volume):

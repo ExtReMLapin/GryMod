@@ -17,12 +17,12 @@ Mix.MinGain = -20
 Mix.MaxGain = 12
 
 -- the level of each file in the original game's sound banks (dB, first-person events), the files being the game's own
--- samples at their own level (tools/extract_sounds.py; sound/grymod/{suit,hud,menu,binoculars}). The armor hits are the
+-- samples at their own level (dev_resources/sounds/extract_sounds.py; sound/grymod/{suit,hud,menu,binoculars}). The armor hits are the
 -- physics event mat_armor_fp (-10 dB) that Client:OnHit plays in the single-player game, the quick menu sounds the HUD's
 -- own events (modification_menu_appear -16, disappear -13, preset_navigation_beep -15, temperature_beep -12) and the
 -- error beep suit_usage_error (-15). hud_reboot.wav is the sum of the event's two layers stored 1 dB lower (its peak
 -- would pass full scale): -11 dB instead of the event's -12. The files that were resampled (the engine only plays 11025,
--- 22050 and 44100 Hz) and whose filtered signal passed full scale were scaled down by tools/extract_sounds.py (up to 1.27 dB, the
+-- 22050 and 44100 Hz) and whose filtered signal passed full scale were scaled down by dev_resources/sounds/extract_sounds.py (up to 1.27 dB, the
 -- armor hits 05 to 16, the stop and the malfunction): their level is the event's plus that amount, so that they play at the
 -- event's level (-9.38 instead of -10 for fp_05...).
 Mix.Original = {

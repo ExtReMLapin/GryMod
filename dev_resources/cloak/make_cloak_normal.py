@@ -1,7 +1,7 @@
 """Generates materials/grymod/cloak/cloak_n.vtf, the small tileable normal map that bends the picture behind a
 camouflaged player. Only numpy is used (no pip): the VTF file is written here, uncompressed, with its mipmaps.
 
-    python tools/make_cloak_normal.py
+    python dev_resources/cloak/make_cloak_normal.py
 
 The map is made of a few waves with random phases (a fixed seed), so it tiles and always comes out the same.
 128 x 128, RGBA8888, mipmaps: about 87 KB of video memory.
@@ -14,7 +14,7 @@ import numpy as np
 
 SIZE = 128
 SEED = 20261121
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "materials", "grymod", "cloak", "cloak_n.vtf")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "materials", "grymod", "cloak", "cloak_n.vtf")
 
 
 def height_field(size, rng):

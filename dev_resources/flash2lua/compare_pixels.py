@@ -1,6 +1,6 @@
 """Compare two renders of the HUD (FFDec's and the game's) pixel by pixel.
 
-    python -m tools.flash2lua.compare_pixels ref.png got.png --bg 51,51,51 [--tolerance 16] [--diff diff.png]
+    python -m dev_resources.flash2lua.compare_pixels ref.png got.png --bg 51,51,51 [--tolerance 16] [--diff diff.png]
 
 `content` = pixels that are not the background in at least one image; `different` = content pixels whose
 largest channel difference exceeds the tolerance; `fraction` = different / content.

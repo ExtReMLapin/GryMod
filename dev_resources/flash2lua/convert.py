@@ -1,6 +1,6 @@
 """Convert Crysis HUD movies from the demo's GameData.pak into GryMod Lua data and atlases.
 
-    python -m tools.flash2lua.convert --pak <GameData.pak> --ffdec <ffdec-cli.exe> HUD_AmmoHealthEnergySuit ...
+    python -m dev_resources.flash2lua.convert --pak <GameData.pak> --ffdec <ffdec-cli.exe> HUD_AmmoHealthEnergySuit ...
 
 Writes lua/grymod/flash/<movie>.lua and materials/grymod/flash/<movie>_<n>.vtf / .vmt (lower case names). The shapes
 are rasterised and packed as PNG atlases in a temporary folder, then repack.py turns them into the textures the game
@@ -12,7 +12,7 @@ import re
 import tempfile
 import zipfile
 
-from tools.flash2lua import emit_lua, glyphs, rasterize, repack, swfmodel
+from dev_resources.flash2lua import emit_lua, glyphs, rasterize, repack, swfmodel
 
 MATERIAL_DIR = "grymod/flash"
 

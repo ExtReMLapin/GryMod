@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from tools.flash2lua import convert
+from dev_resources.flash2lua import convert
 
 FFDEC = os.environ.get("FFDEC", r"D:\dev\crysis-hud-research\ffdec\ffdec-cli.exe")
 PAK = os.environ.get("CRYSIS_GAMEDATA_PAK",

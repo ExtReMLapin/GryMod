@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from tools.flash2lua import repack, vtf
+from dev_resources.flash2lua import repack, vtf
 
 
 def make_movie(tmp, shapes, font=True):

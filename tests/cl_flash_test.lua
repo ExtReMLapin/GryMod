@@ -1,7 +1,7 @@
 -- Tests of the Flash timeline player (GryMod.Flash), GLuaTest format, client realm.
 --
 -- The player replays the display lists and frame actions of the Crysis HUD movies converted by
--- tools/flash2lua. Hand-built movies pin the rules; one test loads the real converted file.
+-- dev_resources/flash2lua. Hand-built movies pin the rules; one test loads the real converted file.
 
 local function movie()
 	local I = {1, 0, 0, 1, 0, 0}
