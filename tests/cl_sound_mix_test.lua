@@ -440,26 +440,7 @@ return {
 			end
 		},
 		{
-			name = "the ground loop volume is the mix's volume times the height above the ground, never above the mix's volume",
-			func = function(state)
-				local base = GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav")
-				expect(base).to.aboutEqual(0.09, 0.01)
-				expect(GryMod.GroundLoopVolume(0)).to.aboutEqual(base, 0.0001)
-				expect(GryMod.GroundLoopVolume(150)).to.aboutEqual(base / 2, 0.0001)
-				expect(GryMod.GroundLoopVolume(300)).to.equal(0)
-				expect(GryMod.GroundLoopVolume(5000)).to.equal(0)
-
-				for distance = 0, 400, 20 do
-					expect(GryMod.GroundLoopVolume(distance) <= base + 0.0001).to.beTrue()
-				end
-
-				-- the gain moves it
-				setConVar("gry_sound_volume", "12")
-				expect(GryMod.GroundLoopVolume(0)).to.aboutEqual(10 ^ ((12 - 27) / 20), 0.001)
-			end
-		},
-		{
-			name = "the loops fade in over a few hundredths of a second: from 0 to the mix's volume",
+			name = "the short fade of the other loops (binoculars, underwater ambience) goes from 0 to the mix's volume in a few hundredths of a second",
 			func = function(state)
 				local fade = GryMod.SoundMix.FadeInSeconds
 				expect(fade >= 0.005 and fade <= 0.05).to.beTrue()
@@ -468,41 +449,20 @@ return {
 				expect(GryMod.SoundMix.FadeIn(fade)).to.equal(1)
 				expect(GryMod.SoundMix.FadeIn(10)).to.equal(1)
 				expect(GryMod.SoundMix.FadeIn(-1)).to.equal(0)
-
-				local base = GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01_underwater.wav")
-				expect(GryMod.UnderwaterLoopVolume(0)).to.equal(0)
-				expect(GryMod.UnderwaterLoopVolume(fade)).to.aboutEqual(base, 0.0001)
-				expect(GryMod.GroundLoopVolume(0, 0)).to.equal(0)
-				expect(GryMod.GroundLoopVolume(0, 1)).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav"), 0.0001)
 			end
 		},
 		{
-			name = "a sprint starts the loop of the right water at volume 0, before Play, and the frame sets the mix's volume",
+			name = "the speed servo loops are at the mix's volume times the machine's gain (the sprint sound tests are in cl_sprint_sound_test.lua)",
 			func = function(state)
 				local ground, underwater = fakeChannel(), fakeChannel()
-				local previous1, previous2 = GryMod.SpeedLoops.Get()
-				GryMod.SpeedLoops.Set(ground, underwater)
-
-				local ok, err = pcall(function()
-					stub(FindMetaTable("Entity"), "WaterLevel", function() return 0 end)
-					hook.Run("GryModStartSprinting")
-					expect(#ground.calls).to.equal(2)
-					expect(ground.calls[1][1]).to.equal("SetVolume")
-					expect(ground.calls[1][2]).to.equal(0)
-					expect(ground.calls[2][1]).to.equal("Play")
-					expect(#underwater.calls).to.equal(0)
-
-					-- the frame: the volume goes on from the mix (the trace is given, not made)
-					ground.calls = {}
-					underwater.calls = {}
-					GryMod.UpdateSpeedLoops(GryMod.SoundMix.Now() + 5, 0)
-					local last = ground.calls[#ground.calls]
-					expect(last[1]).to.equal("SetVolume")
-					expect(last[2]).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav"), 0.0001)
-				end)
-
-				GryMod.SpeedLoops.Set(previous1, previous2)
-				assert(ok, err)
+				GryMod.SprintSound.Apply({{type = "volume", loop = "ground", gain = 1}, {type = "volume", loop = "underwater", gain = 0.5}}, {ground = ground, underwater = underwater})
+				expect(ground.calls[1][2]).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav"), 0.0001)
+				expect(underwater.calls[1][2]).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01_underwater.wav") / 2, 0.0001)
+				-- the gain moves it
+				setConVar("gry_sound_volume", "12")
+				ground.calls = {}
+				GryMod.SprintSound.Apply({{type = "volume", loop = "ground", gain = 1}}, {ground = ground})
+				expect(ground.calls[1][2]).to.aboutEqual(10 ^ ((12 - 27) / 20), 0.001)
 			end
 		},
 		{

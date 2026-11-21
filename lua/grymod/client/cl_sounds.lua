@@ -120,27 +120,13 @@ end)
 
 
 
-local speedLoopGround;
-local speedLoopUnderwater;
+-- The speed servo (cl_sprint_sound.lua decides, this file owns the two BASS channels): the machine is fed once a frame by
+-- the Think hook below and its actions are applied to the channels (SprintSound.Apply).
+local speedLoopGround
+local speedLoopUnderwater
 
-local GROUND_LOOP = "grymod/suit/servo_speed_loop_01c.wav"
-local UNDERWATER_LOOP = "grymod/suit/servo_speed_loop_01_underwater.wav"
-
--- when the loop that plays now started (it fades in, see GryMod.SoundMix.FadeIn)
-local loopStart = 0
-
--- The volume of the ground loop: the mix's volume (the original game's -27 dB plus the gain), lower as the player leaves
--- the ground (nothing at 300 units), and fading in over the first hundredths of a second after the start (sinceStart,
--- seconds). The earlier code set it to 1.0 on the ground at every frame, over the volume the loop was given.
-function GryMod.GroundLoopVolume(distanceFromGround, sinceStart)
-	local height = math.max(math.Remap(distanceFromGround, 0, 300, 1, 0), 0)
-
-	return GryMod.SoundMix.Volume(GROUND_LOOP) * height * GryMod.SoundMix.FadeIn(sinceStart or math.huge)
-end
-
-function GryMod.UnderwaterLoopVolume(sinceStart)
-	return GryMod.SoundMix.Volume(UNDERWATER_LOOP) * GryMod.SoundMix.FadeIn(sinceStart or math.huge)
-end
+local GROUND_LOOP = GryMod.SprintSound.Files.loop.ground
+local UNDERWATER_LOOP = GryMod.SprintSound.Files.loop.underwater
 
 -- for the tests: the channels can be replaced by recording ones
 GryMod.SpeedLoops = {
@@ -151,79 +137,24 @@ GryMod.SpeedLoops = {
 	end
 }
 
--- Sets the volume of both loops (the one that is not playing is paused, its volume does not matter): once per frame of a
--- sprint, with the height above the ground.
-function GryMod.UpdateSpeedLoops(now, distanceFromGround)
-	local sinceStart = now - loopStart
-
-	if IsValid(speedLoopGround) then
-		speedLoopGround:SetVolume(GryMod.GroundLoopVolume(distanceFromGround, sinceStart))
-	end
-
-	if IsValid(speedLoopUnderwater) then
-		speedLoopUnderwater:SetVolume(GryMod.UnderwaterLoopVolume(sinceStart))
-	end
-end
-
--- starts a loop from silence: the frame brings it up (a loop that starts at once at its level clicks)
-local function startLoop(channel)
-	loopStart = GryMod.SoundMix.Now()
-	channel:SetVolume(0)
-	channel:Play()
-end
-
 sound.PlayFile("sound/" .. GROUND_LOOP, "noblock noplay",
 	function(soundchannel, error, str )
 		speedLoopGround = soundchannel
 		soundchannel:EnableLooping(true)
-		soundchannel:SetVolume(GryMod.SoundMix.Volume(GROUND_LOOP))
-
+		soundchannel:SetVolume(0)
 	end)
 
 sound.PlayFile("sound/" .. UNDERWATER_LOOP, "noblock noplay",
 	function(soundchannel, error, str )
-	speedLoopUnderwater = soundchannel
-	soundchannel:EnableLooping(true)
-	soundchannel:SetVolume(GryMod.SoundMix.Volume(UNDERWATER_LOOP))
-end)
+		speedLoopUnderwater = soundchannel
+		soundchannel:EnableLooping(true)
+		soundchannel:SetVolume(0)
+	end)
 
-
-
-
-hook.Add("GryModStartSprinting", "sound", function()
-	if not GryMod.SoundsEnabled() then return end
-
-	-- the channels are created asynchronously: they may not exist yet
-	local channel = LocalPlayer():WaterLevel() < 3 and speedLoopGround or speedLoopUnderwater
-
-	if IsValid(channel) then
-		startLoop(channel)
-	end
-end)
-
-local speedStopLastPlay = 0
-
-hook.Add("GryModEndSprinting", "sound", function()
-	if LocalPlayer():WaterLevel() < 3  then
-		if (CurTime() - speedStopLastPlay > 0.7 ) then
-			speedStopLastPlay = CurTime()
-			GryMod.PlaySound(Sound("grymod/suit/servo_speed_stop_fp_2.wav"))
-		end
-		if IsValid(speedLoopGround) then
-			speedLoopGround:Pause()
-			speedLoopGround:SetTime(0)
-		end
-	else
-		if (CurTime() - speedStopLastPlay > 0.7 ) then
-			speedStopLastPlay = CurTime()
-			GryMod.PlaySound(Sound("grymod/suit/servo_speed_stop_01_underwater.wav"))
-		end
-		if IsValid(speedLoopUnderwater) then
-			speedLoopUnderwater:Pause()
-			speedLoopUnderwater:SetTime(0)
-		end
-	end
-end)
+local sprintState = GryMod.SprintSound.New()
+local sprintWasOnGround = true
+local sprintLastThink
+local sprintLoops = {}
 
 local lastenergy
 
@@ -263,72 +194,36 @@ function GryMod.ResetEnergyCritical()
 	lastCriticalAt = nil
 end
 
-local wasSprinting = false
-local wasUnderwater = false
 hook.Add("Think", "GryModSounds", function()
+	local ply = LocalPlayer()
 
-	if not IsValid(LocalPlayer()) then return end
-	local energy = LocalPlayer():GetNWFloat("GryEnergy")
-	if (lastenergy == nil) then
-		if energy == 0 then return end
-		lastenergy = energy
-	end
+	if not IsValid(ply) then return end
+
+	local energy = ply:GetNWFloat("GryEnergy")
 	local now = GryMod.SoundMix.Now()
 
-	if GryMod.EnergyCriticalDue(lastenergy, energy, lastCriticalAt, now) then
-		lastCriticalAt = now
-		GryMod.PlaySound(Sound("grymod/suit/suit_energy_critical.wav"))
-	end
-	lastenergy = energy
-	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 and LocalPlayer().NanosuitMode == GryMod.Modes.SPEED and energy > GryMod.SprintLoopMinimum() then
-		if wasSprinting == false then
-			hook.Run("GryModStartSprinting")
-			wasSprinting = true
-		end
-	else
-		if wasSprinting == true then
-			hook.Run("GryModEndSprinting")
-			wasSprinting = false
-		end
+	-- the voice: nothing before the first energy value (the sprint sound below runs whatever the energy)
+	if lastenergy == nil and energy ~= 0 then
+		lastenergy = energy
 	end
 
-	-- the ground loop fades out when the player leaves the ground: only needed (and only worth a long
-	-- trace every frame) while the loop is playing
-	if wasSprinting then
-		local distanceFromGround = 0
-
-		if IsValid(speedLoopGround) then
-			local tr = util.TraceLine( {
-			start = LocalPlayer():GetPos(),
-			endpos = LocalPlayer():EyePos() + Vector(0,0,-50000000),
-		} )
-			distanceFromGround = LocalPlayer():GetPos():Distance(tr.HitPos)
+	if lastenergy ~= nil then
+		if GryMod.EnergyCriticalDue(lastenergy, energy, lastCriticalAt, now) then
+			lastCriticalAt = now
+			GryMod.PlaySound(Sound("grymod/suit/suit_energy_critical.wav"))
 		end
 
-		GryMod.UpdateSpeedLoops(GryMod.SoundMix.Now(), distanceFromGround)
+		lastenergy = energy
 	end
 
-	-- if we get from water to air or to air from water, swap the two sounds
-	local bothLoops = IsValid(speedLoopGround) and IsValid(speedLoopUnderwater)
-
-	if (wasUnderwater and LocalPlayer():WaterLevel() < 3) then
-		wasUnderwater = false
-		if (wasSprinting and bothLoops) then
-			speedLoopGround:SetTime(speedLoopUnderwater:GetTime())
-			startLoop(speedLoopGround)
-			speedLoopUnderwater:Pause()
-			speedLoopUnderwater:SetTime(0)
-		end
-	elseif (not wasUnderwater and LocalPlayer():WaterLevel() == 3) then
-		wasUnderwater = true
-		if (wasSprinting and bothLoops) then
-			speedLoopUnderwater:SetTime(speedLoopGround:GetTime())
-			startLoop(speedLoopUnderwater)
-			speedLoopGround:Pause()
-			speedLoopGround:SetTime(0)
-		end
-
-	end
-
-
+	-- the servo of the speed sprint
+	local frame = GryMod.SprintSound.Sample(ply, energy, sprintWasOnGround)
+	sprintWasOnGround = frame.onGround
+	local dt = sprintLastThink and math.Clamp(now - sprintLastThink, 0, 0.25) or 0
+	sprintLastThink = now
+	local actions
+	sprintState, actions = GryMod.SprintSound.Step(sprintState, frame, dt)
+	sprintLoops.ground = speedLoopGround
+	sprintLoops.underwater = speedLoopUnderwater
+	GryMod.SprintSound.Apply(actions, sprintLoops)
 end)
