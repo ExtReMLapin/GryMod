@@ -52,16 +52,44 @@ net.Receive("gry_nanosuit_mode_change", function(len, ply)
 	GryMod.SetModeFromClient(ply, net.ReadUInt(3)) -- cheeeetaaa: that is why the mode is checked
 end)
 
+-- Tells the client the mode the server really keeps (a refused request leaves both sides in step).
+local function tellMode(ply, mode)
+	net.Start("gry_nanosuit_mode_change")
+	net.WriteUInt(mode, 3)
+	net.Send(ply)
+end
+
+-- Puts the suit in a mode. Every path that changes the mode goes through here: the client's request, the cloak running
+-- out, a malfunction, the extension API (GryMod.API.SetMode). Returns true, or false and why the suit stayed as it was or
+-- went to armor instead: "dead", "malfunction", "disabled" (the suit is off: GryMod.API.SetSuitEnabled), "vetoed".
+-- The armor is the suit's safe state: it is never vetoed (a malfunction, an empty bar or a respawn must always reach it).
 function meta:SetNanosuitMode(mode, networked)
 	if not self:Alive() then
-		return
+		return false, "dead"
 	end
 
-	-- a suit that is down stays in armor mode (sv_malfunction.lua); the client is told the real mode
-	if mode ~= GryMod.Modes.ARMOR and GryMod.Malfunction and GryMod.Malfunction.IsActive(self) then
-		mode = GryMod.Modes.ARMOR
-		networked = true
+	local refused
+
+	-- a suit that is down or off stays in armor mode (sv_malfunction.lua, sv_api.lua); the client is told the real mode
+	if mode ~= GryMod.Modes.ARMOR then
+		if GryMod.Malfunction and GryMod.Malfunction.IsActive(self) then
+			refused = "malfunction"
+		elseif self:GetNWBool("GryDisabled", false) then
+			refused = "disabled"
+		end
+
+		if refused then
+			mode = GryMod.Modes.ARMOR
+			networked = true
+		elseif mode ~= (self.Nanosuit_mode or GryMod.Modes.ARMOR) and hook.Run("GryMod_CanSetMode", self, mode) == false then
+			-- another addon refuses this mode (veto): nothing changes, and the client is told, as for any refused request
+			tellMode(self, self.Nanosuit_mode or GryMod.Modes.ARMOR)
+
+			return false, "vetoed"
+		end
 	end
+
+	local oldMode = self.Nanosuit_mode or GryMod.Modes.ARMOR
 
 	if mode == GryMod.Modes.SPEED then
 		self:SetWalkSpeed(400)
@@ -100,13 +128,15 @@ function meta:SetNanosuitMode(mode, networked)
 	self.Nanosuit_mode = mode
 	hook.Run("GryNanosuitMode", self, mode) -- sv_cloak_ai.lua: the NPCs forget a camouflaged player
 
-	if not networked then
-		return
+	if mode ~= oldMode then
+		hook.Run("GryMod_ModeChanged", self, mode, oldMode)
 	end
 
-	net.Start("gry_nanosuit_mode_change")
-	net.WriteUInt(mode, 3)
-	net.Send(self)
+	if networked then
+		tellMode(self, mode)
+	end
+
+	return refused == nil, refused
 end
 
 net.Receive("gry_empty_energy", function(len, ply)

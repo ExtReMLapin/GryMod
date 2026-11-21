@@ -82,7 +82,10 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		GryMod.Malfunction.OnDamage(ply, dmginfo)
 	end
 
-	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
+	-- a suit that is off (GryMod.API.SetSuitEnabled) has no armor: the hit goes through and the bar is not touched
+	local armorOn = ply.Nanosuit_mode == GryMod.Modes.ARMOR and not ply:GetNWBool("GryDisabled", false)
+
+	if armorOn then
 		local energy = ply:GetNWFloat("GryEnergy")
 		-- what the bar holds once the hit is taken (the infinite armor takes nothing)
 		local energyAfter = GryMod.Config.InfiniteArmor and energy or math.max(0, energy - amt)
@@ -93,14 +96,14 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		end
 	end
 
-	if ply.Nanosuit_mode == GryMod.Modes.ARMOR and GryMod.Config.InfiniteArmor then
+	if armorOn and GryMod.Config.InfiniteArmor then
 		-- the armor never runs out
 		dmginfo:SetDamage(0)
 
 		return
 	end
 
-	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
+	if armorOn then
 		local energy = ply:GetNWFloat("GryEnergy")
 
 
@@ -193,8 +196,8 @@ hook.Add("Think", "GryMod health think", function()
 
 		local curenergy = ply:GetNWFloat("GryEnergy")
 
-		-- a suit that is down does not recharge (sv_malfunction.lua)
-		if (ply.next_energy_regen and ply.next_energy_regen < CurTime()) and not (GryMod.Malfunction and GryMod.Malfunction.IsActive(ply)) then
+		-- a suit that is down does not recharge (sv_malfunction.lua), nor one that is off (GryMod.API.SetSuitEnabled)
+		if (ply.next_energy_regen and ply.next_energy_regen < CurTime()) and not (GryMod.Malfunction and GryMod.Malfunction.IsActive(ply)) and not ply:GetNWBool("GryDisabled", false) then
 			if (curenergy >= 100) then
 				ply.next_energy_regen = 0
 			else
@@ -230,7 +233,7 @@ local energyNet = CreateConVar("gry_energy_net", "1", bit.bor(FCVAR_ARCHIVE, FCV
 -- Energy per second that the Think hooks give or take at this moment, as they will apply it (0 when the bar does not
 -- move, or when the next tick may change the rule: the cloak or the speed sprint about to give out).
 function GryMod.EnergyRate(ply)
-	if not ply:Alive() or GryMod.Config.InfiniteArmor then
+	if not ply:Alive() or GryMod.Config.InfiniteArmor or ply:GetNWBool("GryDisabled", false) then
 		return 0
 	end
 

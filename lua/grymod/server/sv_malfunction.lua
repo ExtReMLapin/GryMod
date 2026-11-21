@@ -52,7 +52,8 @@ end
 -- The suit goes down (or stays down longer) for `seconds`. The reason ("emp", "shock", "overload", "impact") goes to
 -- the GryMod_MalfunctionStart hook. Returns whether the suit is down after the call.
 function Malfunction.Start(ply, seconds, reason)
-	if not (IsValid(ply) and ply:IsPlayer() and ply:Alive()) or not Malfunction.Enabled() or GryMod.Config.InfiniteArmor then
+	-- a suit that is off (GryMod.API.SetSuitEnabled) has nothing to put down
+	if not (IsValid(ply) and ply:IsPlayer() and ply:Alive()) or not Malfunction.Enabled() or GryMod.Config.InfiniteArmor or ply:GetNWBool("GryDisabled", false) then
 		return false
 	end
 
@@ -161,7 +162,7 @@ end
 -- Called first thing by the damage handler of sv_health.lua, before the armor works on the hit: electric hits burn
 -- energy and may put the suit down, a heavy machine breaking the armor does too.
 function Malfunction.OnDamage(ply, dmginfo)
-	if not Malfunction.Enabled() or Malfunction.IsActive(ply) or not ply:Alive() or GryMod.Config.InfiniteArmor then
+	if not Malfunction.Enabled() or Malfunction.IsActive(ply) or not ply:Alive() or GryMod.Config.InfiniteArmor or ply:GetNWBool("GryDisabled", false) then
 		return
 	end
 
