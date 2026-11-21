@@ -9,6 +9,9 @@
 --     player) show only when scanned or when they hurt him;
 --   - the NPC that hurt the player is marked for 10 s, on the border of the radar if it is out of it;
 --   - the icon type: 1 ground, 2 flying, 3 machines.
+--   - the registry of tracked entities (GryMod.API.RegisterTracked, sh_api_tracked.lua) overrides all this for the NPCs and
+--     nextbots it matches: the icon type and size, the relation, when the contact is listed (radar = "always", "hostile",
+--     "scan" or "never") and whether the binoculars may tag it (scan = false); an entity that is not registered is as above.
 -- Cost: one timer every fifth of a second that only looks at the players that asked for the contacts (their HUD has the
 -- radar on); one ents.FindInSphere around each of them, filtered by IsNPC; nothing is sent when the list did not change.
 
@@ -92,26 +95,61 @@ function Radar.TypeOf(class)
 	return kind, big[class] and true or false
 end
 
--- What the rules need to know about an NPC, for one player.
+-- The registry entry of the entity (GryMod.API.GetTracked), or nil: none, or no registry (a hot reload of this file).
+local function trackedOf(ent)
+	local API = GryMod.API
+
+	return API and API.GetTracked and API.GetTracked(ent) or nil
+end
+
+-- A nextbot has none of the NPC's functions: it has no state and no enemy.
+local function npcState(npc)
+	if isfunction(npc.GetNPCState) then
+		return npc:GetNPCState()
+	end
+
+	return NPC_STATE_NONE
+end
+
+-- What the rules need to know about an NPC (or a registered nextbot), for one player. The fields type, big, radar and noScan are
+-- there only when the registry has an entry for it: type (the icon, 1 to 3) and big replace the ones of its class, radar says when
+-- it is listed (see Step), noScan that the binoculars may not tag it. The relation comes through the relation chain, which asks the
+-- registry too.
 function Radar.Describe(npc, ply)
 	local pos = npc:GetPos()
-	local enemy = npc:GetEnemy()
+	local enemy = isfunction(npc.GetEnemy) and npc:GetEnemy() or nil
 	local relation = GryMod.Friendly.Relation(ply, npc)
+	local tracked = trackedOf(npc)
 
-	return {
+	local d = {
 		key = npc,
 		id = npc:EntIndex(),
 		class = npc:GetClass(),
 		relation = relation,
 		hostile = relation == "hostile",
 		ally = relation == "ally",
-		state = npc:GetNPCState(),
+		state = npcState(npc),
 		enemyIsPlayer = enemy == ply,
 		health = npc:Health(),
 		maxHealth = npc:GetMaxHealth(),
 		x = pos.x, y = pos.y, z = pos.z,
 		yaw = npc:GetAngles().y
 	}
+
+	if tracked then
+		d.type = tracked.type
+		d.radar = tracked.radar
+
+		if tracked.size ~= nil then
+			d.big = tracked.size == "big"
+		end
+
+		if tracked.scan == false then
+			d.noScan = true
+		end
+	end
+
+	return d
 end
 
 local weak = {__mode = "k"}
@@ -146,7 +184,26 @@ end
 local SCAN_METRES = 300 * 1.1
 
 function Radar.Scan(ply, npc)
-	if not IsValid(ply) or not ply:Alive() or not IsValid(npc) or not npc:IsNPC() or npc:Health() <= 0 then
+	if not IsValid(ply) or not ply:Alive() or not IsValid(npc) then
+		return false
+	end
+
+	local tracked = trackedOf(npc)
+
+	if npc:IsNPC() then
+		if npc:Health() <= 0 then
+			return false
+		end
+	elseif tracked and npc:IsNextBot() then
+		-- a nextbot may have no health at all (0 of 0, like a rollermine): only one that lost its health is dead
+		if npc:Health() <= 0 and npc:GetMaxHealth() > 0 then
+			return false
+		end
+	else
+		return false
+	end
+
+	if tracked and tracked.scan == false then
 		return false
 	end
 
@@ -166,6 +223,10 @@ end
 -- Returns the contacts {id, x, y, z, yaw, type, sub, marker, big}, the markers first then the nearest, no more than the
 -- limit. sub: 0 tagged but neither hostile nor ally, 1 marker of one of those, 2 hostile and calm, 3 alerted, 4 fighting the
 -- player, 5 (S.SUB_ALLY) an ally, in whatever state.
+-- A description may carry what the registry of tracked entities says (Describe): `radar`: "always" (listed at once, in the colour
+-- of its relation and state, whatever the allies switch says), "hostile" (the rules of the hostiles whatever its relation: alerted
+-- or fighting within 26 m, or scanned; the allies switch does not apply), "scan" (only once scanned: its alert, a marker and the
+-- allies switch do not list it), "never" (never listed); nothing: the rules above. `type` and `big` replace the ones of the class.
 function Radar.Step(origin, descs, st, now, alliesAlways)
 	local gate2 = S.GateUnits() ^ 2
 	local scan2 = S.ScanUnits() ^ 2
@@ -184,17 +245,36 @@ function Radar.Step(origin, descs, st, now, alliesAlways)
 		if d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0) or d.state == NPC_STATE_DEAD then
 			st.tagged[key] = nil
 			st.markers[key] = nil
+		elseif d.radar == "never" then
+			-- never on the radar: not by its alert, a scan, a marker or the allies switch
 		else
+			local mode = d.radar
 			local dx, dy, dz = d.x - origin.x, d.y - origin.y, d.z - origin.z
 			local distance2 = dx * dx + dy * dy + dz * dz
 			-- the alert of an ally counts as a hostile's (its enemy is never the player, so level 1 at most): with the
 			-- switch off it is how an ally gets noticed
-			local watched = d.hostile or d.ally and not alliesAlways
-			local level = watched and Radar.Level(d.state, d.enemyIsPlayer) or 0
+			local watched
+
+			if mode == "scan" then
+				watched = false
+			elseif mode == "hostile" then
+				watched = true
+			else
+				watched = d.hostile or d.ally and not alliesAlways
+			end
+
+			-- shown like an enemy: the colours of its state (an ally keeps its own)
+			local asHostile = d.hostile or mode == "hostile" and not d.ally
+			-- (a hostile that can only be scanned is not noticed by its alert, but once scanned it shows its state's colour)
+			local level = (watched or asHostile) and Radar.Level(d.state, d.enemyIsPlayer) or 0
 			local marker = st.markers[key]
 
 			if marker and now > marker then
 				st.markers[key] = nil
+				marker = nil
+			end
+
+			if mode == "scan" then
 				marker = nil
 			end
 
@@ -210,16 +290,24 @@ function Radar.Step(origin, descs, st, now, alliesAlways)
 			local sub, isMarker
 
 			if tagged then
-				sub = d.ally and S.SUB_ALLY or d.hostile and (2 + level) or 0
+				sub = d.ally and S.SUB_ALLY or asHostile and (2 + level) or 0
 			elseif marker then
-				sub = d.ally and S.SUB_ALLY or d.hostile and 2 or 1
+				sub = d.ally and S.SUB_ALLY or asHostile and 2 or 1
 				isMarker = true
-			elseif d.ally and alliesAlways then
-				sub = S.SUB_ALLY
+			elseif mode == "always" or d.ally and alliesAlways and mode == nil then
+				sub = d.ally and S.SUB_ALLY or asHostile and (2 + level) or 0
 			end
 
 			if sub and (isMarker or distance2 <= scan2) then
 				local kind, large = Radar.TypeOf(d.class)
+
+				if d.type then
+					kind = d.type
+				end
+
+				if d.big ~= nil then
+					large = d.big
+				end
 
 				list[#list + 1] = {
 					id = d.id, x = d.x, y = d.y, z = d.z, yaw = d.yaw, type = kind, sub = sub, marker = isMarker and true or false,
@@ -265,7 +353,7 @@ function Radar.Tick(ply, now)
 		local descs, seen = {}, {}
 
 		for _, ent in ipairs(ents.FindInSphere(origin, S.ScanUnits())) do
-			if ent ~= ply and ent:IsNPC() then
+			if ent ~= ply and (ent:IsNPC() or ent:IsNextBot() and trackedOf(ent)) then
 				descs[#descs + 1] = Radar.Describe(ent, ply)
 				seen[ent] = true
 			end
