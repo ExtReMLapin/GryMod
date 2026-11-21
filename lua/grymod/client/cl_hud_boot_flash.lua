@@ -22,6 +22,14 @@ Boot.DURATION = {initialize = 89 / 30, reboot = 3.97 + 0.67}
 
 local STAGE_W, STAGE_H = 1024, 768
 
+-- Where the stage of the movies (4:3) goes on a screen of w x h pixels: x and y of its origin and the scale. The stage
+-- is as high as the screen and centred across its width, whatever the aspect ratio.
+function Boot.Placement(w, h)
+	local scale = h / STAGE_H
+
+	return (w - STAGE_W * scale) / 2, 0, scale
+end
+
 -- The movies hold localisation keys (@ui_init_text01): the English texts of the original game (Flash.Localise).
 function Boot.Localise(text)
 	return Flash.Localise(text)
@@ -325,8 +333,6 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 
 	-- the sequence may have ended in this step
 	if current and sequences[current] then
-		local scale = ScrH() / STAGE_H
-
-		sequences[current]:Draw((ScrW() - STAGE_W * scale) / 2, 0, scale)
+		sequences[current]:Draw(Boot.Placement(ScrW(), ScrH()))
 	end
 end)
