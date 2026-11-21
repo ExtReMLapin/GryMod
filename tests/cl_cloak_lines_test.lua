@@ -314,7 +314,89 @@ return {
 			end
 		},
 		{
-			name = "the camouflage's draw hook adds the lines for a camouflaged player in range with sparks, hands them a draw that the player's own hook lets through, and not for a far or still one",
+			name = "Draw with the screen flag covers the whole screen and does not need the entity's box (the view model is drawn with another field of view: its box would be wrong)",
+			func = function()
+				local L = GryMod.CloakFX.Lines
+				local log = record()
+				stub(L, "ScreenPoints", function() error("no box wanted", 0) end)
+
+				local ok = L.Draw(fakePlayer(), 1, function() end, true)
+				local quad = first(log, "DrawTexturedRectUV")
+
+				expect(ok).to.beTrue()
+				expect(quad ~= nil).to.beTrue()
+				expect(quad.args[1]).to.equal(0)
+				expect(quad.args[2]).to.equal(0)
+				expect(quad.args[3]).to.equal(ScrW())
+				expect(quad.args[4]).to.equal(ScrH())
+				expect(log.stencil).to.beFalse()
+				expect(log.colorWrite).to.beTrue()
+			end
+		},
+		{
+			name = "first person: the view model and the hands get the scan lines (whole screen) in the electric flash of the start of the change, and nothing once it is done",
+			func = function()
+				local F = GryMod.CloakFX
+				local L = F.Lines
+				F.SetDrawHooks(true)
+				stub(render, "UpdateRefractTexture", function() end)
+				stub(render, "MaterialOverride", function() end)
+				stub(render, "SetBlend", function() end)
+				stub(render, "SetColorModulation", function() end)
+
+				local me = fakePlayer(0)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				function me:GetViewModel() return vm end
+				stub(_G, "LocalPlayer", function() return me end)
+
+				local calls = {}
+				stub(L, "Draw", function(ent, strength, draw, screen)
+					calls[#calls + 1] = {ent = ent, strength = strength, screen = screen}
+					draw(ent)
+
+					return true
+				end)
+
+				local function frame()
+					local t = hook.GetTable()
+					t.PreDrawViewModel.GryCloakFX(vm, me, NULL)
+					t.PostDrawViewModel.GryCloakFX(vm, me, NULL)
+					t.PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+					t.PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+				end
+
+				F.States[me] = {amount = 0.12, speed = 0, cloaked = true}
+				frame()
+
+				expect(#calls).to.equal(2)
+				expect(calls[1].ent).to.equal(vm)
+				expect(calls[2].ent).to.equal(hands)
+				expect(calls[1].screen).to.beTrue()
+				expect(calls[1].strength > 0.5).to.beTrue()
+
+				-- done, and moving: no flash, no lines
+				calls = {}
+				F.States[me] = {amount = 1, speed = 300, cloaked = true}
+				frame()
+
+				expect(#calls).to.equal(0)
+			end
+		},
+		{
+			name = "TransitionSpark: the flash of the start of the change only (0 at the start, strong at a tenth, 0 once done), whatever the speed",
+			func = function()
+				local F = GryMod.CloakFX
+
+				expect(F.TransitionSpark(0)).to.equal(0)
+				expect(F.TransitionSpark(0.12) > 0.5).to.beTrue()
+				expect(F.TransitionSpark(0.12) <= 1).to.beTrue()
+				expect(F.TransitionSpark(1)).to.equal(0)
+				expect(F.TransitionSpark(-1)).to.equal(0)
+				expect(F.TransitionSpark(2)).to.equal(0)
+			end
+		},
+		{
+			name = "the camouflage's draw hook adds the lines only for a player in range at the start of the change (the electric flash), hands them a draw that the player's own hook lets through, and not for a far one or one that is done, moving or not",
 			func = function()
 				local F = GryMod.CloakFX
 				local L = F.Lines
@@ -335,20 +417,21 @@ return {
 					return true
 				end)
 
-				local moving, still, far = fakePlayer(300), fakePlayer(0), fakePlayer(300)
-				far.center = Vector(F.DetailDistance + 500, 0, 0)
+				local starting, movingDone, stillDone, farStarting = fakePlayer(0), fakePlayer(300), fakePlayer(0), fakePlayer(0)
+				farStarting.center = Vector(F.DetailDistance + 500, 0, 0)
 
-				for _, p in ipairs({moving, still, far}) do
-					F.States[p] = {amount = 1, speed = p:GetVelocity():Length(), cloaked = true}
-				end
+				F.States[starting] = {amount = 0.12, speed = 0, cloaked = true}
+				F.States[movingDone] = {amount = 1, speed = 300, cloaked = true}
+				F.States[stillDone] = {amount = 1, speed = 0, cloaked = true}
+				F.States[farStarting] = {amount = 0.12, speed = 0, cloaked = true}
 
 				hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, false, false)
 
 				expect(#calls).to.equal(1)
-				expect(calls[1].ent).to.equal(moving)
+				expect(calls[1].ent).to.equal(starting)
 				expect(calls[1].strength > 0.5).to.beTrue()
-				-- the model was drawn by the lines' draw (the player's draws: 3 layers + the lines for this one)
-				expect(moving.draws).to.equal(4)
+				-- the model was drawn by the lines' draw (the player's draws: 3 layers + the lines)
+				expect(starting.draws).to.equal(4)
 			end
 		}
 	}

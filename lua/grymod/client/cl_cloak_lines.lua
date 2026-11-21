@@ -123,9 +123,11 @@ end
 
 local frame = 0
 
--- Draws the lines over the entity. `draw(ent)` draws the entity's model (it is called once, with the colours off). Returns true
--- when something was drawn (or nothing was to be), and false and the error when the drawing failed: the state is back anyway.
-function Lines.Draw(ent, strength, draw)
+-- Draws the lines over the entity. `draw(ent)` draws the entity's model (it is called once, with the colours off). With `screen`
+-- the lines cover the whole screen (only where the model is, still): for the view model and the hands, which are drawn with
+-- their own field of view, so that their box cannot be found from the world's camera. Returns true when something was drawn (or
+-- nothing was to be), and false and the error when the drawing failed: the state is back anyway.
+function Lines.Draw(ent, strength, draw, screen)
 	if not Lines.Enabled() then return true end
 
 	local alpha = Lines.Alpha(strength)
@@ -133,7 +135,13 @@ function Lines.Draw(ent, strength, draw)
 	if alpha <= 0 then return true end
 
 	local w, h = ScrW(), ScrH()
-	local x, y, bw, bh = Lines.Rect(Lines.ScreenPoints(ent), w, h)
+	local x, y, bw, bh
+
+	if screen then
+		x, y, bw, bh = 0, 0, w, h
+	else
+		x, y, bw, bh = Lines.Rect(Lines.ScreenPoints(ent), w, h)
+	end
 
 	if not x then return true end
 

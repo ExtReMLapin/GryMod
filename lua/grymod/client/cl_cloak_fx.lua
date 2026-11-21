@@ -129,6 +129,16 @@ function F.Visibility(amount, speed)
 	return refract, base, clamp01(spark)
 end
 
+-- The electric flash of the start of the change alone (what Visibility's sparks are made of, without the part that follows the
+-- speed): 0 at the start, full at a tenth of the change, 0 once it is done. The scan lines (cl_cloak_lines.lua) follow this.
+function F.TransitionSpark(amount)
+	if amount <= 0 or amount >= 1 then
+		return 0
+	end
+
+	return clamp01(F.TransitionCurve(amount) ^ 2 - restSpark)
+end
+
 -- The screen effect of the activation, read from the original's graph (seconds -> grey level, fringes, condensation):
 -- the saturation goes 1 -> 0.5 in 0.7 s then back in 1 s, the colour fringes 0 -> 0.4 in 0.7 s then back in 1 s, and
 -- the condensation 0 -> 1.5 in 0.2 s, -> 0.3 in 0.25 s, -> 0 in 1 s.
@@ -446,9 +456,11 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 
 				drawLayers(ply, refract, base, spark)
 
-				-- the scan lines of the sparks, on the screen over the silhouette
-				if spark > 0.02 and F.Lines then
-					F.Lines.Draw(ply, spark, drawPlain)
+				-- the scan lines, on the screen over the silhouette: only in the electric flash of the start of the change
+				local flash = F.TransitionSpark(s.amount)
+
+				if distance <= F.DetailDistance and flash > 0.02 and F.Lines then
+					F.Lines.Draw(ply, flash, drawPlain)
 				end
 
 				-- the weapon in the hand follows the body (its world model is hidden by the server, see sv_system.lua, so
@@ -535,6 +547,14 @@ local function endFirstPerson(ent, ply)
 		render.SetColorModulation(1, 1, 1)
 		render.SetBlend(1)
 		drawing = false
+	end
+
+	-- the scan lines of the electric flash of the start of the change, over the arms and the gun (the whole screen is the
+	-- box: the view model has its own field of view, see cl_cloak_lines.lua)
+	local flash = F.TransitionSpark(s.amount)
+
+	if flash > 0.02 and F.Lines and IsValid(ent) then
+		F.Lines.Draw(ent, flash, drawPlain, true)
 	end
 end
 
