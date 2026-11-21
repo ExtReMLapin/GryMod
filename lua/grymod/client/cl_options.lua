@@ -1,4 +1,20 @@
 
+-- The colours picked and not written yet: dragging in a mixer moves them at every step, and every write rebuilds the
+-- whole interface, so they are written once, 0.2 s after the last step.
+local pendingColours = {}
+
+local function writeColours()
+	for convarName, text in pairs(pendingColours) do
+		RunConsoleCommand(convarName, text)
+	end
+
+	if next(pendingColours) then
+		RunConsoleCommand("gry_hud_theme", "custom")
+	end
+
+	pendingColours = {}
+end
+
 -- One colour of the custom HUD theme: a mixer that writes "r g b" in its setting, and puts the HUD on the custom
 -- theme when the player picks a colour. Opening the panel writes nothing.
 local function addColourMixer(Panel, label, convarName)
@@ -22,8 +38,8 @@ local function addColourMixer(Panel, label, convarName)
 		local text = color.r .. " " .. color.g .. " " .. color.b
 
 		if GetConVar(convarName):GetString() ~= text then
-			RunConsoleCommand(convarName, text)
-			RunConsoleCommand("gry_hud_theme", "custom")
+			pendingColours[convarName] = text
+			timer.Create("GryHUDColourApply", 0.2, 1, writeColours)
 		end
 	end
 

@@ -23,10 +23,13 @@ hook.Add("EntityTakeDamage", "GryMod feedback", function(victim, dmg)
 		return
 	end
 
-	-- the player is hurt by something: the arcs show the side
-	if victim:IsPlayer() and victim:Alive() then
+	-- the player is hurt by something: the arcs show the side. Only the direction is sent (the arcs need no more
+	-- and a position would show where a hidden player is), at most ten times a second (a shotgun fires many pellets).
+	if victim:IsPlayer() and victim:Alive() and CurTime() >= (victim.gryNextDamageDir or 0) then
+		victim.gryNextDamageDir = CurTime() + 0.1
+
 		net.Start("gry_damage_dir")
-		net.WriteVector(attacker:GetPos())
+		net.WriteNormal((attacker:GetPos() - victim:GetPos()):GetNormalized())
 		net.Send(victim)
 	end
 

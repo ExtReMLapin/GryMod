@@ -426,10 +426,10 @@ return {
 
 				local dd = inst.root:Child("DamageDirection")
 				damage:SetString("0")
-				C.NotifyDamage(ply:GetPos() + Vector(-200, 0, 0))
+				C.NotifyDamage(Vector(-1, 0, 0))
 				local offArc = dd:Child("Damage1"):CurrentLabel()
 				damage:SetString("1")
-				C.NotifyDamage(ply:GetPos() + Vector(-200, 0, 0))
+				C.NotifyDamage(Vector(-1, 0, 0))
 				local onArc = dd:Child("Damage1"):CurrentLabel()
 
 				GryMod.Flash.Draw = realDraw
@@ -438,6 +438,91 @@ return {
 				expect(onBlink).to.equal("hit")
 				expect(offArc).to.equal("stop")
 				expect(onArc).to.equal("play")
+			end
+		},
+		{
+			name = "aiming at an ally opens the friendly cross without an error, and the crosshair keeps being drawn",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local ply = LocalPlayer()
+
+				if not IsValid(ply) or not ply:Alive() then
+					return
+				end
+
+				local ally = {
+					IsValid = function() return true end, GetClass = function() return "npc_citizen" end,
+					IsWeapon = function() return false end, IsPlayer = function() return false end,
+					IsNPC = function() return true end, Team = function() return 1001 end
+				}
+				local realTrace, realDraw, drawn = util.TraceLine, GryMod.Flash.Draw, 0
+				GryMod.Flash.Draw = function() drawn = drawn + 1 end
+				util.TraceLine = function() return {Entity = ally} end
+				GetConVar("gry_hud"):SetString("1")
+				GetConVar("gry_hud_crosshair"):SetString("1")
+				C.Reset()
+				-- the stubs are put back whatever happens, so that a failing check cannot leave them in the game
+				local ok, shown = pcall(function()
+					assert(pcall(C.Paint))
+					assert(pcall(C.Paint))
+
+					return C.FriendlyShown()
+				end)
+				util.TraceLine, GryMod.Flash.Draw = realTrace, realDraw
+				C.Reset()
+
+				expect(ok).to.beTrue()
+				expect(shown).to.beTrue()
+				expect(drawn >= 3).to.beTrue() -- the crosshair twice and the cross at least once
+			end
+		},
+		{
+			name = "zooming counts only while the binoculars are on",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local B = GryMod.FlashBinoculars
+				local realWanted, realEnabled = B.Wanted, B.Enabled
+				B.Wanted = function() return true end
+				B.Enabled = function() return false end
+				local _, off = pcall(C.Zooming, LocalPlayer())
+				B.Enabled = function() return true end
+				local _, on = pcall(C.Zooming, LocalPlayer())
+				B.Wanted, B.Enabled = realWanted, realEnabled
+				expect(off).to.beFalse()
+				expect(on).to.beTrue()
+			end
+		},
+		{
+			name = "a weapon that draws its own crosshair (DoDrawCrosshair) keeps the vanilla crosshair, and we draw none for it",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function weapon(fields)
+					fields.IsValid = function() return true end
+
+					return fields
+				end
+
+				expect(C.WeaponDraws(weapon({}))).to.beTrue()
+				expect(C.WeaponDraws(weapon({DrawCrosshair = false}))).to.beFalse()
+				expect(C.WeaponDraws(weapon({DoDrawCrosshair = function() end}))).to.beFalse()
+				expect(C.WeaponDraws(nil)).to.beTrue()
+				expect(C.VanillaHiddenFor(weapon({}))).to.beTrue()
+				expect(C.VanillaHiddenFor(weapon({DoDrawCrosshair = function() end}))).to.beFalse()
+				expect(C.VanillaHiddenFor(weapon({DrawCrosshair = false}))).to.beTrue()
+				expect(C.VanillaHiddenFor(nil)).to.beTrue()
+			end
+		},
+		{
+			name = "the crosshair does not redo its spread every frame when nothing moved the clips",
+			func = function(state)
+				local c = newCrosshair()
+				c:SetCrosshair(11)
+				c:SetRecoil(30)
+				local calls, real = 0, c.current.Find
+				c.current.Find = function(...) calls = calls + 1 return real(...) end
+				c:Update(1 / 30)
+				c:Update(1 / 30)
+				expect(calls).to.equal(0)
 			end
 		},
 		{

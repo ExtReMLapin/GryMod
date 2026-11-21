@@ -114,9 +114,14 @@ function Sequence:Update(dt)
 		self:_showProgressBar(false)
 	end
 
+	local version = self.root.version
+
 	self.root:Advance(dt)
-	-- a frame can rebuild its text fields: say the words again
-	self.root:MapText(Boot.Localise)
+
+	-- a frame can rebuild its text fields: say the words again (only when something changed)
+	if self.root.version ~= version then
+		self.root:MapText(Boot.Localise)
+	end
 end
 
 function Sequence:IsDone()
@@ -181,13 +186,17 @@ function Boot.IsLost()
 	return current == "lost"
 end
 
--- The player spawns: the log of the start, with the reboot sound.
+-- The player spawns: the log of the start, with the reboot sound. A suit that is already down (the energy is
+-- still empty) keeps its shutdown animation: the HUD may have said so before this runs.
 function Boot.Spawned()
-	malfunctioning = false
-
 	if not enabled() then
 		current = nil
+		malfunctioning = false
 
+		return
+	end
+
+	if malfunctioning then
 		return
 	end
 
@@ -240,14 +249,31 @@ function Boot.Step(dt)
 	end
 end
 
-function Boot.Reset()
+local function release()
 	for _, seq in pairs(sequences) do
 		Flash.ReleaseClip(seq.root)
 	end
 
 	sequences = {}
+end
+
+function Boot.Reset()
+	release()
 	current = nil
 	malfunctioning = false
+end
+
+-- The pictures are rebuilt (a new colour): the sequence that is on starts again from its beginning with the new
+-- colours, and the state (a malfunction) stays, without any sound.
+function Boot.Rebuild()
+	local kind = current
+
+	release()
+	current = nil
+
+	if kind then
+		begin(kind)
+	end
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -267,6 +293,9 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 
 	if not (GryMod.FlashHUD and GryMod.FlashHUD.Enabled()) then
 		wasAlive = alive
+		-- nothing stays on while the HUD is off: it would not be told when the suit comes back
+		current = nil
+		malfunctioning = false
 
 		return
 	end

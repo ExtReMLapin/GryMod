@@ -10,7 +10,7 @@ local real = {}
 
 local function startRecording()
 	sent = {}
-	real.Start, real.WriteVector, real.Send = net.Start, net.WriteVector, net.Send
+	real.Start, real.WriteVector, real.WriteNormal, real.Send = net.Start, net.WriteVector, net.WriteNormal, net.Send
 	net.Start = function(name)
 		sent[#sent + 1] = {name = name}
 
@@ -19,13 +19,16 @@ local function startRecording()
 	net.WriteVector = function(v)
 		sent[#sent].vector = v
 	end
+	net.WriteNormal = function(v)
+		sent[#sent].normal = v
+	end
 	net.Send = function(p)
 		sent[#sent].to = p
 	end
 end
 
 local function stopRecording()
-	net.Start, net.WriteVector, net.Send = real.Start, real.WriteVector, real.Send
+	net.Start, net.WriteVector, net.WriteNormal, net.Send = real.Start, real.WriteVector, real.WriteNormal, real.Send
 end
 
 local function feedback(victim, attacker, amount)
@@ -59,6 +62,12 @@ end
 return {
 	groupName = "GryMod crosshair feedback",
 	afterEach = function(state)
+		local p = ply()
+
+		if IsValid(p) then
+			p.gryNextDamageDir = nil
+		end
+
 		for _, e in ipairs(spawned) do
 			if IsValid(e) then e:Remove() end
 		end
@@ -74,7 +83,7 @@ return {
 			end
 		},
 		{
-			name = "a player hurt by an NPC is told where the NPC is",
+			name = "a player hurt by an NPC is told the direction of the NPC, not its position",
 			func = function(state)
 				local p = ply()
 				local npc = spawnNPC("npc_zombie", p:GetPos() + Vector(300, 0, 0))
@@ -82,7 +91,8 @@ return {
 				expect(#list).to.equal(1)
 				expect(list[1].name).to.equal("gry_damage_dir")
 				expect(list[1].to).to.equal(p)
-				expect(list[1].vector:Distance(npc:GetPos()) < 1).to.beTrue()
+				expect(list[1].vector).to.beNil()
+				expect(list[1].normal:Distance(Vector(1, 0, 0)) < 0.01).to.beTrue()
 			end
 		},
 		{
@@ -94,6 +104,17 @@ return {
 				expect(#feedback(p, p)).to.equal(0)
 				local npc = spawnNPC("npc_zombie", p:GetPos() + Vector(300, 0, 0))
 				expect(#feedback(p, npc, 0)).to.equal(0)
+			end
+		},
+		{
+			name = "the damage direction is sent at most ten times a second to a player (a shotgun fires many pellets at once)",
+			func = function(state)
+				local p = ply()
+				local npc = spawnNPC("npc_zombie", p:GetPos() + Vector(300, 0, 0))
+				expect(#feedback(p, npc)).to.equal(1)
+				expect(#feedback(p, npc)).to.equal(0)
+				p.gryNextDamageDir = CurTime() - 0.01
+				expect(#feedback(p, npc)).to.equal(1)
 			end
 		},
 		{

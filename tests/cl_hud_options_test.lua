@@ -119,6 +119,38 @@ return {
 			end
 		},
 		{
+			name = "dragging in a colour mixer writes the colour once, after a short pause, not at every step",
+			func = function(state)
+				local writes = {}
+				local realRun = RunConsoleCommand
+				RunConsoleCommand = function(name, value)
+					writes[#writes + 1] = tostring(name):lower() .. "=" .. tostring(value)
+				end
+
+				local panel = vgui.Create("ControlPanel")
+				GryMod.GryOptionschute(panel)
+				local mixer
+
+				local function walk(p)
+					for _, child in ipairs(p:GetChildren()) do
+						if not mixer and child.ClassName == "DColorMixer" then mixer = child end
+						walk(child)
+					end
+				end
+
+				walk(panel)
+				mixer:ValueChanged(Color(11, 22, 33))
+				mixer:ValueChanged(Color(12, 23, 34))
+				local immediate = #writes
+				local pending = timer.Exists("GryHUDColourApply")
+				panel:Remove()
+				RunConsoleCommand = realRun
+				timer.Remove("GryHUDColourApply")
+				expect(immediate).to.equal(0)
+				expect(pending).to.beTrue()
+			end
+		},
+		{
 			name = "the status panel and the radar panel are each drawn or not by their own switch",
 			func = function(state)
 				local Flash = GryMod.Flash

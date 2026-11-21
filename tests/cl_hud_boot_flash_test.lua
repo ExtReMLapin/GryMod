@@ -196,6 +196,48 @@ return {
 			end
 		},
 		{
+			name = "a spawn during a malfunction keeps the Lost animation, whatever order the HUD and the sequences are painted in",
+			func = function(state)
+				Boot.OnStatus(1)
+				played = {}
+				Boot.Spawned()
+				expect(Boot.Current()).to.equal("lost")
+				expect(#played).to.equal(0)
+				Boot.OnStatus(1)
+				expect(#played).to.equal(0)
+				Boot.OnStatus(0)
+				expect(Boot.Current()).to.equal("reboot")
+			end
+		},
+		{
+			name = "turning the HUD off drops a sequence that was on, so that nothing stays stuck when it comes back",
+			func = function(state)
+				local hud = GetConVar("gry_hud"):GetString()
+				Boot.OnStatus(1)
+				GetConVar("gry_hud"):SetString("0")
+				hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+				GetConVar("gry_hud"):SetString(hud)
+				expect(Boot.Current()).to.beNil()
+				expect(Boot.IsLost()).to.beFalse()
+			end
+		},
+		{
+			name = "rebuilding the pictures (a new colour) keeps the sequence that is on, without playing its sound again",
+			func = function(state)
+				Boot.OnStatus(1)
+				played = {}
+				Boot.Rebuild()
+				expect(Boot.Current()).to.equal("lost")
+				Boot.OnStatus(1) -- the rebuilt HUD says its state again
+				expect(#played).to.equal(0)
+				Boot.OnStatus(0)
+				expect(Boot.Current()).to.equal("reboot")
+
+				GryMod.FlashHUD.ResetAll()
+				expect(Boot.Current()).to.equal("reboot")
+			end
+		},
+		{
 			name = "the HUD reports its malfunction to the sequences when its status changes",
 			func = function(state)
 				local HUD = GryMod.FlashHUD

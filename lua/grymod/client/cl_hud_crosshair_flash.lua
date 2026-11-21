@@ -427,9 +427,15 @@ function Instance:SetViewYaw(yaw, now)
 end
 
 function Instance:Update(dt)
+	local current = self.current
+	local version = current and current.version
+
 	self.root:Advance(dt)
-	-- an animation of the crosshair can rebuild its clips: the spread is said again
-	self:_applyRecoil()
+
+	-- an animation of the crosshair can rebuild its clips: the spread is said again (only then)
+	if self.current == current and current and current.version ~= version then
+		self:_applyRecoil()
+	end
 end
 
 function Instance:Draw(x, y, scale)
@@ -452,6 +458,12 @@ local lastTime
 local spread, kick, lastNextFire = 0, 0, 0
 local usableMode, friendlyShown = 0, false
 local nextScan = 0
+local failed = false -- the movie could not make a crosshair: not tried again until Reset
+
+-- Whether the friendly cross is up (the player aims at an ally).
+function Cross.FriendlyShown()
+	return friendlyShown
+end
 
 -- Whether the crosshair is on (gry_hud, gry_hud_crosshair) and its movie is there.
 function Cross.Enabled()
@@ -471,12 +483,13 @@ function Cross.NotifyHit()
 	end
 end
 
--- The server says something hurt the player from shooterPos: the arcs of the damage direction.
-function Cross.NotifyDamage(shooterPos)
+-- The server says something hurt the player from this direction (a unit vector from the player towards the
+-- shooter): the arcs of the damage direction.
+function Cross.NotifyDamage(direction)
 	local ply = LocalPlayer()
 
 	if instance and IsValid(ply) and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("damage")) then
-		instance:OnDamage(ply:GetPos(), shooterPos, ply:EyeAngles().y, CurTime())
+		instance:OnDamage(ply:GetPos(), ply:GetPos() + direction * 100, ply:EyeAngles().y, CurTime())
 	end
 end
 
@@ -485,7 +498,7 @@ net.Receive("gry_hit", function()
 end)
 
 net.Receive("gry_damage_dir", function()
-	Cross.NotifyDamage(net.ReadVector())
+	Cross.NotifyDamage(net.ReadNormal())
 end)
 
 -- The crosshair is not wanted while the suit is down, the quick menu is up, or the player is in a vehicle.
@@ -495,12 +508,31 @@ local function hidden(ply)
 		or ply:InVehicle()
 end
 
-local function zooming(ply)
-	if GryMod.FlashBinoculars and GryMod.FlashBinoculars.Wanted then
-		return GryMod.FlashBinoculars.Wanted(ply)
+-- Whether the player is zooming with the binoculars on (with them off the zoom is the plain game's).
+function Cross.Zooming(ply)
+	local binoculars = GryMod.FlashBinoculars
+
+	if binoculars and binoculars.Wanted then
+		return binoculars.Enabled() and binoculars.Wanted(ply)
 	end
 
 	return ply:KeyDown(IN_ZOOM)
+end
+
+-- Whether the weapon leaves the crosshair to the game: not when it hides it (DrawCrosshair false) or draws its
+-- own (DoDrawCrosshair, which the game only calls from its own crosshair).
+function Cross.WeaponDraws(weapon)
+	if not weapon or not IsValid(weapon) then
+		return true
+	end
+
+	return weapon.DrawCrosshair ~= false and weapon.DoDrawCrosshair == nil
+end
+
+-- Whether the game's own crosshair is hidden for this weapon: always, except for a weapon that draws its own
+-- through DoDrawCrosshair (that call lives inside the game's crosshair).
+function Cross.VanillaHiddenFor(weapon)
+	return not (weapon and IsValid(weapon) and weapon.DoDrawCrosshair ~= nil)
 end
 
 -- What the player aims at, looked for ten times a second: the mode of setUsable and the friendly cross.
@@ -533,7 +565,7 @@ local function scan(ply)
 	local isFriendly = far.Entity and Cross.IsFriendly(far.Entity, ply) or false
 
 	if isFriendly and not friendlyShown and friendly then
-		friendly:GotoAndPlay("restart")
+		friendly.clip:GotoAndPlay("restart")
 	end
 
 	friendlyShown = isFriendly
@@ -562,15 +594,25 @@ function Cross.Paint()
 		return
 	end
 
+	if failed then
+		return
+	end
+
 	if not instance then
 		instance = Cross.New(Flash.Load(Cross.MOVIE))
-		friendly = nil
+
+		if not instance then
+			failed = true
+
+			return
+		end
+
 		local movie = Flash.Load(Cross.FRIENDLY_MOVIE)
 		local holder = movie and Flash.NewRoot(movie, GryMod.FlashHUD.Theme)
 		friendly = holder and holder:Child("Root") and {root = holder, clip = holder:Child("Root")} or nil
 
-		if not instance then
-			return
+		if holder and not friendly then
+			Flash.ReleaseClip(holder)
 		end
 
 		lastTime, spread, kick, usableMode, friendlyShown = nil, 0, 0, 0, false
@@ -582,8 +624,7 @@ function Cross.Paint()
 
 	local weapon = ply:GetActiveWeapon()
 	local class = IsValid(weapon) and weapon:GetClass() or nil
-	local draws = not IsValid(weapon) or weapon.DrawCrosshair ~= false
-	local index = Cross.IndexFor(STYLE_CONVAR:GetInt(), class, draws, zooming(ply))
+	local index = Cross.IndexFor(STYLE_CONVAR:GetInt(), class, Cross.WeaponDraws(weapon), Cross.Zooming(ply))
 
 	if hidden(ply) then
 		index = 0
@@ -625,6 +666,7 @@ function Cross.Reset()
 
 	instance, friendly = nil, nil
 	lastTime, spread, kick, usableMode, friendlyShown = nil, 0, 0, 0, false
+	nextScan, failed = 0, false
 end
 
 hook.Add("HUDPaint", "GRYFLASHCROSSHAIR", Cross.Paint)
@@ -632,6 +674,12 @@ hook.Add("HUDPaint", "GRYFLASHCROSSHAIR", Cross.Paint)
 -- the Half-Life 2 crosshair stays away while ours is on
 hook.Add("HUDShouldDraw", "GRYCROSSHAIRHIDE", function(name)
 	if name == "CHudCrosshair" and Cross.Enabled() then
+		local ply = LocalPlayer()
+
+		if IsValid(ply) and not Cross.VanillaHiddenFor(ply:GetActiveWeapon()) then
+			return
+		end
+
 		return false
 	end
 end)
