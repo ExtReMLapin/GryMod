@@ -4,7 +4,7 @@
 -- engine, whose field of view is still the crossbow's: a jump to the weapon's zoom (measured: 61.6 eased up to 100, then 20 after 0.6 s;
 -- the same with the Half-Life 2 zoom key, which cannot take the zoom from a weapon that owns it).
 --
--- What the server does, only for a weapon on the white list that really owns the zoom of a living player:
+-- What the server does, only for a weapon whose registry entry says alt = "zoom" that really owns the zoom of a living player:
 --   * the next command of the player carries IN_ATTACK2 once: the crossbow toggles its zoom off itself, with its own state (m_bInZoom,
 --     not readable from Lua) put right, so the next right click zooms again at once (a field of view released from outside leaves that
 --     state on, and the next click would do nothing visible);
@@ -20,8 +20,8 @@ GryMod = GryMod or {}
 local WeaponZoom = GryMod.WeaponZoom or {}
 GryMod.WeaponZoom = WeaponZoom
 
--- the weapons whose zoom the binoculars end
-WeaponZoom.Weapons = {weapon_crossbow = true}
+-- The weapons whose zoom the binoculars end are the ones whose registry entry says that the right click zooms (alt = "zoom": the
+-- crossbow's entry in sh_api_weapons_hl2.lua, or any other addon's weapon declared that way); the client asks the registry the same way.
 
 WeaponZoom.LIMIT = 5 -- requests per player per window
 WeaponZoom.WINDOW = 1 -- seconds
@@ -61,7 +61,7 @@ function WeaponZoom.Allowed(ply, now)
 	return true
 end
 
--- The weapon whose zoom the player is in, when it is the one in his hands, it is on the white list, he is alive and the weapon owns the
+-- The weapon whose zoom the player is in, when it is the one in his hands, its registry entry says alt = "zoom", he is alive and the weapon owns the
 -- zoom; nil otherwise.
 function WeaponZoom.Zoomer(ply)
 	if not ply or not IsValid(ply) or not ply:Alive() then
@@ -70,7 +70,7 @@ function WeaponZoom.Zoomer(ply)
 
 	local weapon = ply:GetActiveWeapon()
 
-	if not weapon or not IsValid(weapon) or not WeaponZoom.Weapons[weapon:GetClass()] then
+	if not weapon or not IsValid(weapon) or GryMod.API.WeaponValue(weapon, "alt", true) ~= "zoom" then
 		return nil
 	end
 

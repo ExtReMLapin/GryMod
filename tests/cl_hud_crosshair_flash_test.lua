@@ -43,6 +43,10 @@ return {
 		end
 	end,
 	afterEach = function(state)
+		for _, class in ipairs({"doc_test_nocross_gun", "doc_test_cross_gun"}) do
+			GryMod.API.UnregisterWeapon(class)
+		end
+
 		local key = GetConVar("gry_zoom_key")
 
 		if key and state.savedZoomKey then
@@ -304,6 +308,31 @@ return {
 				expect(C.IndexFor(6, nil, true, false)).to.equal(0) -- no weapon
 				expect(C.IndexFor(99, "weapon_smg1", true, false)).to.equal(C.DEFAULT_STYLE) -- not a style
 				expect(C.IndexFor(0, "weapon_smg1", true, false)).to.equal(C.DEFAULT_STYLE)
+			end
+		},
+		{
+			name = "a third-party weapon registered through the API with crosshair = false shows no crosshair; one with crosshair = true or no field does; no private list of classes",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local API = GryMod.API
+
+				-- (rouge before the migration: the private list knew only the fists and the RPG)
+				expect(C.IndexFor(6, "doc_test_nocross_gun", true, false)).to.equal(6)
+
+				expect((API.RegisterWeapon("doc_test_nocross_gun", {fire = "auto", crosshair = false}))).to.beTrue()
+				expect((API.RegisterWeapon("doc_test_cross_gun", {fire = "auto", crosshair = true}))).to.beTrue()
+
+				expect(C.IndexFor(6, "doc_test_nocross_gun", true, false)).to.equal(0)
+				expect(C.IndexFor(6, "doc_test_cross_gun", true, false)).to.equal(6)
+				expect(C.IndexFor(6, "doc_test_unregistered_gun", true, false)).to.equal(6)
+
+				-- the stock fists and RPG are data of the same registry
+				expect(API.WeaponValue("weapon_fists", "crosshair", true)).to.beFalse()
+				expect(API.WeaponValue("weapon_rpg", "crosshair", true)).to.beFalse()
+
+				-- unregistered: the crosshair is back
+				API.UnregisterWeapon("doc_test_nocross_gun")
+				expect(C.IndexFor(6, "doc_test_nocross_gun", true, false)).to.equal(6)
 			end
 		},
 		{

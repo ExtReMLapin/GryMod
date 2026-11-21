@@ -150,13 +150,13 @@ local USABLE = {
 -- The crosshair the original game shows by default in its profile (hud_crosshair).
 Cross.DEFAULT_STYLE = 6
 
--- Weapons that show no crosshair in the original (fists, the LAW).
-local HIDDEN_WEAPONS = {weapon_fists = true, weapon_rpg = true}
+-- Weapons that show no crosshair in the original (the fists, the LAW) say so in the weapon registry (crosshair = false, see
+-- sh_api_weapons_hl2.lua): so does any other addon's weapon that wants none.
 
 -- The crosshair number for a style: 0 (none) when there is no weapon, the weapon hides it (or draws its own: its
 -- DrawCrosshair is false) or the player zooms; a style that is not one of the movie's 13 gives the default.
 function Cross.IndexFor(style, class, weaponDraws, zoomed)
-	if not class or HIDDEN_WEAPONS[class] or not weaponDraws or zoomed then
+	if not class or not weaponDraws or zoomed or GryMod.API.WeaponValue(class, "crosshair", true) == false then
 		return 0
 	end
 

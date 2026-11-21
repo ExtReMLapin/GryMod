@@ -5,7 +5,7 @@
 -- the zoom from a weapon that owns it either, so the binoculars opened by that key behave the same.
 --
 -- The decision is made at the OPENING of the binoculars (Bino.Wanted going from false to true, whichever of the own zoom or the Half-Life 2
--- key opened them) and only there: the weapon in hand is on the list (the crossbow) and the player's field of view is below the normal one
+-- key opened them) and only there: the weapon in hand zooms with its right click (the crossbow: alt = "zoom" in the weapon registry) and the player's field of view is below the normal one
 -- (fov_desired). The client cannot always tell the weapon's zoom from the Half-Life 2 zoom just starting with the same weapon in hand
 -- (measured: the key can be seen down a frame after the suit's field of view began to move, and a request was then sent for nothing), so
 -- the server has the last word (sv_weapon_zoom.lua: the zoom really owned by that weapon, a living player, 5 requests a second): a
@@ -18,8 +18,8 @@ GryMod.WeaponZoom = WeaponZoom
 
 local OptionConVar = CreateClientConVar("gry_zoom_cancel_weapon", "1", true, false, "When the binoculars open while the crossbow is zoomed (right click), the crossbow's zoom is ended, so that it does not come back when the binoculars close (off: it comes back, a jump)")
 
--- the weapons whose zoom the binoculars end (the server has the same list)
-WeaponZoom.Weapons = {weapon_crossbow = true}
+-- The weapons whose zoom the binoculars end are the ones whose registry entry says that the right click zooms (alt = "zoom", the
+-- crossbow's entry in sh_api_weapons_hl2.lua, or any other addon's weapon declared that way); the server asks the registry the same way.
 
 -- a field of view this much below the normal one is a zoom (degrees)
 WeaponZoom.TOLERANCE = 0.5
@@ -30,13 +30,14 @@ function WeaponZoom.Enabled()
 	return OptionConVar:GetBool()
 end
 
--- Whether to ask the server to end the weapon's zoom. Pure.
-function WeaponZoom.Decide(enabled, wasWanted, wanted, class, fov, defaultFov)
+-- Whether to ask the server to end the weapon's zoom. `weapon` is the weapon in hand (an entity, or its class name; nil for none). Pure
+-- as far as the weapon registry goes (it only reads it).
+function WeaponZoom.Decide(enabled, wasWanted, wanted, weapon, fov, defaultFov)
 	if not enabled or wasWanted or not wanted then
 		return false
 	end
 
-	if class == nil or not WeaponZoom.Weapons[class] then
+	if weapon == nil or GryMod.API.WeaponValue(weapon, "alt", true) ~= "zoom" then
 		return false
 	end
 
@@ -75,9 +76,8 @@ function WeaponZoom.Step(ply)
 	end
 
 	local weapon = ply:GetActiveWeapon()
-	local class = IsValid(weapon) and weapon:GetClass() or nil
 
-	if WeaponZoom.Decide(true, was, wanted, class, ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)) then
+	if WeaponZoom.Decide(true, was, wanted, IsValid(weapon) and weapon or nil, ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)) then
 		WeaponZoom.Send()
 	end
 end

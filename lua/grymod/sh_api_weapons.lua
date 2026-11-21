@@ -57,10 +57,11 @@ local CHECK = {
 	altLabel = function(v) if isstring(v) and #v >= 1 and #v <= MAX_LABEL then return v end end,
 	altIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	icon = function(v) if isstring(v) and ICONS[v] then return v end end,
-	slotIcon = function(v) if isstring(v) and ICONS[v] then return v end end
+	slotIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
+	crosshair = function(v) if isbool(v) then return v end end
 }
 
-local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon"}
+local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -388,13 +389,15 @@ resolveField = function(field, class, wep, source, entity, explicit)
 		return isLauncherAmmo(resolveField("altAmmo", class, wep, source, entity)) and "grenade" or "none"
 	elseif field == "altShoots" then
 		return ALT_SHOOTS[resolveField("alt", class, wep, source, entity)] == true
+	elseif field == "crosshair" then
+		return true -- the HUD's crosshair is shown unless the weapon says it is not
 	end
 
 	return nil
 end
 
 -- The final description of a weapon, the one the HUD uses: a table with the fields of a definition (fire, burst, ammo, counter,
--- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
+-- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
 -- wep is the weapon entity, or its class name (then only what is declared or read from the stored SWEP counts). nil for an invalid
 -- weapon. explicit = true: only what is declared (registry, GryHUD, adapters), no defaults, no alt/altShoots/counter fallbacks.
 function API.ResolveWeapon(wep, explicit)

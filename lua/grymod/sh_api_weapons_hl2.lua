@@ -30,7 +30,8 @@ register("weapon_frag", {ammo = "Grenade", alt = "throwlow", altShoots = true, s
 
 register("weapon_pistol", {fire = "semi", ammo = "Pistol", alt = "none"})
 register("weapon_357", {fire = "semi", ammo = "357", alt = "none"})
-register("weapon_rpg", {ammo = "RPG_Round", alt = "none", slotIcon = "Missle"})
+-- (the RPG, like the fists, shows no crosshair in the original game: crosshair = false)
+register("weapon_rpg", {ammo = "RPG_Round", alt = "none", slotIcon = "Missle", crosshair = false})
 
 -- The melee weapons and the gravity gun: no gun icon. The secondary of the crowbar and of the stun baton is another swing.
 register("weapon_physcannon", {fire = "none", alt = "none"})
@@ -42,7 +43,7 @@ register("weapon_flechettegun", {fire = "auto"})
 register("weapon_slam", {slotIcon = "Mine"})
 register("weapon_medkit", {slotIcon = "Repairkit"})
 register("weapon_physgun", {fire = "none"})
-register("weapon_fists", {fire = "none"})
+register("weapon_fists", {fire = "none", crosshair = false})
 register("gmod_tool", {fire = "none"})
 register("gmod_camera", {fire = "none"})
 register("weapon_bugbait", {fire = "none"})

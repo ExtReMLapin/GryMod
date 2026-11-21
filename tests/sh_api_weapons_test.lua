@@ -156,6 +156,8 @@ return {
 				expect((API.RegisterWeapon("t_wep_a", {ammo = 5}))).to.beFalse()
 				expect((API.RegisterWeapon("t_wep_a", {altAmmo = {}}))).to.beFalse()
 				expect((API.RegisterWeapon("t_wep_a", {altShoots = "yes"}))).to.beFalse()
+				expect((API.RegisterWeapon("t_wep_a", {crosshair = "no"}))).to.beFalse()
+				expect((API.RegisterWeapon("t_wep_a", {crosshair = 0}))).to.beFalse()
 				expect((API.RegisterWeapon("t_wep_a", {altLabel = 5}))).to.beFalse()
 				expect((API.RegisterWeapon("t_wep_a", {altLabel = ""}))).to.beFalse()
 				expect((API.RegisterWeapon("t_wep_a", {altLabel = string.rep("x", 40)}))).to.beFalse()
@@ -169,6 +171,62 @@ return {
 				expect((API.RegisterWeapon("t_wep_a", nil))).to.beFalse()
 				expect(API.GetWeapon("t_wep_a")).to.beNil()
 				expect(API.GetWeapon(nil)).to.beNil()
+			end
+		},
+		{
+			name = "crosshair (a boolean): false hides the HUD's crosshair for the weapon; true and undeclared show it; a refusal says why and keeps the previous entry",
+			func = function()
+				local ok = API.RegisterWeapon("t_wep_a", {crosshair = false})
+
+				expect(ok).to.beTrue()
+				expect(API.GetWeapon("t_wep_a").crosshair).to.beFalse()
+				expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.beFalse()
+				expect(API.ResolveWeapon(weapon("t_wep_a")).crosshair).to.beFalse()
+				expect(API.ResolveWeapon("t_wep_a", true).crosshair).to.beFalse()
+
+				local bad, reason = API.RegisterWeapon("t_wep_a", {crosshair = "no"})
+
+				expect(bad).to.beFalse()
+				expect(string.find(reason, "crosshair", 1, true) ~= nil).to.beTrue()
+				expect(API.GetWeapon("t_wep_a").crosshair).to.beFalse()
+
+				API.RegisterWeapon("t_wep_a", {crosshair = true})
+				expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.beTrue()
+
+				-- nothing declared: the crosshair is shown (a resolved description says true, the declared-only one says nothing)
+				API.RegisterWeapon("t_wep_a", {fire = "auto"})
+				expect(API.ResolveWeapon(weapon("t_wep_a")).crosshair).to.beTrue()
+				expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.beNil()
+				expect(API.ResolveWeapon("t_wep_b").crosshair).to.beTrue()
+			end
+		},
+		{
+			name = "crosshair = false is read from SWEP.GryHUD and from the base class like any other field; an invalid one is ignored",
+			func = function()
+				stored.t_wep_a = {GryHUD = {crosshair = false}}
+				expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.beFalse()
+				expect(API.WeaponValue(weapon("t_wep_a", stored.t_wep_a), "crosshair", true)).to.beFalse()
+
+				stored.t_wep_b = {GryHUD = {crosshair = "no"}}
+				expect(API.WeaponValue("t_wep_b", "crosshair", true)).to.beNil()
+
+				API.RegisterWeapon("t_wep_base", {crosshair = false})
+				stored.t_wep_child = {Base = "t_wep_base"}
+				expect(API.WeaponValue("t_wep_child", "crosshair", true)).to.beFalse()
+			end
+		},
+		{
+			name = "the Half-Life 2 fists and RPG have no crosshair (data), the other stock weapons say nothing about it",
+			func = function()
+				expect(API.WeaponValue("weapon_fists", "crosshair", true)).to.beFalse()
+				expect(API.WeaponValue("weapon_rpg", "crosshair", true)).to.beFalse()
+				expect(API.ResolveWeapon("weapon_rpg").slotIcon).to.equal("Missle")
+				expect(API.ResolveWeapon("weapon_fists").fire).to.equal("none")
+
+				for _, class in ipairs({"weapon_smg1", "weapon_ar2", "weapon_pistol", "weapon_357", "weapon_shotgun", "weapon_crossbow", "weapon_frag", "weapon_crowbar", "weapon_physcannon"}) do
+					expect(API.WeaponValue(class, "crosshair", true) == false).to.beFalse()
+					expect(API.ResolveWeapon(class).crosshair).to.beTrue()
+				end
 			end
 		},
 		{

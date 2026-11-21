@@ -72,6 +72,8 @@ In the examples that follow, the guard (`if GRYMOD_INSTALLED and ...`) stands fo
 | `alt` = `"grenade"` or `"energy"`, with an `altAmmo` the game knows | the grenade slot counts `altAmmo` and shows `altIcon` (`Grenade`, the 40 mm icon, by default) instead of the hand grenades |
 | `altShoots` | the camouflage ends on a right click that really shoots (the player's option `gry_cloak_altfire`) |
 | `alt` (any value) | with `altShoots`, how the HUD knows if the right click shoots now (below) |
+| `alt` = `"zoom"` | the right click zooms and the weapon owns that zoom: when the binoculars open while it is zoomed, the zoom is ended (so that it does not come back, as a jump, when they close; the player's option `gry_zoom_cancel_weapon`). The server sends one right click to the weapon to toggle it off, so use it only for a weapon that zooms on its right click |
+| `crosshair` = `false` | the HUD draws no crosshair while the weapon is in hand (the fists and the RPG). `true` or no field: the crosshair is shown |
 | `altLabel` | handed to the HUD (`GryMod.FlashHUD.LauncherLookFor(wep)`), **not drawn**: the movie has no text field for it |
 | `ammo`, `counter`, `burst` | resolved and returned by `ResolveWeapon`, **not read by the HUD**: the counter shows the weapon's engine ammo (`Clip1`, `GetMaxClip1`, the reserve of its primary ammo type) |
 
@@ -158,6 +160,27 @@ if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
 end
 ```
 
+With `alt = "zoom"` the HUD also ends the weapon's zoom when the binoculars of the suit open (see the table above).
+
+### A weapon that draws its own crosshair, or none
+
+`crosshair = false` keeps GryMod's crosshair off while the weapon is in hand: for a weapon with no aiming point (a melee weapon, a
+launcher with its own sight) or one that shows its own. It only hides GryMod's crosshair; a weapon that draws its own through
+`DrawCrosshair = false` is already left alone.
+
+```lua
+-- shared
+if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
+	GryMod.API.RegisterWeapon("weapon_my_addon_launcher_sight", {
+		fire = "semi",
+		crosshair = false,
+	})
+end
+```
+
+The weapon can also say it itself, with no call to GryMod: `SWEP.GryHUD = {crosshair = false}`. The HUD asks by the class name of
+the weapon in hand, so the adapters (which only see weapon entities) cannot decide it: use the registry or `SWEP.GryHUD`.
+
 ### Read it back
 
 ```lua
@@ -199,12 +222,13 @@ The 19 classes registered in `lua/grymod/sh_api_weapons_hl2.lua`:
 | `weapon_crossbow` | semi, `XBowBolt`; secondary: a zoom (not a shot) |
 | `weapon_frag` | `Grenade`; secondary: the low throw (shoots); slot icon `HandGrenade` |
 | `weapon_pistol`, `weapon_357` | semi, no secondary |
-| `weapon_rpg` | `RPG_Round`, no secondary; slot icon `Missle` |
+| `weapon_rpg` | `RPG_Round`, no secondary; slot icon `Missle`; no crosshair |
 | `weapon_physcannon` | no gun icon |
 | `weapon_crowbar`, `weapon_stunstick` | no gun icon; secondary: a swing |
 | `weapon_flechettegun` | auto |
 | `weapon_slam`, `weapon_medkit` | slot icons `Mine`, `Repairkit` |
-| `weapon_physgun`, `weapon_fists`, `gmod_tool`, `gmod_camera`, `weapon_bugbait` | no gun icon |
+| `weapon_physgun`, `gmod_tool`, `gmod_camera`, `weapon_bugbait` | no gun icon |
+| `weapon_fists` | no gun icon; no crosshair |
 
 To change one for your game, register the class again with your own definition: it replaces the stock one.
 

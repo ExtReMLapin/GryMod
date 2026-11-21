@@ -70,19 +70,61 @@ return {
 	end,
 	afterEach = function()
 		GryMod.WeaponZoom.Reset()
+
+		for _, class in ipairs({"doc_test_zoom_gun", "doc_test_grenade_gun"}) do
+			GryMod.API.UnregisterWeapon(class)
+		end
 	end,
 	cases = {
 		{
-			name = "the module, its net message and its receiver exist; the white list holds the crossbow and nothing else",
+			name = "the module, its net message and its receiver exist; the weapon registry says that the crossbow zooms (alt = zoom) and there is no private list",
 			func = function()
 				local W = GryMod.WeaponZoom
 				expect(W ~= nil).to.beTrue()
 				expect(util.NetworkStringToID("gry_cancel_weapon_zoom") ~= 0).to.beTrue()
 				expect(net.Receivers["gry_cancel_weapon_zoom"] ~= nil).to.beTrue()
-				expect(W.Weapons.weapon_crossbow).to.beTrue()
-				local count = 0
-				for _ in pairs(W.Weapons) do count = count + 1 end
-				expect(count).to.equal(1)
+				expect(GryMod.API.WeaponValue("weapon_crossbow", "alt", true)).to.equal("zoom")
+				expect(W.Weapons).to.beNil()
+			end
+		},
+		{
+			name = "a third-party weapon registered through the API with alt = zoom is treated like the crossbow (marked, IN_ATTACK2 once, safety net); one with another alt is not",
+			func = function()
+				local W = GryMod.WeaponZoom
+				local API = GryMod.API
+
+				-- (rouge before the migration: the private list knew only the crossbow)
+				local before = weapon("doc_test_zoom_gun")
+				expect(W.Zoomer(fakePlayer({active = before, owner = before})) == nil).to.beTrue()
+
+				expect((API.RegisterWeapon("doc_test_zoom_gun", {fire = "semi", alt = "zoom", altShoots = false}))).to.beTrue()
+				expect((API.RegisterWeapon("doc_test_grenade_gun", {fire = "auto", alt = "grenade", altAmmo = "SMG1_Grenade"}))).to.beTrue()
+
+				local gun = weapon("doc_test_zoom_gun")
+				local p = fakePlayer({active = gun, owner = gun})
+				local sched = scheduler()
+
+				expect(W.Zoomer(p) == gun).to.beTrue()
+				expect(W.Handle(p, 100, sched.at)).to.beTrue()
+				expect(#sched.jobs).to.equal(1)
+
+				local cmd = fakeCmd(0)
+				W.Command(p, cmd)
+				expect(bit.band(cmd.buttons, IN_ATTACK2) ~= 0).to.beTrue()
+
+				-- the safety net releases the zoom of the weapon when the command did not
+				local p2 = fakePlayer({active = gun, owner = gun})
+				local sched2 = scheduler()
+				expect(W.Handle(p2, 100, sched2.at)).to.beTrue()
+				sched2.run()
+				expect(#p2.fovCalls).to.equal(1)
+				expect(p2.fovCalls[1][3] == gun).to.beTrue()
+
+				-- another kind of secondary fire: not ours
+				local other = weapon("doc_test_grenade_gun")
+				local p3 = fakePlayer({active = other, owner = other})
+				expect(W.Zoomer(p3) == nil).to.beTrue()
+				expect(W.Handle(p3, 100, scheduler().at)).to.beFalse()
 			end
 		},
 		{

@@ -65,6 +65,11 @@ return {
 		meta.GetFOV = saved.fov
 		meta.GetInfoNum = saved.info
 		meta.GetActiveWeapon = saved.weapon
+
+		for _, class in ipairs({"doc_test_zoom_gun", "doc_test_grenade_gun"}) do
+			GryMod.API.UnregisterWeapon(class)
+		end
+
 		Bino.Wanted = saved.wanted
 		Bino.Enabled = saved.enabled
 		Bino.IsMissing = saved.missing
@@ -80,17 +85,20 @@ return {
 	end,
 	cases = {
 		{
-			name = "the option exists (saved, on by default) and has a check box in the options panel, and the white list holds the crossbow and nothing else",
+			name = "the option exists (saved, on by default) and has a check box in the options panel, and the weapon registry says that the crossbow's right click zooms (alt = zoom) and no other stock weapon's does",
 			func = function()
 				local W = GryMod.WeaponZoom
 				expect(W ~= nil).to.beTrue()
 				expect(setting(OPTION) ~= nil).to.beTrue()
 				expect(setting(OPTION):GetDefault()).to.equal("1")
-				expect(W.Weapons.weapon_crossbow).to.beTrue()
+				expect(GryMod.API.WeaponValue("weapon_crossbow", "alt", true)).to.equal("zoom")
 
-				local count = 0
-				for _ in pairs(W.Weapons) do count = count + 1 end
-				expect(count).to.equal(1)
+				-- (no private list of classes: the registry is the only source)
+				expect(W.Weapons).to.beNil()
+
+				for _, class in ipairs({"weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_frag", "weapon_pistol", "weapon_357", "weapon_rpg", "weapon_physcannon", "weapon_crowbar", "weapon_stunstick", "weapon_fists"}) do
+					expect(GryMod.API.WeaponValue(class, "alt", true) == "zoom").to.beFalse()
+				end
 
 				local found = {}
 				local panel = vgui.Create("ControlPanel")
@@ -146,6 +154,40 @@ return {
 				expect(W.Decide(true, false, true, "weapon_crossbow", nil, 100)).to.beFalse()
 				expect(W.Decide(true, false, true, "weapon_crossbow", 0 / 0, 100)).to.beFalse()
 				expect(W.Decide(true, false, true, "weapon_crossbow", 20, nil)).to.beFalse()
+			end
+		},
+		{
+			name = "a third-party weapon registered through the API with alt = zoom gets the crossbow's treatment (decision and step); one registered with another alt, or not at all, does not",
+			func = function(state)
+				local W = GryMod.WeaponZoom
+				local API = GryMod.API
+				local ply = LocalPlayer()
+
+				-- (rouge before the migration: the private list knew only the crossbow)
+				expect(W.Decide(true, false, true, "doc_test_zoom_gun", 20, 100)).to.beFalse()
+
+				expect((API.RegisterWeapon("doc_test_zoom_gun", {fire = "semi", alt = "zoom", altShoots = false}))).to.beTrue()
+				expect((API.RegisterWeapon("doc_test_grenade_gun", {fire = "auto", alt = "grenade", altAmmo = "SMG1_Grenade"}))).to.beTrue()
+
+				expect(W.Decide(true, false, true, "doc_test_zoom_gun", 20, 100)).to.beTrue()
+				expect(W.Decide(true, false, true, "doc_test_zoom_gun", 100, 100)).to.beFalse()
+				expect(W.Decide(true, true, true, "doc_test_zoom_gun", 20, 100)).to.beFalse()
+				expect(W.Decide(true, false, true, "doc_test_grenade_gun", 20, 100)).to.beFalse()
+				expect(W.Decide(true, false, true, "doc_test_unregistered_gun", 20, 100)).to.beFalse()
+
+				-- (the weapon entity is accepted too: that is what the step gives)
+				expect(W.Decide(true, false, true, {GetClass = function() return "doc_test_zoom_gun" end, IsValid = function() return true end}, 20, 100)).to.beTrue()
+
+				state.world.class = "doc_test_zoom_gun"
+				state.world.fov = 20
+				W.Step(ply)
+				state.world.wanted = true
+				W.Step(ply)
+				expect(state.sent).to.equal(1)
+
+				-- unregistered: back to nothing
+				API.UnregisterWeapon("doc_test_zoom_gun")
+				expect(W.Decide(true, false, true, "doc_test_zoom_gun", 20, 100)).to.beFalse()
 			end
 		},
 		{
