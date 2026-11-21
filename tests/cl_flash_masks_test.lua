@@ -5,15 +5,6 @@
 -- converted data has no outline (no `p`, no `ps`) is dropped and what it should have hidden is drawn in full:
 -- noise over the whole radar, the bars of the "lost" signal as a plain yellow line, and so on.
 
--- Mask shapes made of SEVERAL contours (separate bars or rectangles): one outline cannot describe them, the
--- drawing code takes a single polygon per mask, so these are still drawn without their mask. Taking them off this
--- list is the job of whoever gives the drawing code several outlines per mask (a `ps` list in the converter).
-local PENDING = {
-	hud_grenadedetect = {[13] = true},
-	hud_lost = {[40] = true, [41] = true},
-	hud_reboot = {[15] = true}
-}
-
 local FILMS = {
 	"hud_ammohealthenergysuit", "hud_binoculars", "hud_crosshair", "hud_friendlycross", "hud_grenadedetect",
 	"hud_initialize", "hud_lost", "hud_quickmenu", "hud_radarcompassstealth", "hud_reboot"
@@ -51,8 +42,33 @@ local function maskPlacements(movie)
 	return found
 end
 
--- Whether the drawing code finds an outline for the mask `char`: a shape or a morph with its polygon `p` (a morph at
--- both ends), or a clip whose first shape with an outline counts, as in cl_flash_draw.lua.
+-- Whether a list of outlines ({{x1, y1, ...}, ...}) is usable: at least one, each a closed polygon of 3 points or more.
+local function validOutlines(outlines)
+	if not istable(outlines) or #outlines == 0 then
+		return false
+	end
+
+	for _, outline in ipairs(outlines) do
+		if #outline < 6 or #outline % 2 ~= 0 then
+			return false
+		end
+	end
+
+	return true
+end
+
+-- The outlines of a shape or a morph as a list: `ps`, or the single `p` (and the same for the end of a morph).
+local function outlinesOf(definition, single, several)
+	if definition[several] then
+		return definition[several]
+	end
+
+	return definition[single] and {definition[single]} or nil
+end
+
+-- Whether the drawing code finds an outline for the mask `char`: a shape or a morph with its polygon `p` or its
+-- polygons `ps` (a morph at both ends, the same number of outlines of the same sizes), or a clip whose first shape
+-- with an outline counts, as in cl_flash_draw.lua.
 local function hasOutline(movie, char, depth)
 	local definition = movie.chars[char]
 
@@ -72,11 +88,25 @@ local function hasOutline(movie, char, depth)
 		return false
 	end
 
+	local starts = outlinesOf(definition, "p", "ps")
+
 	if definition.k == "morph" then
-		return definition.p ~= nil and definition.pe ~= nil and #definition.p == #definition.pe
+		local ends = outlinesOf(definition, "pe", "pes")
+
+		if not validOutlines(starts) or not validOutlines(ends) or #starts ~= #ends then
+			return false
+		end
+
+		for i = 1, #starts do
+			if #starts[i] ~= #ends[i] then
+				return false
+			end
+		end
+
+		return true
 	end
 
-	return definition.p ~= nil
+	return validOutlines(starts)
 end
 
 local cases = {}
@@ -90,11 +120,7 @@ for _, name in ipairs(FILMS) do
 			local missing = {}
 
 			for _, mask in ipairs(maskPlacements(movie)) do
-				local pending = PENDING[name] and PENDING[name][mask.char]
-
-				if pending then
-					expect(hasOutline(movie, mask.char)).to.beFalse() -- it has one now: take it off PENDING
-				elseif not hasOutline(movie, mask.char) then
+				if not hasOutline(movie, mask.char) then
 					missing[#missing + 1] = string.format("char %d (%s, sprite %s frame %d)", mask.char,
 						movie.chars[mask.char] and movie.chars[mask.char].k or "?", mask.where, mask.frame)
 				end
@@ -106,22 +132,46 @@ for _, name in ipairs(FILMS) do
 end
 
 cases[#cases + 1] = {
-	name = "a mask outline is a closed polygon of at least 3 points, a morph's two ends have the same number of points",
+	name = "a mask outline is a closed polygon of at least 3 points, a morph's two ends have the same number of outlines and points",
 	func = function(state)
 		for _, name in ipairs(FILMS) do
 			local movie = loadFresh(name)
 
 			for id, definition in pairs(movie.chars) do
-				if definition.p then
-					expect(#definition.p >= 6 and #definition.p % 2 == 0).to.beTrue()
+				-- a shape has one outline (p) or several (ps), never both
+				expect(definition.p ~= nil and definition.ps ~= nil).to.beFalse()
+				expect(definition.pe ~= nil and definition.pes ~= nil).to.beFalse()
+
+				local starts = outlinesOf(definition, "p", "ps")
+
+				if starts then
+					expect(validOutlines(starts)).to.beTrue()
 				end
 
-				if definition.k == "morph" and definition.p then
-					expect(definition.pe).toNot.beNil()
-					expect(#definition.pe).to.equal(#definition.p)
+				if definition.k == "morph" and starts then
+					local ends = outlinesOf(definition, "pe", "pes")
+					expect(ends).toNot.beNil()
+					expect(#ends).to.equal(#starts)
+
+					for i = 1, #starts do
+						expect(#ends[i]).to.equal(#starts[i])
+					end
 				end
 			end
 		end
+	end
+}
+
+cases[#cases + 1] = {
+	name = "the clip layers that are made of several contours have them all: the bars of the lost signal, the grenade warning, the reboot",
+	func = function(state)
+		local lost = loadFresh("hud_lost")
+		expect(#lost.chars[41].ps).to.equal(20) -- the 20 horizontal bars
+		expect(lost.chars[40].k).to.equal("morph")
+		expect(#lost.chars[40].ps).to.equal(20)
+		expect(#lost.chars[40].pes).to.equal(20)
+		expect(#loadFresh("hud_grenadedetect").chars[13].ps).to.equal(2)
+		expect(#loadFresh("hud_reboot").chars[15].ps).to.equal(2)
 	end
 }
 
