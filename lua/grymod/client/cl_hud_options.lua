@@ -19,7 +19,7 @@ Options.List = {
 	{name = "grenade", label = "Grenade warning", help = "The red hexagon on a grenade coming at you"},
 	{name = "binoculars", label = "Binoculars", help = "The binoculars screen while you zoom"},
 	{name = "quickmenu", label = "Quick menu", help = "The suit mode wheel (hold its key, point, release)"},
-	{name = "boot", label = "Start-up and reboot sequences", help = "The log when you spawn, the shutdown animation and the reboot after a malfunction, with their sounds"},
+	{name = "boot", label = "Start-up and reboot sequences", help = "The log at the first spawn, the shutdown animation and the reboot after a malfunction"},
 	{name = "damagefx", label = "HUD jump on a heavy armor hit", help = "The panels shake for a moment when the armor takes a hit of a fifth of the bar or more, as in the original"}
 }
 

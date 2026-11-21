@@ -8,6 +8,7 @@ local Boot
 
 local played
 local realPlay, realOption
+local savedEverySpawn
 
 local function run(seconds)
 	for _ = 1, math.ceil(seconds * 30) do
@@ -23,6 +24,7 @@ return {
 	groupName = "GryMod HUD boot sequences (Flash)",
 	beforeAll = function(state)
 		Boot = GryMod.FlashBoot
+		savedEverySpawn = GetConVar("gry_boot_every_spawn"):GetString()
 	end,
 	beforeEach = function(state)
 		played = {}
@@ -34,11 +36,15 @@ return {
 		end
 
 		GetConVar("gry_hud_boot"):SetString("1")
+		GetConVar("gry_boot_every_spawn"):SetString("0")
 		Boot.Reset()
+		Boot.ResetSpawn()
 	end,
 	afterEach = function(state)
 		GryMod.PlaySound = realPlay
+		GetConVar("gry_boot_every_spawn"):SetString(savedEverySpawn)
 		Boot.Reset()
+		Boot.ResetSpawn()
 	end,
 	cases = {
 		{
@@ -133,17 +139,115 @@ return {
 			end
 		},
 		{
-			name = "the end of a malfunction plays the Reboot movie with the reboot sound, then the activate sound",
+			name = "the end of a malfunction plays the Reboot movie and no sound at all (the original plays none), whatever the spawn switch says",
 			func = function(state)
-				Boot.OnStatus(1)
-				played = {}
-				Boot.OnStatus(0)
-				expect(Boot.IsLost()).to.beFalse()
-				expect(Boot.Current()).to.equal("reboot")
-				expect(lastSound()).to.equal(Sound("grymod/hud/hud_reboot.wav"))
-				run(5.2)
+				for _, every in ipairs({"0", "1"}) do
+					GetConVar("gry_boot_every_spawn"):SetString(every)
+					Boot.Reset()
+					Boot.OnStatus(1)
+					played = {}
+					Boot.OnStatus(0)
+					expect(Boot.IsLost()).to.beFalse()
+					expect(Boot.Current()).to.equal("reboot")
+					expect(#played).to.equal(0)
+					run(5.2)
+					expect(Boot.Current()).to.beNil()
+					expect(#played).to.equal(0)
+				end
+			end
+		},
+		{
+			name = "only the first spawn plays the start log: the next ones play nothing and show nothing",
+			func = function(state)
+				Boot.Spawned()
+				run(3.2)
 				expect(Boot.Current()).to.beNil()
-				expect(lastSound()).to.equal(Sound("grymod/hud/hud_activate_01.wav"))
+				played = {}
+				Boot.Spawned()
+				expect(Boot.Current()).to.beNil()
+				expect(#played).to.equal(0)
+				Boot.Spawned()
+				expect(Boot.Current()).to.beNil()
+				expect(#played).to.equal(0)
+			end
+		},
+		{
+			name = "a respawn that comes while the first log still runs does not play it again or cut it",
+			func = function(state)
+				Boot.Spawned()
+				run(1)
+				played = {}
+				Boot.Spawned()
+				expect(Boot.Current()).to.equal("initialize")
+				expect(#played).to.equal(0)
+			end
+		},
+		{
+			name = "gry_boot_every_spawn 1 brings back the log and its two sounds at every spawn",
+			func = function(state)
+				local convar = GetConVar("gry_boot_every_spawn")
+				expect(convar:GetDefault()).to.equal("0")
+				convar:SetString("1")
+
+				for _ = 1, 3 do
+					played = {}
+					Boot.Spawned()
+					expect(Boot.Current()).to.equal("initialize")
+					expect(lastSound()).to.equal(Sound("grymod/hud/hud_reboot.wav"))
+					run(3.2)
+					expect(Boot.Current()).to.beNil()
+					expect(#played).to.equal(2)
+					expect(lastSound()).to.equal(Sound("grymod/hud/hud_activate_01.wav"))
+				end
+			end
+		},
+		{
+			name = "a spawn after a death is clean: no log, no sound, and the malfunction of the last life is forgotten",
+			func = function(state)
+				Boot.Spawned()
+				run(3.2)
+				Boot.OnStatus(1)
+				-- death: what the paint hook does when the player is no longer alive
+				Boot.Died()
+				expect(Boot.Current()).to.beNil()
+				expect(Boot.IsLost()).to.beFalse()
+				played = {}
+				Boot.Spawned()
+				expect(Boot.Current()).to.beNil()
+				expect(#played).to.equal(0)
+				-- the suit is up again: a new malfunction starts from nothing
+				Boot.OnStatus(1)
+				expect(Boot.Current()).to.equal("lost")
+			end
+		},
+		{
+			name = "gry_boot_every_spawn has a check box in the options",
+			func = function(state)
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_boot_every_spawn"]).to.beTrue()
 			end
 		},
 		{

@@ -3,10 +3,12 @@
 --     sound when it ends (frame 88 of the movie).
 --   HUD_Lost: the "system overrun, emergency shutdown" animation, which loops while the suit is down (the HUD
 --     malfunctions, red); the malfunction sound starts with it.
---   HUD_Reboot: the emergency reboot sequence that runs when the suit comes back (3.97 s and a closing animation).
+--   HUD_Reboot: the emergency reboot sequence that runs when the suit comes back (3.97 s and a closing animation);
+--     silent.
 -- The rules are from the game's code (research notes: research-ui2/crosshair-reboot.md). The sounds are the
 -- demo's own (hud_reboot, hud_activate, hud_malfunction). GryMod has no EMP and no level start: the HUD malfunction
--- is the energy running out (see cl_hud_flash.lua) and the log plays at every spawn.
+-- is the energy running out (see cl_hud_flash.lua) and the log plays at the first spawn after the map loads (every
+-- spawn with gry_boot_every_spawn). The reboot after a malfunction plays no sound, as in the original.
 
 GryMod = GryMod or {}
 
@@ -148,6 +150,10 @@ local snd_reboot, snd_activate, snd_malfunction =
 local sequences = {}
 local current -- the kind that is on, or nil
 local malfunctioning = false
+local hasSpawned = false -- the player has already spawned since this Lua state was made (a new map makes a new one)
+
+-- Switch: the log of the start at every spawn (the old behaviour) instead of the first one only.
+local EverySpawnConVar = CreateClientConVar("gry_boot_every_spawn", "0", true, false, "The start-up log (with its sounds) at every spawn, not only at the first one after the map loads")
 
 local function play(path)
 	if GryMod.PlaySound then
@@ -188,9 +194,25 @@ function Boot.IsLost()
 	return current == "lost"
 end
 
--- The player spawns: the log of the start, with the reboot sound. A suit that is already down (the energy is
--- still empty) keeps its shutdown animation: the HUD may have said so before this runs.
+-- The player dies: whatever was on ends, and the malfunction of that life is forgotten.
+function Boot.Died()
+	current = nil
+	malfunctioning = false
+end
+
+-- Forget that the player has spawned (the next spawn is a first one again). Tests only.
+function Boot.ResetSpawn()
+	hasSpawned = false
+end
+
+-- The player spawns. The log of the start, with its reboot sound, is the start of the level in the original: it plays
+-- for the first spawn only (the first one after the map loads), unless gry_boot_every_spawn asks for every spawn.
+-- A suit that is already down (the energy is still empty) keeps its shutdown animation: the HUD may have said so
+-- before this runs.
 function Boot.Spawned()
+	local first = not hasSpawned
+	hasSpawned = true
+
 	if not enabled() then
 		current = nil
 		malfunctioning = false
@@ -202,9 +224,18 @@ function Boot.Spawned()
 		return
 	end
 
+	if not (first or EverySpawnConVar:GetBool()) then
+		return
+	end
+
 	if begin("initialize") then
 		play(snd_reboot)
 	end
+end
+
+-- The player has spawned while the HUD is off: that was the first spawn all the same.
+function Boot.NoteSpawn()
+	hasSpawned = true
 end
 
 -- The HUD changes its state (1: malfunction, 0: normal), as the movie's destroy(status).
@@ -234,13 +265,13 @@ function Boot.OnStatus(status)
 	elseif malfunctioning then
 		malfunctioning = false
 
-		if begin("reboot") then
-			play(snd_reboot)
-		end
+		-- the original's RebootHUD plays no sound: hud_reboot and hud_activate belong to the start of the level
+		begin("reboot")
 	end
 end
 
--- One step of time (no drawing): a sequence that is over gives its place back, with the activate sound.
+-- One step of time (no drawing): a sequence that is over gives its place back; the end of the start log plays the
+-- activate sound (the game's StopInitialize), the reboot after a malfunction ends in silence.
 function Boot.Step(dt)
 	local seq = current and sequences[current]
 
@@ -251,8 +282,12 @@ function Boot.Step(dt)
 	seq:Update(dt)
 
 	if seq:IsDone() then
+		local kind = current
 		current = nil
-		play(snd_activate)
+
+		if kind == "initialize" then
+			play(snd_activate)
+		end
 	end
 end
 
@@ -299,6 +334,10 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 	local alive = IsValid(ply) and ply:Alive()
 
 	if not (GryMod.FlashHUD and GryMod.FlashHUD.Enabled()) then
+		if alive and not wasAlive then
+			Boot.NoteSpawn()
+		end
+
 		wasAlive = alive
 		-- nothing stays on while the HUD is off: it would not be told when the suit comes back
 		current = nil
@@ -307,7 +346,7 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 		return
 	end
 
-	-- every spawn starts the log; dying ends whatever was on
+	-- the first spawn starts the log (every spawn with gry_boot_every_spawn); dying ends whatever was on
 	if alive and not wasAlive then
 		Boot.Spawned()
 	elseif not alive then
