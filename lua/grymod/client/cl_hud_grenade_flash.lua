@@ -17,7 +17,7 @@ Grenade.MOVIE = "hud_grenadedetect"
 Grenade.RANGE = 60
 
 local STAGE_W, STAGE_H = 1366, 768
-local HALF_ICON = 18 -- screen pixels: the game puts the icon's corner this far before the projected point
+local HALF_ICON = 18 -- stage pixels from the icon's corner to the centre of its hexagon, at full size
 local EDGE = 0.03 -- the screen position is held between 3 and 97 percent
 local OPEN_LAST_FRAME = 27
 
@@ -32,12 +32,20 @@ function Grenade.TypeFor(class)
 	return TYPES[class]
 end
 
--- The stage position of the icon for a point of the screen (the stage is scaled to the screen height and centred).
-function Grenade.StagePosition(screenX, screenY, screenW, screenH)
+-- The size of the icon in percent for a distance in metres: 100 minus 1.5 a metre, never under 45.
+function Grenade.SizeFor(metres)
+	return math.max(45, 100 - metres * 1.5)
+end
+
+-- The stage position of the icon's corner for a point of the screen (the stage is scaled to the screen height and
+-- centred). The icon hangs from its corner and shrinks towards it with the distance, so the hexagon's centre is
+-- 18 * size from the corner: that centre is what lands on the point.
+function Grenade.StagePosition(screenX, screenY, screenW, screenH, metres)
 	local scale = screenH / STAGE_H
+	local half = HALF_ICON * Grenade.SizeFor(metres or 0) / 100
 	screenX = math.Clamp(screenX, EDGE * screenW, (1 - EDGE) * screenW)
 
-	return (screenX - (screenW - STAGE_W * scale) / 2) / scale - HALF_ICON / scale, screenY / scale - HALF_ICON / scale
+	return (screenX - (screenW - STAGE_W * scale) / 2) / scale - half, screenY / scale - half
 end
 
 -- The nearest of the candidates ({class, metres, onScreen, own}) that deserves a warning, or nil.
@@ -125,7 +133,7 @@ function Instance:_applyDistance(update)
 		self.distanceText = text
 	end
 
-	local size = math.max(45, 100 - self.metres * 1.5)
+	local size = Grenade.SizeFor(self.metres)
 	self.icon:SetScale(size, size)
 end
 
@@ -258,7 +266,7 @@ hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
 	warning:Show()
 	warning:SetType(TYPES[best.class])
 	warning:SetDistance(best.metres)
-	warning:SetPosition(Grenade.StagePosition(best.screen.x, best.screen.y, ScrW(), ScrH()))
+	warning:SetPosition(Grenade.StagePosition(best.screen.x, best.screen.y, ScrW(), ScrH(), best.metres))
 
 	local now = RealTime()
 	local dt = math.min(now - (lastTime or now), 0.1)

@@ -102,20 +102,30 @@ return {
 			end
 		},
 		{
-			name = "the stage position of a screen point: the icon's corner is half an icon (18 px) before the point, x is held inside 3 to 97 percent",
+			name = "the stage position of a screen point: the centre of the hexagon, whatever its size and the screen's, is on the point, x is held inside 3 to 97 percent",
 			func = function(state)
 				local G = GryMod.FlashGrenade
-				-- 1920 x 1080: the stage (1366 x 768) is scaled by 1080 / 768 and centred
-				local scale = 1080 / 768
-				local x, y = G.StagePosition(960, 540, 1920, 1080)
-				expect(near(x, (960 - (1920 - 1366 * scale) / 2) / scale - 18 / scale)).to.beTrue()
-				expect(near(y, 540 / scale - 18 / scale)).to.beTrue()
+				-- the icon hangs from its corner and its hexagon is 18 stage pixels from it at full size: after the
+				-- shrinking of the distance its centre is 18 * size from the corner, and that centre is the projected point,
+				-- on every screen size
+				for _, size in ipairs({{1920, 1080}, {640, 360}, {2560, 1440}, {1024, 768}}) do
+					local w, h = size[1], size[2]
+					local scale = h / 768
+					for _, metres in ipairs({0, 10, 30, 60}) do
+						local x, y = G.StagePosition(w * 0.6, h * 0.4, w, h, metres)
+						local s = math.max(45, 100 - metres * 1.5) / 100
+						local centreX = (w - 1366 * scale) / 2 + (x + 18 * s) * scale
+						local centreY = (y + 18 * s) * scale
+						expect(near(centreX, w * 0.6)).to.beTrue()
+						expect(near(centreY, h * 0.4)).to.beTrue()
+					end
+				end
 				-- off the left edge: held at 3 percent of the screen
-				local left = G.StagePosition(-500, 540, 1920, 1080)
-				local held = G.StagePosition(0.03 * 1920, 540, 1920, 1080)
+				local left = G.StagePosition(-500, 540, 1920, 1080, 20)
+				local held = G.StagePosition(0.03 * 1920, 540, 1920, 1080, 20)
 				expect(near(left, held)).to.beTrue()
-				local right = G.StagePosition(5000, 540, 1920, 1080)
-				local heldRight = G.StagePosition(0.97 * 1920, 540, 1920, 1080)
+				local right = G.StagePosition(5000, 540, 1920, 1080, 20)
+				local heldRight = G.StagePosition(0.97 * 1920, 540, 1920, 1080, 20)
 				expect(near(right, heldRight)).to.beTrue()
 			end
 		},
