@@ -140,5 +140,47 @@ class EmitLuaRealRuntimeTest(unittest.TestCase):
         self.assertEqual(data["root"][1][1].n, "Root")
 
 
+class EmitMaskPolygonTest(unittest.TestCase):
+    """The outline of a curved shape is only written for the shapes that serve as clip layers (no FFDec needed)."""
+    DISC = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    RECT = {"atlas": "m_1.png", "x": 0, "y": 0, "w": 4, "h": 4, "ox": 0, "oy": 0, "dw": 1, "dh": 1}
+
+    @staticmethod
+    def place(depth, char, clip_depth=None):
+        return {"op": "place", "depth": depth, "char": char, "move": False, "name": None, "matrix": None,
+                "cxform": None, "ratio": None, "clip_depth": clip_depth, "blend": None}
+
+    def movie(self):
+        movie = swfmodel.Movie(width_px=100, height_px=100, frame_rate=30)
+        chars = movie.characters
+        chars[1] = swfmodel.Character(1, "shape", mask_polygon=self.DISC)  # a mask
+        chars[2] = swfmodel.Character(2, "shape", mask_polygon=self.DISC)  # not a mask
+        chars[3] = swfmodel.Character(3, "shape", mask_polygon=self.DISC)  # inside a clip that is a mask
+        chars[4] = swfmodel.Character(4, "sprite", timeline=swfmodel.Timeline([swfmodel.Frame(ops=[self.place(1, 3)])]))
+        chars[5] = swfmodel.Character(5, "morph", bounds=(0, 0, 1, 1), end_bounds=(0, 0, 1, 1),
+                                      mask_polygon=self.DISC, end_mask_polygon=self.DISC)  # a morph used as a mask
+        movie.root = swfmodel.Timeline([swfmodel.Frame(ops=[self.place(1, 1, 5), self.place(2, 2), self.place(3, 4, 9),
+                                                            self.place(10, 5, 12)])])
+        return movie
+
+    def data(self):
+        movie = self.movie()
+        rects = {cid: dict(self.RECT) for cid in (1, 2, 3)}
+        return lua_literal.parse(emit_lua.emit_lua(movie, rects, "grymod/flash"))
+
+    def test_a_curved_mask_shape_gets_its_polygon(self):
+        self.assertEqual(len(self.data()["chars"][1]["p"]), 8)
+
+    def test_a_curved_shape_that_is_no_mask_gets_none(self):
+        self.assertNotIn("p", self.data()["chars"][2])
+
+    def test_a_shape_inside_a_clip_that_is_a_mask_gets_its_polygon(self):
+        self.assertEqual(len(self.data()["chars"][3]["p"]), 8)
+
+    def test_a_morph_used_as_a_mask_gets_both_ends(self):
+        morph = self.data()["chars"][5]
+        self.assertEqual((len(morph["p"]), len(morph["pe"])), (8, 8))
+
+
 if __name__ == "__main__":
     unittest.main()

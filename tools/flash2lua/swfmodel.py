@@ -49,9 +49,12 @@ class Character:
     font_id: Optional[int] = None
     # simple shapes: the outline as a pixel polygon (one contour, straight edges), else None
     polygon: Optional[list] = None
+    # the same for a shape used as a clip layer: curves cut into straight pieces
+    mask_polygon: Optional[list] = None
     # morph shapes
     end_bounds: Optional[tuple] = None
     end_polygon: Optional[list] = None
+    end_mask_polygon: Optional[list] = None
     # fonts
     name: Optional[str] = None
 
@@ -205,10 +208,16 @@ def simplify_polygon(points, tolerance=SIMPLIFY_TOLERANCE):
     return result if len(result) >= 3 else list(points)
 
 
-def _polygon(records_parent, simplify=False):
-    """The outline of a one-contour shape made of straight edges as [(x, y)] in pixels (not closed
-    twice), or None for anything else (curves, several contours, an open path). Contours that are
-    specks (under a square pixel) do not count: a shape can carry a stray one next to its real outline."""
+# A curve of a mask outline is cut into this many straight pieces (each one a quadratic Bezier of at most a quarter
+# turn: eight pieces keep a 65 pixel radius circle within a third of a pixel of the original).
+CURVE_STEPS = 8
+
+
+def _contours(records_parent, curves=False):
+    """The contours of a shape as lists of (x, y) in twips, a closed one ending on its first point, or None for a
+    shape without records, or with a curve when `curves` is false (a curve is cut into CURVE_STEPS straight pieces
+    when it is true). A contour starts at a move; an edge without one (the first records of a shape, or the ones
+    after a closed contour) starts it at the pen, which begins at the origin."""
     if records_parent is None:
         return None
     records = records_parent.find("shapeRecords")
@@ -216,6 +225,11 @@ def _polygon(records_parent, simplify=False):
         return None
     x = y = 0
     contours = []
+
+    def pen_down():
+        if not contours or (len(contours[-1]) > 1 and contours[-1][0] == contours[-1][-1]):
+            contours.append([(x, y)])
+
     for rec in records:
         kind = rec.get("type")
         if kind == "StyleChangeRecord":
@@ -223,21 +237,64 @@ def _polygon(records_parent, simplify=False):
                 x, y = int(rec.get("moveDeltaX")), int(rec.get("moveDeltaY"))
                 contours.append([(x, y)])
         elif kind == "StraightEdgeRecord":
-            if not contours:
-                return None
+            pen_down()
             x += int(rec.get("deltaX", 0))
             y += int(rec.get("deltaY", 0))
             contours[-1].append((x, y))
         elif kind == "CurvedEdgeRecord":
-            return None
-    real = [c for c in contours if len(c) < 4 or c[0] != c[-1] or _contour_area(c[:-1]) >= SPECK_AREA * TWIPS * TWIPS]
+            if not curves:
+                return None
+            pen_down()
+            cx, cy = x + int(rec.get("controlDeltaX", 0)), y + int(rec.get("controlDeltaY", 0))
+            ax, ay = cx + int(rec.get("anchorDeltaX", 0)), cy + int(rec.get("anchorDeltaY", 0))
+            for i in range(1, CURVE_STEPS):
+                t = i / CURVE_STEPS
+                contours[-1].append(((1 - t) ** 2 * x + 2 * t * (1 - t) * cx + t * t * ax,
+                                     (1 - t) ** 2 * y + 2 * t * (1 - t) * cy + t * t * ay))
+            contours[-1].append((ax, ay))
+            x, y = ax, ay
+    return contours
+
+
+def _real_contours(contours):
+    """The closed contours that are more than a speck (under a square pixel)."""
+    return [c for c in contours
+            if len(c) >= 4 and c[0] == c[-1] and _contour_area(c[:-1]) >= SPECK_AREA * TWIPS * TWIPS]
+
+
+def _pixels(points):
+    return [(px / TWIPS, py / TWIPS) for px, py in points[:-1]]
+
+
+def _polygon(records_parent, simplify=False):
+    """The outline of a one-contour shape made of straight edges as [(x, y)] in pixels (not closed
+    twice), or None for anything else (curves, several contours, an open path). Contours that are
+    specks (under a square pixel) do not count: a shape can carry a stray one next to its real outline."""
+    contours = _contours(records_parent)
+    if contours is None:
+        return None
+    real = _real_contours(contours)
     if len(real) != 1:
         return None
-    points = real[0]
-    if len(points) < 4 or points[0] != points[-1]:
-        return None
-    polygon = [(px / TWIPS, py / TWIPS) for px, py in points[:-1]]
+    polygon = _pixels(real[0])
     return simplify_polygon(polygon) if simplify else polygon
+
+
+def _mask_polygons(records_parent, simplify=True):
+    """The outlines of the contours of a shape that serves as a clip layer, as lists of [(x, y)] in pixels, curves
+    cut into straight pieces; [] for a shape without a closed contour of real size. With `simplify` false the
+    number of points does not depend on the sizes (a morph needs the same count at both ends)."""
+    contours = _contours(records_parent, curves=True)
+    if contours is None:
+        return []
+    polygons = [_pixels(c) for c in _real_contours(contours)]
+    return [simplify_polygon(p) for p in polygons] if simplify else polygons
+
+
+def _mask_polygon(records_parent, simplify=True):
+    """_mask_polygons for a shape of one contour, else None (the drawing code takes one outline per mask)."""
+    polygons = _mask_polygons(records_parent, simplify)
+    return polygons[0] if len(polygons) == 1 else None
 
 
 def _place_op(item):
@@ -320,7 +377,8 @@ def _read_character(item, movie, scripts_dir=None):
     if kind in SHAPE_TAGS:
         cid = int(item.get("shapeId"))
         movie.characters[cid] = Character(cid, "shape", bounds=_rect(item.find("shapeBounds")),
-                                          polygon=_polygon(item.find("shapes"), simplify=True))
+                                          polygon=_polygon(item.find("shapes"), simplify=True),
+                                          mask_polygon=_mask_polygon(item.find("shapes")))
     elif kind == "DefineSpriteTag":
         cid = int(item.get("spriteId"))
         movie.characters[cid] = Character(cid, "sprite", timeline=_timeline(item.find("subTags"), scripts_dir, cid))
@@ -347,7 +405,9 @@ def _read_character(item, movie, scripts_dir=None):
         movie.characters[cid] = Character(cid, "morph", bounds=_rect(item.find("startBounds")),
                                           end_bounds=_rect(item.find("endBounds")),
                                           polygon=_polygon(item.find("startEdges")),
-                                          end_polygon=_polygon(item.find("endEdges")))
+                                          end_polygon=_polygon(item.find("endEdges")),
+                                          mask_polygon=_mask_polygon(item.find("startEdges"), simplify=False),
+                                          end_mask_polygon=_mask_polygon(item.find("endEdges"), simplify=False))
     elif kind in ("DefineFont3Tag", "DefineFont2Tag"):
         cid = int(item.get("fontID"))
         movie.characters[cid] = Character(cid, "font", name=(item.get("fontName") or "").strip("\0"))

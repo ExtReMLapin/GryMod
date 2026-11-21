@@ -209,6 +209,66 @@ class PolygonContoursTest(unittest.TestCase):
         island = ((1000, 1000), [(400, 0), (0, 400), (-400, 0), (0, -400)])
         self.assertIsNone(swfmodel._polygon(self.shape(self.SQUARE, island)))
 
+    def test_a_shape_whose_first_record_has_no_move_starts_at_the_origin(self):
+        # the first style change of a shape does not always carry a move: the pen is then at (0, 0)
+        records = '<item type="StyleChangeRecord" stateMoveTo="false" fillStyle1="1"/>'
+        for dx, dy in ((400, 0), (0, 300), (-400, 0), (0, -300)):
+            records += '<item type="StraightEdgeRecord" deltaX="%d" deltaY="%d"/>' % (dx, dy)
+        shape = ET.fromstring("<shapes><shapeRecords>%s</shapeRecords></shapes>" % records)
+        self.assertEqual(swfmodel._polygon(shape), [(0, 0), (20, 0), (20, 15), (0, 15)])
+
+    def test_the_pen_goes_on_from_the_end_of_a_closed_contour_without_a_move(self):
+        records = '<item type="StyleChangeRecord" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"/>'
+        for dx, dy in ((400, 0), (0, 400), (-400, 0), (0, -400), (800, 0), (0, 400), (-800, 0), (0, -400)):
+            records += '<item type="StraightEdgeRecord" deltaX="%d" deltaY="%d"/>' % (dx, dy)
+        shape = ET.fromstring("<shapes><shapeRecords>%s</shapeRecords></shapes>" % records)
+        self.assertIsNone(swfmodel._polygon(shape))  # two contours of real size
+        self.assertEqual(len(swfmodel._mask_polygons(shape)), 2)
+
+
+class MaskPolygonTest(unittest.TestCase):
+    """_mask_polygon: the outline of a shape that serves as a clip layer, where curves are cut into straight pieces."""
+
+    @staticmethod
+    def disc(radius=400):
+        # four quarter arcs, each one a quadratic curve through a corner of the bounding square (control point there)
+        r = radius
+        records = '<item type="StyleChangeRecord" stateMoveTo="true" moveDeltaX="%d" moveDeltaY="0"/>' % r
+        for cx, cy, ax, ay in ((0, r, -r, r), (-r, 0, -r, -r), (0, -r, r, -r), (r, 0, r, r)):
+            records += ('<item type="CurvedEdgeRecord" controlDeltaX="%d" controlDeltaY="%d" anchorDeltaX="%d" anchorDeltaY="%d"/>'
+                        % (cx, cy, ax - cx, ay - cy))
+        return ET.fromstring("<shapes><shapeRecords>%s</shapeRecords></shapes>" % records)
+
+    def test_a_curved_shape_has_no_strict_polygon_but_has_a_mask_polygon(self):
+        shape = self.disc()
+        self.assertIsNone(swfmodel._polygon(shape))
+        polygon = swfmodel._mask_polygon(shape)
+        self.assertGreaterEqual(len(polygon), 12)
+        for x, y in polygon:
+            # inside the square of the arcs, never beyond it
+            self.assertTrue(-20.0 <= x <= 20.0 and -20.0 <= y <= 20.0)
+
+    def test_the_cut_follows_the_curve_closer_than_a_quarter_pixel(self):
+        # each quarter arc is a parabola from (r, 0) towards the corner (0, r): the middle of the curve is at 1/4 of
+        # the way from the chord to the control point
+        polygon = swfmodel._mask_polygon(self.disc(20 * 20))
+        middle = min(polygon, key=lambda p: abs(p[0] + 20) + abs(p[1] - 0))
+        self.assertLess(abs(middle[0] + 20) + abs(middle[1]), 0.6)
+
+    def test_morph_ends_keep_the_same_number_of_points(self):
+        self.assertEqual(len(swfmodel._mask_polygon(self.disc(400), simplify=False)),
+                         len(swfmodel._mask_polygon(self.disc(100), simplify=False)))
+
+    def test_a_straight_shape_gives_its_polygon(self):
+        square = PolygonContoursTest.shape(PolygonContoursTest.SQUARE)
+        self.assertEqual(swfmodel._mask_polygon(square), [(0, 0), (20, 0), (20, 20), (0, 20)])
+
+    def test_several_contours_give_no_single_polygon(self):
+        island = ((1000, 1000), [(400, 0), (0, 400), (-400, 0), (0, -400)])
+        shape = PolygonContoursTest.shape(PolygonContoursTest.SQUARE, island)
+        self.assertIsNone(swfmodel._mask_polygon(shape))
+        self.assertEqual(len(swfmodel._mask_polygons(shape)), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

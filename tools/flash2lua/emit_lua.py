@@ -13,7 +13,7 @@ Format (`return {...}`):
                      stext  {k="stext", ox,oy,w,h}   (static text, not drawn yet)
                      morph  {k="morph", ox,oy,w,h, ex,ey,ew,eh, p, pe = start / end outline}
                      (shape and morph `p` = outline polygon {x1,y1,x2,y2,...} in stage px, only for one-contour
-                      straight-edge shapes: used for clip layers (masks))
+                      shapes: straight edges, or curves cut into pieces when the shape serves as a clip layer (mask))
   root               list of frames of the main timeline
   frame              { op, op, ..., l = "label", a = { action, ... } }
   op                 place  {d=depth, c=char, mv=true, n=name, m={a,b,c,d,tx,ty}, cx={rm,gm,bm,am,ra,ga,ba,aa},
@@ -105,8 +105,28 @@ def _font(font, atlas_index):
         atlas_index, font["em"], _num(font["asc"]), _num(font["desc"]), ",".join(glyphs))
 
 
+def mask_characters(movie):
+    """Ids of the characters that serve as clip layers: the ones placed with a clip depth, and what a clip among
+    them places (the drawing code takes the first outline it finds in a clip used as a mask)."""
+    timelines = [movie.root] + [c.timeline for c in movie.characters.values() if c.kind == "sprite"]
+    pending = [op["char"] for timeline in timelines for frame in timeline.frames for op in frame.ops
+               if op.get("clip_depth") is not None and op.get("char") is not None]
+    masks = set()
+    while pending:
+        cid = pending.pop()
+        if cid in masks:
+            continue
+        masks.add(cid)
+        character = movie.characters.get(cid)
+        if character is not None and character.kind == "sprite":
+            pending.extend(op["char"] for frame in character.timeline.frames for op in frame.ops
+                           if op.get("char") is not None)
+    return masks
+
+
 def emit_lua(movie, rects, material_dir, fonts=None):
     fonts = fonts or {}
+    masks = mask_characters(movie)
     atlas_names = sorted({r["atlas"] for r in rects.values()} | {f["atlas"] for f in fonts.values()})
     atlas_index = {name: i + 1 for i, name in enumerate(atlas_names)}
     chars = []
@@ -117,8 +137,9 @@ def emit_lua(movie, rects, material_dir, fonts=None):
             body = ('k="shape",a=%d,x=%d,y=%d,w=%d,h=%d,ox=%s,oy=%s,dw=%s,dh=%s'
                     % (atlas_index[r["atlas"]], r["x"], r["y"], r["w"], r["h"],
                        _num(r["ox"]), _num(r["oy"]), _num(r["dw"]), _num(r["dh"])))
-            if c.polygon:
-                body += ",p=" + _list([v for point in c.polygon for v in point])
+            polygon = c.polygon or (c.mask_polygon if cid in masks else None)
+            if polygon:
+                body += ",p=" + _list([v for point in polygon for v in point])
         elif c.kind == "sprite":
             labels = {}
             for i, f in enumerate(c.timeline.frames):
@@ -139,9 +160,12 @@ def emit_lua(movie, rects, material_dir, fonts=None):
             ex0, ey0, ex1, ey1 = c.end_bounds
             body = 'k="morph",%s,ex=%s,ey=%s,ew=%s,eh=%s' % (
                 _rect(c.bounds), _num(ex0), _num(ey0), _num(ex1 - ex0), _num(ey1 - ey0))
-            if c.polygon and c.end_polygon and len(c.polygon) == len(c.end_polygon):
-                body += ",p=%s,pe=%s" % (_list([v for pt in c.polygon for v in pt]),
-                                         _list([v for pt in c.end_polygon for v in pt]))
+            start, end = c.polygon, c.end_polygon
+            if not (start and end) and cid in masks:
+                start, end = c.mask_polygon, c.end_mask_polygon
+            if start and end and len(start) == len(end):
+                body += ",p=%s,pe=%s" % (_list([v for pt in start for v in pt]),
+                                         _list([v for pt in end for v in pt]))
         else:
             continue
         chars.append("\t[%d]={%s}" % (cid, body))
