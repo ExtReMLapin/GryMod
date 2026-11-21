@@ -129,15 +129,6 @@ function Radar.StripX(bearing)
 	return Radar.HEADING_ORIGIN - (bearing % 360) * Radar.PIXELS_PER_DEGREE
 end
 
--- How full the stealth bar is: the old radar bars filled with the number of NPCs near, 16 filling all four.
-function Radar.StealthFromCount(count)
-	if count == nil or count ~= count then
-		return 0
-	end
-
-	return math.Clamp(count / 16, 0, 1)
-end
-
 -- The bearing GryMod's yaw means (north at NORTH_YAW, clockwise growing).
 function Radar.BearingFromYaw(yaw)
 	return (-(yaw - Radar.NORTH_YAW)) % 360

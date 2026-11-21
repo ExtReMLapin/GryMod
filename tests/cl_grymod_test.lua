@@ -120,20 +120,13 @@ return {
 			end
 		},
 		{
-			name = "the radar update counts the NPCs near without error, for the stealth bar of the compass panel",
+			name = "the stealth bar no longer counts the NPCs near (friends raised it): the count, its timer and its value are gone",
 			func = function(state)
-				GryMod.RadarCount = nil
-				local ok, err = pcall(GryMod.UpdateRadar)
-				expect(ok).to.beTrue()
-				expect(type(GryMod.RadarCount)).to.equal("number")
-			end
-		},
-		{
-			name = "the radar timer exists once, even after the file is loaded again",
-			func = function(state)
-				GryMod.StartRadar()
-				GryMod.StartRadar()
-				expect(timer.Exists("GryModRadar")).to.beTrue()
+				expect(GryMod.CountNearbyNPCs).to.beNil()
+				expect(GryMod.UpdateRadar).to.beNil()
+				expect(GryMod.StartRadar).to.beNil()
+				expect(GryMod.RadarCount).to.beNil()
+				expect(timer.Exists("GryModRadar")).to.beFalse()
 			end
 		},
 		{

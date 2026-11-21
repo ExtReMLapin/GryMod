@@ -136,17 +136,6 @@ return {
 			end
 		},
 		{
-			name = "the stealth level comes from how many NPCs are near (16 fill the bar)",
-			func = function(state)
-				local R = GryMod.FlashRadar
-				expect(R.StealthFromCount(0)).to.equal(0)
-				expect(R.StealthFromCount(8)).to.equal(0.5)
-				expect(R.StealthFromCount(16)).to.equal(1)
-				expect(R.StealthFromCount(100)).to.equal(1)
-				expect(R.StealthFromCount(nil)).to.equal(0)
-			end
-		},
-		{
 			name = "the sector name is written in its field",
 			func = function(state)
 				local panel = newPanel()

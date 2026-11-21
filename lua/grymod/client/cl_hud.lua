@@ -153,33 +153,8 @@ function GryMod.CloackAttack(ply, key)
 	end
 end
 
--- How many NPCs are near: the stealth bar of the compass panel shows it.
-function GryMod.CountNearbyNPCs()
-	local count = 0
-
-	for _, ent in ipairs(ents.FindInSphere(LocalPlayer():GetPos(), 1280)) do
-		if ent:IsNPC() then
-			count = count + 1
-		end
-	end
-
-	return count
-end
-
-function GryMod.UpdateRadar()
-	if not IsValid(LocalPlayer()) then
-		return
-	end
-
-	GryMod.RadarCount = GryMod.CountNearbyNPCs() -- the compass panel shows it on its stealth bar
-end
-
--- One named timer: loading the file again replaces it instead of stacking another one
-function GryMod.StartRadar()
-	timer.Create("GryModRadar", 0.1, 0, GryMod.UpdateRadar)
-end
-
-GryMod.StartRadar()
+-- (The stealth bar of the compass panel used to count every NPC within 1280 units here, friends included. It now shows the
+-- awareness of the hostile NPCs the server sends as radar contacts: cl_hud_radar_units.lua, Radar.StealthTarget.)
 -- no key for the quick menu yet: a prompt asks for one (every time, while there is none)
 net.Receive("gry_spawn", function()
 	if GryMod.MenuKey then

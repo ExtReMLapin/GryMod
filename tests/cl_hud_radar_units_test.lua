@@ -350,6 +350,99 @@ return {
 				expect(units:Child("ObjectIcon_100")).toNot.beNil()
 				expect(units:Child("ObjectIcon_100").visible).to.beTrue()
 			end
+		},
+		{
+			name = "the stealth target is the highest awareness of the hostile contacts: fighting 1, alerted 0.5, calm, friends and nothing 0",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				expect(R.StealthTarget(nil)).to.equal(0)
+				expect(R.StealthTarget({})).to.equal(0)
+				expect(R.StealthTarget({contact(10, 0, {sub = 4})})).to.equal(1)
+				expect(R.StealthTarget({contact(10, 0, {sub = 3})})).to.equal(0.5)
+				expect(R.StealthTarget({contact(10, 0, {sub = 2})})).to.equal(0) -- tagged, hostile, calm
+				-- friends (tagged then turned friendly, or the marker of a non hostile): never
+				expect(R.StealthTarget({contact(10, 0, {sub = 0}), contact(20, 0, {sub = 1, marker = true})})).to.equal(0)
+				-- the highest wins, a crowd does not add up
+				expect(R.StealthTarget({contact(10, 0, {sub = 3}), contact(20, 0, {sub = 3}), contact(30, 0, {sub = 3}), contact(40, 0, {sub = 2})})).to.equal(0.5)
+				expect(R.StealthTarget({contact(10, 0, {sub = 3}), contact(20, 0, {sub = 4}), contact(30, 0, {sub = 0})})).to.equal(1)
+				-- a hostile that shot the player (its marker) is aware of him
+				expect(R.StealthTarget({contact(90, 0, {sub = 2, marker = true})})).to.equal(1)
+			end
+		},
+		{
+			name = "the stealth level rises a second per unit and falls four times slower, never past the target",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				expect(R.StealthStep(0, 1, 0.5)).to.aboutEqual(0.5, 1e-6)
+				expect(R.StealthStep(0, 0.5, 1)).to.aboutEqual(0.5, 1e-6) -- no overshoot
+				expect(R.StealthStep(0.9, 1, 1)).to.equal(1)
+				expect(R.StealthStep(1, 0, 1)).to.aboutEqual(0.75, 1e-6)
+				expect(R.StealthStep(0.1, 0, 10)).to.equal(0)
+				expect(R.StealthStep(0.5, 0.5, 1)).to.equal(0.5)
+				expect(R.StealthStep(nil, 1, 0.5)).to.aboutEqual(0.5, 1e-6)
+				expect(R.StealthStep(0.3, 0.3, 0 / 0)).to.equal(0.3)
+				expect(R.StealthStep(0.3, 1, -1)).to.equal(0.3)
+			end
+		},
+		{
+			name = "the old count of NPCs near no longer feeds the stealth bar",
+			func = function(state)
+				expect(GryMod.FlashRadar.StealthFromCount).to.beNil()
+			end
+		},
+		{
+			name = "the HUD's feed: friends around keep the stealth bar at zero, a fighting hostile raises it, and it falls when he is gone",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				local panel = newPanel()
+				local options = GryMod.HUDOptions
+				local realSnapshot, realFind, realEnabled, realStealth = R.Snapshot, R.FindEntity, options.Enabled, R.Stealth
+				local real = {Start = net.Start, WriteBool = net.WriteBool, SendToServer = net.SendToServer}
+				net.Start = function() end
+				net.WriteBool = function() end
+				net.SendToServer = function() end
+				R.FindEntity = function() return nil end
+				local ply = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end}
+				local bar = panel.view:Child("StealthBar")
+				local ok, err = pcall(function()
+					options.Enabled = function() return true end
+					R.Stealth = 0
+					-- sixteen friends and calm hostiles, as many as filled the bar before
+					R.Snapshot = {}
+					for i = 1, 16 do
+						R.Snapshot[i] = {id = i, x = metres(10 + i), y = 0, z = 0, yaw = 0, type = 1, sub = (i % 2 == 0) and 0 or 2, marker = false, big = false}
+					end
+					for _ = 1, 60 do R.Feed(panel, ply, 1 / 30) end
+					expect(bar:CurrentFrame()).to.equal(1)
+					expect(R.Stealth).to.equal(0)
+
+					R.Snapshot[1].sub = 4
+					for _ = 1, 15 do R.Feed(panel, ply, 1 / 30) end -- half a second
+					expect(R.Stealth).to.aboutEqual(0.5, 0.02)
+					expect(bar:CurrentFrame()).to.equal(math.floor(R.Stealth * 100 + 1.5))
+					for _ = 1, 30 do R.Feed(panel, ply, 1 / 30) end
+					expect(bar:CurrentFrame()).to.equal(101)
+
+					R.Snapshot = {}
+					for _ = 1, 30 do R.Feed(panel, ply, 1 / 30) end -- a second: a quarter lower
+					expect(R.Stealth).to.aboutEqual(0.75, 0.02)
+					for _ = 1, 150 do R.Feed(panel, ply, 1 / 30) end
+					expect(bar:CurrentFrame()).to.equal(1)
+
+					-- the contacts switched off: no stale level
+					R.Stealth = 1
+					R.Snapshot = {{id = 1, x = metres(10), y = 0, z = 0, yaw = 0, type = 1, sub = 4, marker = false, big = false}}
+					options.Enabled = function(name) return name ~= "radarunits" end
+					for _ = 1, 150 do R.Feed(panel, ply, 1 / 30) end
+					expect(R.Stealth).to.equal(0)
+				end)
+				R.Snapshot, R.FindEntity, options.Enabled, R.Stealth = realSnapshot, realFind, realEnabled, realStealth
+				net.Start, net.WriteBool, net.SendToServer = real.Start, real.WriteBool, real.SendToServer
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }

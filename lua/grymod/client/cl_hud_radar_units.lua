@@ -296,7 +296,74 @@ end
 
 timer.Create("GryMod radar want", 1, 0, tellServer)
 
--- Each frame the HUD draws: the phase of the pulse, the contacts of the server placed for this frame.
+-- The stealth bar of the panel: the original asks its AI system for the detection level of the hostile AI around the player
+-- (0 to 1, the bar takes the higher of two such numbers; the ramp is the AI system's, see the research note, section 7). Here
+-- it comes from the contacts the server sends, so friends and neutrals never count: a hostile that fights the player (or just
+-- shot him: its marker) is 1, a hostile that is alerted is 0.5, a calm one, a friend and nothing are 0. The highest wins, a
+-- crowd does not add up. Only what the server lists counts: a hostile is listed once it is alerted within 26 m of the player
+-- or after a binoculars scan, and within 97 m (the scan radius), so a distant shooter or an alert past 26 m does not show.
+Radar.STEALTH_FIGHTING = 1
+Radar.STEALTH_ALERTED = 0.5
+-- Units a second: fast up (a unit that sees the player is felt at once), slow down (it takes a while to lose him).
+Radar.STEALTH_RISE = 1
+Radar.STEALTH_FALL = 0.25
+
+-- The awareness of one contact {sub, marker}: sub 4 fighting the player and 3 alerted are the hostile ones; sub 2 is a calm
+-- hostile, except when it is a marker (it hurt the player in the last 10 s); 0 and 1 are not hostile.
+function Radar.Awareness(c)
+	local sub = c.sub
+
+	if sub == 4 or sub == 2 and c.marker then
+		return Radar.STEALTH_FIGHTING
+	end
+
+	if sub == 3 then
+		return Radar.STEALTH_ALERTED
+	end
+
+	return 0
+end
+
+-- The level the bar goes to for a list of contacts {sub, marker}.
+function Radar.StealthTarget(contacts)
+	local target = 0
+
+	if not contacts then
+		return target
+	end
+
+	for i = 1, math.min(#contacts, S.MAX_CONTACTS) do
+		local awareness = Radar.Awareness(contacts[i])
+
+		if awareness > target then
+			target = awareness
+		end
+	end
+
+	return target
+end
+
+-- The level `dt` seconds after `level` when it is going to `target`.
+function Radar.StealthStep(level, target, dt)
+	if level == nil or level ~= level then
+		level = 0
+	end
+
+	if dt == nil or dt ~= dt or dt <= 0 then
+		return level
+	end
+
+	if level < target then
+		return math.min(level + Radar.STEALTH_RISE * dt, target)
+	end
+
+	return math.max(level - Radar.STEALTH_FALL * dt, target)
+end
+
+-- The level the bar shows now.
+Radar.Stealth = 0
+
+-- Each frame the HUD draws: the phase of the pulse, the contacts of the server placed for this frame, the stealth bar.
 local phase = 0
 
 function Radar.Feed(panel, ply, dt)
@@ -312,9 +379,14 @@ function Radar.Feed(panel, ply, dt)
 
 	if options and not options.Enabled("radarunits") or not wanted then
 		panel:SetObjects({})
+		-- no contacts, no news of the hostiles: the bar goes down
+		Radar.Stealth = Radar.StealthStep(Radar.Stealth, 0, dt)
+		panel:SetStealth(Radar.Stealth)
 
 		return
 	end
 
 	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase))
+	Radar.Stealth = Radar.StealthStep(Radar.Stealth, Radar.StealthTarget(Radar.Snapshot), dt)
+	panel:SetStealth(Radar.Stealth)
 end
