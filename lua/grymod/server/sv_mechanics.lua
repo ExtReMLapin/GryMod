@@ -188,10 +188,29 @@ end
 local SHOCK_TYPES = bit.bor(DMG_SHOCK, DMG_ENERGYBEAM, DMG_PLASMA)
 local STRONG_SHOCK = 25
 
--- "light" or "strong" for an electric hit (nil when it is not one). The combine ball is always strong.
-function Mech.ShockClass(damageType, damage, inflictorClass)
-	if inflictorClass == "prop_combine_ball" then
-		return "strong"
+-- The registry entry (GryMod.API.RegisterTracked) of a class name or of an entity, or nil. The facts about the entities of the
+-- game (the heavy machines, the electric inflictors) are fields of these entries, not tables of this file.
+local function trackedOf(who)
+	local API = GryMod.API
+
+	if not API or not API.GetTracked then
+		return nil
+	end
+
+	if isstring(who) then
+		return API.GetTrackedByClass(who)
+	end
+
+	return API.GetTracked(who)
+end
+
+-- "light" or "strong" for an electric hit (nil when it is not one). An inflictor (a class name or an entity) whose entry says `shock`
+-- gives that class whatever the damage type: the combine ball is "strong" in the stock entries.
+function Mech.ShockClass(damageType, damage, inflictor)
+	local entry = inflictor ~= nil and trackedOf(inflictor)
+
+	if entry and entry.shock then
+		return entry.shock
 	end
 
 	if bit.band(damageType, SHOCK_TYPES) == 0 then
@@ -206,11 +225,12 @@ function Mech.ShockEnergyDrain(damage)
 	return math.Clamp(damage * 1.5, 5, 30)
 end
 
-local HEAVY_MACHINES = {npc_hunter = true, npc_strider = true, npc_combinegunship = true, npc_helicopter = true}
+-- A hit from one of these that breaks the armor puts the suit down: a class name or an entity whose registry entry says `heavy`
+-- (the hunter, strider, gunship and helicopter in the stock entries, any machine of another addon that registers one).
+function Mech.IsHeavyMachine(who)
+	local entry = who ~= nil and trackedOf(who)
 
--- A hit from one of these that breaks the armor puts the suit down.
-function Mech.IsHeavyMachine(class)
-	return HEAVY_MACHINES[class] == true
+	return entry and entry.heavy == true or false
 end
 
 function Mech.HeavyImpactDamage()

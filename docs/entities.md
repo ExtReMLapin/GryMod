@@ -196,6 +196,42 @@ screen or closer than 1 m from the eye. The player's settings (range, line of si
 The server follows an entity from its creation. If the entry is registered after an entity of that class was made, the server does
 not look for it again: register at load time (`Initialize`), not later.
 
+### A machine that breaks the suit, an electric weapon, an NPC that ignores the cloak
+
+Three server rules of the suit are fields of the entry too. GryMod's own Half-Life 2 data (the strider, the energy ball...) is
+registered the same way, so what you write here works exactly like theirs.
+
+```lua
+-- shared
+if GRYMOD_INSTALLED and GryMod.API.Has("tracked") then
+	-- a boss: a hit of it that breaks the armor puts the suit down (the malfunction "impact"), and it keeps a
+	-- camouflaged player in mind unless the cloak makes it forget him
+	GryMod.API.RegisterTracked("my_addon_titan", {
+		class = "npc_my_addon_titan",
+		type = "machine",
+		size = "big",
+		heavy = true,
+		cloakBlind = true,
+	})
+
+	-- a projectile that shocks the suit, whatever its damage type
+	GryMod.API.RegisterTracked("my_addon_arc", {
+		class = "my_addon_arc_bolt",
+		shock = "strong",
+	})
+end
+```
+
+| Field | Effect (server) |
+| --- | --- |
+| `heavy` | `true`: when this entity is the attacker or the inflictor of a hit that breaks the armor of a player in armor mode (the damage is 25 or more and at least the energy the suit has left), the suit goes down for 3 seconds. Needs the player's switch `gry_malfunction_impact`. Matched by class, base or `match` like any field |
+| `shock` | `"strong"`: a hit by this inflictor puts the suit down for 5 seconds (unless it just restarted). `"light"`: the HUD flickers and the energy bar loses 1.5 per point of damage (5 to 30). The damage type does not matter. Without the field, the usual rule applies: shock, energy beam and plasma damage is light under 25 points and strong from 25. Needs `gry_malfunction_shock` |
+| `cloakBlind` | `true`: this NPC keeps a camouflaged player as its enemy for good (the engine's NPCs of this kind ignore the cloak badly), so while a player is camouflaged the server makes it neutral to him and makes it forget him, and gives its attitude back when the cloak ends. Only a hostile NPC is touched. Needs a `class` (the server searches these classes only, every half second, and only while somebody is camouflaged) and the administrators' switch `gry_cloak_ai` |
+
+The first entry that matches the entity decides, as for every field: an entry of yours for `npc_strider` that does not say
+`heavy` or `cloakBlind` takes them away from the stock strider. For `cloakBlind`, which is looked up by class, the first entry that
+names the class decides.
+
 ### Remove what you added
 
 ```lua
@@ -228,7 +264,8 @@ print(describe(Entity(0)))
 
 `GetTracked(ent)` returns the stored entry (read it, do not change it) or `nil`. `GetTrackedByClass(class)` asks the same about a
 class name; it only sees entries that list the class in `class` (an entry with a `base` or a `match` needs an entity).
-`GetDanger(classOrEntity)` is the same question for the entries with a `danger`.
+`GetDanger(classOrEntity)` is the same question for the entries with a `danger`. `TrackedClasses(field)` lists the classes whose
+entry has a field set (for example `TrackedClasses("cloakBlind")`); the list is kept, read it, do not change it.
 
 ## The fields, and what each one changes
 
@@ -243,6 +280,7 @@ class name; it only sees entries that list the class in `class` (an entry with a
 | `shape` | | | | not read by anything |
 | `danger` | | | | the whole warning |
 | `indicator` | | | | `"warning"` draws it; `"marker"`, `"none"` draw nothing |
+| `heavy`, `shock`, `cloakBlind` | | | | server rules of the suit, see above (nothing is drawn) |
 | `priority` | which entry wins | which entry wins | which entry wins | which entry wins |
 
 `priority` (-1000 to 1000, 0 by default) orders the entries: the higher first, and among equals the one registered first. The first
@@ -318,6 +356,7 @@ engine class `NPC`), so a nextbot or a vehicle that you made an ally shows blue 
 | `danger.armed`, `danger.ownerOf` | read here, sent in `GryArmed` and `GryThrower` | |
 | `danger.label`, `danger.range`, `danger.ownMissile`, `indicator` | | the warning |
 | `priority` | the order of the entries | the order of the entries |
+| `heavy`, `shock`, `cloakBlind` | the suit's malfunctions and the camouflage's effect on the NPCs | stored |
 | `label`, `shape`, `danger.type` | stored | stored |
 
 So a declaration file that runs in both realms is right for every field. If you only registered on the server, the client would

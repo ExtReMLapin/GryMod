@@ -33,10 +33,18 @@ end
 -- that matches wins.
 -- ---------------------------------------------------------------------------------------------------------
 
-register("hl2_machines_big", {class = {"npc_strider", "npc_hunter"}, type = "machine", size = "big"})
+-- The strider and the hunter are heavy machines (heavy: a hit of theirs that breaks the armor puts the suit down) and keep a camouflaged
+-- player in mind (cloakBlind: the cloak makes them forget him, see server/sv_cloak_ai.lua).
+register("hl2_machines_big", {class = {"npc_strider", "npc_hunter"}, type = "machine", size = "big", heavy = true, cloakBlind = true})
+
+-- The gunship and the helicopter: heavy machines too, drawn as the other flying units. Before hl2_flying, which would take them first.
+register("hl2_flying_heavy", {class = {"npc_combinegunship", "npc_helicopter"}, type = "flying", heavy = true})
+
+-- The manhack is the third unit that keeps a camouflaged player in mind.
+register("hl2_flying_manhack", {class = "npc_manhack", type = "flying", cloakBlind = true})
 
 register("hl2_flying", {
-	class = {"npc_combinegunship", "npc_helicopter", "npc_combinedropship", "npc_cscanner", "npc_clawscanner", "npc_manhack"},
+	class = {"npc_combinedropship", "npc_cscanner", "npc_clawscanner"},
 	type = "flying"
 })
 
@@ -138,9 +146,10 @@ register("hl2_mine", {
 })
 
 -- prop_combine_ball: m_bLaunched from the weapon's fire or a launcher, m_bHeld by a gravity gun (then it is not a danger coming,
--- the player has it)
+-- the player has it). Electric: a hit of it is always a strong shock for the suit (shock, see server/sv_mechanics.lua).
 register("hl2_energy_ball", {
 	class = "prop_combine_ball",
+	shock = "strong",
 	danger = {
 		label = "ENERGY BALL", type = "energy", ownMissile = true,
 		armed = function(ent)

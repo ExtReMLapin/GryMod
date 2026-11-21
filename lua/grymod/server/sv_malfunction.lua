@@ -155,10 +155,6 @@ local function ask(ply, kind)
 	end)
 end
 
-local function className(ent)
-	return IsValid(ent) and ent:GetClass() or nil
-end
-
 -- Called first thing by the damage handler of sv_health.lua, before the armor works on the hit: electric hits burn
 -- energy and may put the suit down, a heavy machine breaking the armor does too.
 function Malfunction.OnDamage(ply, dmginfo)
@@ -173,7 +169,7 @@ function Malfunction.OnDamage(ply, dmginfo)
 	end
 
 	local Mech = GryMod.Mech
-	local shock = Mech.ShockClass(dmginfo:GetDamageType(), amt, className(dmginfo:GetInflictor()))
+	local shock = Mech.ShockClass(dmginfo:GetDamageType(), amt, dmginfo:GetInflictor())
 	local energy = ply:GetNW2Float("GryEnergy")
 	local armor = ply.Nanosuit_mode == GryMod.Modes.ARMOR
 
@@ -204,7 +200,7 @@ function Malfunction.OnDamage(ply, dmginfo)
 	if armor and amt >= Mech.HeavyImpactDamage() and amt >= energy and Malfunction.Enabled("impact") and not Malfunction.InGrace(ply) then
 		local attacker = dmginfo:GetAttacker()
 
-		if Mech.IsHeavyMachine(className(attacker)) or Mech.IsHeavyMachine(className(dmginfo:GetInflictor())) then
+		if Mech.IsHeavyMachine(attacker) or Mech.IsHeavyMachine(dmginfo:GetInflictor()) then
 			ask(ply, "impact")
 		end
 	end

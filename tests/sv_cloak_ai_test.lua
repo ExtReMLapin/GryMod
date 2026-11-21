@@ -235,8 +235,11 @@ return {
 				assert(ok, err)
 
 				expect(all).to.equal(0)
-				expect(#classes).to.equal(#GryMod.CloakAI.Classes)
+				-- the classes of the registry (cloakBlind) and the ones of the public list, each once
+				expect(#classes).to.equal(#GryMod.API.TrackedClasses("cloakBlind") + #GryMod.CloakAI.Classes)
 				expect(table.HasValue(classes, "npc_strider")).to.beTrue()
+				expect(table.HasValue(classes, "npc_hunter")).to.beTrue()
+				expect(table.HasValue(classes, "npc_manhack")).to.beTrue()
 				expect(table.HasValue(classes, "npc_zombie")).to.beFalse()
 			end
 		},

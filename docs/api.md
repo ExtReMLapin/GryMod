@@ -166,13 +166,14 @@ A weapon is described by a **definition**, a table of optional fields. A field y
 | `burst` | integer, 2 to 32 | the size of a burst, when `fire` is `"burst"` |
 | `ammo` | ammo type name | the primary ammo (default: `Primary.Ammo`, then the engine's ammo of the weapon) |
 | `counter` | `"clip"`, `"none"`, or `function(wep)` returning a text | what the counter shows (default `"clip"`; `"none"` when `CustomAmmoDisplay` says `Draw = false`) |
-| `alt` | `"none"`, `"grenade"`, `"energy"`, `"zoom"`, `"doublebarrel"`, `"shoot"`, `"throwlow"`, `"melee"` | what the secondary fire (right click) is |
+| `alt` | `"none"`, `"grenade"`, `"energy"`, `"zoom"`, `"doublebarrel"`, `"shoot"`, `"throwlow"`, `"melee"` | what the secondary fire (right click) is; `"zoom"` also makes the binoculars end the weapon's zoom when they open (client and server read the registry) |
 | `altAmmo` | ammo type name | the ammo the secondary counts (`"SMG1_Grenade"` for a grenade launcher, `"AR2AltFire"` for the energy ball) |
 | `altShoots` | boolean | true when the secondary fires a shot. The camouflage ends on a right click that shoots. Default: true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow` |
 | `altLabel` | short text, 24 characters at most | the name of the secondary fire (`"40mm"`) |
 | `altIcon` | an icon key (see below) | the icon the HUD shows for the secondary fire |
 | `icon` | an icon key | the icon of the weapon slot (it wins over `fire`) |
 | `slotIcon` | an icon key | the stock icon of the weapon slot, when `icon` is not given |
+| `crosshair` | boolean | `false`: the HUD draws no crosshair while the weapon is in hand (the stock fists and RPG). `true` or no field: it is shown |
 
 The icon keys are the ones of the HUD movie: `Single`, `Burst`, `Auto`, `Grenade`, `Shotgun`, `Mine`, `Repairkit`, `Missle`, `NoGun`,
 `HandGrenade` and the ones that no stock weapon uses, which are yours to choose: `Incendiary`, `Tranquilizer`, `infinity`, `Narrow`,
@@ -235,6 +236,7 @@ entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
 | `altLabel` | sent, not drawn | the movie has no text field for it |
 | `altShoots` | client | the camouflage: a right click that shoots ends it (the HUD tells the server) |
 | `icon`, `slotIcon` | client | the icon of the weapon slot |
+| `crosshair` | client | the HUD's crosshair is hidden while the weapon is in hand |
 
 ### Where a field comes from
 
@@ -313,6 +315,9 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `danger` | a table (below) | the entity is a projectile or a trap the player must be warned about (the grenade warning) |
 | `indicator` | `"warning"`, `"marker"`, `"none"` | how a danger shows on the screen. `"warning"` (the default for an entry with `danger`) is the grenade-detect warning: an icon with the label and the distance. `"marker"` and `"none"` are accepted and stored: the warning does not draw them, and no marker is drawn yet |
 | `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
+| `heavy` | boolean | server: a hit by this entity (attacker or inflictor) that breaks the armor of a player in armor mode puts the suit down for 3 s (`gry_malfunction_impact`). Matched by class, base or `match` |
+| `shock` | `"light"` or `"strong"` | server: a hit by this inflictor is a light shock (flicker, energy drain) or a strong one (suit down for 5 s), whatever the damage type (`gry_malfunction_shock`) |
+| `cloakBlind` | boolean, needs a `class` | server: this NPC keeps a camouflaged player in mind for good, so the server makes it neutral to him and makes it forget him while he is camouflaged (`gry_cloak_ai`) |
 
 A vehicle or a device (an entity that is neither an NPC nor a nextbot) is a radar contact when its entry gives it a `radar` rule (the stock entries
 for the Buggy and the Jalopy, `prop_vehicle_jeep`, the airboat, the Combine APC and crane, and for the Combine mine use `"scan"`: on the radar once
@@ -331,6 +336,9 @@ A `match` function is asked about every entity of a class that no earlier entry 
 
 `GetTrackedByClass(class)` is the same question for a class name instead of an entity: the first entry that names the class in its
 `class` list (a `base` or a `match` needs an entity to be asked). The radar uses it for the icon of a class.
+
+`TrackedClasses(field)` lists the classes of the entries that have a field (the first entry that names a class decides): the list is kept, read it
+and do not change it. The camouflage's AI rule uses it to know which NPCs to look for.
 
 ### `radar`: when the contact is listed
 
@@ -407,6 +415,7 @@ is armed and what the binoculars may tag; the client draws.
 | `label` | stored | stored | the entry's name; it is also the fallback label of a danger. No part of the HUD shows it |
 | `shape` | stored | stored | nothing reads it yet; the radar draws the icon of `type` |
 | `priority` | yes | yes | the order of the entries |
+| `heavy`, `shock`, `cloakBlind` | yes | stored | the suit's malfunction rules and the camouflage's AI rule (server only) |
 | `danger.armed` | yes | | the server reads the state and networks it (`GryArmed`) |
 | `danger.ownerOf` | yes | | who threw it (`GryThrower`) |
 | `danger.label` | | yes | the text of the warning |

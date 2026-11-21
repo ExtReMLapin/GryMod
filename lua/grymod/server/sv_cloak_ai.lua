@@ -21,12 +21,32 @@ local enabled = CreateConVar("gry_cloak_ai", "1", flags,
 local TIMER = "GryCloakAI"
 local INTERVAL = 0.5
 
--- The classes that keep a player who cloaked in the middle of a fight for good (see above). More can be added by other code.
-CloakAI.Classes = {
-	"npc_strider",
-	"npc_hunter",
-	"npc_manhack"
-}
+-- The classes that keep a player who cloaked in the middle of a fight for good (see above) are the entries of the registry of tracked
+-- entities with `cloakBlind = true` (GryMod.API.RegisterTracked; the strider, hunter and manhack are stock entries in
+-- sh_api_tracked_hl2.lua). This list holds more classes, added by code that predates the registry; it is empty by default.
+CloakAI.Classes = {}
+
+-- The classes to search at a tick: the registry's, then the ones of CloakAI.Classes that it does not have (a class once).
+local function classesToSearch()
+	local classes = GryMod.API and GryMod.API.TrackedClasses and GryMod.API.TrackedClasses("cloakBlind") or {}
+
+	if #CloakAI.Classes == 0 then
+		return classes
+	end
+
+	local all, seen = {}, {}
+
+	for _, list in ipairs({classes, CloakAI.Classes}) do
+		for _, class in ipairs(list) do
+			if not seen[class] then
+				seen[class] = true
+				all[#all + 1] = class
+			end
+		end
+	end
+
+	return all
+end
 
 -- [npc] = {[player] = the disposition it had before we made it neutral}; weak so that a removed NPC or player goes away
 local changed = setmetatable({}, {__mode = "k"})
@@ -113,7 +133,7 @@ function CloakAI.Tick()
 		return
 	end
 
-	for _, class in ipairs(CloakAI.Classes) do
+	for _, class in ipairs(classesToSearch()) do
 		for _, npc in ipairs(ents.FindByClass(class)) do
 			for _, ply in ipairs(hidden) do
 				hide(npc, ply)

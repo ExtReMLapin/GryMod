@@ -38,6 +38,7 @@ local VALID_RELATION = set({"ally", "neutral", "hostile"})
 local SHAPE = set({"unit", "dot", "rect", "triangle"})
 local SIZE = set({"normal", "big"})
 local INDICATOR = set({"warning", "marker", "none"})
+local SHOCK = set({"light", "strong"})
 
 -- The icons of the radar's movie: 1 ground units (infantry), 2 flying, 3 machines and vehicles (the rectangles), 4 devices (a rectangle
 -- with a disc: the original's HUD code never produces it, GryMod uses it for the Combine mine).
@@ -161,10 +162,13 @@ local CHECK = {
 	size = function(v) if isstring(v) and SIZE[v] then return v end end,
 	danger = danger,
 	indicator = function(v) if isstring(v) and INDICATOR[v] then return v end end,
+	heavy = function(v) if isbool(v) then return v end end,
+	shock = function(v) if isstring(v) and SHOCK[v] then return v end end,
+	cloakBlind = function(v) if isbool(v) then return v end end,
 	priority = function(v) if isnumber(v) and v >= -MAX_PRIORITY and v <= MAX_PRIORITY then return v end end
 }
 
-local FIELDS = {"class", "base", "match", "scan", "radar", "relation", "type", "label", "shape", "size", "danger", "indicator", "priority"}
+local FIELDS = {"class", "base", "match", "scan", "radar", "relation", "type", "label", "shape", "size", "danger", "indicator", "heavy", "shock", "cloakBlind", "priority"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -183,9 +187,13 @@ local cache = {}
 -- danger (dangerByClass), and the list of the classes that have one (dangerList).
 local byClass, dangerByClass, dangerList
 
+-- [field] = the list of the classes whose entry has that field set (TrackedClasses); dropped at every change too.
+local fieldClasses = {}
+
 local function changed()
 	cache = {}
 	byClass, dangerByClass, dangerList = nil, nil, nil
+	fieldClasses = {}
 end
 
 local function priorityOf(entry)
@@ -246,6 +254,10 @@ function API.RegisterTracked(key, def)
 
 		entry.danger.label = entry.danger.label or (isstring(entry.label) and entry.label) or "DANGER"
 		entry.indicator = entry.indicator or "warning"
+	end
+
+	if entry.cloakBlind and not entry.class then
+		return false, "a cloakBlind needs a class (the cloak looks for these NPCs by class)"
 	end
 
 	if entry.class then
@@ -341,7 +353,8 @@ end
 
 -- The first entry that matches the entity, or nil. The entry is the stored one, not a copy: read it, do not change it. Its fields:
 -- key, priority, scan (bool), radar, relation, type (the radar's icon, 1 to 4), label, shape, size (nil when not given), danger
--- (a table: label, type, armed, range, ownerOf, ownMissile), indicator, class, base, match.
+-- (a table: label, type, armed, range, ownerOf, ownMissile), indicator, heavy, shock, cloakBlind (nil when not given), class, base,
+-- match.
 function API.GetTracked(ent)
 	if order[1] == nil then
 		return nil
@@ -448,6 +461,44 @@ function API.DangerClasses()
 	index()
 
 	return dangerList
+end
+
+local NO_CLASSES = {}
+
+-- The classes whose entry has the field set (true, or a text such as shock's): a class counts when the entry is the first to NAME
+-- it (an entry above it that names the same class without the field takes it away), in the order of the entries. `field` is a field
+-- of a definition; any other name gives an empty list. For what a server system searches by class (the NPCs the camouflage hides
+-- from). The list is kept: read it, do not change it.
+function API.TrackedClasses(field)
+	if not isstring(field) or not CHECK[field] or order[1] == nil then
+		return NO_CLASSES
+	end
+
+	local list = fieldClasses[field]
+
+	if list then
+		return list
+	end
+
+	index()
+
+	list = {}
+
+	for i = 1, #order do
+		local entry = order[i]
+
+		if entry.class and entry[field] then
+			for _, class in ipairs(entry.class) do
+				if byClass[class] == entry then
+					list[#list + 1] = class
+				end
+			end
+		end
+	end
+
+	fieldClasses[field] = list
+
+	return list
 end
 
 -- Step 2 of the relation chain (GryMod.API.Relation, server/sv_api.lua): the `relation` field of the entry that matches the
