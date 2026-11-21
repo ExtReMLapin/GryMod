@@ -173,6 +173,23 @@ return {
 			end
 		},
 		{
+			name = "Observe: the malfunction flag that shows a moment after the forced armor mode takes the effect back (seen live: mode first, flag 50 ms later)",
+			func = function(state)
+				local s = seen(Modes.SPEED)
+				expect(FX.Observe(s, sample(Modes.ARMOR, true, false), 10, true)).to.equal(Modes.ARMOR)
+				expect(FX.Params(s, 10.02)).toNot.beNil()
+
+				expect(FX.Observe(s, sample(Modes.ARMOR, true, true), 10.05, true)).to.beNil()
+				expect(FX.Params(s, 10.05)).to.beNil()
+
+				-- a flag that comes long after leaves a normal effect alone
+				local late = seen(Modes.ARMOR)
+				expect(FX.Observe(late, sample(Modes.SPEED, true, false), 10, true)).to.equal(Modes.SPEED)
+				FX.Observe(late, sample(Modes.SPEED, true, true), 10.35, true)
+				expect(FX.Params(late, 10.35)).toNot.beNil()
+			end
+		},
+		{
 			name = "Observe: the switch off plays nothing, and turning it on later does not replay a past change",
 			func = function(state)
 				local s = seen(Modes.ARMOR)

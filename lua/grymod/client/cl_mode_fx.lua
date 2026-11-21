@@ -25,6 +25,11 @@ local Modes = GryMod.Modes
 -- Seconds after a respawn in which a change of mode is the server's own (the suit goes back to armor), not a choice.
 FX.SPAWN_GRACE = 1
 
+-- Seconds after a change in which a suit that turns out to be down takes the effect back: the server sets the flag "GryMalfunction"
+-- just before it forces armor mode, but the two reach the client in the order they like (seen in a test: the mode first, the flag a
+-- frame later at 20 fps).
+FX.WITHDRAW = 0.3
+
 -- Per mode, the flow graph's numbers: seconds up to the peak, seconds in all, and the colour offsets added to the picture at
 -- the peak (0 to 1). The graph moves one of the grade's cyan, yellow or black values from 0 to -0.15 or -0.2 and back; the
 -- engine's colour matrix turns a negative cyan into red, a negative yellow into blue and a negative black into all three.
@@ -75,7 +80,8 @@ end
 -- State
 --------------------------------------------------------------------------------------------------------------------
 
--- starts: mode -> the time its effect began; mode: the last mode seen; aliveAt: when the player was last seen coming alive.
+-- starts: mode -> the time its effect began; mode: the last mode seen; aliveAt: when the player was last seen coming alive;
+-- startedMode, startedAt: the last effect Observe started.
 function FX.NewState()
 	return {starts = {}, mode = nil, aliveAt = nil}
 end
@@ -188,6 +194,12 @@ function FX.Observe(state, sample, now, enabled)
 		state.aliveAt = now
 	end
 
+	-- a forced armor mode shows before the flag that says why: take the effect back
+	if sample.malfunction and state.startedMode and now - state.startedAt < FX.WITHDRAW then
+		state.starts[state.startedMode] = nil
+		state.startedMode = nil
+	end
+
 	if mode == nil then
 		return nil
 	end
@@ -204,6 +216,7 @@ function FX.Observe(state, sample, now, enabled)
 	end
 
 	FX.Start(state, mode, now)
+	state.startedMode, state.startedAt = mode, now
 
 	return mode
 end
