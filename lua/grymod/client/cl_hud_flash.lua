@@ -772,7 +772,12 @@ function Module.Paint()
 	local right, left = xOffsets()
 
 	hud:Update(dt)
-	hud:Draw(ScrW() - 1024 * scale + right, ScrH() - 768 * scale, scale)
+
+	-- each panel has its own switch (gry_hud_status, gry_hud_radar); a hidden one keeps running so that it is
+	-- in the right state when it comes back
+	if not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("status") then
+		hud:Draw(ScrW() - 1024 * scale + right, ScrH() - 768 * scale, scale)
+	end
 
 	if panel then
 		local Radar = GryMod.FlashRadar
@@ -780,7 +785,10 @@ function Module.Paint()
 		panel:SetFOV(ply:GetFOV())
 		panel:SetStealth(Radar.StealthFromCount(GryMod.RadarCount))
 		panel:Update(dt)
-		panel:Draw(left, ScrH() - 768 * scale, scale)
+
+		if not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("radar") then
+			panel:Draw(left, ScrH() - 768 * scale, scale)
+		end
 	end
 end
 
