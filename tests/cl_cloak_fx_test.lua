@@ -94,6 +94,10 @@ return {
 	beforeEach = function(state)
 		-- the draw hooks only exist while somebody is camouflaged: the cases call them directly
 		GryMod.CloakFX.SetDrawHooks(true)
+
+		-- the scan lines (cl_cloak_lines.lua, tested in cl_cloak_lines_test.lua) need a real entity's box and the real stencil:
+		-- the fake players here are only drawn through the layers
+		stub(GryMod.CloakFX.Lines, "Draw", function() return true end)
 	end,
 	afterAll = function(state)
 		GryMod.CloakFX.SetDrawHooks(next(GryMod.CloakFX.States) ~= nil)

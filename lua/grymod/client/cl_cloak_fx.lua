@@ -337,6 +337,13 @@ local SPARK_R, SPARK_G, SPARK_B = 0.3, 0.45, 1
 -- drawn next): the refraction first, the sparks added on it, then the plain model over it at the opacity `base`.
 local drawing = false
 
+-- Draws the entity's own model for cl_cloak_lines.lua (the stencil pass): `drawing` lets it through the player's draw hook.
+local function drawPlain(ent)
+	drawing = true
+	pcall(ent.DrawModel, ent)
+	drawing = false
+end
+
 local function drawLayers(ent, refract, base, spark)
 	local refractMat, edgeMat = materials()
 	drawing = true
@@ -438,6 +445,11 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				end
 
 				drawLayers(ply, refract, base, spark)
+
+				-- the scan lines of the sparks, on the screen over the silhouette
+				if spark > 0.02 and F.Lines then
+					F.Lines.Draw(ply, spark, drawPlain)
+				end
 
 				-- the weapon in the hand follows the body (its world model is hidden by the server, see sv_system.lua, so
 				-- it is drawn from here): the refraction, then the plain model at the same opacity, without sparks
