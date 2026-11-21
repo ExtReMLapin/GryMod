@@ -12,18 +12,18 @@ local function living(ent)
 	return IsValid(ent) and (ent:IsNPC() or ent:IsPlayer() or ent:IsNextBot())
 end
 
-hook.Add("EntityTakeDamage", "GryMod feedback", function(victim, dmg)
-	if not IsValid(victim) or dmg:GetDamage() <= 0 then
+-- What a hit of this amount tells the client. The amount is the one the hit had when it came, before the suit's armor
+-- took any of it: a hit of no amount at all tells nothing (a prop that grazes, a damage with no amount).
+function GryMod.Feedback.OnHit(victim, attacker, amount)
+	if not IsValid(victim) or not amount or amount <= 0 then
 		return
 	end
-
-	local attacker = dmg:GetAttacker()
 
 	if not IsValid(attacker) or attacker == victim or attacker:IsWorld() then
 		return
 	end
 
-	-- the player is hurt by something: the arcs show the side. Only the direction is sent (the arcs need no more
+	-- the player is hurt by something: the arrows show the side. Only the direction is sent (the arrows need no more
 	-- and a position would show where a hidden player is), at most ten times a second (a shotgun fires many pellets).
 	if victim:IsPlayer() and victim:Alive() and CurTime() >= (victim.gryNextDamageDir or 0) then
 		victim.gryNextDamageDir = CurTime() + 0.1
@@ -38,4 +38,16 @@ hook.Add("EntityTakeDamage", "GryMod feedback", function(victim, dmg)
 		net.Start("gry_hit")
 		net.Send(attacker)
 	end
+end
+
+-- The suit's armor (sv_health.lua) can take all of a hit and set its damage to 0, and the EntityTakeDamage hooks run in
+-- no fixed order, so a hook of this file would read 0 or the real amount by chance. The hits on a player are therefore
+-- reported by the suit's own hook, with the amount it found before changing it; this hook takes the other victims
+-- (NPCs, nothing of GryMod touches their damage).
+hook.Add("EntityTakeDamage", "GryMod feedback", function(victim, dmg)
+	if not IsValid(victim) or victim:IsPlayer() then
+		return
+	end
+
+	GryMod.Feedback.OnHit(victim, dmg:GetAttacker(), dmg:GetDamage())
 end)

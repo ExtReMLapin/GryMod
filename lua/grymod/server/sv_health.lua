@@ -68,6 +68,12 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 
 	local amt = dmginfo:GetDamage()
 
+	-- the armor below can take all of the hit and the hooks run in no fixed order: the damage arrows and the hit marker
+	-- are told from here, with the amount the hit came with (sv_feedback.lua leaves the hits on players to this hook)
+	if GryMod.Feedback then
+		GryMod.Feedback.OnHit(ply, dmginfo:GetAttacker(), amt)
+	end
+
 	-- electric hits burn energy and heavy impacts can put the suit down (sv_malfunction.lua)
 	if GryMod.Malfunction then
 		GryMod.Malfunction.OnDamage(ply, dmginfo)

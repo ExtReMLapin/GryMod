@@ -357,6 +357,39 @@ return {
 			end
 		},
 		{
+			name = "a hit the armor takes all of marks the NPC whatever the order of the radar hook and the suit's",
+			func = function(state)
+				local p = ply()
+				local e = spawnNPC("npc_zombie", p:GetPos() + Vector(300, 0, 0))
+				local hooks = hook.GetTable().EntityTakeDamage
+				local mode, energy = p.Nanosuit_mode, p:GetNWFloat("GryEnergy")
+				local orders = {{"Grymod damage handeling", "GryMod radar"}, {"GryMod radar", "Grymod damage handeling"}}
+
+				startRecording()
+				local ok, err = pcall(function()
+					for _, order in ipairs(orders) do
+						local dmg = DamageInfo()
+						dmg:SetDamage(10)
+						dmg:SetAttacker(e)
+						p.Nanosuit_mode = GryMod.Modes.ARMOR
+						p:SetNWFloat("GryEnergy", 100)
+						R.Reset(p)
+
+						for _, name in ipairs(order) do
+							hooks[name](p, dmg)
+						end
+
+						expect(R.State(p).markers[e]).toNot.beNil()
+					end
+				end)
+				stopRecording()
+				p.Nanosuit_mode = mode
+				p:SetNWFloat("GryEnergy", energy)
+				R.Reset(p)
+				assert(ok, err)
+			end
+		},
+		{
 			name = "a tick sends the list of a player who asked for it, and nothing when nothing changed",
 			func = function(state)
 				local p = ply()
