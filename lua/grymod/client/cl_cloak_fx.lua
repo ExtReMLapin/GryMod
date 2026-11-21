@@ -175,9 +175,14 @@ end
 -- The motion of `ent` (at world position `pos`) on the screen, once per frame whatever the number of views drawn (a mirror draws the player
 -- again in the same frame). 0 the first time it is seen, and after a gap too long for the last position to mean anything. The tracks are kept in
 -- the player's state, one for each entity drawn for him (the body, the weapon, the view model).
+--
+-- What counts is the entity's own move, not the camera's: somebody standing still who slides across the screen because the OBSERVER moves is not
+-- moving, and gets no sparks. So the last position is kept in the WORLD and both positions are seen from the camera as it is now. The view model
+-- is the other way round: it is drawn relative to the camera, so what it does on the screen (swaying, being raised to the eye to aim) is its
+-- position in the camera's space, and `relative` keeps that one.
 F.MotionGap = 0.25
 
-function F.Motion(s, ent, pos)
+function F.Motion(s, ent, pos, relative)
 	local tracks = s.tracks
 
 	if not tracks then
@@ -186,11 +191,12 @@ function F.Motion(s, ent, pos)
 	end
 
 	local frame, time = FrameNumber(), CurTime()
-	local view = WorldToLocal(pos, angle_zero, EyePos(), EyeAngles())
+	local eye, angles = EyePos(), EyeAngles()
+	local view = WorldToLocal(pos, angle_zero, eye, angles)
 	local track = tracks[ent]
 
 	if not track then
-		tracks[ent] = {view = view, frame = frame, time = time, value = 0}
+		tracks[ent] = {view = view, world = pos, frame = frame, time = time, value = 0}
 
 		return 0
 	end
@@ -200,10 +206,12 @@ function F.Motion(s, ent, pos)
 	local value = 0
 
 	if time - track.time < F.MotionGap then
-		value = F.ScreenMotion(track.view, view, F.FieldOfView(), ScrW() / ScrH())
+		local before = relative and track.view or WorldToLocal(track.world, angle_zero, eye, angles)
+
+		value = F.ScreenMotion(before, view, F.FieldOfView(), ScrW() / ScrH())
 	end
 
-	track.view, track.frame, track.time, track.value = view, frame, time, value
+	track.view, track.world, track.frame, track.time, track.value = view, pos, frame, time, value
 
 	return value
 end
@@ -626,7 +634,7 @@ local function endFirstPerson(ent, ply)
 	if F.Shader and F.Shader.Active() then
 		if IsValid(ent) then
 			-- the original's strength: no floor of our own (the outline's is only for the older layer below)
-			local strength = F.SparkStrength(s.amount, F.Motion(s, ent, ent:GetPos()))
+			local strength = F.SparkStrength(s.amount, F.Motion(s, ent, ent:GetPos(), true))
 
 			if strength > 0 then
 				F.Shader.Draw(ent, strength, s.amount, drawPlain)

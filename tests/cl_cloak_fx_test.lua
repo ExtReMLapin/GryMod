@@ -898,6 +898,85 @@ return {
 			end
 		},
 		{
+			name = "Motion: another player's own move counts, not the camera's: an entity standing still in the world has no motion while the camera moves (the view model, which is drawn relative to the camera, is the other way round)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local frame, now = 20, 200
+				local eye = Vector(0, 0, 0)
+				stub(_G, "FrameNumber", function() return frame end)
+				stub(_G, "CurTime", function() return now end)
+				stub(_G, "EyePos", function() return eye end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
+
+				local s = {}
+				local still, relative = {}, {}
+				local world = Vector(300, 0, 0)
+
+				expect(F.Motion(s, still, world)).to.equal(0)
+				expect(F.Motion(s, relative, world, true)).to.equal(0)
+
+				-- the camera steps sideways 5 units, nobody else moves
+				frame, now, eye = 21, 200.016, Vector(0, 5, 0)
+				expect(F.Motion(s, still, world)).to.equal(0)
+				expect(F.Motion(s, relative, world, true)).to.beGreaterThan(0.1)
+
+				-- the player himself steps sideways 3 units, the camera stays: that is his motion
+				frame, now = 22, 200.032
+				expect(F.Motion(s, still, Vector(300, 3, 0))).to.aboutEqual(F.ScreenMotion(Vector(300, 0, 0) - eye, Vector(300, 3, 0) - eye, 90, 1920 / 1080), 0.002)
+
+				-- both move at once: only his own move is counted
+				frame, now, eye = 23, 200.048, Vector(0, 25, 0)
+				local both = F.Motion(s, still, Vector(300, 6, 0))
+				frame, now = 24, 200.064
+				expect(both).to.aboutEqual(F.ScreenMotion(Vector(300, 3, 0) - eye, Vector(300, 6, 0) - eye, 90, 1920 / 1080), 0.002)
+			end
+		},
+		{
+			name = "pixel shader, third person: a player standing still gets no sparks when it is the camera that moves",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local ply = fakePlayer(0)
+				local frame, now = 30, 300
+				local eye = Vector(0, 0, 0)
+				stub(_G, "FrameNumber", function() return frame end)
+				stub(_G, "CurTime", function() return now end)
+				stub(_G, "EyePos", function() return eye end)
+				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
+				stub(F, "FieldOfView", function() return 90 end)
+				stub(F.Shader, "Active", function() return true end)
+
+				local strengths = {}
+				stub(F.Shader, "Draw", function(ent, strength) strengths[#strengths + 1] = strength return true end)
+
+				stub(_G, "EyeVector", function() return Vector(1, 0, 0) end)
+
+				local function drawFrame()
+					hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, false, false)
+				end
+
+				setState(ply, 1, 0)
+				ply.center = Vector(300, 0, 0)
+				drawFrame()
+
+				for i = 1, 5 do
+					frame, now, eye = frame + 1, now + 0.016, Vector(0, 6 * i, 0) -- the camera runs sideways, he stands still
+					drawFrame()
+				end
+
+				expect(#strengths).to.equal(6)
+
+				for _, strength in ipairs(strengths) do
+					expect(strength).to.aboutEqual(F.SparkStrength(1, 0), 0.0001) -- only the faint 5 %
+				end
+			end
+		},
+		{
 			name = "pixel shader, third person: refraction and plain model, then the shader added with the original's strength: faint when still, the motion on the screen when moving",
 			func = function(state)
 				local F = GryMod.CloakFX
