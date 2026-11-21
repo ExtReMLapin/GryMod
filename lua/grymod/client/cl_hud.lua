@@ -145,9 +145,48 @@ end
 concommand.Add("+crysishud", GryMod.CryOpenClose)
 concommand.Add("-crysishud", GryMod.CryOpenClose)
 
+-- Switch: the right click also ends the camouflage when the weapon really fires with it.
+local CloakAltFire = CreateClientConVar("gry_cloak_altfire", "1", true, false, "The camouflage also ends on a right click that really fires: the shotgun's double barrel, the SMG grenade, the AR2 energy ball, the frag grenade's lob")
+
+-- Does the right click of this Half-Life 2 weapon fire a shot right now? Pure: the class, the magazine (Clip1) and the
+-- ammo reserve of the primary and of the secondary ammo type of the weapon. The crossbow's right click is a zoom, and
+-- the weapons of other addons are unknown: neither counts.
+function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
+	if class == "weapon_shotgun" then
+		return (clip1 or 0) >= 2 -- the double barrel fires both shells
+	elseif class == "weapon_smg1" or class == "weapon_ar2" then
+		return (secondaryReserve or 0) > 0 -- the grenade, the energy ball
+	elseif class == "weapon_frag" then
+		return (primaryReserve or 0) > 0 -- the lob, while there is a grenade
+	end
+
+	return false
+end
+
+-- The right click of the weapon the player holds fires a shot now (GryMod.AltFireShoots on its real numbers).
+local function altFireNow(ply)
+	local weapon = ply:GetActiveWeapon()
+
+	if not IsValid(weapon) then
+		return false
+	end
+
+	return GryMod.AltFireShoots(
+		weapon:GetClass(),
+		weapon:Clip1(),
+		ply:GetAmmoCount(weapon:GetPrimaryAmmoType()),
+		ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
+	)
+end
+
+-- Shooting ends the camouflage: the left click always, the right click when the weapon fires with it.
 function GryMod.CloackAttack(ply, key)
-	if key == IN_ATTACK and LocalPlayer().NanosuitMode == GryMod.Modes.CLOAK then
-		LocalPlayer():SetNanosuitMode(GryMod.Modes.ARMOR, true)
+	if ply.NanosuitMode ~= GryMod.Modes.CLOAK then
+		return
+	end
+
+	if key == IN_ATTACK or (key == IN_ATTACK2 and CloakAltFire:GetBool() and altFireNow(ply)) then
+		ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
 		net.Start("gry_empty_energy")
 		net.SendToServer() -- too lazy to fight cheaters
 	end
