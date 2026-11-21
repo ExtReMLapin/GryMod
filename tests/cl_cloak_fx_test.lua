@@ -35,6 +35,7 @@ local function fakePlayer(speed)
 	function ply:DrawShadow(on) self.shadow = on end
 	function ply:GetViewModel() return NULL end
 	function ply:GetNW2Bool() return false end
+	function ply:GetNW2Float(name, default) return default end -- the server's activation time is not there: F.StartAmount starts from the plain model
 	function ply:EntIndex() return 99 end
 	function ply:GetVelocity() return Vector(speed or 0, 0, 0) end
 	function ply:GetModel() return "" end -- no world model to copy: the weapon itself is drawn (cases of the proxy give one)
@@ -1172,6 +1173,135 @@ return {
 				end
 
 				expect(F.States[runner].speed).to.aboutEqual(300, 0.5)
+			end
+		},
+		{
+			-- would fail if: F.StartAmount or F.JoinMargin was removed, or the margin was made smaller than the clock's and the network's error
+			name = "StartAmount: a player first seen already camouflaged starts done when his activation is older than the change plus a margin, else from the plain model (the activation is going on and is seen as usual); the margin covers the two clocks' difference and the network's delay",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local limit = F.ActivateTime + F.JoinMargin
+
+				-- the margin is real: the client's clock may be ahead of the server's by about the ping, and the message takes as long to come (a bad
+				-- connection is a quarter of a second each way); a fresh activation must never be read as an old one
+				expect(F.JoinMargin >= 0.3).to.beTrue()
+				expect(F.JoinMargin <= 1).to.beTrue() -- and not so large that somebody who joins sees much of a change that is already over
+
+				expect(F.StartAmount(1000 - 5, 1000)).to.equal(1) -- camouflaged for five seconds
+				expect(F.StartAmount(1000 - limit - 0.01, 1000)).to.equal(1)
+				expect(F.StartAmount(1000 - limit + 0.01, 1000)).to.equal(0) -- the margin is not over yet
+				expect(F.StartAmount(1000 - 0.1, 1000)).to.equal(0) -- just started
+				expect(F.StartAmount(1000 - F.ActivateTime, 1000)).to.equal(0) -- the change has just ended on the server: still inside the margin
+
+				-- the client's clock behind the server's (the activation looks to be in the future), or a time that is not there (nobody wrote it)
+				expect(F.StartAmount(1000 + 0.3, 1000)).to.equal(0)
+				expect(F.StartAmount(-1, 1000)).to.equal(0)
+			end
+		},
+		{
+			-- would fail if: F.Update made a new state from 0 whatever the server's activation time (the false activation of a client that joins)
+			name = "Update: another player seen already camouflaged long ago (a client that joins in the middle of a game) is done at once: no fade, no sparks of a change that is not happening",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local ply = fakePlayer(0)
+				stub(_G, "CurTime", function() return 1000 end)
+				stub(_G, "FrameTime", function() return 0.1 end)
+				function ply:GetNW2Bool(name) return name == "GryCloak" end
+				function ply:GetNW2Float(name, default) return name == "GryCloakSince" and 970 or default end
+
+				F.Update(ply)
+
+				expect(F.States[ply]).to.exist()
+				expect(F.States[ply].amount).to.equal(1)
+
+				local refract, base, spark = F.Visibility(F.States[ply].amount, F.States[ply].speed)
+				expect(spark).to.equal(0)
+				expect(base).to.aboutEqual(F.BaseStill, 0.001)
+				expect(ply.shadow).to.beFalse() -- done means no shadow, as for a player who has been camouflaged for a while
+
+				F.States[ply] = nil
+				F.SetDrawHooks(false)
+			end
+		},
+		{
+			-- would fail if: the start were always 1 for another player (the activation that happens in front of him would not fade)
+			name = "Update: another player who has just switched the camouflage on is seen fading in from the plain model, as before (also with the clocks a little apart)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				stub(_G, "FrameTime", function() return 0.1 end)
+
+				-- the delay the network and the clocks add to the time between the activation and the first frame that sees it
+				for _, elapsed in ipairs({0, 0.1, 0.4, -0.2}) do
+					local ply = fakePlayer(0)
+					stub(_G, "CurTime", function() return 1000 end)
+					function ply:GetNW2Bool(name) return name == "GryCloak" end
+					function ply:GetNW2Float(name, default) return name == "GryCloakSince" and (1000 - elapsed) or default end
+
+					F.Update(ply)
+
+					expect(F.States[ply].amount).to.aboutEqual(0.1 / F.ActivateTime, 0.001)
+					F.States[ply] = nil
+				end
+
+				F.SetDrawHooks(false)
+			end
+		},
+		{
+			-- would fail if: the check was not limited to the other players (the owner of the suit would see his own activation done at once on a reload)
+			name = "Update: the local player's own camouflage always starts from the plain model: he sees his own change, whatever the time written",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				stub(_G, "CurTime", function() return 1000 end)
+				stub(_G, "FrameTime", function() return 0.1 end)
+				stub(F, "DrawScreenFx", function() end) -- his screen effect is not the point here
+				function me:GetNW2Bool(name) return name == "GryCloak" end
+				function me:GetNW2Float(name, default) return name == "GryCloakSince" and 900 or default end
+
+				F.Update(me)
+				hook.Remove("RenderScreenspaceEffects", "GryCloakFXScreen")
+
+				expect(F.States[me].amount).to.aboutEqual(0.1 / F.ActivateTime, 0.001)
+
+				F.States[me] = nil
+				F.SetDrawHooks(false)
+			end
+		},
+		{
+			-- would fail if: only one of the three ways a player is followed (the full update, the player coming back into view, CatchUp) read the time
+			name = "a player already camouflaged long ago is done at once whichever way the game tells us of him: the switch's event (a full update), coming back into view, CatchUp",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local changed = hook.GetTable().EntityNetworkedVarChanged.GryCloakFX
+				local transmit = hook.GetTable().NotifyShouldTransmit.GryCloakFX
+				local think = hook.GetTable().Think.GryCloakFX
+				stub(_G, "CurTime", function() return 1000 end)
+				stub(_G, "FrameTime", function() return 0.1 end)
+
+				local function old()
+					local ply = fakePlayer(0)
+					function ply:GetNW2Bool(name) return name == "GryCloak" end
+					function ply:GetNW2Float(name, default) return name == "GryCloakSince" and 800 or default end
+
+					return ply
+				end
+
+				local a, b, c = old(), old(), old()
+				stub(player, "GetAll", function() return {c} end)
+
+				changed(a, "GryCloak", nil, true)
+				transmit(b, true)
+				F.CatchUp()
+				think()
+
+				for _, ply in ipairs({a, b, c}) do
+					expect(F.States[ply]).to.exist()
+					expect(F.States[ply].amount).to.equal(1)
+					F.States[ply] = nil
+				end
+
+				F.SetDrawHooks(false)
 			end
 		},
 		{

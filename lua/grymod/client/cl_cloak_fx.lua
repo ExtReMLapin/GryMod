@@ -67,6 +67,24 @@ F.SpeedDelay = 0.15
 F.RefractStill = 0.035
 F.RefractChange = 0.2
 
+-- Where a player's level starts when he is first seen camouflaged. A player seen from the start of his activation fades in from the plain model; one
+-- who was camouflaged long before (this client joins, or he comes back into view) is simply done: starting him from 0 showed an activation (the fade
+-- and the sparks of the change, 0.8 s) that was not happening. The server writes the time of the activation with the switch ("GryCloakSince",
+-- sv_system.lua). The margin added to the length of the change is for the two clocks and the network: the client's CurTime can be ahead of the
+-- server's by about the ping, the message takes about as long to come, and the float that carries the time has a precision of a few hundredths of a second
+-- after hours of uptime; a fresh activation read as an old one would skip its fade, which is worse than a short false change, so the margin is wide.
+-- A client that joins in the margin (0.5 s after the end of a change) sees the end of a change that is not there: it is at most half a second.
+F.JoinMargin = 0.5
+
+function F.StartAmount(since, now)
+	-- a time that was never written (negative: the default asked for) or in the future (the client's clock is behind): the activation is going on
+	if since < 0 or now - since <= F.ActivateTime + F.JoinMargin then
+		return 0
+	end
+
+	return 1
+end
+
 local function clamp01(x)
 	if x < 0 then return 0 end
 	if x > 1 then return 1 end
@@ -249,11 +267,20 @@ function F.Update(ply)
 			return nil
 		end
 
-		s = {amount = 0, speed = 0, cloaked = false, legacy = false}
+		local isLocal = ply == LocalPlayer()
+
+		-- the local player always sees his own change (it begins when he asks for it); another player starts done when he was camouflaged long ago
+		local start = 0
+
+		if not isLocal then
+			start = F.StartAmount(ply:GetNW2Float("GryCloakSince", -1), CurTime())
+		end
+
+		s = {amount = start, speed = 0, cloaked = false, legacy = false}
 		States[ply] = s
 		F.SetDrawHooks(true)
 
-		if ply == LocalPlayer() and F.Enabled() then
+		if isLocal and F.Enabled() then
 			startScreenFx()
 		end
 	end

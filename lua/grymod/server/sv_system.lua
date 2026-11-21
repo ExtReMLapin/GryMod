@@ -5,6 +5,7 @@ util.AddNetworkString("gry_drop")
 util.AddNetworkString("gry_empty_energy")
 util.AddNetworkString("gry_cloak_shot")
 util.AddNetworkString("gry_armor_hit_sound")
+util.AddNetworkString("gry_client_ready")
 
 GryMod.Config = {
 	ShouldRegen = true,
@@ -60,6 +61,34 @@ local function tellMode(ply, mode)
 	net.Send(ply)
 end
 
+-- A client that has finished loading says so (cl_hud.lua, at InitPostEntity, and when its files are loaded again in a running game) and is told the
+-- mode the server really keeps. The message of the spawn (above) is sent while the client may still be loading, and the engine does not deliver net
+-- messages reliably before the client's InitPostEntity: the new player's suit would have no mode. The energy needs no message: it is a networked
+-- float, which a client that joins gets in its first full update, and the message of the energy follows every change (sv_health.lua).
+-- One answer per player and per second: a client cannot make the server send without end.
+GryMod.ReadyInterval = 1
+
+function GryMod.AnswerReady(ply)
+	if not IsValid(ply) then
+		return false
+	end
+
+	local now = CurTime()
+
+	if ply.gryReadyAnswered and now - ply.gryReadyAnswered < GryMod.ReadyInterval then
+		return false
+	end
+
+	ply.gryReadyAnswered = now
+	tellMode(ply, ply.Nanosuit_mode or GryMod.Modes.ARMOR)
+
+	return true
+end
+
+net.Receive("gry_client_ready", function(len, ply)
+	GryMod.AnswerReady(ply)
+end)
+
 -- Puts the suit in a mode. Every path that changes the mode goes through here: the client's request, the cloak running
 -- out, a malfunction, the extension API (GryMod.API.SetMode). Returns true, or false and why the suit stayed as it was or
 -- went to armor instead: "dead", "malfunction", "disabled" (the suit is off: GryMod.API.SetSuitEnabled), "vetoed".
@@ -106,6 +135,14 @@ function meta:SetNanosuitMode(mode, networked)
 	if (mode == GryMod.Modes.CLOAK) then
 		-- the look is made on each client from this switch (cl_cloak_fx.lua): the picture behind the player is bent,
 		-- and it fades in and out. A client that turned it off (gry_cloak_fx 0) puts the old material on itself.
+		--
+		-- The time of the activation goes BEFORE the switch (both reach a client in the same update): a client that first sees this player already
+		-- camouflaged (it joins, or the player comes back into view) tells a change that is going on from one that was done long ago (cl_cloak_fx.lua,
+		-- F.StartAmount). It is kept while the switch stays on: a second request for the camouflage is not a new activation.
+		if not self:GetNW2Bool("GryCloak", false) then
+			self:SetNW2Float("GryCloakSince", CurTime())
+		end
+
 		self:SetNW2Bool("GryCloak", true)
 		self:SetNoTarget(true)
 		self:DrawWorldModel(false)

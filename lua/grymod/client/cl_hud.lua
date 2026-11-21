@@ -51,7 +51,8 @@ local function playModeVoice(path)
 end
 
 function meta:SetNanosuitMode(mode, networked)
-	if (mode == LocalPlayer().NanosuitMode) then
+	-- the same mode again does nothing, unless the mode on the client is only the default guess (AssumeDefaultMode below): then the first one set is real
+	if mode == LocalPlayer().NanosuitMode and not LocalPlayer().NanosuitModeAssumed then
 		return
 	end
 
@@ -109,6 +110,7 @@ function meta:SetNanosuitMode(mode, networked)
 		end
 
 		LocalPlayer().NanosuitMode = mode
+		LocalPlayer().NanosuitModeAssumed = nil
 	end
 	-- it's not a real mode so don't change anything
 end
@@ -127,6 +129,43 @@ end
 net.Receive("gry_nanosuit_mode_change", function()
 	GryMod.ApplyServerMode(net.ReadUInt(3))
 end)
+
+-- A player who joins a game in progress may miss the message of the spawn: the engine does not deliver net messages reliably before the client's
+-- InitPostEntity. So the client says when it is ready (SendReady: at InitPostEntity, and when this file is loaded again in a running game, where
+-- there is no InitPostEntity) and the server answers with the mode it really keeps (sv_system.lua, GryMod.AnswerReady). Until something is
+-- received the mode is armor, the one every suit starts in (the spawn puts it there). The default is only a guess: NanosuitModeAssumed makes the first
+-- real mode go through the whole change (the early return of SetNanosuitMode above is for a mode that is really set), as it did when the field was empty.
+function GryMod.AssumeDefaultMode(ply)
+	if not IsValid(ply) or ply.NanosuitMode ~= nil then
+		return false
+	end
+
+	ply.NanosuitMode = GryMod.Modes.ARMOR
+	ply.NanosuitModeAssumed = true
+
+	return true
+end
+
+function GryMod.SendReady()
+	local ply = LocalPlayer()
+
+	if not IsValid(ply) then
+		return false
+	end
+
+	GryMod.AssumeDefaultMode(ply)
+
+	-- a server that does not know the message (it was not reloaded with this file) makes net.Start raise an error: nothing to lose here
+	local ok = pcall(function()
+		net.Start("gry_client_ready")
+		net.SendToServer()
+	end)
+
+	return ok
+end
+
+hook.Add("InitPostEntity", "GryModClientReady", GryMod.SendReady)
+GryMod.SendReady() -- loaded again in a running game (does nothing before the level is loaded: there is no local player yet)
 
 -- The quick menu key goes down or up (+crysishud, -crysishud, or the key chosen with gry_menu_key): the menu is
 -- drawn from the original movie, see cl_hud_quickmenu_flash.lua.
