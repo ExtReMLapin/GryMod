@@ -348,6 +348,8 @@ local current
 -- The post effect: the red tint and the dark flash by colour modify, the radial blur as two enlarged copies of the
 -- picture over it, the glitch as a few strips of the picture pushed sideways.
 local function paint()
+	if GryMod.Minimap and GryMod.Minimap.Capture and GryMod.Minimap.Capture.IsCapturing() then return end
+
 	local params = current and FX.ScreenParams(current, RealTime())
 
 	if not params then

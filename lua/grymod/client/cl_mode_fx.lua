@@ -146,6 +146,8 @@ local function hooked()
 end
 
 local function paint()
+	if GryMod.Minimap and GryMod.Minimap.Capture and GryMod.Minimap.Capture.IsCapturing() then return end
+
 	local r, g, b = FX.Params(current or FX.State, FX.Now())
 
 	if not r then

@@ -1281,6 +1281,8 @@ end)
 -- binoculars are wanted (asked here too: this runs before the HUD paints the frame in which the key is let go); with the
 -- binoculars down (or the HUD off) the set is emptied, so they are not outlined again at the next opening.
 function Bino.DrawSilhouette()
+	if GryMod.Minimap and GryMod.Minimap.Capture and GryMod.Minimap.Capture.IsCapturing() then return end
+
 	local set = Bino.Silhouettes
 
 	if not Bino.Enabled() or not Bino.Wanted(LocalPlayer()) then
@@ -1664,6 +1666,8 @@ end
 -- RenderScreenspaceEffects: only while the binoculars are up in first person with the option on (the hook itself is added only
 -- then, see Bino.VisionStep). The blend is always put back and the 2D ended, whatever a draw does.
 function Bino.DrawVision()
+	if GryMod.Minimap and GryMod.Minimap.Capture and GryMod.Minimap.Capture.IsCapturing() then return end
+
 	if not Bino.VisionEnabled() or not Bino.Enabled() then
 		return
 	end

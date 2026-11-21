@@ -846,6 +846,8 @@ local function fringes(amount)
 end
 
 function F.DrawScreenFx()
+	if GryMod.Minimap and GryMod.Minimap.Capture and GryMod.Minimap.Capture.IsCapturing() then return end
+
 	local t = CurTime() - (screenFxStart or -10)
 
 	if t >= F.ScreenFxDuration or not F.Enabled() then

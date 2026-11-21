@@ -1,6 +1,27 @@
 -- Tests of the binoculars drawn from the original Scaleform movie (GryMod.FlashBinoculars), GLuaTest format,
 -- client realm. Needs the converted movie lua/grymod/flash/hud_binoculars.lua.
 
+-- The minimap's capture (lua/grymod/client/minimap/capture.lua) renders the map from above inside a render hook: the post effects must stay out of it.
+-- The cases that need it say so through this stand-in, put back after each case (also when the case failed).
+local realIsCapturing
+
+local function standInCapturing(value)
+	local capture = GryMod.Minimap.Capture
+
+	if realIsCapturing == nil then
+		realIsCapturing = capture.IsCapturing
+	end
+
+	capture.IsCapturing = function() return value end
+end
+
+local function putBackCapturing()
+	if realIsCapturing ~= nil then
+		pcall(function() GryMod.Minimap.Capture.IsCapturing = realIsCapturing end)
+		realIsCapturing = nil
+	end
+end
+
 local function newBinoculars()
 	return GryMod.FlashBinoculars.New(GryMod.Flash.Load("hud_binoculars"))
 end
@@ -46,6 +67,7 @@ return {
 		end
 	end,
 	afterEach = function(state)
+		putBackCapturing()
 		local key = GetConVar("gry_zoom_key")
 		local sway = GetConVar("gry_binoculars_sway")
 
@@ -2421,6 +2443,86 @@ return {
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)
+			end
+		},
+		{
+			-- fails if: DrawSilhouette (the PreDrawHalos hook's body) does not ask the minimap's capture before it adds the halo
+			name = "the silhouette adds no halo while the minimap captures the map from above, and the same halo as before otherwise",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local add, enabled, wanted, hudEnabled = halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled
+				local calls = 0
+				local npc = {IsValid = function() return true end, IsNPC = function() return true end, Health = function() return 40 end}
+				local st = M.ScanState
+
+				local ok, err = pcall(function()
+					halo.Add = function() calls = calls + 1 end
+					M.SilhouetteEnabled = function() return true end
+					M.Wanted = function() return true end
+					M.Enabled = function() return true end
+					M.ScanReset(st)
+					st.current, st.timer = npc, 0.2
+
+					standInCapturing(true)
+					M.DrawSilhouette()
+					expect(calls).to.equal(0)
+
+					standInCapturing(false)
+					M.DrawSilhouette()
+					expect(calls).to.equal(1)
+				end)
+
+				M.ScanReset(st)
+				halo.Add, M.SilhouetteEnabled, M.Wanted, M.Enabled = add, enabled, wanted, hudEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails if: DrawVision (the RenderScreenspaceEffects hook's body) does not ask the minimap's capture before it builds or draws anything
+			name = "the vision draws nothing while the minimap captures the map from above (not even a 2D start), and the three passes as before otherwise",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local saved = {M.VisionEnabled, M.Enabled, M.Wanted, M.VisionBuild, render.OverrideBlend, cam.Start2D, cam.End2D, surface.SetMaterial,
+					surface.SetDrawColor, surface.DrawTexturedRect, LocalPlayer}
+				local state2 = M.VisionState
+				local savedMaterials = {state2.tint, state2.dim, state2.vignette, state2.mode}
+				local started, builds = 0, 0
+
+				local ok, err = pcall(function()
+					M.VisionEnabled = function() return true end
+					M.Enabled = function() return true end
+					M.Wanted = function() return true end
+					M.VisionBuild = function() builds = builds + 1 return true end
+					state2.tint, state2.dim, state2.vignette, state2.mode = "tint", "dim", "vignette", "linear"
+					render.OverrideBlend = function() end
+					cam.Start2D = function() started = started + 1 end
+					cam.End2D = function() end
+					surface.SetMaterial = function() end
+					surface.SetDrawColor = function() end
+					surface.DrawTexturedRect = function() end
+					LocalPlayer = function() return {ShouldDrawLocalPlayer = function() return false end} end
+
+					standInCapturing(true)
+					M.DrawVision()
+					expect(started).to.equal(0)
+					expect(builds).to.equal(0)
+
+					standInCapturing(false)
+					M.DrawVision()
+					expect(started).to.equal(1)
+					expect(builds).to.equal(1)
+				end)
+
+				M.VisionEnabled, M.Enabled, M.Wanted, M.VisionBuild, render.OverrideBlend, cam.Start2D, cam.End2D, surface.SetMaterial,
+					surface.SetDrawColor, surface.DrawTexturedRect, LocalPlayer = unpack(saved, 1, 11)
+				state2.tint, state2.dim, state2.vignette, state2.mode = savedMaterials[1], savedMaterials[2], savedMaterials[3], savedMaterials[4]
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		}
 	}

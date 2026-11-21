@@ -22,6 +22,27 @@ end
 -- the log of the render calls being recorded (recordRender), read by the fake entities' DrawModel
 local renderLog
 
+-- The minimap's capture (lua/grymod/client/minimap/capture.lua) renders the map from above inside a render hook: the post effects must stay out of it.
+-- The cases that need it say so through this stand-in, put back after each case (also when the case failed).
+local realIsCapturing
+
+local function standInCapturing(value)
+	local capture = GryMod.Minimap.Capture
+
+	if realIsCapturing == nil then
+		realIsCapturing = capture.IsCapturing
+	end
+
+	capture.IsCapturing = function() return value end
+end
+
+local function putBackCapturing()
+	if realIsCapturing ~= nil then
+		pcall(function() GryMod.Minimap.Capture.IsCapturing = realIsCapturing end)
+		realIsCapturing = nil
+	end
+end
+
 -- a fake player: only what the hooks ask for
 local function fakePlayer(speed)
 	local ply = {draws = 0, center = Vector(300, 0, 0)}
@@ -154,6 +175,7 @@ return {
 		GryMod.CloakFX.SetDrawHooks(next(GryMod.CloakFX.States) ~= nil)
 	end,
 	afterEach = function(state)
+		putBackCapturing()
 		restore()
 		renderLog = nil
 
@@ -1632,6 +1654,49 @@ return {
 				for _, value in ipairs(log.blend) do
 					-- the engine's draw is the plain one; only the older sparks layer, at its faint intensity, is under 1
 					expect(value == 1 or value <= F.SparkRest).to.beTrue()
+				end
+			end
+		},
+		{
+			-- fails if: the hook function does not ask the minimap's capture, or asks it after the first draw
+			name = "the transition's screen effect draws nothing while the minimap captures the map from above, and draws the colour grade as before otherwise",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				function me:GetNW2Bool() return true end
+				stub(_G, "FrameTime", function() return 0.1 end)
+
+				local grades = 0
+				stub(_G, "DrawColorModify", function() grades = grades + 1 end)
+
+				-- the local player's camouflage starts, which adds the real screen effect (no stand-in for DrawScreenFx here)
+				F.Update(me)
+
+				local ok, err = pcall(function()
+					local screenFx = hook.GetTable().RenderScreenspaceEffects.GryCloakFXScreen
+
+					expect(isfunction(screenFx)).to.beTrue()
+
+					-- capturing: nothing drawn, and the hook stays (the effect goes on after the capture)
+					standInCapturing(true)
+					screenFx()
+					expect(grades).to.equal(0)
+					expect(isfunction(hook.GetTable().RenderScreenspaceEffects.GryCloakFXScreen)).to.beTrue()
+
+					-- not capturing: the colour grade of the moment
+					standInCapturing(false)
+					screenFx()
+					expect(grades).to.equal(1)
+				end)
+
+				hook.Remove("RenderScreenspaceEffects", "GryCloakFXScreen")
+
+				if not ok then
+					error(err, 0)
 				end
 			end
 		}

@@ -14,6 +14,27 @@ end
 
 local ON = {hud = true, screen = true}
 
+-- The minimap's capture (lua/grymod/client/minimap/capture.lua) renders the map from above inside a render hook: the post effects must stay out of it.
+-- The cases that need it say so through this stand-in, put back after each case (also when the case failed).
+local realIsCapturing
+
+local function standInCapturing(value)
+	local capture = GryMod.Minimap.Capture
+
+	if realIsCapturing == nil then
+		realIsCapturing = capture.IsCapturing
+	end
+
+	capture.IsCapturing = function() return value end
+end
+
+local function putBackCapturing()
+	if realIsCapturing ~= nil then
+		pcall(function() GryMod.Minimap.Capture.IsCapturing = realIsCapturing end)
+		realIsCapturing = nil
+	end
+end
+
 -- a state that has seen one sample already (the first sample only sets the reference)
 local function seen(health, energy, armor, max)
 	local state = FX.NewState()
@@ -36,6 +57,7 @@ return {
 		end
 	end,
 	afterEach = function(state)
+		putBackCapturing()
 		FX.Shake = realShake
 		FX.Emit = realEmit
 		hook.Remove("RenderScreenspaceEffects", "GryDamageFx")
@@ -544,6 +566,62 @@ return {
 
 				panel:SetDamage(2)
 				expect(ring.visible).to.beFalse()
+			end
+		},
+		{
+			-- fails if: the post hook does not ask the minimap's capture before it draws (colour grade, copies of the frame, glitch strips)
+			name = "the post hook draws nothing while the minimap captures the map from above (and stays), and draws as before otherwise",
+			func = function(state)
+				local names = {"UpdateScreenEffectTexture", "GetScreenEffectTexture", "SetScissorRect", "DrawTextureToScreenRect"}
+				local savedRender, savedGrade, savedSurface = {}, DrawColorModify, {surface.SetMaterial, surface.SetDrawColor, surface.DrawTexturedRect}
+				local drawn = 0
+
+				for _, name in ipairs(names) do
+					savedRender[name] = render[name]
+				end
+
+				local ok, err = pcall(function()
+					DrawColorModify = function() drawn = drawn + 1 end
+
+					for _, name in ipairs(names) do
+						render[name] = function() drawn = drawn + 1 end
+					end
+
+					surface.SetMaterial = function() end
+					surface.SetDrawColor = function() end
+					surface.DrawTexturedRect = function() drawn = drawn + 1 end
+
+					FX.Shake = function() end
+
+					-- a heavy armor hit of this very moment (the hook reads the real time): the flash is at its start
+					local s = seen(100, 80)
+					FX.Observe(s, sample(100, 40), RealTime(), ON)
+					FX.Sync(s, RealTime())
+
+					local paint = hook.GetTable().RenderScreenspaceEffects.GryDamageFx
+
+					expect(isfunction(paint)).to.beTrue()
+
+					standInCapturing(true)
+					paint()
+					expect(drawn).to.equal(0)
+					expect(isfunction(hook.GetTable().RenderScreenspaceEffects.GryDamageFx)).to.beTrue()
+
+					standInCapturing(false)
+					paint()
+					expect(drawn > 0).to.beTrue()
+				end)
+
+				for _, name in ipairs(names) do
+					render[name] = savedRender[name]
+				end
+
+				DrawColorModify = savedGrade
+				surface.SetMaterial, surface.SetDrawColor, surface.DrawTexturedRect = savedSurface[1], savedSurface[2], savedSurface[3]
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		}
 	}

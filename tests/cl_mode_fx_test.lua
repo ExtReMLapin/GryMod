@@ -8,6 +8,27 @@ local Modes = GryMod.Modes
 
 local saved = {}
 
+-- The minimap's capture (lua/grymod/client/minimap/capture.lua) renders the map from above inside a render hook: the post effects must stay out of it.
+-- The cases that need it say so through this stand-in, put back after each case (also when the case failed).
+local realIsCapturing
+
+local function standInCapturing(value)
+	local capture = GryMod.Minimap.Capture
+
+	if realIsCapturing == nil then
+		realIsCapturing = capture.IsCapturing
+	end
+
+	capture.IsCapturing = function() return value end
+end
+
+local function putBackCapturing()
+	if realIsCapturing ~= nil then
+		pcall(function() GryMod.Minimap.Capture.IsCapturing = realIsCapturing end)
+		realIsCapturing = nil
+	end
+end
+
 local function stub(tbl, key, value)
 	saved[#saved + 1] = {tbl, key, tbl[key]}
 	tbl[key] = value
@@ -57,6 +78,7 @@ end
 return {
 	groupName = "GryMod suit mode screen effect",
 	afterEach = function(state)
+		putBackCapturing()
 		restore()
 		hook.Remove("RenderScreenspaceEffects", "GryModeFx")
 	end,
@@ -462,6 +484,28 @@ return {
 
 				convar:SetBool(before)
 				assert(ok, err)
+			end
+		},
+		{
+			-- fails if: the post hook does not ask the minimap's capture before it draws
+			name = "the post hook draws nothing while the minimap captures the map from above (and stays), and draws the colour grade as before otherwise",
+			func = function(state)
+				local now = 10
+				local drawn = 0
+				stub(FX, "Now", function() return now end)
+				stub(_G, "DrawColorModify", function() drawn = drawn + 1 end)
+
+				FX.Start(FX.NewState(), Modes.STRENGTH, 10)
+				now = 10.2
+
+				standInCapturing(true)
+				paintHook()()
+				expect(drawn).to.equal(0)
+				expect(isfunction(paintHook())).to.beTrue()
+
+				standInCapturing(false)
+				paintHook()()
+				expect(drawn).to.equal(1)
 			end
 		}
 	}
