@@ -36,6 +36,16 @@ return {
 			end
 		},
 		{
+			name = "the atlases are textures without extension (VTF + VMT): the white twin is the same name plus _w",
+			func = function(state)
+				local F = GryMod.Flash
+				local movie = {atlases = {"grymod/flash/a_1", "grymod/flash/hud_font"}, white = {[1] = true}}
+				expect(F.AtlasPathFor(movie, 1, 0, 0, 0)).to.equal("grymod/flash/a_1_w")
+				expect(F.AtlasPathFor(movie, 1, 1, 1, 1)).to.equal("grymod/flash/a_1")
+				expect(F.AtlasPathFor(movie, 2, 0, 0, 0)).to.equal("grymod/flash/hud_font")
+			end
+		},
+		{
 			name = "the localisation keys of the movies (@ui_...) are English words, in every converted movie, never a raw key",
 			func = function(state)
 				local F = GryMod.Flash

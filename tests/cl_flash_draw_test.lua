@@ -377,6 +377,19 @@ return {
 			end
 		},
 		{
+			name = "a group image is a power of two up to 512 pixels, then a multiple of 128 (a full-screen one is not rounded up to twice its size)",
+			func = function(state)
+				local F = GryMod.Flash
+				expect(F.TargetSide(1)).to.equal(64)
+				expect(F.TargetSide(65)).to.equal(128)
+				expect(F.TargetSide(512)).to.equal(512)
+				expect(F.TargetSide(513)).to.equal(640)
+				expect(F.TargetSide(2151)).to.equal(2176)
+				expect(F.TargetSide(3825)).to.equal(3840)
+				expect(F.TargetSide(4096)).to.equal(4096)
+			end
+		},
+		{
 			name = "releasing a group that never had an image (empty or too big) does not error",
 			func = function(state)
 				local F = GryMod.Flash

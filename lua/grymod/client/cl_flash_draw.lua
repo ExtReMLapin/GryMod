@@ -15,8 +15,11 @@ local BLEND_ADD = 8
 -- Debug switch: draw every blend mode as a normal alpha blend (FFDec's renderer does not honour them).
 Flash.IgnoreBlendModes = false
 
--- Where the atlas PNG files are looked up. The addon ships them as materials/grymod/flash/*.png; tests
--- running a branch that is not mounted as an addon can point this at a folder of the game's data directory.
+-- The atlases are textures made by tools/flash2lua (materials/grymod/flash/<name>.vtf, DXT5, with the mip levels in the
+-- file, and <name>.vmt): the engine loads them by itself, and keeps them one byte per pixel in video memory. The
+-- name in a movie's data has no extension. A path that ends in ".png" is still turned into a material the way the
+-- engine does it (decoding the picture and building its mip levels takes about 0.6 s for a 2048 x 4096 one): tests
+-- and the pixel jobs use that for pictures kept in the game's data folder, and AtlasMaterialPath can move them.
 Flash.AtlasMaterialPath = function(path)
 	return path
 end
@@ -28,11 +31,21 @@ local function atlasMaterial(path)
 
 	if not material then
 		Flash.Stats.atlasLoads = Flash.Stats.atlasLoads + 1
-		material = Material(Flash.AtlasMaterialPath(path), "nocull smooth mips")
-		-- Flash blends translucent shapes in gamma space; the engine blends in linear space (washed-out, brighter
-		-- translucent panels) unless the shader writes the colour as it is.
-		material:SetInt("$linearwrite", 1)
-		material:Recompute()
+		local file = Flash.AtlasMaterialPath(path)
+
+		if file:find("%.png$") then
+			material = Material(file, "nocull smooth mips")
+			-- Flash blends translucent shapes in gamma space; the engine blends in linear space (washed-out, brighter
+			-- translucent panels) unless the shader writes the colour as it is.
+			material:SetInt("$linearwrite", 1)
+			material:Recompute()
+		else
+			-- the .vmt says the same ($linearwrite, vertex colour and alpha, no culling); asking for the size makes
+			-- the engine load the texture now, which is what preloading is for
+			material = Material(file)
+			material:Width()
+		end
+
 		atlasMaterials[path] = material
 	end
 
@@ -69,7 +82,7 @@ function Flash.AtlasPathFor(movie, atlas, mr, mg, mb)
 		local twin = whitePaths[path]
 
 		if not twin then
-			twin = path:gsub("%.png$", "_w.png")
+			twin = path:find("%.png$") and path:gsub("%.png$", "_w.png") or path .. "_w"
 			whitePaths[path] = twin
 		end
 
@@ -730,14 +743,22 @@ local groupMaterials = {}
 -- atlasLoads: pictures turned into materials (each one is a freeze of up to a second), targetCreates: render targets made
 Flash.Stats = {groupRenders = 0, groupReuses = 0, atlasLoads = 0, targetCreates = 0}
 
-local function powerOfTwo(n)
-	local p = 64
+-- The side of the render target that holds a group of n pixels: a power of two while small (the images of the many
+-- small groups are then interchangeable in the pool), a multiple of 128 beyond 512 (a full-screen group of 3825 pixels
+-- is 3840 and not 4096: a float image costs 8 bytes a pixel, so the rounding of a 4K group up to 4096 x 4096 is
+-- 128 MB against 66 MB).
+function Flash.TargetSide(n)
+	if n <= 512 then
+		local p = 64
 
-	while p < n do
-		p = p * 2
+		while p < n do
+			p = p * 2
+		end
+
+		return p
 	end
 
-	return p
+	return math.ceil(n / 128) * 128
 end
 
 local function acquireTarget(width, height)
@@ -921,7 +942,7 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 
 	local x0, y0 = math.floor(minX) - 1, math.floor(minY) - 1
 	local width, height = math.ceil(maxX) + 1 - x0, math.ceil(maxY) + 1 - y0
-	local textureW, textureH = powerOfTwo(width), powerOfTwo(height)
+	local textureW, textureH = Flash.TargetSide(width), Flash.TargetSide(height)
 	local empty = minX > maxX or textureW > MAX_GROUP or textureH > MAX_GROUP
 
 	if cache and (empty or cache.textureW ~= textureW or cache.textureH ~= textureH) then

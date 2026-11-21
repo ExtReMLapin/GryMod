@@ -1,0 +1,8 @@
+"UnlitGeneric"
+{
+	"$basetexture" "grymod/flash/hud_radarcompassstealth_3_w"
+	"$vertexcolor" 1
+	"$vertexalpha" 1
+	"$nocull" 1
+	"$linearwrite" 1
+}

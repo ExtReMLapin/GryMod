@@ -1,10 +1,11 @@
 -- Preloading of the interface.
 --
 -- A part of the interface that is used for the first time loads its movie (a Lua table of 50 to 200 KB, 3 to 5 ms) and
--- turns the atlas pictures it draws into materials: Material() decodes the PNG and builds its mip levels, about 0.6 s
--- for each 2048 x 4096 picture and 1.2 s for the quick menu's 4096 x 4096 ones, and it cannot be cut in pieces. Done
--- on demand that is a freeze of a second or two when the quick menu or the binoculars come up for the first time (and
--- of three seconds at the first spawn).
+-- turns the atlas pictures it draws into materials. The atlases are VTF textures (DXT5, mip levels in the file): the
+-- engine reads and uploads them in a few milliseconds each. (They used to be PNG files that Material() decoded and
+-- built the mip levels of, about 0.6 s for each 2048 x 4096 picture and 1.2 s for the quick menu's 4096 x 4096 ones,
+-- without any way to cut it in pieces: a freeze of a second or two when the quick menu or the binoculars came up for
+-- the first time, and three seconds at the first spawn.)
 --
 -- This file does the same work ahead of time, one piece at a time, for what is switched on:
 --   gry_hud_prewarm 1: all of it at the loading screen (InitPostEntity runs while it is still up: nobody sees the
