@@ -31,8 +31,19 @@ end
 
 local ORIGIN = Vector(0, 0, 0)
 
-local function step(descs, st, now)
-	return R.Step(ORIGIN, descs, st or newState(), now or 0)
+local function step(descs, st, now, alliesAlways)
+	return R.Step(ORIGIN, descs, st or newState(), now or 0, alliesAlways)
+end
+
+-- an ally (what Describe gives for an NPC that likes the player)
+local function ally(ahead, extra)
+	local d = npc(ahead, {hostile = false, ally = true, relation = "ally"})
+
+	for k, v in pairs(extra or {}) do
+		d[k] = v
+	end
+
+	return d
 end
 
 -- net stubs: what a tick sends
@@ -75,8 +86,24 @@ return {
 		GATE = GryMod.RadarShared and GryMod.RadarShared.GateUnits()
 		SCAN = GryMod.RadarShared and GryMod.RadarShared.ScanUnits()
 	end,
+	beforeEach = function(state)
+		-- the radar's switch in a known state for every case: allies off, so that the entities other files left behind (a
+		-- removed entity lives until the end of the frame) are not contacts; the cases of the allies set it themselves
+		local c = GetConVar("gry_radar_allies_always")
+		state.alliesAlways = c and c:GetString()
+
+		if c then
+			c:SetString("0")
+		end
+	end,
 	afterEach = function(state)
 		if stopRecording then pcall(stopRecording) end
+
+		local c = GetConVar("gry_radar_allies_always")
+
+		if c and state.alliesAlways then
+			c:SetString(state.alliesAlways)
+		end
 
 		-- a removed entity lives until the end of the frame and a whole run is one frame: send it far away too, so that the
 		-- next case does not find it in its search
@@ -382,7 +409,7 @@ return {
 			end
 		},
 		{
-			name = "friendly NPCs (D_LI) around the player, alerted or fighting, are no contact and nothing is sent",
+			name = "friendly NPCs (D_LI) around the player, with the allies switch off: calm ones are no contact, alerted or fighting ones within 26 m are, in the ally colour",
 			func = function(state)
 				local p = ply()
 				p.GryRadarWant = true
@@ -395,15 +422,242 @@ return {
 				end
 				local d = R.Describe(friends[1], p)
 				expect(d.hostile).to.beFalse()
-				local list = R.Step(p:GetPos(), {R.Describe(friends[1], p), R.Describe(friends[2], p), R.Describe(friends[3], p)}, newState(), 0)
-				expect(#list).to.equal(0)
+				local descs = {R.Describe(friends[1], p), R.Describe(friends[2], p), R.Describe(friends[3], p)}
+				-- calm: nothing, and nothing is sent
+				for _, each in ipairs(descs) do
+					each.state = NPC_STATE_IDLE
+				end
+				expect(#R.Step(p:GetPos(), descs, newState(), 0, false)).to.equal(0)
+				-- alerted or fighting, within the gate: listed as allies
+				descs = {R.Describe(friends[1], p), R.Describe(friends[2], p), R.Describe(friends[3], p)}
+				local list = R.Step(p:GetPos(), descs, newState(), 0, false)
+				expect(#list).to.equal(3)
+				expect(list[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
 				startRecording()
 				local ok, err = pcall(R.Tick, p, 10)
 				stopRecording()
 				assert(ok, err)
-				expect(#sent).to.equal(0)
+				expect(#sent).to.equal(1)
 			end
 		},
+		{
+			name = "the switch of the always visible allies exists: on by default and replicated (the archive flag is not readable here, the declaration is the one of gry_energy_net)",
+			func = function(state)
+				local c = GetConVar("gry_radar_allies_always")
+				expect(c).toNot.beNil()
+				expect(c:GetDefault()).to.equal("1")
+				expect(c:IsFlagSet(FCVAR_REPLICATED)).to.beTrue()
+				c:SetString("1")
+				expect(R.AlliesAlways()).to.beTrue()
+				c:SetString("0")
+				expect(R.AlliesAlways()).to.beFalse()
+			end
+		},
+		{
+			name = "a described real NPC has its relation to the player: like is an ally, hate is hostile, neutral and fear are neutral",
+			func = function(state)
+				local p = ply()
+				local e = spawnNPC("npc_citizen", p:GetPos() + Vector(300, 0, 0))
+				e:AddEntityRelationship(p, D_LI, 99)
+				local d = R.Describe(e, p)
+				expect(d.relation).to.equal("ally")
+				expect(d.ally).to.beTrue()
+				expect(d.hostile).to.beFalse()
+				e:AddEntityRelationship(p, D_HT, 99)
+				d = R.Describe(e, p)
+				expect(d.relation).to.equal("hostile")
+				expect(d.ally).to.beFalse()
+				expect(d.hostile).to.beTrue()
+				e:AddEntityRelationship(p, D_NU, 99)
+				d = R.Describe(e, p)
+				expect(d.relation).to.equal("neutral")
+				expect(d.ally).to.beFalse()
+				expect(d.hostile).to.beFalse()
+				e:AddEntityRelationship(p, D_FR, 99)
+				expect(R.Describe(e, p).relation).to.equal("neutral")
+			end
+		},
+		{
+			name = "an ally is on the radar at once, calm and never scanned, in the ally colour, when the switch is on",
+			func = function(state)
+				local st = newState()
+				local d = ally(SCAN - 100)
+				local list = step({d}, st, 0, true)
+				expect(#list).to.equal(1)
+				expect(list[1].id).to.equal(d.id)
+				expect(list[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+				expect(list[1].marker).to.beFalse()
+				expect(st.tagged[d.key]).to.beNil() -- nothing remembered: the switch decides every time
+				-- past the radar's scan radius it is not listed
+				d.x = SCAN + 100
+				expect(#step({d}, st, 0, true)).to.equal(0)
+			end
+		},
+		{
+			name = "an ally stays in the ally colour whatever it does: calm, alerted, fighting the player's enemies",
+			func = function(state)
+				local st = newState()
+				local d = ally(500)
+
+				for _, s in ipairs({NPC_STATE_IDLE, NPC_STATE_ALERT, NPC_STATE_COMBAT}) do
+					d.state = s
+					expect(step({d}, st, 0, true)[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+				end
+
+				-- even when it is tagged (by a scan or an alert with the switch off) and the switch is on again
+				st.tagged[d.key] = true
+				expect(step({d}, st, 0, true)[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+			end
+		},
+		{
+			name = "switch off: a calm ally is not on the radar, like a calm hostile",
+			func = function(state)
+				local st = newState()
+				expect(#step({ally(500), ally(GATE - 10)}, st, 0, false)).to.equal(0)
+				expect(#step({npc(500), npc(GATE - 10)}, st, 0, false)).to.equal(0)
+				expect(next(st.tagged)).to.beNil()
+			end
+		},
+		{
+			name = "switch off: an ally that is alerted or fighting within 26 m is listed (blue) and tagged, one farther is not, a hostile is as before",
+			func = function(state)
+				local st = newState()
+				local alerted = ally(GATE - 10, {state = NPC_STATE_ALERT})
+				local fighting = ally(GATE - 20, {state = NPC_STATE_COMBAT})
+				local far = ally(GATE + 100, {state = NPC_STATE_COMBAT})
+				local list = step({alerted, fighting, far}, st, 0, false)
+				expect(#list).to.equal(2)
+				expect(list[1].id).to.equal(fighting.id)
+				expect(list[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+				expect(list[2].id).to.equal(alerted.id)
+				expect(list[2].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+				expect(st.tagged[alerted.key]).to.beTrue()
+				expect(st.tagged[fighting.key]).to.beTrue()
+				expect(st.tagged[far.key]).to.beNil()
+				-- tagged: it stays at any distance of the scan, calm included, and is still blue
+				alerted.x = 3000
+				alerted.state = NPC_STATE_IDLE
+				list = step({alerted}, st, 0.2, false)
+				expect(#list).to.equal(1)
+				expect(list[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+				-- a hostile in the same state keeps its own colours
+				local foe = npc(GATE - 10, {state = NPC_STATE_ALERT})
+				expect(step({foe}, newState(), 0, false)[1].sub).to.equal(3)
+			end
+		},
+		{
+			name = "switch off: a scanned ally is on the radar, blue, like a scanned hostile",
+			func = function(state)
+				local st = newState()
+				local d = ally(500)
+				st.tagged[d.key] = true
+				local list = step({d}, st, 0, false)
+				expect(#list).to.equal(1)
+				expect(list[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+			end
+		},
+		{
+			name = "a dead ally is gone, and its tag with it",
+			func = function(state)
+				local st = newState()
+				local d = ally(500)
+				st.tagged[d.key] = true
+				d.health = 0
+				expect(#step({d}, st, 0, true)).to.equal(0)
+				expect(st.tagged[d.key]).to.beNil()
+			end
+		},
+		{
+			name = "a neutral NPC is as before whatever the switch: only a scan or a marker shows it, never its alert",
+			func = function(state)
+				for _, always in ipairs({true, false}) do
+					local st = newState()
+					local calm = npc(500, {hostile = false, relation = "neutral"})
+					local alert = npc(GATE - 10, {hostile = false, relation = "neutral", state = NPC_STATE_COMBAT})
+					expect(#step({calm, alert}, st, 0, always)).to.equal(0)
+					st.tagged[calm.key] = true
+					local list = step({calm}, st, 0, always)
+					expect(#list).to.equal(1)
+					expect(list[1].sub).to.equal(0)
+					R.Mark(st, alert.key, 1)
+					list = step({alert}, st, 1, always)
+					expect(list[1].sub).to.equal(1)
+					expect(list[1].marker).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "the marker of an ally (friendly fire) is blue and on the border like any marker",
+			func = function(state)
+				local st = newState()
+				local d = ally(SCAN + 5000)
+				R.Mark(st, d.key, 0)
+				local list = step({d}, st, 1, true)
+				expect(#list).to.equal(1)
+				expect(list[1].marker).to.beTrue()
+				expect(list[1].sub).to.equal(GryMod.RadarShared.SUB_ALLY)
+			end
+		},
+		{
+			name = "the switch is read from its convar when the rules are not told",
+			func = function(state)
+				local c = GetConVar("gry_radar_allies_always")
+				c:SetString("1")
+				expect(#step({ally(500)})).to.equal(1)
+				c:SetString("0")
+				expect(#step({ally(500)})).to.equal(0)
+			end
+		},
+		{
+		name = "a real rebel (ally) and seagull (neutral) near the player: the tick lists the rebel in the ally colour and not the seagull, when the switch is on",
+		func = function(state)
+			local p = ply()
+			local c = GetConVar("gry_radar_allies_always")
+			local rebel = spawnNPC("npc_citizen", p:GetPos() + Vector(300, 0, 0))
+			rebel:AddEntityRelationship(p, D_LI, 99)
+			local gull = spawnNPC("npc_seagull", p:GetPos() + Vector(300, 80, 60))
+			gull:AddEntityRelationship(p, D_NU, 99)
+			p.GryRadarWant = true
+
+			local function contacts()
+				local list, values = {}, sent[1].values
+
+				for i = 1, values[1] do
+					local at = 2 + (i - 1) * 9 -- id, type, sub, marker, big, x, y, z, yaw
+					list[values[at]] = values[at + 2]
+				end
+
+				return list
+			end
+
+			c:SetString("1")
+			startRecording()
+			local ok, err = pcall(R.Tick, p, 50)
+			stopRecording()
+
+			if not ok then
+				error(err, 0)
+			end
+
+			expect(#sent).to.equal(1)
+			local list = contacts()
+			expect(list[rebel:EntIndex()]).to.equal(GryMod.RadarShared.SUB_ALLY)
+			expect(list[gull:EntIndex()]).to.beNil()
+
+			-- switched off: the calm rebel is gone from the list
+			c:SetString("0")
+			startRecording()
+			ok, err = pcall(R.Tick, p, 51)
+			stopRecording()
+
+			if not ok then
+				error(err, 0)
+			end
+
+			list = contacts()
+			expect(list[rebel:EntIndex()]).to.beNil()
+		end
+	},
 		{
 			name = "a hit on the player by an NPC marks the NPC, a hit by the world, a prop or the player does not",
 			func = function(state)

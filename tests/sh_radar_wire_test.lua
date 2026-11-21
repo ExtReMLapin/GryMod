@@ -84,6 +84,27 @@ return {
 			end
 		},
 		{
+			name = "the ally colour is a subtype of its own that fits the three bits of the message and goes through it",
+			func = function(state)
+				expect(R().SUB_ALLY).to.equal(5) -- the movie's subtypes are 0 to 4
+				expect(R().SUB_ALLY < 8).to.beTrue() -- 3 bits
+				local back
+
+				withBuffer(function(bits)
+					R().Write({{id = 9, x = 80, y = 16, z = 0, yaw = 0, type = 2, sub = R().SUB_ALLY, marker = false, big = false}})
+					back = R().Read()
+				end)
+
+				expect(back[1].sub).to.equal(R().SUB_ALLY)
+				expect(back[1].type).to.equal(2)
+				-- an ally is not the same message as the neutral at the same place: a change of relation is sent
+				local ally = {{id = 5, x = 0, y = 0, z = 0, yaw = 0, type = 1, sub = R().SUB_ALLY, marker = false, big = false}}
+				local neutral = {{id = 5, x = 0, y = 0, z = 0, yaw = 0, type = 1, sub = 0, marker = false, big = false}}
+				expect(R().Same(ally, neutral)).to.beFalse()
+				expect(R().Same(ally, ally)).to.beTrue()
+			end
+		},
+		{
 			name = "a contact costs about nine bytes and an empty list one",
 			func = function(state)
 				local one = {{id = 5, x = 1, y = 2, z = 3, yaw = 4, type = 1, sub = 1, marker = false, big = false}}

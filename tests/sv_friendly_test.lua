@@ -110,6 +110,72 @@ return {
 			end
 		},
 		{
+			name = "Relation tells ally, hostile or neutral from the NPC's real attitude: like, hate, and neutral / fear / anything else",
+			func = function()
+				local F = GryMod.Friendly
+				local p = ply()
+				local npc = spawnNPC("npc_citizen")
+
+				expect(F.Relation).toNot.beNil()
+				npc:AddEntityRelationship(p, D_LI, 99)
+				expect(F.Relation(p, npc)).to.equal("ally")
+				npc:AddEntityRelationship(p, D_HT, 99)
+				expect(F.Relation(p, npc)).to.equal("hostile")
+				npc:AddEntityRelationship(p, D_NU, 99)
+				expect(F.Relation(p, npc)).to.equal("neutral")
+				npc:AddEntityRelationship(p, D_FR, 99)
+				expect(F.Relation(p, npc)).to.equal("neutral")
+			end
+		},
+		{
+			name = "Relation of a real seagull (an animal) and of a Combine soldier are neutral and hostile, a rebel with no order is an ally",
+			func = function()
+				local F = GryMod.Friendly
+				local p = ply()
+				local gull = spawnNPC("npc_seagull")
+				local soldier = spawnNPC("npc_combine_s", 800)
+				local rebel = spawnNPC("npc_citizen", 400)
+				gull:AddEntityRelationship(p, D_NU, 99)
+
+				expect(F.Relation(p, gull)).to.equal("neutral")
+				expect(F.Relation(p, soldier)).to.equal(soldier:Disposition(p) == D_HT and "hostile" or "neutral")
+				expect(F.Relation(p, rebel)).to.equal("ally")
+			end
+		},
+		{
+			name = "Relation: a player of the same team is an ally, another team or no team is neutral, never the asker; invalid and non-NPC things are neutral",
+			func = function()
+				local F = GryMod.Friendly
+				local me = fake({IsPlayer = function() return true end, Team = function() return 1 end})
+				local function player_(team)
+					return fake({IsPlayer = function() return true end, Team = function() return team end})
+				end
+
+				expect(F.Relation(me, player_(1))).to.equal("ally")
+				expect(F.Relation(me, player_(2))).to.equal("neutral")
+				expect(F.Relation(me, me)).to.equal("neutral")
+				expect(F.Relation(player_(1001), player_(1001))).to.equal("neutral")
+				expect(F.Relation(ply(), nil)).to.equal("neutral")
+				expect(F.Relation(ply(), NULL)).to.equal("neutral")
+				expect(F.Relation(nil, spawnNPC("npc_citizen"))).to.equal("neutral")
+				expect(F.Relation(me, fake({IsPlayer = function() return false end, IsNPC = function() return false end}))).to.equal("neutral")
+			end
+		},
+		{
+			name = "IsAlly is the ally relation and nothing else, for every attitude",
+			func = function()
+				local F = GryMod.Friendly
+				local p = ply()
+				local npc = spawnNPC("npc_citizen")
+
+				for _, d in ipairs({D_LI, D_HT, D_NU, D_FR}) do
+					npc:AddEntityRelationship(p, d, 99)
+					expect(F.IsAlly(p, npc)).to.equal(F.Relation(p, npc) == "ally")
+					expect(F.IsAlly(p, npc)).to.equal(d == D_LI)
+				end
+			end
+		},
+		{
 			name = "a player is an ally when on the same team (when the game has teams), never the asker itself",
 			func = function()
 				local F = GryMod.Friendly

@@ -236,6 +236,7 @@ function GryMod.AdminOptions(Panel)
 		}
 	})
 	GryMod.AdminOption(Panel, "Camouflage: striders, hunters and manhacks forget you", "gry_cloak_ai", "bool")
+	GryMod.AdminOption(Panel, "Radar: allies (NPCs that like you) show in blue from the start (off: only when alerted, fighting or scanned)", "gry_radar_allies_always", "bool")
 	GryMod.AdminOption(Panel, "Grenade warning only for armed grenades, mines in the air... (off: also the ones lying around)", "gry_grenade_armed_only", "bool")
 	GryMod.AdminOption(Panel, "Toggle health regeneration", nil, "button", {command = "gry_Health"})
 	GryMod.AdminOption(Panel, "Toggle infinite armor", nil, "button", {command = "gry_Armor"})

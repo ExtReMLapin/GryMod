@@ -23,6 +23,11 @@ S.HEIGHT_LIMIT = 500
 -- No more contacts than this in one message (the movie draws as many as it is given; this bounds the work and the traffic).
 S.MAX_CONTACTS = 48
 
+-- The subtype of a contact (the movie's icons have 0 to 4: 0 tagged and not hostile, 1 marker of a non hostile, 2 hostile and
+-- calm, 3 alerted, 4 fighting the player). This one is GryMod's own: an ally of the player (the server's Friendly.Relation).
+-- It has no icon of its own: the client draws the calm icon of its type, tinted blue.
+S.SUB_ALLY = 5
+
 -- The message: positions in steps of 8 units (a third of a metre), 13 bits each (the map is within 32768 units), the
 -- facing in 512 steps of the circle, 68 bits for a contact.
 S.POS_STEP = 8

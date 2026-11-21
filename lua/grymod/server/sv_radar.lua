@@ -3,6 +3,10 @@
 --   - what shows is the AI's own alertness: a hostile NPC that is alerted (it heard something, or lost the player) or fighting
 --     the player (it has him as enemy) and is within 26 m is put on the radar and TAGGED; a tagged NPC stays on the radar,
 --     at any distance of the radar, in the colour of its present state (calm included), until it dies;
+--   - the allies of the player (NPCs that like him, GryMod.Friendly.Relation) are on the radar from the start, in blue, while
+--     gry_radar_allies_always is on (GryMod's own rule: the original has no such thing); with it off they follow the rule of
+--     the hostiles above (alerted or fighting within 26 m, or scanned). Neutrals (animals, NPCs that neither like nor hate the
+--     player) show only when scanned or when they hurt him;
 --   - the NPC that hurt the player is marked for 10 s, on the border of the radar if it is out of it;
 --   - the icon type: 1 ground, 2 flying, 3 machines.
 -- Cost: one timer every fifth of a second that only looks at the players that asked for the contacts (their HUD has the
@@ -22,7 +26,16 @@ local S = GryMod.RadarShared
 local enabled = CreateConVar("gry_radar_contacts", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
 	"The radar of the HUD shows the NPCs that are alerted to the player and the ones that shot at him; 0 turns the contacts off")
 
+-- replicated and archived like the other server options, so that the options panel of an administrator shows the real value
+local alliesAlways = CreateConVar("gry_radar_allies_always", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
+	"The allies of the player (NPCs that like him) are on the radar at once, in blue; 0 treats them like the hostiles: only when alerted or fighting within 26 m, or scanned")
+
 local INTERVAL = 0.2
+
+-- Whether the allies are on the radar without having been noticed.
+function Radar.AlliesAlways()
+	return alliesAlways:GetBool()
+end
 
 -- The state of the AI as the original's alert level: 2 when the NPC is fighting the player, 1 when it is alerted (it heard
 -- something, is looking for him, or fights someone else), 0 otherwise. Having the player as enemy is level 2 whatever the
@@ -83,12 +96,15 @@ end
 function Radar.Describe(npc, ply)
 	local pos = npc:GetPos()
 	local enemy = npc:GetEnemy()
+	local relation = GryMod.Friendly.Relation(ply, npc)
 
 	return {
 		key = npc,
 		id = npc:EntIndex(),
 		class = npc:GetClass(),
-		hostile = npc:Disposition(ply) == D_HT,
+		relation = relation,
+		hostile = relation == "hostile",
+		ally = relation == "ally",
 		state = npc:GetNPCState(),
 		enemyIsPlayer = enemy == ply,
 		health = npc:Health(),
@@ -146,13 +162,18 @@ function Radar.Scan(ply, npc)
 end
 
 -- The rules. descs: what Describe gives for the NPCs around `origin` (the markers' too, wherever they are); st: the
--- state of the player; now: the time. Returns the contacts {id, x, y, z, yaw, type, sub, marker, big}, the markers first
--- then the nearest, no more than the limit. sub: 0 tagged but not hostile, 1 marker of a non hostile, 2 hostile and calm,
--- 3 alerted, 4 fighting the player.
-function Radar.Step(origin, descs, st, now)
+-- state of the player; now: the time; alliesAlways: whether the allies show without being noticed (the convar when not told).
+-- Returns the contacts {id, x, y, z, yaw, type, sub, marker, big}, the markers first then the nearest, no more than the
+-- limit. sub: 0 tagged but neither hostile nor ally, 1 marker of one of those, 2 hostile and calm, 3 alerted, 4 fighting the
+-- player, 5 (S.SUB_ALLY) an ally, in whatever state.
+function Radar.Step(origin, descs, st, now, alliesAlways)
 	local gate2 = S.GateUnits() ^ 2
 	local scan2 = S.ScanUnits() ^ 2
 	local list = {}
+
+	if alliesAlways == nil then
+		alliesAlways = Radar.AlliesAlways()
+	end
 
 	for i = 1, #descs do
 		local d = descs[i]
@@ -166,7 +187,10 @@ function Radar.Step(origin, descs, st, now)
 		else
 			local dx, dy, dz = d.x - origin.x, d.y - origin.y, d.z - origin.z
 			local distance2 = dx * dx + dy * dy + dz * dz
-			local level = d.hostile and Radar.Level(d.state, d.enemyIsPlayer) or 0
+			-- the alert of an ally counts as a hostile's (its enemy is never the player, so level 1 at most): with the
+			-- switch off it is how an ally gets noticed
+			local watched = d.hostile or d.ally and not alliesAlways
+			local level = watched and Radar.Level(d.state, d.enemyIsPlayer) or 0
 			local marker = st.markers[key]
 
 			if marker and now > marker then
@@ -176,7 +200,7 @@ function Radar.Step(origin, descs, st, now)
 
 			local tagged = st.tagged[key]
 
-			if not tagged and d.hostile and level >= 1 and distance2 <= gate2 then
+			if not tagged and watched and level >= 1 and distance2 <= gate2 then
 				tagged = true
 				st.tagged[key] = true
 				st.markers[key] = nil
@@ -186,10 +210,12 @@ function Radar.Step(origin, descs, st, now)
 			local sub, isMarker
 
 			if tagged then
-				sub = d.hostile and (2 + level) or 0
+				sub = d.ally and S.SUB_ALLY or d.hostile and (2 + level) or 0
 			elseif marker then
-				sub = d.hostile and 2 or 1
+				sub = d.ally and S.SUB_ALLY or d.hostile and 2 or 1
 				isMarker = true
+			elseif d.ally and alliesAlways then
+				sub = S.SUB_ALLY
 			end
 
 			if sub and (isMarker or distance2 <= scan2) then

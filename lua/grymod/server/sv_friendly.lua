@@ -21,25 +21,46 @@ local WINDOW = 1 -- seconds
 
 local windows = setmetatable({}, {__mode = "k"}) -- [player] = {start = time, count = n}
 
--- Whether the entity is an ally for the player: a player of the same team (when the game has teams, i.e. not unassigned
--- 1001 nor spectator 1002), an NPC that likes the player. The attitude of an NPC the engine cannot tell (not an NPC, no
--- Disposition) is no ally.
-function Friendly.IsAlly(ply, ent)
+-- What an entity is to a player, in one place (the friendly cross and the radar both ask): "ally" for a player of the same team
+-- (when the game has teams, i.e. not unassigned 1001 nor spectator 1002, and never the player itself) and for an NPC whose
+-- attitude towards the player is like (D_LI); "hostile" for an NPC that hates him (D_HT); "neutral" for everything else (an NPC
+-- that is neutral or afraid, an animal, a player of another team, a prop, an invalid entity). The attitude of an NPC the engine
+-- cannot tell (no Disposition) is neutral.
+function Friendly.Relation(ply, ent)
 	if not ply or not IsValid(ply) or not ent or not IsValid(ent) then
-		return false
+		return "neutral"
 	end
 
 	if ent:IsPlayer() then
 		local team = ent:Team()
 
-		return ent ~= ply and team == ply:Team() and team ~= 1001 and team ~= 1002
+		if ent ~= ply and team == ply:Team() and team ~= 1001 and team ~= 1002 then
+			return "ally"
+		end
+
+		return "neutral"
 	end
 
 	if not ent:IsNPC() or not ent.Disposition then
-		return false
+		return "neutral"
 	end
 
-	return ent:Disposition(ply) == D_LI
+	local disposition = ent:Disposition(ply)
+
+	if disposition == D_LI then
+		return "ally"
+	end
+
+	if disposition == D_HT then
+		return "hostile"
+	end
+
+	return "neutral"
+end
+
+-- Whether the entity is an ally for the player (the friendly cross opens on it).
+function Friendly.IsAlly(ply, ent)
+	return Friendly.Relation(ply, ent) == "ally"
 end
 
 -- Whether the player may ask now (5 a second).
