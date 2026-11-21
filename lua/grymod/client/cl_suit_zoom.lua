@@ -38,6 +38,18 @@ local Key = GryMod.KeyBinder.New{
 
 Zoom.Key = Key
 
+-- The prompt for the key comes once per session, while the option is on and no key is chosen: it never blocks anything.
+Zoom.asked = false
+
+function Zoom.MaybePrompt()
+	if Zoom.asked or not Zoom.Owns() or Key.IsBound() then
+		return
+	end
+
+	Zoom.asked = true
+	Key.ShowPrompt()
+end
+
 -- ---------------------------------------------------------------------------------------------------------
 -- State: one table, nothing allocated per frame.
 -- ---------------------------------------------------------------------------------------------------------

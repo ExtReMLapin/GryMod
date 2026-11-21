@@ -199,6 +199,11 @@ net.Receive("gry_spawn", function()
 	if GryMod.MenuKey then
 		timer.Simple(2, GryMod.MenuKey.MaybePrompt)
 	end
+
+	-- the binoculars' own zoom key, when that option is on and no key is chosen (once per session, after the menu's prompt)
+	if GryMod.SuitZoom then
+		timer.Simple(2.5, GryMod.SuitZoom.MaybePrompt)
+	end
 end)
 
 local hidethings = {

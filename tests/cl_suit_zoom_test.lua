@@ -928,6 +928,191 @@ return {
 				expect(#M.Silhouettes).to.equal(0)
 				expect(M.IsUp()).to.beFalse()
 			end
+		},
+		{
+			name = "the zoom key refuses 0, Escape, the wheel and the quick menu's key; the quick menu key refuses the zoom's; any other key is saved",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local menu = GryMod.MenuKey
+				local menuKey = menu.convar:GetString()
+
+				local ok, err = pcall(function()
+					menu.convar:SetInt(KEY_F8)
+					expect(Z.Key.SetKey(0)).to.beFalse()
+					expect(Z.Key.SetKey(KEY_ESCAPE)).to.beFalse()
+					expect(Z.Key.SetKey(MOUSE_WHEEL_UP)).to.beFalse()
+					expect(Z.Key.SetKey(MOUSE_WHEEL_DOWN)).to.beFalse()
+					expect(Z.Key.SetKey(KEY_F8)).to.beFalse()
+					expect(Z.Key.Chosen()).to.equal(KEY_F7) -- (set by beforeEach)
+
+					expect(Z.Key.SetKey(KEY_F9)).to.beTrue()
+					expect(Z.Key.Chosen()).to.equal(KEY_F9)
+
+					-- and the other way round
+					expect(menu.SetKey(KEY_F9)).to.beFalse()
+					expect(menu.convar:GetInt()).to.equal(KEY_F8)
+					expect(menu.SetKey(KEY_F10)).to.beTrue()
+				end)
+
+				menu.convar:SetString(menuKey)
+				menu.HidePrompt()
+				Z.Key.HidePrompt()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the prompt for the zoom key: only with the own zoom on and nothing bound, once per session, with a key set or a +gry_zoom bind it does not come, and it does not sit on the quick menu's prompt",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local lookup = input.LookupBinding
+				local menu = GryMod.MenuKey
+
+				local ok, err = pcall(function()
+					input.LookupBinding = function() return nil end
+					setting(KEY):SetString("0")
+					Z.Key.HidePrompt()
+
+					-- the option off: nothing asked, and nothing counted as asked
+					setting(OWN):SetString("0")
+					Z.asked = false
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+					expect(Z.asked).to.beFalse()
+
+					-- a key already set, or a bind
+					setting(OWN):SetString("1")
+					setting(KEY):SetString(tostring(KEY_F7))
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+					setting(KEY):SetString("0")
+					input.LookupBinding = function(command) return command == "+gry_zoom" and "MOUSE4" or nil end
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+
+					-- nothing: asked, once
+					input.LookupBinding = function() return nil end
+					Z.MaybePrompt()
+					local panel = Z.Key.panel
+					expect(IsValid(panel)).to.beTrue()
+					expect(panel:GetTitle()).to.equal("GryMod binoculars zoom")
+					expect(Z.asked).to.beTrue()
+					Z.Key.HidePrompt()
+					Z.MaybePrompt()
+					expect(IsValid(Z.Key.panel)).to.beFalse()
+
+					-- the two prompts have their own places
+					menu.ShowPrompt()
+					Z.Key.ShowPrompt()
+					expect(select(2, menu.panel:GetPos())).toNot.equal(select(2, Z.Key.panel:GetPos()))
+				end)
+
+				input.LookupBinding = lookup
+				menu.HidePrompt()
+				Z.Key.HidePrompt()
+				Z.asked = false
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the spawn message of the server asks for the zoom key too, a little after the quick menu's prompt",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local receiver = net.Receivers and net.Receivers["gry_spawn"]
+				expect(receiver).toNot.beNil()
+
+				local scheduled = {}
+				local simple = timer.Simple
+				timer.Simple = function(delay, fn) scheduled[#scheduled + 1] = {delay, fn} end
+
+				local ok, err = pcall(receiver, 0)
+				timer.Simple = simple
+
+				if not ok then
+					error(err, 0)
+				end
+
+				local zoomDelay, menuDelay
+				for _, entry in ipairs(scheduled) do
+					if entry[2] == Z.MaybePrompt then zoomDelay = entry[1] end
+					if entry[2] == GryMod.MenuKey.MaybePrompt then menuDelay = entry[1] end
+				end
+
+				expect(menuDelay).toNot.beNil()
+				expect(zoomDelay).toNot.beNil()
+				expect(zoomDelay >= menuDelay).to.beTrue()
+			end
+		},
+		{
+			name = "the options panel has the own zoom check box, the toggle check box and a key picker for the zoom key that saves through SetKey (and refuses what it refuses); opening the panel writes nothing",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local menu = GryMod.MenuKey
+				local writes = {}
+				local realRun = RunConsoleCommand
+				local found, binders = {}, {}
+				local menuKey = menu.convar:GetString()
+				local before = {setting(OWN):GetString(), setting(KEY):GetString(), setting(TOGGLE):GetString()}
+				local panel
+
+				local ok, err = pcall(function()
+					RunConsoleCommand = function(name) writes[#writes + 1] = tostring(name) end
+					menu.convar:SetString(tostring(KEY_F8))
+					panel = vgui.Create("ControlPanel")
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							elseif child.ClassName == "DBinder" then
+								binders[child:GetValue()] = child
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+					RunConsoleCommand = realRun
+
+					expect(found[OWN]).to.beTrue()
+					expect(found[TOGGLE]).to.beTrue()
+					expect(#writes).to.equal(0)
+					expect(setting(OWN):GetString()).to.equal(before[1])
+					expect(setting(KEY):GetString()).to.equal(before[2])
+					expect(setting(TOGGLE):GetString()).to.equal(before[3])
+
+					-- the quick menu's picker is still there, and the zoom's is the one showing the zoom key (F7 from beforeEach)
+					expect(binders[KEY_F8]).toNot.beNil()
+					local binder = binders[KEY_F7]
+					expect(binder).toNot.beNil()
+
+					binder:OnChange(KEY_F9)
+					expect(Z.Key.Chosen()).to.equal(KEY_F9)
+
+					-- refused (the quick menu's key): not saved, and the picker shows the key that is saved
+					binder:OnChange(KEY_F8)
+					expect(Z.Key.Chosen()).to.equal(KEY_F9)
+					expect(binder:GetValue()).to.equal(KEY_F9)
+				end)
+
+				RunConsoleCommand = realRun
+				menu.convar:SetString(menuKey)
+
+				if IsValid(panel) then
+					panel:Remove()
+				end
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }

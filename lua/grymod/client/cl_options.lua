@@ -73,6 +73,27 @@ function GryMod.GryHUDOptions(Panel)
 
 	-- what was added to the binoculars (the zoom key), each on its own: the screen itself is the "Binoculars" element above
 	Panel:Help("Binoculars (hold the zoom key)")
+
+	-- the binoculars' own zoom key: the Half-Life 2 zoom key stays out of it, and the wheel is the zoom's while it is up
+	if GryMod.SuitZoom then
+		Panel:CheckBox("Binoculars own zoom key, chosen below (the Half-Life 2 zoom key then does nothing; the mouse wheel steps the zoom 2x, 4x, 8x while you zoom, and does not change weapon)", "gry_zoom_own")
+		Panel:AddControl("Label", {
+			Text = "Binoculars zoom key (a `bind <key> +gry_zoom` in the console works too):"
+		})
+
+		local zoomBinder = vgui.Create("DBinder")
+		zoomBinder:SetValue(GetConVar("gry_zoom_key"):GetInt())
+		zoomBinder.OnChange = function(self, code)
+			-- a key that is refused (Escape, the wheel, the quick menu's key) is not shown as chosen
+			if not GryMod.SuitZoom.Key.SetKey(code) then
+				self:SetValue(GryMod.SuitZoom.Key.Chosen())
+			end
+		end
+		Panel:AddItem(zoomBinder)
+
+		Panel:CheckBox("Binoculars zoom key: press once to open and again to close (off: hold the key)", "gry_zoom_toggle")
+	end
+
 	Panel:CheckBox("Binoculars sounds: opening, closing, ambience loop, target locked", "gry_binoculars_sounds")
 	Panel:CheckBox("Original aim rules: 4 rays, 300 m, the distance to the entity aimed at", "gry_binoculars_aim")
 	Panel:CheckBox("Horizon ladder that follows where you look", "gry_binoculars_horizon")
@@ -80,7 +101,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Tag an NPC aimed at for half a second (the radar shows it)", "gry_binoculars_tag")
 	Panel:CheckBox("Outline in pale blue the NPCs scanned, from the end of their scan until the binoculars come down (needs the tag option above)", "gry_binoculars_silhouette")
 	Panel:CheckBox("Binoculars sound mood: explosions, collisions and vehicles are lowered while they are up", "gry_binoculars_mood")
-	Panel:CheckBox("Binoculars zoom stages 2x, 4x, 8x with the mouse wheel, 0.055 s between them, 0.2 s to open and close (off: the Half-Life 2 zoom). Changes how the mouse feels", "gry_binoculars_stages")
+	Panel:CheckBox("Binoculars zoom stages 2x, 4x, 8x with the mouse wheel, 0.055 s between them, 0.2 s to open and close (off: the Half-Life 2 zoom; always on with the own zoom key above). Changes how the mouse feels", "gry_binoculars_stages")
 	Panel:CheckBox("Binoculars sway: the view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view", "gry_binoculars_sway")
 	Panel:CheckBox("Binoculars full-screen vision: cool tint, scan lines and darker edges. The original has it in the High quality only, and it doubles the film's vignette", "gry_binoculars_vision")
 
