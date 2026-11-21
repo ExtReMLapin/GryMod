@@ -35,6 +35,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_hud_binoculars_flash.lua")
 	AddCSLuaFile("grymod/client/cl_hud_grenade_flash.lua")
 	AddCSLuaFile("grymod/flash/hud_crosshair.lua")
+	AddCSLuaFile("grymod/flash/hud_friendlycross.lua")
 	AddCSLuaFile("grymod/flash/hud_initialize.lua")
 	AddCSLuaFile("grymod/flash/hud_reboot.lua")
 	AddCSLuaFile("grymod/flash/hud_lost.lua")
@@ -46,6 +47,7 @@ if SERVER then
 	AddCSLuaFile("grymod/flash/hud_ammohealthenergysuit.lua")
 	include("grymod/server/sv_mechanics.lua")
 	include("grymod/server/sv_health.lua")
+	include("grymod/server/sv_feedback.lua")
 	include("grymod/server/sv_system.lua")
 
 	if GryMod.Workshop == false then
@@ -57,6 +59,8 @@ if SERVER then
 	resource.AddFile("materials/grymod/flash/hud_radarcompassstealth_1_w.png")
 	resource.AddFile("materials/grymod/flash/hud_crosshair_1.png")
 	resource.AddFile("materials/grymod/flash/hud_crosshair_1_w.png")
+	resource.AddFile("materials/grymod/flash/hud_friendlycross_1.png")
+	resource.AddFile("materials/grymod/flash/hud_friendlycross_1_w.png")
 	resource.AddFile("materials/grymod/flash/hud_initialize_1.png")
 	resource.AddFile("materials/grymod/flash/hud_initialize_1_w.png")
 	resource.AddFile("materials/grymod/flash/hud_initialize_font.png")

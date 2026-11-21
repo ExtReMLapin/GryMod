@@ -225,6 +225,222 @@ return {
 			end
 		},
 		{
+			name = "a hit on the player gives the arcs of the original's rule: 0.35 of each world axis, two arcs for a diagonal, all four for none",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function arcs(shooter)
+					local list = C.ArcsFor(Vector(0, 0, 0), shooter)
+					table.sort(list)
+
+					return table.concat(list, ",")
+				end
+
+				-- the world is turned so that the +X of the game is the original's north (arc 1 is the north-south axis)
+				expect(arcs(Vector(-100, 0, 0))).to.equal("1") -- the shooter is behind the north-facing player: south
+				expect(arcs(Vector(100, 0, 0))).to.equal("3")
+				expect(arcs(Vector(0, -100, 0))).to.equal("4") -- east of the player: the original's x is -Y here
+				expect(arcs(Vector(0, 100, 0))).to.equal("2")
+				expect(arcs(Vector(-100, -100, 0))).to.equal("1,4")
+				expect(arcs(Vector(100, 100, 0))).to.equal("2,3")
+				-- under 0.35 of an axis it is a single arc: 20 degrees off the axis
+				expect(arcs(Vector(-100, -30, 0))).to.equal("1")
+				expect(arcs(Vector(0, 0, 0))).to.equal("1,2,3,4")
+				expect(arcs(Vector(0, 0, 500))).to.equal("1,2,3,4") -- straight above: no horizontal offset
+			end
+		},
+		{
+			name = "the arcs turn with the view: the player's yaw plus 180 degrees, kept inside a turn",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				expect(C.ArcRotation(0)).to.equal(180)
+				expect(C.ArcRotation(90)).to.equal(270)
+				expect(C.ArcRotation(-90)).to.equal(90)
+				expect(C.ArcRotation(180)).to.equal(0)
+				expect(C.ArcRotation(-180)).to.equal(0)
+			end
+		},
+		{
+			name = "a damage report starts its arcs and turns them with the view for 2 seconds, then leaves them alone",
+			func = function(state)
+				local c = newCrosshair()
+				local dd = c.root:Child("DamageDirection")
+				c:OnDamage(Vector(0, 0, 0), Vector(-100, 0, 0), 0, 10)
+				expect(dd:Child("Damage1"):CurrentLabel()).to.equal("play")
+				c:SetViewYaw(90, 10.5)
+				expect(near(dd.entry.m[1], math.cos(math.rad(270)))).to.beTrue()
+				c:SetViewYaw(0, 11.9)
+				expect(near(dd.entry.m[1], math.cos(math.rad(180)))).to.beTrue()
+				c:SetViewYaw(90, 12.5) -- past 2 seconds: no more updates
+				expect(near(dd.entry.m[1], math.cos(math.rad(180)))).to.beTrue()
+			end
+		},
+		{
+			name = "the crosshair number: the chosen style, none for a weapon that hides it or when zooming or without a weapon",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				expect(C.IndexFor(6, "weapon_smg1", true, false)).to.equal(6)
+				expect(C.IndexFor(3, "weapon_pistol", true, false)).to.equal(3)
+				expect(C.IndexFor(6, "weapon_fists", true, false)).to.equal(0)
+				expect(C.IndexFor(6, "weapon_rpg", true, false)).to.equal(0)
+				expect(C.IndexFor(6, "weapon_smg1", false, false)).to.equal(0) -- the weapon draws its own
+				expect(C.IndexFor(6, "weapon_smg1", true, true)).to.equal(0) -- zoomed
+				expect(C.IndexFor(6, nil, true, false)).to.equal(0) -- no weapon
+				expect(C.IndexFor(99, "weapon_smg1", true, false)).to.equal(C.DEFAULT_STYLE) -- not a style
+				expect(C.IndexFor(0, "weapon_smg1", true, false)).to.equal(C.DEFAULT_STYLE)
+			end
+		},
+		{
+			name = "the spread grows with speed, in the air and while firing, and shrinks when crouching; it eases at 20 a second",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local still = C.SpreadTarget(0, true, false, 0)
+				local walking = C.SpreadTarget(0.5, true, false, 0)
+				local running = C.SpreadTarget(1, true, false, 0)
+				expect(still).to.equal(0)
+				expect(walking > still and running > walking).to.beTrue()
+				expect(C.SpreadTarget(0, false, false, 0) > still).to.beTrue()
+				expect(C.SpreadTarget(1, true, true, 0) < running).to.beTrue()
+				expect(C.SpreadTarget(0, true, false, 0.5) > still).to.beTrue()
+				expect(C.SpreadTarget(1, false, false, 1)).to.equal(1) -- never over 1
+				-- easing: a frame of 1/30 s covers most of the way, a long frame lands on the target
+				local v = C.Ease(0, 1, 1 / 30)
+				expect(v > 0.4 and v < 0.6).to.beTrue()
+				expect(near(C.Ease(0, 1, 5), 1)).to.beTrue()
+				expect(C.Ease(0.7, 0.7, 0.1)).to.equal(0.7)
+			end
+		},
+		{
+			name = "usable: a weapon not owned can be taken (1), one already owned is blocked (2), items, buttons and props can be used, a wall cannot",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function fake(class, weapon)
+					return {IsValid = function() return true end, GetClass = function() return class end, IsWeapon = function() return weapon or false end}
+				end
+
+				local player = {HasWeapon = function(_, class) return class == "weapon_pistol" end}
+				expect(C.UsableFor(fake("weapon_smg1", true), player)).to.equal(1)
+				expect(C.UsableFor(fake("weapon_pistol", true), player)).to.equal(2)
+				expect(C.UsableFor(fake("item_healthkit"), player)).to.equal(1)
+				expect(C.UsableFor(fake("func_button"), player)).to.equal(1)
+				expect(C.UsableFor(fake("prop_door_rotating"), player)).to.equal(1)
+				expect(C.UsableFor(fake("prop_physics"), player)).to.equal(1)
+				expect(C.UsableFor(fake("func_useableladder"), player)).to.equal(1)
+				expect(C.UsableFor(fake("func_brush"), player)).to.equal(0)
+				expect(C.UsableFor(nil, player)).to.equal(0)
+				expect(C.UsableFor({IsValid = function() return false end}, player)).to.equal(0)
+			end
+		},
+		{
+			name = "friendly: a player of the same team (when there are teams) and the rebels' NPC classes, never the player itself",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local me = {Team = function() return 1 end, IsPlayer = function() return true end}
+				local function fake(class, player, team)
+					return {
+						IsValid = function() return true end, GetClass = function() return class end,
+						IsPlayer = function() return player or false end, IsNPC = function() return not player end,
+						Team = function() return team or 1001 end
+					}
+				end
+
+				expect(C.IsFriendly(fake("player", true, 1), me)).to.beTrue()
+				expect(C.IsFriendly(fake("player", true, 2), me)).to.beFalse()
+				expect(C.IsFriendly(fake("player", true, 1001), {Team = function() return 1001 end})).to.beFalse() -- no teams: nobody is friendly
+				expect(C.IsFriendly(fake("npc_citizen"), me)).to.beTrue()
+				expect(C.IsFriendly(fake("npc_alyx"), me)).to.beTrue()
+				expect(C.IsFriendly(fake("npc_combine_s"), me)).to.beFalse()
+				expect(C.IsFriendly(nil, me)).to.beFalse()
+			end
+		},
+		{
+			name = "in the game: the crosshair is drawn every frame, the vanilla one is hidden while ours is on, and shown again when it is off",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local ply = LocalPlayer()
+
+				if not IsValid(ply) or not ply:Alive() then
+					return
+				end
+
+				local hud = GetConVar("gry_hud"):GetString()
+				local option = GetConVar("gry_hud_crosshair")
+				GetConVar("gry_hud"):SetString("1")
+				option:SetString("1")
+				local realDraw, drawn = GryMod.Flash.Draw, 0
+				GryMod.Flash.Draw = function() drawn = drawn + 1 end
+				C.Reset()
+				C.Paint()
+				C.Paint()
+				local hider = hook.GetTable().HUDShouldDraw["GRYCROSSHAIRHIDE"]
+				local hidden = hider and hider("CHudCrosshair")
+				local other = hider and hider("CHudHealth")
+				option:SetString("0")
+				local shownAgain = hider and hider("CHudCrosshair")
+				local drawnOff = drawn
+				C.Paint()
+				local stillOff = drawn == drawnOff
+				GryMod.Flash.Draw = realDraw
+				option:SetString("1")
+				GetConVar("gry_hud"):SetString(hud)
+				C.Reset()
+
+				expect(drawnOff >= 2).to.beTrue()
+				expect(stillOff).to.beTrue()
+				expect(hidden).to.equal(false)
+				expect(other).to.beNil()
+				expect(shownAgain).to.beNil()
+			end
+		},
+		{
+			name = "the server's hit message blinks the crosshair and its damage message starts the arcs, each only while its switch is on",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local ply = LocalPlayer()
+
+				if not IsValid(ply) or not ply:Alive() then
+					return
+				end
+
+				local realDraw = GryMod.Flash.Draw
+				GryMod.Flash.Draw = function() end
+				GetConVar("gry_hud"):SetString("1")
+				C.Reset()
+				C.Paint()
+				local inst = C.Current()
+				expect(inst).to.exist()
+				inst:SetCrosshair(1)
+
+				local function receive(name, ...)
+					local receiver = net.Receivers[name]
+					expect(receiver).to.exist()
+					receiver(0, ply, ...)
+				end
+
+				local hit, damage = GetConVar("gry_hud_hit"), GetConVar("gry_hud_damage")
+				hit:SetString("0")
+				receive("gry_hit")
+				local offBlink = inst.current:Find("LineL"):CurrentLabel()
+				hit:SetString("1")
+				receive("gry_hit")
+				local onBlink = inst.current:Find("LineL"):CurrentLabel()
+
+				local dd = inst.root:Child("DamageDirection")
+				damage:SetString("0")
+				C.NotifyDamage(ply:GetPos() + Vector(-200, 0, 0))
+				local offArc = dd:Child("Damage1"):CurrentLabel()
+				damage:SetString("1")
+				C.NotifyDamage(ply:GetPos() + Vector(-200, 0, 0))
+				local onArc = dd:Child("Damage1"):CurrentLabel()
+
+				GryMod.Flash.Draw = realDraw
+				C.Reset()
+				expect(offBlink ~= "hit").to.beTrue()
+				expect(onBlink).to.equal("hit")
+				expect(offArc).to.equal("stop")
+				expect(onArc).to.equal("play")
+			end
+		},
+		{
 			name = "the visibility and the opacity of the whole crosshair",
 			func = function(state)
 				local c = newCrosshair()
