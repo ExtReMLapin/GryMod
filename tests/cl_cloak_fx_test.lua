@@ -55,6 +55,8 @@ local function recordRender()
 	renderLog = log
 
 	stub(render, "UpdateRefractTexture", function() log.refreshed = log.refreshed + 1 end)
+	log.screenCopies = 0
+	stub(render, "UpdateScreenEffectTexture", function() log.screenCopies = log.screenCopies + 1 end)
 
 	stub(render, "MaterialOverride", function(mat)
 		log.override[#log.override + 1] = mat or false
@@ -102,6 +104,9 @@ return {
 		-- the pixel shader (cl_cloak_shader.lua, tested in cl_cloak_shader_test.lua) is not in use unless a case turns it on: the cases above
 		-- are about the older layers, which stay as the fallback
 		stub(GryMod.CloakFX.Shader, "Active", function() return false end)
+
+		-- the refraction layer's own pixel shader (cl_cloak_refract.lua) likewise: the cases above are about the older Refract material
+		stub(GryMod.CloakFX.Refract, "Active", function() return false end)
 	end,
 	afterAll = function(state)
 		GryMod.CloakFX.SetDrawHooks(next(GryMod.CloakFX.States) ~= nil)
@@ -1182,6 +1187,142 @@ return {
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(calls[1].strength > 0.2).to.beTrue()
+			end
+		},
+		{
+			name = "refraction layer, third person: the plain model is drawn opaque by the engine's way, the layer is blended over it with the alpha the model has lost, and the screen is copied once before",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				stub(F.Refract, "Active", function() return true end)
+
+				local calls = {}
+				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) calls[#calls + 1] = {ent = ent, bump = bump, alpha = alpha} draw(ent) return true end)
+
+				setState(ply, 0.5, 0)
+				translucent()
+
+				local _, base = F.Visibility(0.5, 0)
+				expect(#calls).to.equal(1)
+				expect(calls[1].ent).to.equal(ply)
+				expect(calls[1].bump).to.aboutEqual(F.Refract.BumpScale(0.5), 0.0001)
+				expect(calls[1].alpha).to.aboutEqual(F.Refract.Alpha(base), 0.0001)
+				expect(log.screenCopies).to.equal(1)
+				expect(log.refreshed).to.equal(0) -- the older Refract layer is not used
+
+				-- the model came first, opaque and with no override, then the layer's draw
+				expect(log.drawn[1].material).to.beNil()
+				expect(log.drawn[1].blend).to.equal(1)
+				expect(ply.draws).to.equal(3) -- the plain model, the layer's own draw, and the outline of the sparks (the flash of the change)
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "refraction layer, third person: fully camouflaged and still the plain model is left out (the layer covers it), and a failing draw leaves nothing on",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				stub(F.Refract, "Active", function() return true end)
+
+				local drawn = 0
+				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) drawn = drawn + 1 draw(ent) return true end)
+
+				setState(ply, 1, 0)
+				translucent()
+				expect(drawn).to.equal(1)
+				expect(ply.draws).to.equal(1) -- only the layer's own draw: the model is not worth a draw under it
+				expect(leftClean(log)).to.beTrue()
+
+				function ply:DrawModel() error("boom") end
+				pcall(translucent)
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "refraction layer, third person: the weapon in the hand gets it too, and nothing far away",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local ply = fakePlayer(0)
+				local weapon = fakePlayer(0)
+				function ply:GetActiveWeapon() return weapon end
+				stub(F.Refract, "Active", function() return true end)
+
+				local drawn = {}
+				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) drawn[#drawn + 1] = ent draw(ent) return true end)
+
+				setState(ply, 0.5, 0)
+				translucent()
+				expect(#drawn).to.equal(2)
+				expect(drawn[1]).to.equal(ply)
+				expect(drawn[2]).to.equal(weapon)
+
+				drawn = {}
+				ply.center = Vector(F.DetailDistance + 500, 0, 0)
+				translucent()
+				expect(#drawn).to.equal(1) -- the weapon is not drawn that far; the body still is
+				expect(drawn[1]).to.equal(ply)
+			end
+		},
+		{
+			name = "refraction layer, first person: the engine draws the arms opaque, the layer is blended over them in the Post hooks, and the screen is copied once for both",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				function me:GetViewModel() return vm end
+				stub(F.Refract, "Active", function() return true end)
+
+				local calls = {}
+				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) calls[#calls + 1] = {ent = ent, bump = bump, alpha = alpha} return true end)
+
+				setState(me, 0.4, 0)
+				local _, base = F.Visibility(0.4, 0)
+
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(vm.draws).to.equal(0)
+				expect(#log.blend).to.equal(0) -- the engine's draw stays opaque
+				expect(log.screenCopies).to.equal(1)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+
+				expect(#calls).to.equal(2)
+				expect(calls[1].ent).to.equal(vm)
+				expect(calls[2].ent).to.equal(hands)
+				expect(calls[1].alpha).to.aboutEqual(F.Refract.Alpha(base), 0.0001)
+				expect(calls[1].bump).to.aboutEqual(F.Refract.BumpScale(0.4), 0.0001)
+				expect(log.screenCopies).to.equal(1) -- once for both
+				expect(log.refreshed).to.equal(0)
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "refraction layer, first person: at the very end of the change (the plain model nearly all there) no layer and no copy, and the engine's draw is the plain one",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				stub(F.Refract, "Active", function() return true end)
+
+				local drawn = 0
+				stub(F.Refract, "Draw", function() drawn = drawn + 1 return true end)
+
+				setState(me, 0.003, 0)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(drawn).to.equal(0)
+				expect(log.screenCopies).to.equal(0)
+				for _, value in ipairs(log.blend) do
+					expect(value).to.equal(1)
+				end
 			end
 		}
 	}

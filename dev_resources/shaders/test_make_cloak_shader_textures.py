@@ -133,5 +133,50 @@ class GlowTest(unittest.TestCase):
         self.assertGreater(back[0, 101, 0], 0)
 
 
+class RefractionTexturesTest(unittest.TestCase):
+    """The two small textures of the refraction layer: the rim colours and the scan lines (their R and G modulate the bend and the rim)."""
+
+    def row(self, seed=1):
+        rng = np.random.default_rng(seed)
+        row = np.zeros((1, 256, 4), dtype=np.uint8)
+        row[0, :, :3] = rng.integers(0, 256, size=(256, 3))
+        row[0, :, 3] = 255
+
+        return row
+
+    def test_the_palette_is_a_row_of_256_colours_read_clamped_as_data(self):
+        raw = mcs.palette_bytes(self.row())
+        self.assertEqual(struct.unpack_from("<HH", raw, 16), (256, 1))
+        flags = struct.unpack_from("<I", raw, 20)[0]
+        self.assertTrue(flags & vtf.FLAG_CLAMPS and flags & vtf.FLAG_CLAMPT)
+        self.assertFalse(flags & vtf.FLAG_SRGB)
+
+    def test_the_scan_lines_repeat_along_the_row_and_keep_their_four_channels(self):
+        row = self.row(2)
+        row[0, :, 3] = np.arange(256)
+        raw = mcs.interlation_bytes(row)
+        self.assertEqual(struct.unpack_from("<HH", raw, 16), (256, 1))
+        flags = struct.unpack_from("<I", raw, 20)[0]
+        self.assertFalse(flags & vtf.FLAG_CLAMPS)
+        self.assertTrue(flags & vtf.FLAG_CLAMPT)
+        self.assertFalse(flags & vtf.FLAG_SRGB)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "i.vtf")
+            with open(path, "wb") as out:
+                out.write(raw)
+            back = vtf.read_vtf_top(path)
+        self.assertTrue((back == row).all())
+
+    def test_the_palette_comes_back_unchanged(self):
+        row = self.row(3)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "p.vtf")
+            with open(path, "wb") as out:
+                out.write(mcs.palette_bytes(row))
+            back = vtf.read_vtf_top(path)
+        self.assertTrue((back == row).all())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -431,9 +431,38 @@ local function drawPlain(ent)
 	drawing = false
 end
 
-local function drawLayers(ent, refract, base, spark)
+local function drawLayers(ent, refract, base, spark, level)
 	local refractMat, edgeMat = materials()
 	drawing = true
+
+	-- The refraction layer's own pixel shader (cl_cloak_refract.lua): the plain model first, opaque as the engine always draws it, then the layer
+	-- blended over it with the alpha the model has lost, then the outline. Under the opacity where the plain model is not worth drawing, the layer
+	-- alone covers what is behind.
+	if level and F.Refract and F.Refract.Active() then
+		local ok, err = pcall(function()
+			if base >= F.Invisible then
+				render.MaterialOverride(nil)
+				render.SetBlend(1)
+				ent:DrawModel()
+			end
+
+			F.Refract.Draw(ent, F.Refract.BumpScale(level), F.Refract.Alpha(base), drawPlain)
+
+			if spark > 0.02 then
+				render.MaterialOverride(edgeMat)
+				render.SetColorModulation(SPARK_R, SPARK_G, SPARK_B)
+				render.SetBlend(spark * (0.7 + 0.3 * math.sin(CurTime() * 37 + ent:EntIndex() * 1.7)))
+				ent:DrawModel()
+			end
+		end)
+
+		render.MaterialOverride(nil)
+		render.SetColorModulation(1, 1, 1)
+		render.SetBlend(1)
+		drawing = false
+
+		return ok, err
+	end
 
 	local ok, err = pcall(function()
 		refractMat:SetFloat("$refractamount", refract)
@@ -525,7 +554,13 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 			if visible then
 				if not updated then
 					updated = true
-					render.UpdateRefractTexture()
+
+					-- the picture behind, copied before any camouflaged player is on it: for the layer's own shader, or for the older Refract material
+					if F.Refract and F.Refract.Active() then
+						render.UpdateScreenEffectTexture()
+					else
+						render.UpdateRefractTexture()
+					end
 				end
 
 				local refract, base, spark = F.Visibility(s.amount, s.speed)
@@ -538,14 +573,14 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				if shader then
 					-- the shader's sparks are added over the plain model, with the original's strength: the flash of the change, the motion on
 					-- the screen (nothing far away, where the sparks are not worth the cost)
-					drawLayers(ply, refract, base, 0)
+					drawLayers(ply, refract, base, 0, s.amount)
 					strength = distance <= F.DetailDistance and F.SparkStrength(s.amount, F.Motion(s, ply, ply:WorldSpaceCenter())) or 0
 
 					if strength > 0 then
 						shader.Draw(ply, strength, s.amount, drawPlain)
 					end
 				else
-					drawLayers(ply, refract, base, spark)
+					drawLayers(ply, refract, base, spark, s.amount)
 
 					-- the scan lines, on the screen over the silhouette: only in the electric flash of the start of the change
 					local flash = F.TransitionSpark(s.amount)
@@ -560,7 +595,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				local weapon = ply:GetActiveWeapon()
 
 				if IsValid(weapon) and distance <= F.DetailDistance then
-					drawLayers(weapon, refract, base, 0)
+					drawLayers(weapon, refract, base, 0, s.amount)
 
 					if shader and strength > 0 then
 						shader.Draw(weapon, strength, s.amount, drawPlain)
@@ -601,6 +636,16 @@ local function startFirstPerson(ent, ply)
 
 	s.firstPerson = true
 
+	-- The refraction layer's own pixel shader: the engine draws the arms opaque, as it always does, and the layer is blended over them in the Post
+	-- hook; here only the picture behind is copied, before the model is on it (once per frame, for the view model: the hands come right after it).
+	if F.Refract and F.Refract.Active() then
+		if base < F.NearlyPlain and ent == ply:GetViewModel() then
+			render.UpdateScreenEffectTexture()
+		end
+
+		return
+	end
+
 	-- the refraction first, unless the plain model is still all there (the very start of the change)
 	if base < F.NearlyPlain and ent:IsValid() then
 		-- one copy of the screen per frame, for the view model (the hands come right after it)
@@ -635,7 +680,13 @@ local function endFirstPerson(ent, ply)
 	render.MaterialOverride(nil)
 	render.SetBlend(1)
 
-	local _, _, edge = firstPersonLayers(s)
+	local _, layerBase, edge = firstPersonLayers(s)
+
+	-- the refraction layer over the arms the engine has just drawn, with the alpha the plain model has lost; at the end of the change (the plain
+	-- model nearly all there) nothing
+	if F.Refract and F.Refract.Active() and layerBase < F.NearlyPlain and IsValid(ent) then
+		F.Refract.Draw(ent, F.Refract.BumpScale(s.amount), F.Refract.Alpha(layerBase), drawPlain)
+	end
 
 	-- the sparks of the original's pixel shader instead of the outline and of the scan lines (which are in the shader)
 	if F.Shader and F.Shader.Active() then

@@ -18,3 +18,13 @@ Things learned the hard way (all measured in the game):
 - A missing shader is not an error material (`Material:IsError()` is false): the engine draws flat magenta the first time and nothing the next
   times. cl_cloak_shader.lua tells by drawing a plate into a render target and counting blue pixels, and falls back to the older approximation.
 - Never draw a view model or hands from inside their own `PostDrawViewModel` / `PostDrawPlayerHands` hook without a guard: `DrawModel` calls the hook again.
+- `screenspace_general` blends by alpha only with `$alphablend 1` (`$translucent 1` does not: it draws opaque). The picture behind a model is
+  `_rt_FullFrameFB`, copied by `render.UpdateScreenEffectTexture()` before the model is drawn (the engine's own Refract material reads another copy and
+  ignores the alpha). A custom shader needs `$model 1`, `$softwareskin 1` and `$vertexnormal 1` to be drawn on a model with the vertex shader's skinning.
+- A pixel shader the game does not have: the engine draws pure WHITE with a vertex shader it knows (whatever the alpha), flat magenta the first time
+  with no vertex shader, nothing after that. `cl_cloak_refract.lua` tells the real shader apart with a plate drawn twice (alpha 0 must leave the
+  background, alpha 1 must show the picture).
+- The refraction layer (`grymod_cloak_refract_*`, a port of the original's CloakRefrationPS) gets its relief map from each part of the model: the
+  `$bumpmap` of its material, or `cloak_n` when it has none. The palette and the scan lines it reads come from the originals
+  (`make_cloak_shader_textures.py`: cloak_palette.vtf and cloak_interlation.vtf).
+- Never draw a model from inside its own draw hook without a guard (`drawing` in cl_cloak_fx.lua): the hook runs again for the draw.

@@ -103,6 +103,11 @@ return {
 		if GryMod.CloakFX and GryMod.CloakFX.Shader then
 			stub(GryMod.CloakFX.Shader, "Active", function() return false end)
 		end
+
+		-- likewise the refraction layer's own shader (cl_cloak_refract.lua): these cases are about the older layers and fake entities
+		if GryMod.CloakFX and GryMod.CloakFX.Refract then
+			stub(GryMod.CloakFX.Refract, "Active", function() return false end)
+		end
 	end,
 	afterEach = function(state)
 		restore()

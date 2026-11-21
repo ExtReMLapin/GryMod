@@ -3,7 +3,9 @@
     python dev_resources/shaders/make_cloak_shader_textures.py DDS_DIR [--out-dir materials/grymod/cloak]
 
 - noise3d.vtf          the original's 128 cube of noise, a real VOLUME texture (one 8-bit channel, repeating, data: no sRGB, no mips);
-- spark_profile.vtf    the 256 x 1 colours of cloak_sparks, read at three offsets of the noise (repeating along the row).
+- spark_profile.vtf    the 256 x 1 colours of cloak_sparks, read at three offsets of the noise (repeating along the row);
+- cloak_palette.vtf    the 256 x 1 rim colours of the refraction layer, indexed by the scan lines' G times (1 - N.V);
+- cloak_interlation.vtf  the 256 x 1 scan lines (R and G modulate the bend and the rim, repeating along the row).
 
 The shader itself is grymod_cloak_*.hlsl next to this file (build_shaders.py compiles it into shaders/fxc); the material that runs it is made by
 lua/grymod/client/cl_cloak_shader.lua. Both textures are DATA the shader calculates with, so that material reads them without the engine's sRGB
@@ -56,12 +58,22 @@ def spark_profile_bytes(profile):
     return vtf.vtf_bytes(out, "rgba8888", srgb=False, mips=False, clamp="t")
 
 
+def palette_bytes(row):
+    """The VTF of the (1, 256, 4) palette of the refraction layer: clamped on both axes, read as data."""
+    return vtf.vtf_bytes(row, "rgba8888", srgb=False, mips=False, clamp="st")
+
+
+def interlation_bytes(row):
+    """The VTF of the (1, 256, 4) scan lines: repeating along the row, no mips, read as data."""
+    return vtf.vtf_bytes(row, "rgba8888", srgb=False, mips=False, clamp="t")
+
+
 def load_inputs(dds_dir):
     def read(name):
         with open(os.path.join(dds_dir, name), "rb") as f:
             return ect.decode_dds(f.read())[1]
 
-    return read("noise3d.dds"), read("cloak_sparks.dds")
+    return read("noise3d.dds"), read("cloak_sparks.dds"), read("cloak_palette.dds"), read("cloak_interlation.dds")
 
 
 def main(argv=None):
@@ -70,9 +82,14 @@ def main(argv=None):
     parser.add_argument("--out-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "materials", "grymod", "cloak"))
     args = parser.parse_args(argv)
 
-    volume, profile = load_inputs(args.dds_dir)
+    volume, profile, palette, interlation = load_inputs(args.dds_dir)
     os.makedirs(args.out_dir, exist_ok=True)
-    files = {"noise3d.vtf": noise_volume_bytes(volume), "spark_profile.vtf": spark_profile_bytes(profile)}
+    files = {
+        "noise3d.vtf": noise_volume_bytes(volume),
+        "spark_profile.vtf": spark_profile_bytes(profile),
+        "cloak_palette.vtf": palette_bytes(palette[0]),
+        "cloak_interlation.vtf": interlation_bytes(interlation[0]),
+    }
     for name, data in files.items():
         with open(os.path.join(args.out_dir, name), "wb") as out:
             out.write(data)
