@@ -259,21 +259,21 @@ return {
 		{{d=1,c=59,m={1,0,0,1,0,0},cx={1,1,1,0.5,0,0,0,0}},{d=3,c=62,m={1,0,0,1,44,0},cx={1,1,1,0.5,0,0,0,0}}}
 	}},
 	[64]={k="shape",a=1,x=1533,y=1,w=2,h=1024,ox=508,oy=92,dw=1,dh=439,p={509,531,508,531,508,92,509,92}},
-	[66]={k="text",ox=-2,oy=-2,w=120.5,h=20.3,fh=14,t="",col={9,159,233,255},al=1,f=65},
+	[66]={k="text",ox=-2,oy=-2,w=120.5,h=20.3,fh=14,t="",col={9,159,233,255},al=1,f=65,ml=true,ww=true,ld=2},
 	[67]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=66,n="DegreeN",m={1,0,0,1,2,2}}}
 	}},
 	[68]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=67,n="Colorset",m={1,0,0,1,-18,-3}},a={{"color","Text","Colorset"}}}
 	}},
-	[69]={k="text",ox=-2,oy=-2,w=120.5,h=20.3,fh=14,t="",col={9,159,233,255},al=1,f=65},
+	[69]={k="text",ox=-2,oy=-2,w=120.5,h=20.3,fh=14,t="",col={9,159,233,255},al=1,f=65,ml=true,ww=true,ld=2},
 	[70]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=69,n="DegreeW",m={1,0,0,1,2,2}}}
 	}},
 	[71]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=70,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[72]={k="text",ox=-2,oy=-2,w=27.7,h=26.15,fh=19,t="M",col={9,159,233,255},al=0,f=65},
+	[72]={k="text",ox=-2,oy=-2,w=27.7,h=26.15,fh=19,t="M",col={9,159,233,255},al=0,f=65,ml=true,ww=true,ld=2},
 	[73]={k="text",ox=-2.65,oy=-2,w=13.05,h=26.15,fh=19,t="0",col={9,159,233,255},al=1,f=65},
 	[74]={k="text",ox=-2,oy=-2,w=10.2,h=26.15,fh=19,t=".",col={9,159,233,255},al=1,f=65},
 	[75]={k="text",ox=-2.65,oy=-2,w=13.05,h=26.15,fh=19,t="0",col={9,159,233,255},al=1,f=65},
@@ -317,28 +317,28 @@ return {
 	[92]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=91,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[93]={k="text",ox=117.95,oy=-2,w=45,h=18.35,fh=12,t="X02",col={9,159,233,255},al=2,f=65},
+	[93]={k="text",ox=117.95,oy=-2,w=45,h=18.35,fh=12,t="X02",col={9,159,233,255},al=2,f=65,ml=true,ww=true,ld=2},
 	[94]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=93,n="Zoom",m={1,0,0,1,-121.95,0.5}}}
 	}},
 	[95]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=94,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[96]={k="text",ox=114,oy=-2,w=52,h=18.35,fh=12,t="@ui_ZOOM",col={9,159,233,255},al=2,f=65},
+	[96]={k="text",ox=114,oy=-2,w=52,h=18.35,fh=12,t="@ui_ZOOM",col={9,159,233,255},al=2,f=65,ml=true,ww=true,ld=2},
 	[97]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=96,n="ZoomLabel",m={1,0,0,1,-111.4,3}}}
 	}},
 	[98]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=97,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[99]={k="text",ox=122.95,oy=-2,w=46.95,h=18.35,fh=12,t="@ui_VIS",col={9,159,233,255},al=2,f=65},
+	[99]={k="text",ox=122.95,oy=-2,w=46.95,h=18.35,fh=12,t="@ui_VIS",col={9,159,233,255},al=2,f=65,ml=true,ww=true,ld=2},
 	[100]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=99,n="Mode",m={1,0,0,1,-121.3,0.5}}}
 	}},
 	[101]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=100,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[102]={k="text",ox=114,oy=-2,w=51.95,h=18.35,fh=12,t="@ui_MODE",col={9,159,233,255},al=2,f=65},
+	[102]={k="text",ox=114,oy=-2,w=51.95,h=18.35,fh=12,t="@ui_MODE",col={9,159,233,255},al=2,f=65,ml=true,ww=true,ld=2},
 	[103]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=102,n="ModeLabel",m={1,0,0,1,-111.55,1.55}}}
 	}},
@@ -410,13 +410,13 @@ return {
 	}},
 	[116]={k="morph",ox=378,oy=92,w=271,h=439,ex=508,ey=92,ew=1,eh=439,p={378,92,649,92,649,531,378,531},pe={508,92,509,92,509,531,508,531}},
 	[117]={k="morph",ox=0,oy=0,w=128,h=16,ex=0,ey=0,ew=128,eh=16,p={0,0,128,0,128,16,0,16},pe={0,0,128,0,128,16,0,16}},
-	[119]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,25,0,255},al=2,f=118},
-	[120]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,255,255,255},al=2,f=118},
-	[121]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,25,0,255},al=2,f=118},
+	[119]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,25,0,255},al=2,f=118,ml=true,ww=true,ld=2},
+	[120]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,255,255,255},al=2,f=118,ml=true,ww=true,ld=2},
+	[121]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,25,0,255},al=2,f=118,ml=true,ww=true,ld=2},
 	[122]={k="morph",ox=0,oy=0,w=128,h=16,ex=0,ey=0,ew=128,eh=16,p={0,0,128,0,128,16,0,16},pe={0,0,128,0,128,16,0,16}},
-	[123]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,255,255,255},al=2,f=118},
-	[124]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,25,0,255},al=2,f=118},
-	[125]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,255,255,255},al=2,f=118},
+	[123]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,255,255,255},al=2,f=118,ml=true,ww=true,ld=2},
+	[124]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,25,0,255},al=2,f=118,ml=true,ww=true,ld=2},
+	[125]={k="text",ox=-2,oy=-2,w=160,h=15.4,fh=10,t="TARGET LOCKED",col={255,255,255,255},al=2,f=118,ml=true,ww=true,ld=2},
 	[126]={k="shape",a=1,x=45,y=3946,w=512,h=64,ox=0,oy=0,dw=128,dh=16,p={128,16,0,16,0,0,128,0}},
 	[127]={k="sprite",n=12,labels={},frames={
 		{{d=1,c=117,m={1,0,0,1,0,0}},{d=2,c=119,n="TargetText",m={1,0,0,1,-14.35,2.3}},a={{"x"}}},
@@ -530,14 +530,14 @@ return {
 		{{d=1,mv=true,cx={1,1,1,1,0,0,0,0}},{d=3,mv=true,cx={1,1,1,1,0,0,0,0}},a={{"goto",1}}},
 		{{rm=1},{rm=3},l="restart",a={{"stop"},{"goto",1}}}
 	}},
-	[130]={k="text",ox=118.65,oy=-2,w=19,h=17.2,fh=11,t="X02",col={95,191,127,255},al=2,f=23},
-	[131]={k="text",ox=108.95,oy=-2,w=37,h=13.15,fh=8,t="ZOOM",col={95,191,127,255},al=2,f=118},
-	[132]={k="text",ox=123.45,oy=-2,w=16.5,h=17.2,fh=11,t="VIS",col={95,191,127,255},al=2,f=23},
-	[133]={k="text",ox=108.9,oy=-2,w=37.1,h=13.15,fh=8,t="MODE",col={95,191,127,255},al=2,f=118},
-	[134]={k="text",ox=-2,oy=-2,w=160,h=19.15,fh=13,t="TARGET LOCKED",col={255,25,0,255},al=2,f=23},
-	[135]={k="text",ox=-2,oy=-2,w=120.5,h=14.3,fh=9,t=" 000° 000.00 N",col={95,191,127,255},al=1,f=118},
-	[136]={k="text",ox=-2,oy=-2,w=120.5,h=14.3,fh=9,t=" 000° 000.00 W",col={95,191,127,255},al=1,f=118},
-	[137]={k="text",ox=-2,oy=-2,w=141.9,h=25,fh=18,t="00000.00",col={95,191,127,255},al=1,f=23},
+	[130]={k="text",ox=118.65,oy=-2,w=19,h=17.2,fh=11,t="X02",col={95,191,127,255},al=2,f=23,ml=true,ww=true,ld=2},
+	[131]={k="text",ox=108.95,oy=-2,w=37,h=13.15,fh=8,t="ZOOM",col={95,191,127,255},al=2,f=118,ml=true,ww=true,ld=2},
+	[132]={k="text",ox=123.45,oy=-2,w=16.5,h=17.2,fh=11,t="VIS",col={95,191,127,255},al=2,f=23,ml=true,ww=true,ld=2},
+	[133]={k="text",ox=108.9,oy=-2,w=37.1,h=13.15,fh=8,t="MODE",col={95,191,127,255},al=2,f=118,ml=true,ww=true,ld=2},
+	[134]={k="text",ox=-2,oy=-2,w=160,h=19.15,fh=13,t="TARGET LOCKED",col={255,25,0,255},al=2,f=23,ml=true,ww=true,ld=2},
+	[135]={k="text",ox=-2,oy=-2,w=120.5,h=14.3,fh=9,t=" 000° 000.00 N",col={95,191,127,255},al=1,f=118,ml=true,ww=true,ld=2},
+	[136]={k="text",ox=-2,oy=-2,w=120.5,h=14.3,fh=9,t=" 000° 000.00 W",col={95,191,127,255},al=1,f=118,ml=true,ww=true,ld=2},
+	[137]={k="text",ox=-2,oy=-2,w=141.9,h=25,fh=18,t="00000.00",col={95,191,127,255},al=1,f=23,ml=true,ww=true,ld=2},
 	[138]={k="shape",a=1,x=1,y=4070,w=32,h=24,ox=0,oy=0,dw=1024,dh=768,p={1024,0,1024,768,0,768,0,0}},
 	[139]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=138,m={1,0,0,1,0,0}}}

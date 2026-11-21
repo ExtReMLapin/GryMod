@@ -47,6 +47,12 @@ class Character:
     variable: Optional[str] = None
     align: Optional[int] = None
     font_id: Optional[int] = None
+    # how the text is laid out in the field: wrapped inside the width (multiline + word wrap), field resized to fit
+    # the text (auto size), extra space between two lines (leading, pixels)
+    multiline: bool = False
+    word_wrap: bool = False
+    auto_size: bool = False
+    leading: float = 0
     # simple shapes: the outline as a pixel polygon (one contour, straight edges), else None
     polygon: Optional[list] = None
     # the same for a shape used as a clip layer, one polygon per contour (there can be several: the bars of a signal
@@ -437,7 +443,9 @@ def _read_character(item, movie, scripts_dir=None):
             cid, "text", bounds=_rect(item.find("bounds")),
             font_height=_f(item, "fontHeight") / TWIPS, initial_text=initial,
             color=color, variable=item.get("variableName") or None,
-            align=align, font_id=int(item.get("fontId", 0)) or None)
+            align=align, font_id=int(item.get("fontId", 0)) or None,
+            multiline=item.get("multiline") == "true", word_wrap=item.get("wordWrap") == "true",
+            auto_size=item.get("autoSize") == "true", leading=_f(item, "leading") / TWIPS)
     elif kind == "DefineTextTag":
         cid = int(item.get("characterID"))
         movie.characters[cid] = Character(cid, "statictext", bounds=_rect(item.find("textBounds")))

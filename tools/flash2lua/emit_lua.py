@@ -9,7 +9,10 @@ Format (`return {...}`):
                      text field uses (pixels at size em; ox,oy = bitmap offset from the pen on the baseline)
   chars[id]          shape  {k="shape", a=atlas index, x,y,w,h = bitmap rect, ox,oy = offset, dw,dh = draw size}
                      sprite {k="sprite", n=frame count, labels={name=frame}, frames={ frame... }}
-                     text   {k="text", ox,oy,w,h = bounds, fh = font height, t = initial text, col={r,g,b,a}, var, al, f}
+                     text   {k="text", ox,oy,w,h = bounds, fh = font height, t = initial text, col={r,g,b,a}, var, al, f,
+                             ml = multiline, ww = word wrap (a multiline field breaks its lines at spaces inside w), as = auto
+                             size (the field grows with its text), ld = leading: extra pixels between two lines. Only the
+                             attributes that are on or non-zero are written; a field that is not auto size clips its text}
                      stext  {k="stext", ox,oy,w,h}   (static text, not drawn yet)
                      morph  {k="morph", ox,oy,w,h, ex,ey,ew,eh, p, pe = start / end outline}
                      (shape and morph `p` = outline polygon {x1,y1,x2,y2,...} in stage px, only for one-contour
@@ -166,6 +169,14 @@ def emit_lua(movie, rects, material_dir, fonts=None):
                 body += ",var=" + _str(c.variable)
             if c.font_id:
                 body += ",f=%d" % c.font_id
+            if c.multiline:
+                body += ",ml=true"
+            if c.multiline and c.word_wrap:
+                body += ",ww=true"
+            if c.auto_size:
+                body += ",as=true"
+            if c.leading:
+                body += ",ld=%s" % _num(c.leading)
         elif c.kind == "statictext":
             body = 'k="stext",' + _rect(c.bounds)
         elif c.kind == "morph":

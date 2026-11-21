@@ -101,16 +101,16 @@ return {
 	[21]={k="morph",ox=-11.5,oy=207.8,w=292,h=35.7,ex=-11.5,ey=207.8,ew=292,eh=35.7},
 	[22]={k="shape",a=1,x=231,y=1831,w=32,h=4,ox=1,oy=210.6,dw=273.9,dh=30,p={1,210.6,274.9,210.6,274.9,240.6,1,240.6}},
 	[23]={k="shape",a=1,x=1315,y=529,w=521,h=435,ox=129.35,oy=49.9,dw=130.05,dh=108.55},
-	[25]={k="text",ox=-2,oy=-2,w=118.55,h=27.3,fh=20,t="@ui_EMERGENCY",col={255,255,255,255},al=0,f=24},
-	[26]={k="text",ox=-2,oy=-2,w=118.55,h=27.3,fh=20,t="@ui_REBOOT",col={255,255,255,255},al=0,f=24},
-	[27]={k="text",ox=-2,oy=-2,w=118.55,h=27.3,fh=20,t="@ui_SEQUENCE",col={255,255,255,255},al=0,f=24},
+	[25]={k="text",ox=-2,oy=-2,w=118.55,h=27.3,fh=20,t="@ui_EMERGENCY",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
+	[26]={k="text",ox=-2,oy=-2,w=118.55,h=27.3,fh=20,t="@ui_REBOOT",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
+	[27]={k="text",ox=-2,oy=-2,w=118.55,h=27.3,fh=20,t="@ui_SEQUENCE",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
 	[28]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=25,m={1,0,0,1,10.4,5.6}},{d=2,c=26,m={1,0,0,1,10.4,32.9}},{d=3,c=27,m={1,0,0,1,10.4,60.2}}}
 	}},
 	[29]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=28,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[30]={k="text",ox=-2,oy=-2,w=112.4,h=18.35,fh=12,t="@ui_NANOSUIT_INTERFACE",col={255,255,255,255},al=0,f=24},
+	[30]={k="text",ox=-2,oy=-2,w=112.4,h=18.35,fh=12,t="@ui_NANOSUIT_INTERFACE",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
 	[31]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=30,m={1,0,0,1,2,2}}}
 	}},
@@ -118,14 +118,14 @@ return {
 		{{d=1,c=31,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
 	[33]={k="morph",ox=107.95,oy=73.45,w=29.15,h=61.2,ex=137.15,ey=73.45,ew=29.15,eh=61.2,p={107.95,73.45,137.1,73.45,137.1,134.65,107.95,134.65},pe={137.15,73.45,166.3,73.45,166.3,134.65,137.15,134.65}},
-	[34]={k="text",ox=-2,oy=-2,w=120,h=18.35,fh=12,t="@ui_CHARGING_FUEL_CELLS",col={255,255,255,255},al=0,f=24},
+	[34]={k="text",ox=-2,oy=-2,w=120,h=18.35,fh=12,t="@ui_CHARGING_FUEL_CELLS",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
 	[35]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=34,m={1,0,0,1,2,2}}}
 	}},
 	[36]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=35,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[37]={k="text",ox=-2,oy=-2,w=268.95,h=22.65,fh=16,t="@ui_RECOVERING_SUB",col={255,255,255,255},al=0,f=24},
+	[37]={k="text",ox=-2,oy=-2,w=268.95,h=22.65,fh=16,t="@ui_RECOVERING_SUB",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
 	[38]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=37,m={1,0,0,1,2,2}}}
 	}},
@@ -278,7 +278,7 @@ return {
 		{{d=11,mv=true,r=64717}},
 		{{rm=11},{rm=12},{d=11,c=48,m={1,0,0,1,0,0},cd=14},{d=12,c=45,m={1,0,0,1,0,0},r=99},a={{"stop"}}}
 	}},
-	[50]={k="text",ox=-2,oy=-2,w=117.3,h=37.25,fh=12,t="@ui_RECOVERING_DAMAGED_NANO_MACHINES",col={255,255,255,255},al=0,f=24},
+	[50]={k="text",ox=-2,oy=-2,w=117.3,h=37.25,fh=12,t="@ui_RECOVERING_DAMAGED_NANO_MACHINES",col={255,255,255,255},al=0,f=24,ml=true,ww=true,ld=2},
 	[51]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=50,m={1,0,0,1,2,2}}}
 	}},
@@ -344,7 +344,7 @@ return {
 	[64]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=63,n="Colorset",m={1,0,0,1,6.5,0}},a={{"color","Line","Colorset"}}}
 	}},
-	[65]={k="text",ox=-2,oy=-2,w=219,h=29.65,fh=22,t="@ui_menu_CRYSYSTEMS",col={255,255,255,255},al=2,f=24},
+	[65]={k="text",ox=-2,oy=-2,w=219,h=29.65,fh=22,t="@ui_menu_CRYSYSTEMS",col={255,255,255,255},al=2,f=24,ld=2},
 	[66]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=65,n="Description",m={1,0,0,1,-79,-86.85}}}
 	}},
@@ -706,8 +706,8 @@ return {
 	[102]={k="sprite",n=1,labels={},frames={
 		{{d=1,c=101,n="Colorset",m={1,0,0,1,0,0}},a={{"color","Text","Colorset"}}}
 	}},
-	[104]={k="text",ox=-2,oy=-2,w=255.95,h=29.65,fh=22,t="",col={255,255,255,255},al=2,f=103},
-	[105]={k="text",ox=-2,oy=-2,w=255.95,h=29.65,fh=22,t="",col={255,255,255,255},al=2,f=103}
+	[104]={k="text",ox=-2,oy=-2,w=255.95,h=29.65,fh=22,t="",col={255,255,255,255},al=2,f=103,ld=2},
+	[105]={k="text",ox=-2,oy=-2,w=255.95,h=29.65,fh=22,t="",col={255,255,255,255},al=2,f=103,ld=2}
 	},
 	root={
 		{{d=1,c=95,n="Root",m={1,0,0,1,350,368.35}},{d=16,c=98,n="Line",m={0.0488281,0,0,0.0651092,841.8,-266.55}},{d=18,c=100,n="Over",m={0.0488281,0,0,0.0651092,900.7,-266.55}},{d=20,c=102,n="Text",m={0.0488281,0,0,0.0651092,958.4,-266.55}},{d=22,c=104,n="Description",m={1,0,0,1,-313.7,-303.6}},{d=23,c=105,n="Percent",m={1,0,0,1,-313.7,-266.4}},a={{"x"}}}

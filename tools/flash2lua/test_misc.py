@@ -60,5 +60,45 @@ class HtmlTextTest(unittest.TestCase):
         self.assertEqual(text, "one" + chr(10) + "two")
 
 
+class EditTextLayoutTest(unittest.TestCase):
+    """The layout attributes of a text field (multiline, word wrap, auto size, leading) are read from the SWF and
+    written to the Lua data: without them the player cannot wrap or clip a text (no FFDec needed)."""
+    XML = (
+        '<swf frameRate="30"><displayRect Xmin="0" Xmax="20480" Ymin="0" Ymax="15360"/><tags>'
+        '<item type="DefineEditTextTag" characterID="1" align="0" autoSize="false" fontHeight="240" fontId="9" '
+        'html="false" initialText="a b" leading="40" multiline="true" wordWrap="true" variableName="">'
+        '<bounds Xmin="-40" Xmax="2300" Ymin="-40" Ymax="740"/><textColor alpha="255" blue="255" green="255" red="255"/></item>'
+        '<item type="DefineEditTextTag" characterID="2" align="2" autoSize="false" fontHeight="440" fontId="9" '
+        'html="false" initialText="one" leading="0" multiline="false" wordWrap="false" variableName="">'
+        '<bounds Xmin="-40" Xmax="4400" Ymin="-40" Ymax="600"/><textColor alpha="255" blue="255" green="255" red="255"/></item>'
+        '<item type="DefineEditTextTag" characterID="3" align="0" autoSize="true" fontHeight="240" fontId="9" '
+        'html="false" initialText="x" leading="0" multiline="false" wordWrap="false" variableName="">'
+        '<bounds Xmin="0" Xmax="400" Ymin="0" Ymax="400"/><textColor alpha="255" blue="255" green="255" red="255"/></item>'
+        '</tags></swf>')
+
+    @classmethod
+    def setUpClass(cls):
+        import os
+        import tempfile
+        cls.dir = tempfile.mkdtemp()
+        path = os.path.join(cls.dir, "m.xml")
+        with open(path, "w", encoding="utf8") as out:
+            out.write(cls.XML)
+        cls.movie = swfmodel.parse_swf_xml(path)
+
+    def test_the_attributes_are_read(self):
+        wrapped, single, auto = (self.movie.characters[i] for i in (1, 2, 3))
+        self.assertEqual((wrapped.multiline, wrapped.word_wrap, wrapped.auto_size, wrapped.leading), (True, True, False, 2))
+        self.assertEqual((single.multiline, single.word_wrap, single.auto_size, single.leading), (False, False, False, 0))
+        self.assertTrue(auto.auto_size)
+
+    def test_only_what_matters_is_written(self):
+        from tools.flash2lua import lua_literal
+        data = lua_literal.parse(emit_lua.emit_lua(self.movie, {}, "grymod/flash"))["chars"]
+        self.assertEqual((data[1].get("ml"), data[1].get("ww"), data[1].get("ld"), data[1].get("as")), (True, True, 2, None))
+        self.assertEqual((data[2].get("ml"), data[2].get("ww"), data[2].get("ld"), data[2].get("as")), (None, None, None, None))
+        self.assertEqual(data[3].get("as"), True)
+
+
 if __name__ == "__main__":
     unittest.main()
