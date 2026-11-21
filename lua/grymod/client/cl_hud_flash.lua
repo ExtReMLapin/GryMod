@@ -714,6 +714,9 @@ local function feed(ply)
 		if panel then
 			panel:Destroy(status)
 		end
+
+		-- the start-up and reboot sequences follow the state of the HUD
+		hook.Run("GryMod_HUDStatus", status)
 	end
 
 	local mode = Module.ModeName(ply.NanosuitMode)
@@ -824,7 +827,7 @@ end
 function Module.ResetAll()
 	Module.Reset()
 
-	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade}) do
+	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot}) do
 		if module and module.Reset then
 			module.Reset()
 		end

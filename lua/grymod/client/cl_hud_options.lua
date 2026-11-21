@@ -17,7 +17,8 @@ Options.List = {
 	{name = "hit", label = "Hit marker", help = "The crosshair blinks when you hurt something"},
 	{name = "grenade", label = "Grenade warning", help = "The red hexagon on a grenade coming at you"},
 	{name = "binoculars", label = "Binoculars", help = "The binoculars screen while you zoom"},
-	{name = "quickmenu", label = "Quick menu", help = "The suit mode wheel (hold its key, point, release)"}
+	{name = "quickmenu", label = "Quick menu", help = "The suit mode wheel (hold its key, point, release)"},
+	{name = "boot", label = "Start-up and reboot sequences", help = "The log when you spawn, the shutdown animation and the reboot after a malfunction, with their sounds"}
 }
 
 local byName = {}
