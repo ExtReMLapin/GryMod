@@ -387,8 +387,21 @@ return {
 
 				local e = {IsValid = function() return true end, GetClass = function() asked = asked + 1 return "t_npc_one" end}
 
-				expect(API.GetTracked(e)).to.beNil()
-				expect(asked).to.equal(0)
+				-- the stock entries (sh_api_tracked_hl2.lua) are in the registry: it is emptied for this test and filled again
+				local order = API._trackedOrder
+				local saved = {}
+
+				for i = 1, #order do saved[i] = order[i] end
+				for i = #order, 1, -1 do order[i] = nil end
+
+				local ok, err = pcall(function()
+					expect(API.GetTracked(e)).to.beNil()
+					expect(asked).to.equal(0)
+				end)
+
+				for i = 1, #saved do order[i] = saved[i] end
+
+				if not ok then error(err, 0) end
 			end
 		},
 		{
@@ -425,6 +438,174 @@ return {
 
 				answer = true
 				expect(API.GetTracked(ent("t_npc_one"))).toNot.beNil()
+			end
+		},
+		-- wave B3: dangers (the grenade warning), indicators, shapes, priority, lookups by class
+		{
+			name = "danger is stored: label, type, armed, range, ownerOf, ownMissile; the indicator defaults to warning for an entry with danger and stays nil without",
+			func = function()
+				local armed, owner = function() return true end, function() return NULL end
+
+				expect(API.RegisterTracked("t_trk_a", {class = "t_mine", danger = {label = "TRAP", type = "mine", armed = armed, range = 12.5, ownerOf = owner, ownMissile = true}})).to.beTrue()
+				local d = API.GetTracked(ent("t_mine")).danger
+
+				expect(d.label).to.equal("TRAP")
+				expect(d.type).to.equal("mine")
+				expect(d.armed).to.equal(armed)
+				expect(d.range).to.equal(12.5)
+				expect(d.ownerOf).to.equal(owner)
+				expect(d.ownMissile).to.beTrue()
+				expect(API.GetTracked(ent("t_mine")).indicator).to.equal("warning")
+
+				API.RegisterTracked("t_trk_b", {class = "t_plain"})
+				expect(API.GetTracked(ent("t_plain")).danger).to.beNil()
+				expect(API.GetTracked(ent("t_plain")).indicator).to.beNil()
+			end
+		},
+		{
+			name = "an entry with an empty danger table is a danger as soon as it exists: no armed function, ownMissile false, the label falls back to the entry's label, then DANGER",
+			func = function()
+				expect(API.RegisterTracked("t_trk_a", {class = "t_mine", danger = {}})).to.beTrue()
+				local d = API.GetTracked(ent("t_mine")).danger
+				expect(d.armed).to.beNil()
+				expect(d.ownMissile).to.beFalse()
+				expect(d.label).to.equal("DANGER")
+
+				expect(API.RegisterTracked("t_trk_a", {class = "t_mine", label = "Claymore", danger = {}})).to.beTrue()
+				expect(API.GetTracked(ent("t_mine")).danger.label).to.equal("Claymore")
+			end
+		},
+		{
+			name = "the indicator is warning, marker or none, the shape unit, dot, rect or triangle (a shape the HUD cannot draw yet is stored, never an error)",
+			func = function()
+				for _, indicator in ipairs({"warning", "marker", "none"}) do
+					expect(API.RegisterTracked("t_trk_a", {class = "t_mine", danger = {}, indicator = indicator})).to.beTrue()
+					expect(API.GetTracked(ent("t_mine")).indicator).to.equal(indicator)
+				end
+
+				for _, shape in ipairs({"unit", "dot", "rect", "triangle"}) do
+					expect(API.RegisterTracked("t_trk_a", {class = "t_mine", shape = shape})).to.beTrue()
+					expect(API.GetTracked(ent("t_mine")).shape).to.equal(shape)
+				end
+
+				-- an indicator without danger is kept as given
+				API.RegisterTracked("t_trk_a", {class = "t_mine", indicator = "none"})
+				expect(API.GetTracked(ent("t_mine")).indicator).to.equal("none")
+			end
+		},
+		{
+			name = "invalid danger values are refused with the name of the field: danger itself, label, type, armed, range, ownerOf, ownMissile; and an invalid indicator or priority",
+			func = function()
+				local bad = {
+					{{danger = "yes"}, "danger"}, {{danger = 5}, "danger"}, {{danger = true}, "danger"},
+					{{danger = {label = ""}}, "label"}, {{danger = {label = 5}}, "label"}, {{danger = {label = string.rep("x", 33)}}, "label"},
+					{{danger = {type = ""}}, "type"}, {{danger = {type = 5}}, "type"},
+					{{danger = {armed = "yes"}}, "armed"}, {{danger = {armed = true}}, "armed"},
+					{{danger = {range = 0}}, "range"}, {{danger = {range = -3}}, "range"}, {{danger = {range = "far"}}, "range"}, {{danger = {range = 201}}, "range"},
+					{{danger = {ownerOf = "me"}}, "ownerOf"},
+					{{danger = {ownMissile = "yes"}}, "ownMissile"}, {{danger = {ownMissile = 1}}, "ownMissile"},
+					{{danger = {}, indicator = "loud"}, "indicator"}, {{indicator = 5}, "indicator"},
+					{{shape = "circle"}, "shape"},
+					{{priority = "high"}, "priority"}, {{priority = 0 / 0}, "priority"}, {{priority = math.huge}, "priority"}
+				}
+
+				for _, case in ipairs(bad) do
+					local def = {class = "t_mine"}
+
+					for key, value in pairs(case[1]) do def[key] = value end
+
+					local ok, reason = API.RegisterTracked("t_trk_a", def)
+
+					expect(ok).to.beFalse()
+					expect(string.find(reason, case[2], 1, true) ~= nil).to.beTrue()
+				end
+
+				expect(API.GetTracked(ent("t_mine"))).to.beNil()
+			end
+		},
+		{
+			name = "a danger without a class is refused (the client looks for these entities by class); with a class and a match function it is fine",
+			func = function()
+				local ok, reason = API.RegisterTracked("t_trk_a", {match = function() return true end, danger = {}})
+
+				expect(ok).to.beFalse()
+				expect(string.find(reason, "class", 1, true) ~= nil).to.beTrue()
+				expect(API.RegisterTracked("t_trk_a", {base = "t_base", danger = {}})).to.beFalse()
+				expect(API.RegisterTracked("t_trk_a", {class = "t_mine", match = function() return true end, danger = {}})).to.beTrue()
+			end
+		},
+		{
+			name = "GetDanger gives the first entry with danger of a class (a class name or an entity), an entry without danger is skipped, nothing for an unknown class; DangerClasses lists the classes",
+			func = function()
+				API.RegisterTracked("t_trk_a", {class = "t_mine", radar = "always"}) -- no danger: not the one
+				API.RegisterTracked("t_trk_b", {class = {"t_mine", "t_bomb"}, danger = {label = "FIRST"}})
+				API.RegisterTracked("t_trk_c", {class = "t_mine", danger = {label = "SECOND"}})
+
+				expect(API.GetDanger("t_mine").key).to.equal("t_trk_b")
+				expect(API.GetDanger("t_mine").danger.label).to.equal("FIRST")
+				expect(API.GetDanger(ent("t_bomb")).key).to.equal("t_trk_b")
+				expect(API.GetDanger("t_unknown")).to.beNil()
+				expect(API.GetDanger(nil)).to.beNil()
+				expect(API.GetDanger(5)).to.beNil()
+				expect(API.GetDanger({})).to.beNil()
+
+				local seen = {}
+				for _, class in ipairs(API.DangerClasses()) do seen[class] = (seen[class] or 0) + 1 end
+				expect(seen.t_mine).to.equal(1)
+				expect(seen.t_bomb).to.equal(1)
+
+				API.UnregisterTracked("t_trk_b")
+				expect(API.GetDanger("t_mine").key).to.equal("t_trk_c")
+				expect(API.GetDanger("t_bomb")).to.beNil()
+			end
+		},
+		{
+			name = "GetTrackedByClass gives the first entry that names the class (class lists only, no base, no match function); it follows Register and Unregister",
+			func = function()
+				API.RegisterTracked("t_trk_a", {class = {"t_npc_one", "t_npc_two"}, type = "flying"})
+				API.RegisterTracked("t_trk_b", {class = "t_npc_one", type = "machine"})
+				API.RegisterTracked("t_trk_c", {base = "t_base_ai"})
+				API.RegisterTracked("t_trk_d", {match = function() return true end})
+
+				expect(API.GetTrackedByClass("t_npc_one").key).to.equal("t_trk_a")
+				expect(API.GetTrackedByClass("t_npc_two").key).to.equal("t_trk_a")
+				expect(API.GetTrackedByClass("t_base_ai")).to.beNil()
+				expect(API.GetTrackedByClass("t_npc_other")).to.beNil()
+				expect(API.GetTrackedByClass(nil)).to.beNil()
+				expect(API.GetTrackedByClass(5)).to.beNil()
+
+				API.UnregisterTracked("t_trk_a")
+				expect(API.GetTrackedByClass("t_npc_one").key).to.equal("t_trk_b")
+				expect(API.GetTrackedByClass("t_npc_two")).to.beNil()
+			end
+		},
+		{
+			name = "priority: the higher comes first whatever the registration order (a stock entry registered with a low one is beaten by any later entry), ties keep the registration order, replacing a key with the same priority keeps its place",
+			func = function()
+				API.RegisterTracked("t_trk_a", {class = "t_npc_one", radar = "never", priority = -100})
+				API.RegisterTracked("t_trk_b", {class = "t_npc_one", radar = "always"})
+				expect(API.GetTracked(ent("t_npc_one")).key).to.equal("t_trk_b")
+				expect(API.GetTrackedByClass("t_npc_one").key).to.equal("t_trk_b")
+
+				API.RegisterTracked("t_trk_c", {class = "t_npc_one", radar = "scan", priority = 5})
+				expect(API.GetTracked(ent("t_npc_one")).key).to.equal("t_trk_c")
+
+				API.RegisterTracked("t_trk_d", {class = "t_npc_one", radar = "hostile", priority = 5})
+				expect(API.GetTracked(ent("t_npc_one")).key).to.equal("t_trk_c") -- the tie: registered first
+
+				API.RegisterTracked("t_trk_c", {class = "t_npc_one", radar = "scan", priority = 5})
+				expect(API.GetTracked(ent("t_npc_one")).key).to.equal("t_trk_c") -- same place
+
+				-- a new priority moves it
+				API.RegisterTracked("t_trk_a", {class = "t_npc_one", radar = "never", priority = 10})
+				expect(API.GetTracked(ent("t_npc_one")).key).to.equal("t_trk_a")
+				expect(API.GetTracked(ent("t_npc_one")).priority).to.equal(10)
+
+				-- the default is 0
+				API.UnregisterTracked("t_trk_a")
+				API.UnregisterTracked("t_trk_c")
+				API.UnregisterTracked("t_trk_d")
+				expect(API.GetTracked(ent("t_npc_one")).priority).to.equal(0)
 			end
 		}
 	}
