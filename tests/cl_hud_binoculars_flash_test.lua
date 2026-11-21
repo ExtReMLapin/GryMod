@@ -35,6 +35,27 @@ return {
 			end
 		},
 		{
+			name = "the target lock icons (brackets drawn at the corner of the stage when nothing is locked) stay hidden, during the intro and after",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				local seen = 0
+
+				for _, seconds in ipairs({0, 0.1, 1.5}) do
+					run(b, seconds)
+
+					for _, entry in ipairs(b.bino:Entries()) do
+						if entry.clip and ((entry.name and string.find(entry.name, "^TargetIcon")) or entry.id == 51) then
+							seen = seen + 1
+							expect(entry.clip.visible).to.beFalse()
+						end
+					end
+				end
+
+				expect(seen > 0).to.beTrue()
+			end
+		},
+		{
 			name = "showing plays the intro to its resting frame",
 			func = function(state)
 				local b = newBinoculars()

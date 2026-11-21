@@ -1,7 +1,7 @@
 -- The binoculars drawn from the original Scaleform movie (HUD_Binoculars), see cl_flash.lua. In GryMod they are the
 -- Half-Life 2 suit zoom (the zoom key): the movie shows while it is held, with the distance of what is aimed at,
 -- the zoom factor and the world position. Hand-ported parts of its ActionScript: setVisible, closeBinoculars,
--- setPosition, setDistance, setZoomMode. Not ported: the horizon ladder (Attitude), the target lock icons.
+-- setPosition, setDistance, setZoomMode. Not ported: the horizon ladder (Attitude), the target lock icons (hidden).
 
 GryMod = GryMod or {}
 
@@ -226,7 +226,20 @@ function Instance:_applyDistance()
 	end
 end
 
+-- The target lock icons (the brackets and the lock symbol) are placed by the game's code on what it locks onto; with
+-- nothing locked they sit at the corner of the stage, so they stay hidden. The lock symbol has no instance name.
+local LOCK_SYMBOL = 51
+
+function Instance:_hideTargets()
+	for _, entry in ipairs(self.bino:Entries()) do
+		if entry.clip and ((entry.name and string.find(entry.name, "^TargetIcon")) or entry.id == LOCK_SYMBOL) then
+			entry.clip:SetVisible(false)
+		end
+	end
+end
+
 function Instance:_apply()
+	self:_hideTargets()
 	self:_applyZoom()
 	self:_applyPosition()
 	self:_applyDistance()
