@@ -889,6 +889,92 @@ return {
 			end
 		},
 		{
+			name = "the suit flag is not watched at every frame: no Think hook, the game's own change hook (EntityNetworkedVarChanged) and one for the arrival in game",
+			func = function()
+				local hooks = hook.GetTable()
+				expect(hooks.Think and hooks.Think.GryApiSuitFlag).to.beNil()
+				expect(type(hooks.EntityNetworkedVarChanged.GryApiSuitFlag)).to.equal("function")
+				expect(type(hooks.InitPostEntity.GryApiSuitFlag)).to.equal("function")
+			end
+		},
+		{
+			name = "the change hook plays disabled and enabled from the value the game gives it, for the local player and the flag only; the arrival and a repeat play nothing",
+			func = function()
+				local Events = GryMod.APIEvents
+				local calls = {}
+				local changed = hook.GetTable().EntityNetworkedVarChanged.GryApiSuitFlag
+				local ply = LocalPlayer()
+				expect(changed).to.exist()
+
+				stub(API, "HUDEvent", function(name) calls[#calls + 1] = name return true end)
+
+				local ok, err = pcall(function()
+					-- the first look (nothing known before it): the value of a full update, played nothing
+					Events.SuitFlagSync(nil)
+					changed(ply, "GryDisabled", nil, true)
+					expect(#calls).to.equal(0)
+
+					-- the flag then changes: the new value comes as the hook's argument (the old one is still in the entity)
+					changed(ply, "GryDisabled", true, false)
+					expect(calls[1]).to.equal("enabled")
+					changed(ply, "GryDisabled", false, true)
+					expect(calls[2]).to.equal("disabled")
+					expect(#calls).to.equal(2)
+
+					-- the same value again (a full update, a repeated set): nothing
+					changed(ply, "GryDisabled", nil, true)
+					changed(ply, "GryDisabled", true, true)
+					expect(#calls).to.equal(2)
+
+					-- another variable, another entity: nothing
+					changed(ply, "GryCloak", false, true)
+					changed(game.GetWorld(), "GryDisabled", false, false)
+					expect(#calls).to.equal(2)
+
+					-- the flag was never set (the suit is on): the first set to true is a change, not an arrival
+					Events.SuitFlagSync(true)
+					changed(ply, "GryDisabled", nil, true)
+					expect(calls[3]).to.equal("disabled")
+					expect(#calls).to.equal(3)
+					Events.SuitFlagSync(true)
+					changed(ply, "GryDisabled", nil, false)
+					expect(#calls).to.equal(3)
+				end)
+
+				Events.SuitFlagSync(nil)
+				restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			name = "the arrival in game (and a reload of the file) reads the flag once and plays nothing: the next change is compared with it",
+			func = function()
+				local Events = GryMod.APIEvents
+				local calls = {}
+				local arrival = hook.GetTable().InitPostEntity.GryApiSuitFlag
+				local changed = hook.GetTable().EntityNetworkedVarChanged.GryApiSuitFlag
+
+				stub(API, "HUDEvent", function(name) calls[#calls + 1] = name return true end)
+				stub(API, "IsSuitEnabled", function() return false end)
+
+				local ok, err = pcall(function()
+					Events.SuitFlagSync(nil)
+					arrival()
+					expect(#calls).to.equal(0)
+					changed(LocalPlayer(), "GryDisabled", nil, true) -- the flag it found
+					expect(#calls).to.equal(0)
+					changed(LocalPlayer(), "GryDisabled", true, false)
+					expect(calls[1]).to.equal("enabled")
+				end)
+
+				Events.SuitFlagSync(nil)
+				restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "boot, lost and reboot: the spawn and the HUD's own status changes call the events themselves",
 			func = function()
 				listen()

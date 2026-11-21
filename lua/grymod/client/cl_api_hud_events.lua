@@ -207,7 +207,7 @@ function Events.Register()
 	})
 
 	-- the suit goes off, on this screen only: the shutdown animation (with the malfunction sound), then the HUD stays hidden until
-	-- "enabled" (or "reset"). The server's flag (GryMod.API.SetSuitEnabled) calls these two when it changes (see the Think hook below).
+	-- "enabled" (or "reset"). The server's flag (GryMod.API.SetSuitEnabled) calls these two when it changes (see the EntityNetworkedVarChanged hook below).
 	register("disabled", function()
 		if GryMod.FlashHUD and GryMod.FlashHUD.SetLocalOff then
 			GryMod.FlashHUD.SetLocalOff(true)
@@ -247,21 +247,44 @@ if GryMod.FlashBoot and GryMod.FlashBoot.RegisterEvents then
 	GryMod.FlashBoot.RegisterEvents()
 end
 
--- The server's flag of the suit: when it changes, the HUD plays its shutdown or its reboot (the first look plays nothing).
-local lastFlag
+-- The server's flag of the suit (the NW2 bool "GryDisabled", GryMod.API.SetSuitEnabled): when it changes, the HUD plays its shutdown or its
+-- reboot. Nothing is polled: the game calls EntityNetworkedVarChanged when a NW2 variable changes, and for every variable of every entity at a
+-- full update (the arrival in game: the old value is nil then, as it is for the first set of a variable). The hook gets the NEW value as its
+-- fourth argument (the entity still holds the old one, so it is not read from there). What was seen last is kept, so that a full update that
+-- repeats the flag, and the arrival itself, play nothing: only a real change does.
+local lastFlag -- the state of the suit as last seen (true = on), nil before the first look
 
-hook.Add("Think", "GryApiSuitFlag", function()
+-- The state the flag was last seen in: on = true / false, nil to forget it (the next value is a first look and plays nothing).
+function Events.SuitFlagSync(on)
+	lastFlag = on
+end
+
+local function syncSuitFlag()
 	local ply = LocalPlayer()
 
-	if not IsValid(ply) or not API.IsSuitEnabled then
+	if IsValid(ply) and API.IsSuitEnabled then
+		Events.SuitFlagSync(API.IsSuitEnabled(ply))
+	end
+end
+
+hook.Add("EntityNetworkedVarChanged", "GryApiSuitFlag", function(ent, name, _, disabled)
+	if name ~= "GryDisabled" or ent ~= LocalPlayer() or not IsValid(ent) then
 		return
 	end
 
-	local on = API.IsSuitEnabled(ply)
-	local name = Events.SuitFlagStep(lastFlag, on)
+	local on = not disabled
+	local event = Events.SuitFlagStep(lastFlag, on)
 	lastFlag = on
 
-	if name then
-		API.HUDEvent(name)
+	if event then
+		API.HUDEvent(event)
 	end
 end)
+
+-- The first look: the flag as it is when the player arrives in game (the full update may have come before this) and when this file is loaded
+-- again in a running game. Once, not a loop.
+hook.Add("InitPostEntity", "GryApiSuitFlag", syncSuitFlag)
+syncSuitFlag()
+
+-- The first version of this watched the flag at every frame: a copy of it left by an older load of the file goes.
+hook.Remove("Think", "GryApiSuitFlag")
