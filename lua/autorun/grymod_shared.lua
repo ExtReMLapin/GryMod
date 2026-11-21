@@ -21,6 +21,8 @@ end
 if SERVER then
 	AddCSLuaFile()
 	AddCSLuaFile("grymod/sh_api.lua")
+	AddCSLuaFile("grymod/sh_api_weapons.lua")
+	AddCSLuaFile("grymod/sh_api_weapons_hl2.lua")
 	AddCSLuaFile("grymod/client/cl_api.lua")
 	AddCSLuaFile("grymod/client/cl_hud.lua")
 	AddCSLuaFile("grymod/client/cl_sound_mix.lua")
@@ -63,6 +65,8 @@ if SERVER then
 	AddCSLuaFile("grymod/flash/hud_radarcompassstealth.lua")
 	AddCSLuaFile("grymod/flash/hud_ammohealthenergysuit.lua")
 	include("grymod/sh_api.lua")
+	include("grymod/sh_api_weapons.lua")
+	include("grymod/sh_api_weapons_hl2.lua")
 	include("grymod/server/sv_mechanics.lua")
 	include("grymod/server/sv_health.lua")
 	include("grymod/server/sv_feedback.lua")
@@ -228,6 +232,8 @@ end
 
 if CLIENT then
 	include("grymod/sh_api.lua")
+	include("grymod/sh_api_weapons.lua")
+	include("grymod/sh_api_weapons_hl2.lua")
 	include("grymod/client/cl_api.lua")
 	include("grymod/client/cl_sound_mix.lua")
 	include("grymod/client/cl_flash.lua")
