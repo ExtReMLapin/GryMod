@@ -23,6 +23,15 @@ class SparksPixelShaderTest(unittest.TestCase):
         code = code_only(source("grymod_cloak_ps30.hlsl"))
         self.assertNotIn("objPos.w", code)
 
+    def test_the_pattern_is_worked_out_in_the_entitys_own_space(self):
+        # The vertex position the engine hands over is in the WORLD (measured: a plate moved elsewhere shows another pattern, a plate turned a
+        # quarter shows the same one): a pattern read from it stays put in the world and a walking player slides through it. The Lua gives the
+        # entity's origin (c3.xyz) and angles (c2.xyz), and the pattern is read from the position relative to them.
+        code = code_only(source("grymod_cloak_ps30.hlsl"))
+        self.assertNotIn("frag.objPos.xyz / C0.x", code)
+        self.assertIn("C3.xyz", code)
+        self.assertIn("sincos", code)
+
     def test_the_drift_comes_from_the_fourth_component_of_the_colour_register(self):
         code = code_only(source("grymod_cloak_ps30.hlsl"))
         self.assertIn("C2.w", code)

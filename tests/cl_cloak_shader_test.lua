@@ -29,6 +29,8 @@ local function fakeEntity(index)
 	local ent = {draws = {}}
 	function ent:IsValid() return true end
 	function ent:EntIndex() return index or 5 end
+	function ent:GetPos() return ent.pos or Vector(0, 0, 0) end
+	function ent:GetAngles() return ent.ang or Angle(0, 0, 0) end
 	function ent:DrawModel() ent.draws[#ent.draws + 1] = ent.override end
 
 	return ent
@@ -151,7 +153,7 @@ return {
 			end
 		},
 		{
-			name = "the constants given to the shader: units per volume, time, strength, rows to a period; the variation; the sparks' colour",
+			name = "the constants given to the shader: units per volume, time, strength, rows to a period; the variation; the entity's angles and drift; its origin",
 			func = function()
 				local S = GryMod.CloakFX.Shader
 				local c = S.Constants(2.5, 0.5, 0.8, 1080, 3)
@@ -165,9 +167,21 @@ return {
 				expect(near(c[2][2], vy)).to.beTrue()
 				expect(c[2][3]).to.equal(S.RowOffset(2.5, 4))
 
-				expect(near(c[3][1], 0.3)).to.beTrue()
-				expect(near(c[3][2], 0.3)).to.beTrue()
-				expect(near(c[3][3], 1)).to.beTrue()
+				-- the entity's angles in radians (pitch, yaw, roll) and the drift; then its origin: the pattern is worked out in the entity's own space
+				expect(near(c[3][1], 0)).to.beTrue()
+				expect(near(c[3][2], 0)).to.beTrue()
+				expect(near(c[3][3], 0)).to.beTrue()
+				expect(c[3][4]).to.equal(0)
+				expect(c[4][1]).to.equal(0)
+
+				local placed = S.Constants(2.5, 0.5, 0.8, 1080, 3, 0.37, Vector(100, -200, 30), Angle(10, 90, -45))
+				expect(near(placed[3][1], math.rad(10))).to.beTrue()
+				expect(near(placed[3][2], math.rad(90))).to.beTrue()
+				expect(near(placed[3][3], math.rad(-45))).to.beTrue()
+				expect(near(placed[3][4], 0.37)).to.beTrue()
+				expect(near(placed[4][1], 100)).to.beTrue()
+				expect(near(placed[4][2], -200)).to.beTrue()
+				expect(near(placed[4][3], 30)).to.beTrue()
 			end
 		},
 		{
@@ -377,6 +391,183 @@ return {
 
 				S.Draw(fakeEntity(), 0.7, 0.5, function() end)
 				expect(near(material.sets["$c2_w"], 0.25)).to.beTrue()
+			end
+		},
+		{
+			name = "Draw gives the shader the entity's own origin and angles",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				stub(S, "works", true)
+				GetConVar(OPTION):SetString("1")
+				local material = {sets = {}}
+				function material:SetFloat(k, v) self.sets[k] = v end
+				stub(S, "Material", function() return material end)
+				stub(render, "MaterialOverride", function() end)
+
+				local ent = fakeEntity()
+				ent.pos, ent.ang = Vector(11, 22, 33), Angle(0, 90, 0)
+				S.Draw(ent, 0.7, 0.5, function() end)
+
+				expect(near(material.sets["$c3_x"], 11)).to.beTrue()
+				expect(near(material.sets["$c3_y"], 22)).to.beTrue()
+				expect(near(material.sets["$c3_z"], 33)).to.beTrue()
+				expect(near(material.sets["$c2_y"], math.rad(90))).to.beTrue()
+			end
+		},
+		{
+			name = "the pattern sticks to the entity (measured with the real shader): the same plate moved to another place shows the same sparks when it is given its own origin and not when it is not, and a plate turned a quarter shows them turned when it is given its angles (the pattern was fixed to the world, and a walking player slid through it)",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local material = S.Material()
+				local size = 64
+				local target = GetRenderTarget("GryCloakShaderStickProbe", size, size)
+				local plate = ClientsideModel(S.PROBE_MODEL)
+				plate:SetNoDraw(true)
+
+				-- somewhere in front of the player: a model drawn far from the view is culled, and a model that is not in the scene is drawn where it was
+				-- until its bones are made again
+				local me = LocalPlayer()
+				local base = me:EyePos() + me:EyeAngles():Forward() * 150
+
+				-- the blue of the plate's middle (48 x 48 pixels), one row to a period so that the scan lines are even
+				local function shoot(pos, ang, given)
+					plate:SetPos(pos)
+					plate:SetAngles(ang)
+					plate:SetupBones()
+					plate:InvalidateBoneCache()
+					local c = S.Constants(0.37 / S.TIME_SCALE, 0.5, 1, 1080, 0, 0, given and pos or Vector(0, 0, 0), given and ang or Angle(0, 0, 0))
+					c[1][4] = 1
+					c[2][3] = 0
+
+					for r = 1, 4 do
+						for i, k in ipairs({"x", "y", "z", "w"}) do
+							material:SetFloat("$c" .. (r - 1) .. "_" .. k, c[r][i])
+						end
+					end
+
+					local pixels = {}
+					render.PushRenderTarget(target)
+					local ok, err = pcall(function()
+						render.Clear(0, 0, 0, 255, true, true)
+						cam.Start({type = "3D", origin = pos + Vector(0, 0, 100), angles = Angle(90, 0, 0), x = 0, y = 0, w = size, h = size,
+							ortho = {left = -24, right = 24, top = -24, bottom = 24}, znear = 1, zfar = 300})
+						render.MaterialOverride(material)
+						plate:DrawModel()
+						render.MaterialOverride(nil)
+						cam.End3D()
+						render.CapturePixels()
+
+						for y = 8, 55 do
+							for x = 8, 55 do
+								local _, _, b = render.ReadPixel(x, y)
+								pixels[#pixels + 1] = b
+							end
+						end
+					end)
+					render.PopRenderTarget()
+					render.MaterialOverride(nil)
+
+					if not ok then
+						error(err, 0)
+					end
+
+					return pixels
+				end
+
+				local function diff(a, b)
+					local sum = 0
+
+					for i = 1, #a do
+						sum = sum + math.abs(a[i] - b[i])
+					end
+
+					return sum / #a
+				end
+
+				-- 6 x 6 blocks of 8 x 8 pixels, each its mean: a turn puts the pixels half a pixel off, which a pattern this fine does not forgive
+				local function blocks(pixels)
+					local out = {}
+
+					for by = 0, 5 do
+						for bx = 0, 5 do
+							local sum = 0
+
+							for y = 1, 8 do
+								for x = 1, 8 do
+									sum = sum + pixels[(by * 8 + y - 1) * 48 + bx * 8 + x]
+								end
+							end
+
+							out[by * 6 + bx + 1] = sum / 64
+						end
+					end
+
+					return out
+				end
+
+				local function turned(b, quarters)
+					local out = {}
+
+					for y = 1, 6 do
+						for x = 1, 6 do
+							local sx, sy = x, y
+
+							for _ = 1, quarters do
+								sx, sy = sy, 7 - sx
+							end
+
+							out[(y - 1) * 6 + x] = b[(sy - 1) * 6 + sx]
+						end
+					end
+
+					return out
+				end
+
+				local ok, err = pcall(function()
+					local here = shoot(base, Angle(0, 0, 0), true)
+					local lit = 0
+
+					for i = 1, #here do
+						if here[i] > 20 then lit = lit + 1 end
+					end
+
+					expect(lit > 50).to.beTrue() -- the sparks are there at all
+
+					-- moved: the same picture when it is given its place, another one when it is not
+					expect(diff(here, shoot(base + Vector(30, 0, 0), Angle(0, 0, 0), true)) < 1).to.beTrue()
+					expect(diff(here, shoot(base + Vector(30, 0, 0), Angle(0, 0, 0), false)) > 5).to.beTrue()
+					expect(diff(here, shoot(base + Vector(0, 0, 30), Angle(0, 0, 0), true)) < 1).to.beTrue()
+					expect(diff(here, shoot(base + Vector(0, 0, 30), Angle(0, 0, 0), false)) > 5).to.beTrue()
+
+					-- turned a quarter: with its angles one of the four turns of the first picture matches, and the others do not
+					local rotated = blocks(shoot(base, Angle(0, 90, 0), true))
+					local first = blocks(here)
+					local best, worst = math.huge, 0
+
+					for quarters = 0, 3 do
+						local d = diff(first, turned(rotated, quarters))
+						best, worst = math.min(best, d), math.max(worst, d)
+					end
+
+					expect(best < 6).to.beTrue()
+					expect(worst > 12).to.beTrue()
+
+					-- without its angles the pattern does not turn with it (it stays as the world has it)
+					local fixed = blocks(shoot(base, Angle(0, 90, 0), false))
+					local sticks = math.huge
+
+					for quarters = 1, 3 do
+						sticks = math.min(sticks, diff(first, turned(fixed, quarters)))
+					end
+
+					expect(sticks > 12).to.beTrue()
+				end)
+
+				plate:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		}
 	}

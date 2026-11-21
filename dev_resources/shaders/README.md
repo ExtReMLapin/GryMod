@@ -28,3 +28,10 @@ Things learned the hard way (all measured in the game):
   `$bumpmap` of its material, or `cloak_n` when it has none. The palette and the scan lines it reads come from the originals
   (`make_cloak_shader_textures.py`: cloak_palette.vtf and cloak_interlation.vtf).
 - Never draw a model from inside its own draw hook without a guard (`drawing` in cl_cloak_fx.lua): the hook runs again for the draw.
+- The vertex position a vertex shader hands over for a model drawn with `$softwareskin 1` is in the WORLD (measured with a diagnostic shader that showed
+  it as a colour: it changes with the model's place on every axis). A pattern read from it stays put in the world and a walking player slides through
+  it: the sparks' pixel shader reads it relative to the entity's origin and angles, which the Lua gives it (`c3.xyz`, `c2.xyz`).
+- A `ClientsideModel` moved with `SetPos` / `SetAngles` and drawn at once in the same frame is drawn WHERE IT WAS until `SetupBones()` and
+  `InvalidateBoneCache()` are called; a model far from the main view is culled even in a render target of its own. Measurements that move a test
+  model (cl_cloak_shader_test.lua) put it in front of the player and refresh its bones.
+- A material that reads more than three registers needs `$c3_x`..`$c3_w` too: `screenspace_general` has four constant registers, `c0` to `c3`.

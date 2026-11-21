@@ -39,7 +39,7 @@ Sh.TIME_SCALE = 0.4
 Sh.TIME_WRAP = 5
 Sh.ENTITY_SHIFT = 0.137
 
--- The sparks' colour (the original's SparksColor).
+-- The sparks' colour (the original's SparksColor), which the pixel shader holds itself; here only to tell the sparks from the engine's error colour.
 Sh.COLOR = {0.3, 0.3, 1}
 
 -- The scan lines: four screen rows to a period in the original (at its 1080 line pictures), more on a taller screen so that they look the
@@ -136,8 +136,11 @@ function Sh.Drift(ent)
 	return state.phase
 end
 
--- The three constant registers: {{units per volume, time, strength, rows to a period}, {variation x, variation y, row offset, 0}, {colour, drift}}.
-function Sh.Constants(curtime, amount, strength, screenHeight, index, drift)
+-- The four constant registers: {{units per volume, time, strength, rows to a period}, {variation x, variation y, row offset, 0},
+-- {the entity's angles in radians: pitch, yaw, roll; the drift}, {the entity's origin, 0}}. The vertex position the engine hands to the shader is in the
+-- WORLD (measured: a plate moved elsewhere showed another pattern, a plate turned a quarter the same one), so a pattern read from it stayed put in the world
+-- and a walking player slid through it: the shader reads it relative to the entity's own origin and angles (as the original's object space is).
+function Sh.Constants(curtime, amount, strength, screenHeight, index, drift, pos, ang)
 	local time = Sh.Time(curtime, index)
 	local vx, vy = Sh.Variation(time, amount)
 	local period = Sh.RowPeriod(screenHeight)
@@ -145,14 +148,15 @@ function Sh.Constants(curtime, amount, strength, screenHeight, index, drift)
 	return {
 		{Sh.UNITS, time, strength, period},
 		{vx, vy, Sh.RowOffset(curtime, period), 0},
-		{Sh.COLOR[1], Sh.COLOR[2], Sh.COLOR[3], drift or 0}
+		{ang and math.rad(ang.p) or 0, ang and math.rad(ang.y) or 0, ang and math.rad(ang.r) or 0, drift or 0},
+		{pos and pos.x or 0, pos and pos.y or 0, pos and pos.z or 0, 0}
 	}
 end
 
 local REGISTERS = {"x", "y", "z", "w"}
 
 local function setConstants(material, constants)
-	for r = 1, 3 do
+	for r = 1, #constants do
 		for i = 1, 4 do
 			material:SetFloat("$c" .. (r - 1) .. "_" .. REGISTERS[i], constants[r][i])
 		end
@@ -182,7 +186,8 @@ function Sh.Material()
 			["$depthtest"] = "1",
 			["$c0_x"] = "52.49", ["$c0_y"] = "0", ["$c0_z"] = "0", ["$c0_w"] = "4",
 			["$c1_x"] = "0", ["$c1_y"] = "0", ["$c1_z"] = "0", ["$c1_w"] = "0",
-			["$c2_x"] = "0.3", ["$c2_y"] = "0.3", ["$c2_z"] = "1", ["$c2_w"] = "0"
+			["$c2_x"] = "0", ["$c2_y"] = "0", ["$c2_z"] = "0", ["$c2_w"] = "0",
+			["$c3_x"] = "0", ["$c3_y"] = "0", ["$c3_z"] = "0", ["$c3_w"] = "0"
 		})
 	end
 
@@ -209,7 +214,7 @@ function Sh.Probe()
 		plate:SetPos(Vector(0, 0, 0))
 		plate:SetAngles(Angle(0, 0, 0))
 
-		setConstants(material, {{Sh.UNITS, 0.37, 1, 4}, {0.05, 0.02, 1, 0}, {Sh.COLOR[1], Sh.COLOR[2], Sh.COLOR[3], 0}})
+		setConstants(material, {{Sh.UNITS, 0.37, 1, 4}, {0.05, 0.02, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}})
 
 		render.PushRenderTarget(target)
 
@@ -271,7 +276,7 @@ function Sh.Draw(ent, strength, amount, draw)
 
 	local material = Sh.Material()
 
-	setConstants(material, Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex(), Sh.Drift(ent)))
+	setConstants(material, Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex(), Sh.Drift(ent), ent:GetPos(), ent:GetAngles()))
 
 	local ok = pcall(function()
 		render.MaterialOverride(material)
