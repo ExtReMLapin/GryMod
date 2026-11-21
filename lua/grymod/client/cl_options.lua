@@ -84,6 +84,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Binoculars sound mood: explosions, collisions and vehicles are lowered while they are up", "gry_binoculars_mood")
 	Panel:CheckBox("Binoculars zoom stages 2x, 4x, 8x with the mouse wheel, 0.055 s between them, 0.2 s to open and close (off: the Half-Life 2 zoom; always on with the own zoom key above). Changes how the mouse feels", "gry_binoculars_stages")
 	Panel:CheckBox("Binoculars sway: the view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view", "gry_binoculars_sway")
+	Panel:CheckBox("Opening the binoculars while the crossbow is zoomed (right click) ends the crossbow's zoom (off: it comes back when the binoculars close)", "gry_zoom_cancel_weapon")
 	Panel:CheckBox("Binoculars full-screen vision: cool tint, scan lines and darker edges. The original has it in the High quality only, and it doubles the film's vignette", "gry_binoculars_vision")
 
 	Panel:CheckBox("Screen effects: heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change", "gry_screenfx")

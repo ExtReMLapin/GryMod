@@ -44,6 +44,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_menu_key.lua")
 	AddCSLuaFile("grymod/client/cl_hud_binoculars_flash.lua")
 	AddCSLuaFile("grymod/client/cl_suit_zoom.lua")
+	AddCSLuaFile("grymod/client/cl_weapon_zoom.lua")
 	AddCSLuaFile("grymod/client/cl_hud_grenade_flash.lua")
 	AddCSLuaFile("grymod/client/cl_damage_fx.lua")
 	AddCSLuaFile("grymod/client/cl_mode_fx.lua")
@@ -70,6 +71,7 @@ if SERVER then
 	include("grymod/server/sv_radar.lua")
 	include("grymod/server/sv_grenade.lua")
 	include("grymod/server/sv_friendly.lua")
+	include("grymod/server/sv_weapon_zoom.lua")
 	include("grymod/sh_server_options.lua")
 	include("grymod/server/sv_server_options.lua")
 
@@ -237,6 +239,7 @@ if CLIENT then
 	include("grymod/client/cl_menu_key.lua")
 	include("grymod/client/cl_hud_binoculars_flash.lua")
 	include("grymod/client/cl_suit_zoom.lua")
+	include("grymod/client/cl_weapon_zoom.lua")
 	include("grymod/client/cl_hud_grenade_flash.lua")
 	include("grymod/client/cl_damage_fx.lua")
 	include("grymod/client/cl_mode_fx.lua")
