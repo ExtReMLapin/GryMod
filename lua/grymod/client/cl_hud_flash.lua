@@ -1025,6 +1025,7 @@ function Module.Paint()
 		fxSample.max = ply:GetMaxHealth()
 		fxSample.energy = serverEnergy(ply)
 		fxSample.armor = Module.ModeName(ply.NanosuitMode) == "Armor"
+		fxSample.malfunction = ply:GetNWBool("GryMalfunction", false) -- the start of a malfunction empties the bar: not a hit
 		damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
 
 		jumpX, jumpY = damageFx.HudOffset(damageFx.State, dt)

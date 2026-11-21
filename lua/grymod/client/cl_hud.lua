@@ -273,6 +273,12 @@ local function endCloak(ply)
 	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
 	net.Start("gry_empty_energy")
 	net.SendToServer() -- too lazy to fight cheaters
+
+	-- the bar is emptied by the server: that is no armor hit, but the glitch of firing out of the camouflage plays on purpose
+	-- (cl_damage_fx.lua, gry_decloak_glitch)
+	if GryMod.DamageFx then
+		GryMod.DamageFx.Decloak(GryMod.DamageFx.State, RealTime())
+	end
 end
 
 -- How long a press that came too early (the weapon is being drawn) is followed, in seconds.

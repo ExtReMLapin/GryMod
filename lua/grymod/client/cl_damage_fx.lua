@@ -14,10 +14,15 @@ local FX = {}
 GryMod.DamageFx = FX
 
 local screenConVar = CreateClientConVar("gry_screenfx", "1", true, false, "Screen effects of damage: the flash and shake of a heavy armor hit, the red tint and blur at low health")
+local decloakConVar = CreateClientConVar("gry_decloak_glitch", "1", true, false, "Firing out of the camouflage plays the armor hit effect (flash, HUD jump, shake) at any energy; 0: nothing plays")
 
 -- The energy an armor hit must cost: the game's 40 of 200, a fifth of the bar.
 FX.ARMOR_COST = 20
 FX.ARMOR_SECONDS = 0.5
+-- After a deliberate emptying of the bar (firing out of the camouflage) the drop is expected within this many seconds: it is
+-- not an armor hit.
+FX.EMPTIED_SECONDS = 1
+FX.EMPTIED_BELOW = 1 -- the energy (0-100) the emptied bar falls under
 -- The health zones, as part of the maximum (the game's 40 and 50 of 200).
 FX.LOW_CRITICAL = 0.20
 FX.LOW_BAND = 0.25
@@ -129,13 +134,44 @@ end
 
 function FX.Reset(state)
 	state.jolt = 0
-	state.armorAt, state.lowAt, state.lowLevel = nil, nil, nil
+	state.armorAt, state.lowAt, state.lowLevel, state.emptiedUntil = nil, nil, nil, nil
 	state.health, state.energy = nil, nil
 	FX.Sync(state, 0)
 end
 
--- Looks at the player once a frame: sample = {health, max, energy (0-100), armor (the suit is in armor mode)}, now in
--- seconds, options = {hud, screen} (which effects are switched on). The first sample only sets the reference.
+-- The armor hit effect: the HUD jumps (options.hud), the screen flashes and shakes (options.screen). Returns whether the
+-- screen effect started (the caller then calls FX.Sync).
+function FX.ArmorImpact(state, now, options)
+	if options.hud then
+		state.jolt = FX.INTERFERENCE_DISTORTION
+	end
+
+	if options.screen then
+		state.armorAt = now
+		FX.Shake(1.5, 20, FX.ARMOR_SECONDS)
+
+		return true
+	end
+
+	return false
+end
+
+-- The player fires out of the camouflage (GryMod.CloackAttack): the suit goes back to armor mode and the bar is emptied.
+-- That is not a hit, so the drop of the bar is marked here and Observe does not read it as one; the effect of a hit plays
+-- by choice (gry_decloak_glitch, the original's glitch), at any energy: before, it only played when the energy lost was
+-- 20 or more, which is the energy the player had.
+function FX.Decloak(state, now, options)
+	state.emptiedUntil = now + FX.EMPTIED_SECONDS
+
+	if decloakConVar:GetBool() and FX.ArmorImpact(state, now, options or FX.Options()) then
+		FX.Sync(state, now)
+	end
+end
+
+-- Looks at the player once a frame: sample = {health, max, energy (0-100), armor (the suit is in armor mode), malfunction
+-- (the suit is down: its start empties the bar)}, now in seconds, options = {hud, screen} (which effects are switched on).
+-- The first sample only sets the reference. Only an energy drop that costs something is an armor hit: not the bar emptied by
+-- a decloak (FX.Decloak) nor by the start of a malfunction.
 function FX.Observe(state, sample, now, options)
 	local health, energy = sample.health, sample.energy
 	local lastHealth, lastEnergy = state.health, state.energy
@@ -146,17 +182,20 @@ function FX.Observe(state, sample, now, options)
 	end
 
 	local started = false
+	local dropped = lastEnergy and energy < lastEnergy
+	local emptied = false
 
-	if sample.armor and lastEnergy and energy < lastEnergy and FX.ArmorShake(lastEnergy - energy) > 0 then
-		if options.hud then
-			state.jolt = FX.INTERFERENCE_DISTORTION
-		end
+	if state.emptiedUntil then
+		-- the drop to nothing is the emptied bar (the slow drain of the camouflage before it is not), and it is only expected once
+		emptied = dropped and energy < FX.EMPTIED_BELOW
 
-		if options.screen then
-			state.armorAt = now
-			started = true
-			FX.Shake(1.5, 20, FX.ARMOR_SECONDS)
+		if emptied or now >= state.emptiedUntil then
+			state.emptiedUntil = nil
 		end
+	end
+
+	if sample.armor and dropped and not emptied and not sample.malfunction and FX.ArmorShake(lastEnergy - energy) > 0 then
+		started = FX.ArmorImpact(state, now, options)
 	end
 
 	if options.screen then

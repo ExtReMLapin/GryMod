@@ -425,6 +425,50 @@ return {
 			end
 		},
 		{
+			name = "firing out of the camouflage plays the glitch at 15 % energy as at 40 %, once (the old rule: only the 40)",
+			func = function(state)
+				local FX = GryMod.DamageFx
+				local realShake = FX.Shake
+				local saved = GetConVar("gry_decloak_glitch"):GetString()
+				local shakes = 0
+
+				local ok, err = pcall(function()
+					GetConVar("gry_decloak_glitch"):SetString("1")
+					FX.Shake = function() shakes = shakes + 1 end
+
+					for _, energy in ipairs({15, 40}) do
+						shakes = 0
+						FX.Reset(FX.State)
+
+						-- the HUD has seen the player at that energy, in the camouflage (not armor mode: no hit possible)
+						local sample = {health = 100, max = 100, energy = energy, armor = false}
+						FX.Observe(FX.State, sample, 0, FX.Options())
+
+						-- the shot: the suit goes back to armor mode at once, the server empties the bar a little later
+						local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_pistol", 17, 100, 0)
+						GryMod.CloackAttack(ply, IN_ATTACK)
+						expect(#ply.modeSet).to.equal(1)
+
+						sample.armor = true
+						FX.Observe(FX.State, sample, 0.02, FX.Options())
+						sample.energy = 0
+						FX.Observe(FX.State, sample, 0.1, FX.Options())
+
+						expect(shakes).to.equal(1)
+						expect(FX.State.armorAt ~= nil).to.beTrue()
+					end
+				end)
+
+				FX.Shake = realShake
+				pcall(function() GetConVar("gry_decloak_glitch"):SetString(saved) end)
+				pcall(FX.Reset, FX.State)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "the key hook is on, and the switch is saved, on by default, with a check box in the options",
 			func = function(state)
 				expect(hook.GetTable().KeyPress["AttackDetection"]).to.equal(GryMod.CloackAttack)

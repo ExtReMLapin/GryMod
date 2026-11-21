@@ -172,6 +172,7 @@ function GryMod.GryOptionschute(Panel)
 	Panel:CheckBox("Camouflage: bend the picture behind the player and fade in and out (off: the old material)", "gry_cloak_fx")
 	Panel:CheckBox("Camouflage: the change is progressive, with the sparks, in first and third person (off: it switches at once)", "gry_cloak_transition")
 	Panel:CheckBox("Camouflage: a right click that really fires also ends it (shotgun double barrel, SMG grenade, AR2 ball, frag lob; the crossbow zoom does not)", "gry_cloak_altfire")
+	Panel:CheckBox("Camouflage: firing out of it plays the glitch (flash, HUD jump, shake) at any energy, not only above 20 %", "gry_decloak_glitch")
 
 	-- the key of the quick menu (a `bind <key> +crysishud` in the console works too)
 	if GryMod.MenuKey then

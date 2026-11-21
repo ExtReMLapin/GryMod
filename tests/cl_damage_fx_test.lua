@@ -5,6 +5,7 @@
 local FX = GryMod.DamageFx
 
 local realShake
+local savedDecloak
 
 local function sample(health, energy, armor, max)
 	return {health = health, max = max or 100, energy = energy, armor = armor ~= false}
@@ -24,10 +25,12 @@ return {
 	groupName = "GryMod damage feedback",
 	beforeAll = function(state)
 		realShake = FX.Shake
+		savedDecloak = GetConVar("gry_decloak_glitch"):GetString()
 	end,
 	afterEach = function(state)
 		FX.Shake = realShake
 		hook.Remove("RenderScreenspaceEffects", "GryDamageFx")
+		pcall(function() GetConVar("gry_decloak_glitch"):SetString(savedDecloak) end)
 	end,
 	cases = {
 		{
@@ -308,6 +311,196 @@ return {
 				expect(s.armorAt).to.beNil()
 				expect(s.health).to.beNil()
 				expect(hook.GetTable().RenderScreenspaceEffects.GryDamageFx).to.beNil()
+			end
+		},
+		{
+			name = "Observe: a real armor hit of 25 triggers the effect and one of 10 does not (non-regression)",
+			func = function(state)
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local hit = seen(100, 80)
+				FX.Observe(hit, sample(100, 55), 1, ON)
+				expect(hit.armorAt).to.equal(1)
+
+				local small = seen(100, 80)
+				FX.Observe(small, sample(100, 70), 1, ON)
+				expect(small.armorAt).to.beNil()
+				expect(shakes).to.equal(1)
+			end
+		},
+		{
+			name = "Decloak: the effect of an armor hit plays at ANY energy, once, and the emptied bar is not read as a hit",
+			func = function(state)
+				GetConVar("gry_decloak_glitch"):SetString("1")
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				for _, energy in ipairs({15, 40, 100, 3}) do
+					shakes = 0
+					local s = seen(100, energy)
+					FX.Decloak(s, 1, ON)
+					expect(s.armorAt).to.equal(1)
+					expect(s.jolt).to.equal(FX.INTERFERENCE_DISTORTION)
+					expect(shakes).to.equal(1)
+
+					-- the server empties the bar a few frames later: the same effect is not played again
+					FX.Observe(s, sample(100, 0), 1.1, ON)
+					expect(s.armorAt).to.equal(1)
+					expect(shakes).to.equal(1)
+				end
+			end
+		},
+		{
+			name = "Decloak: the slow drain of the camouflage before the server empties the bar does not use up the marker (measured live)",
+			func = function(state)
+				GetConVar("gry_decloak_glitch"):SetString("1")
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local s = seen(100, 40)
+				FX.Decloak(s, 1, ON)
+				expect(shakes).to.equal(1)
+
+				-- frames where the energy only falls a little (the camouflage's drain), the suit already in armor mode
+				FX.Observe(s, sample(100, 39.9), 1.02, ON)
+				FX.Observe(s, sample(100, 39.8), 1.04, ON)
+				expect(s.emptiedUntil ~= nil).to.beTrue()
+
+				-- then the bar is emptied: still no hit
+				FX.Observe(s, sample(100, 0), 1.06, ON)
+				expect(shakes).to.equal(1)
+				expect(s.emptiedUntil).to.beNil()
+			end
+		},
+		{
+			name = "Decloak: the marker is consumed by the drop, and a real hit after it triggers again; it also expires",
+			func = function(state)
+				GetConVar("gry_decloak_glitch"):SetString("1")
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local s = seen(100, 60)
+				FX.Decloak(s, 1, ON)
+				FX.Observe(s, sample(100, 0), 1.05, ON)
+				expect(s.emptiedUntil).to.beNil()
+
+				-- the bar refills a little, then a hit of 25 is a real one
+				FX.Observe(s, sample(100, 50), 2, ON)
+				FX.Observe(s, sample(100, 25), 2.1, ON)
+				expect(s.armorAt).to.equal(2.1)
+				expect(shakes).to.equal(2)
+
+				-- a marker whose drop never comes (the bar was empty already) expires: a hit long after is real
+				local late = seen(100, 0)
+				FX.Decloak(late, 5, ON)
+				FX.Observe(late, sample(100, 0), 5.5, ON)
+				expect(late.emptiedUntil).to.equal(6)
+				FX.Observe(late, sample(100, 0), 6.5, ON)
+				expect(late.emptiedUntil).to.beNil()
+				FX.Observe(late, sample(100, 90), 7, ON)
+				FX.Observe(late, sample(100, 60), 7.1, ON)
+				expect(late.armorAt).to.equal(7.1)
+			end
+		},
+		{
+			name = "with gry_decloak_glitch 0 firing out of the camouflage plays nothing, and the emptied bar is still no hit",
+			func = function(state)
+				GetConVar("gry_decloak_glitch"):SetString("0")
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local s = seen(100, 60)
+				FX.Decloak(s, 1, ON)
+				FX.Observe(s, sample(100, 0), 1.05, ON)
+				expect(s.armorAt).to.beNil()
+				expect(s.jolt).to.equal(0)
+				expect(shakes).to.equal(0)
+			end
+		},
+		{
+			name = "Decloak follows the two effect switches: the HUD jump and the screen",
+			func = function(state)
+				GetConVar("gry_decloak_glitch"):SetString("1")
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local s = seen(100, 50)
+				FX.Decloak(s, 1, {hud = true, screen = false})
+				expect(s.jolt).to.equal(FX.INTERFERENCE_DISTORTION)
+				expect(s.armorAt).to.beNil()
+
+				s = seen(100, 50)
+				FX.Decloak(s, 1, {hud = false, screen = true})
+				expect(s.jolt).to.equal(0)
+				expect(s.armorAt).to.equal(1)
+				expect(shakes).to.equal(1)
+			end
+		},
+		{
+			name = "a malfunction that empties the bar is not an armor hit (the flag comes with the empty bar)",
+			func = function(state)
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local s = seen(100, 60)
+				local down = sample(100, 0)
+				down.malfunction = true
+				FX.Observe(s, down, 1, ON)
+				expect(s.armorAt).to.beNil()
+				expect(s.jolt).to.equal(0)
+				expect(shakes).to.equal(0)
+			end
+		},
+		{
+			name = "an energy drop of the same size and no cause is still a hit: the marker belongs to the decloak only",
+			func = function(state)
+				FX.Shake = function() end
+				local s = seen(100, 60)
+				FX.Observe(s, sample(100, 0), 1, ON)
+				expect(s.armorAt).to.equal(1)
+			end
+		},
+		{
+			name = "gry_decloak_glitch is a saved setting, on by default, with a check box in the options; Reset forgets the marker",
+			func = function(state)
+				local convar = GetConVar("gry_decloak_glitch")
+				expect(convar ~= nil).to.beTrue()
+				expect(convar:GetDefault()).to.equal("1")
+				-- saved like the other switch of this file (the flag values of client convars are not the FCVAR_ constants)
+				expect(convar:GetFlags()).to.equal(GetConVar("gry_screenfx"):GetFlags())
+
+				FX.Shake = function() end
+				local s = seen(100, 60)
+				FX.Decloak(s, 1, ON)
+				FX.Reset(s)
+				expect(s.emptiedUntil).to.beNil()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_decloak_glitch"]).to.beTrue()
 			end
 		},
 		{
