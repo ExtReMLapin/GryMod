@@ -154,6 +154,21 @@ function Panel:SetHeading(bearing)
 	end
 end
 
+-- The frame of the view cone for a Source horizontal field of view (degrees). The original sends the camera's
+-- field of view times cl_fov (60) times 0.5, which is about 30 at its default view; Source's 75 horizontal on a
+-- 4:3 screen is that 60 vertical, so the frame is half the vertical field of view in degrees (75 gives 30, 90 gives
+-- 37, a 20 degree zoom gives 8). The unit of the original's factor is not resolved: this reading is the one that
+-- gives 30 at the default view.
+function Radar.FovFrame(fov)
+	if fov == nil or fov ~= fov or fov <= 0 then
+		return 1
+	end
+
+	local vertical = 2 * math.atan(0.75 * math.tan(math.rad(math.min(fov, 179)) / 2))
+
+	return math.Clamp(math.floor(math.deg(vertical) / 2 + 0.5), 1, 100)
+end
+
 -- setFOV: the frame of the view cone (1-100).
 function Panel:SetFOV(frame)
 	self.fov = frame

@@ -894,7 +894,7 @@ function Module.Paint()
 	if panel then
 		local Radar = GryMod.FlashRadar
 		panel:SetHeading(Radar.BearingFromYaw(ply:EyeAngles().y))
-		panel:SetFOV(ply:GetFOV())
+		panel:SetFOV(Radar.FovFrame(ply:GetFOV()))
 		panel:SetStealth(Radar.StealthFromCount(GryMod.RadarCount))
 		panel:Update(dt)
 

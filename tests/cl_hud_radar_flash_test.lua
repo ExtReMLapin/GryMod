@@ -103,6 +103,22 @@ return {
 			end
 		},
 		{
+			name = "the view cone frame is half the vertical field of view of a 4:3 screen, in degrees",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				expect(R.FovFrame).toNot.beNil()
+				expect(R.FovFrame(75)).to.equal(30)
+				expect(R.FovFrame(90)).to.equal(37)
+				expect(R.FovFrame(20)).to.equal(8)
+				expect(R.FovFrame(75) < R.FovFrame(90)).to.beTrue()
+				expect(R.FovFrame(20) < R.FovFrame(75)).to.beTrue()
+				expect(R.FovFrame(179) <= 100).to.beTrue()
+				expect(R.FovFrame(0)).to.equal(1)
+				expect(R.FovFrame(nil)).to.equal(1)
+				expect(R.FovFrame(0 / 0)).to.equal(1)
+			end
+		},
+		{
 			name = "the stealth bar goes from the first to the last of its 101 frames",
 			func = function(state)
 				local panel = newPanel()
