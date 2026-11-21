@@ -211,18 +211,31 @@ return {
 			end
 		},
 		{
-			name = "Frame: the picture of the sparks follows the level of the change, one cell of the atlas for each eighth, never out of the atlas",
+			name = "Cell: the picture of the sparks changes at RATE a second, through every cell of the atlas in turn (the sparks never stand still), never out of the atlas",
 			func = function()
 				local L = GryMod.CloakFX.Lines
 
-				expect(L.Frame(0)).to.equal(0)
-				expect(L.Frame(0.05)).to.equal(0)
-				expect(L.Frame(0.13)).to.equal(1)
-				expect(L.Frame(0.5)).to.equal(4)
-				expect(L.Frame(0.99)).to.equal(L.FRAMES - 1)
-				expect(L.Frame(1)).to.equal(L.FRAMES - 1)
-				expect(L.Frame(7)).to.equal(L.FRAMES - 1)
-				expect(L.Frame(-2)).to.equal(0)
+				expect(L.RATE >= 24).to.beTrue()
+				expect(L.Cell(0)).to.equal(0)
+				expect(L.Cell(0.5 / L.RATE)).to.equal(0)
+				expect(L.Cell(1.5 / L.RATE)).to.equal(1)
+
+				local seen = {}
+
+				for i = 0, 40 do
+					local cell = L.Cell(i / L.RATE + 0.001)
+					expect(cell >= 0 and cell < L.FRAMES).to.beTrue()
+					expect(cell).to.equal(math.floor(cell))
+					seen[cell] = true
+				end
+
+				local n = 0
+
+				for _ in pairs(seen) do n = n + 1 end
+
+				expect(n).to.equal(L.FRAMES)
+				-- and it loops
+				expect(L.Cell(L.FRAMES / L.RATE + 0.001)).to.equal(0)
 			end
 		},
 		{
@@ -232,7 +245,7 @@ return {
 				local frame = 3
 
 				for _, case in ipairs({
-					{x = 100, y = 50, w = 700, h = 400, ox = 0, oy = 0, sh = 1080},
+					{x = 100, y = 50, w = 700, h = 400, ox = 0, oy = 0, sh = 2160},
 					{x = 13, y = 7, w = 1000, h = 900, ox = 100, oy = 3, sh = 1080},
 					{x = 0, y = 0, w = 3840, h = 2160, ox = 77, oy = 2, sh = 2160},
 					{x = 500, y = 500, w = 40, h = 40, ox = 5, oy = 1, sh = 720}
@@ -255,14 +268,15 @@ return {
 					expect(math.abs(area - case.w * case.h) < 1).to.beTrue()
 				end
 
-				-- one tile is CELL pixels at 1080 and twice that at 2160: a box smaller than a tile, away from its edge, is one quad
-				local one = L.Tiles(10, 10, 100, 100, 1080, 0, 0, 0)
+				-- one texel is one pixel at 2160 (the 4K screen: the lines are four pixels to a period, as in the original) and half a
+				-- pixel at 1080: a box smaller than a tile, away from its edge, is one quad
+				local one = L.Tiles(10, 10, 100, 100, 2160, 0, 0, 0)
 				expect(#one).to.equal(1)
 				expect(one[1].u1 - one[1].u0).to.aboutEqual(100 / (L.CELL * L.FRAMES), 0.0001)
 				expect(one[1].v1 - one[1].v0).to.aboutEqual(100 / L.CELL, 0.0001)
 
-				local big = L.Tiles(10, 10, 100, 100, 2160, 0, 0, 0)
-				expect(big[1].u1 - big[1].u0).to.aboutEqual(50 / (L.CELL * L.FRAMES), 0.0001)
+				local small = L.Tiles(10, 10, 100, 100, 1080, 0, 0, 0)
+				expect(small[1].u1 - small[1].u0).to.aboutEqual(200 / (L.CELL * L.FRAMES), 0.0001)
 			end
 		},
 		{

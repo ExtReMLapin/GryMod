@@ -28,11 +28,13 @@ function Lines.Enabled()
 	return convar:GetBool()
 end
 
--- The picture: FRAMES cells of CELL texels square side by side (2048 x 256), one texel is one pixel of a 1080 screen; the lines of the
--- interlation are PERIOD rows to a period.
-Lines.CELL = 256
+-- The picture: FRAMES cells of CELL texels square side by side (4096 x 512), one texel is one pixel of a 2160 screen (the lines of the
+-- interlation are PERIOD pixels to a period there, as in the original; half a pixel to a texel at 1080); the cells follow each other
+-- RATE a second, in turn, so that the sparks never stand still.
+Lines.CELL = 512
 Lines.FRAMES = 8
 Lines.PERIOD = 4
+Lines.RATE = 30
 
 -- The colour the intensity picture is given: the shader's SparksColor (0.3, 0.3, 1) squared is nearly pure blue; the video's own
 -- grading (measured on a capture of the original: about 44, 54, 255 in the middle of a patch) lifts the red and the green a little.
@@ -81,7 +83,7 @@ function Lines.Rect(points, screenW, screenH)
 	return x0, y0, x1 - x0, y1 - y0
 end
 
--- Where the tiles start, for this frame, in pixels at 1080: the lines jump by a whole number of rows from 0 to PERIOD - 1 (the shader reads
+-- Where the tiles start, for this frame, in pixels at 2160: the lines jump by a whole number of rows from 0 to PERIOD - 1 (the shader reads
 -- the interlation at a random offset at every frame; the four rows of its period make four different pictures), the patches slide
 -- along slowly. Same frame and time, same answer.
 function Lines.Offset(frame, time)
@@ -92,16 +94,16 @@ function Lines.Offset(frame, time)
 	return math.floor(time * Lines.DRIFT * Lines.CELL) % Lines.CELL, jump
 end
 
--- The cell of the picture for the level of the change (0 to 1): one for each eighth.
-function Lines.Frame(level)
-	return math.Clamp(math.floor(level * Lines.FRAMES), 0, Lines.FRAMES - 1)
+-- The cell of the picture at this time (seconds): the cells in turn, RATE a second.
+function Lines.Cell(time)
+	return math.floor(time * Lines.RATE) % Lines.FRAMES
 end
 
 -- The quads that lay the cell of `frame` over the box x, y, w, h on a screen screenH pixels high, the cells side by side from the
--- offset (ox, oy given in pixels at 1080): the picture grows with the screen so that the lines keep their look. Each quad is a
+-- offset (ox, oy given in pixels at 2160): the picture grows with the screen so that the lines keep their look. Each quad is a
 -- piece of one cell (a cell is read inside its own bounds): {x, y, w, h, u0, v0, u1, v1}, the quads cover the box exactly.
 function Lines.Tiles(x, y, w, h, screenH, ox, oy, frame)
-	local scale = screenH / 1080
+	local scale = screenH / 2160
 	local size = Lines.CELL * scale
 	local atlasW = Lines.CELL * Lines.FRAMES
 	local startX = x - ox * scale
@@ -173,10 +175,9 @@ local frame = 0
 
 -- Draws the lines over the entity. `draw(ent)` draws the entity's model (it is called once, with the colours off). With `screen`
 -- the lines cover the whole screen (only where the model is, still): for the view model and the hands, which are drawn with
--- their own field of view, so that their box cannot be found from the world's camera. `level` (0 to 1) is how far the change is: it
--- chooses the cell of the picture. Returns true when something was drawn (or nothing was to be), and false and the error when the
--- drawing failed: the state is back anyway.
-function Lines.Draw(ent, strength, draw, screen, level)
+-- their own field of view, so that their box cannot be found from the world's camera. Returns true when something was drawn (or
+-- nothing was to be), and false and the error when the drawing failed: the state is back anyway.
+function Lines.Draw(ent, strength, draw, screen)
 	if not Lines.Enabled() then return true end
 
 	local alpha = Lines.Alpha(strength)
@@ -216,8 +217,9 @@ function Lines.Draw(ent, strength, draw, screen, level)
 		render.SetStencilCompareFunction(STENCIL_EQUAL)
 		render.SetStencilPassOperation(STENCIL_KEEP)
 
-		local ox, oy = Lines.Offset(frame, RealTime())
-		local cell = Lines.Frame(level or 0)
+		local now = RealTime()
+		local ox, oy = Lines.Offset(frame, now)
+		local cell = Lines.Cell(now)
 		local tint = Lines.TINT
 
 		cam.Start2D()

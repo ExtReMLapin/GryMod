@@ -13,9 +13,9 @@ cloak_interlation.dds). This tool holds no resource of the game, only the arithm
     spark = (SparksColor * dot(rgb, 2)) ^ 2  ->  nearly pure blue, SparksColor being (0.3, 0.3, 1)
     result = interlation.a(screen row * 0.25) * spark * max(speed, transition ^ 2)
 
-Source has no volume texture and no pixel shader here, so the picture is a SLICE of the volume, one cell per moment of the first
-moments of the change (the volume's offset v and the time t grow with the level of the change), the cells side by side in one
-I8 picture. The interlation (a triangle wave read at 0.25 per screen row, so four rows to a period) is baked in: it multiplies
+Source has no volume texture and no pixel shader here, so the picture is a SLICE of the volume, one cell per moment of the flash at the
+start of the change (the volume's offset v and the time t differ from one cell to the next), the cells side by side in one I8 picture,
+shown in turn 30 a second by the Lua. The interlation (a triangle wave read at 0.25 per screen row, so four rows to a period) is baked in: it multiplies
 every cell; the thin lines of the sparks are widened and brightened a little (glow), standing in for the original's bloom. The
 blue and the strength over time come from the Lua (cl_cloak_lines.lua): the picture is the intensity only.
 
@@ -34,10 +34,12 @@ from tools import extract_cloak_textures as ect  # noqa: E402
 from tools.flash2lua import vtf  # noqa: E402
 
 FRAMES = 8
-CELL = 256
-# the change lasts F.ActivateTime = 0.8 s in the Lua; the shader's time is the game's time x 0.4
-ACTIVATE_SECONDS = 0.8
-TIME_SCALE = 0.4
+CELL = 512
+# The cells are shown in turn at 30 a second in the Lua (cl_cloak_lines.lua), so they are the sparks at moments spread over a couple of
+# seconds of the shader's time, not a smooth sweep: each one has its own contours. The shader's time is the game's time x 0.4 and the
+# level of the change is only the first part of it (the flash is over by the time half of it is done).
+TIME_STEP = 0.2
+FLASH_LEVEL = 0.5
 # where the slice is cut in the volume (a fixed depth, the noise has no preferred one)
 SLICE_Z = 0.37
 
@@ -94,7 +96,7 @@ def interlation_rows(alpha, rows):
 
 # The original's sparks are thin contour lines that its HDR output and bloom make glow; Source here has neither, so the lines are
 # widened and brightened a little in the picture itself (a box blur that wraps, so that the cell still tiles, mixed back with a gain).
-GLOW_RADIUS = 2
+GLOW_RADIUS = 3
 GLOW_GAIN = 3.0
 
 
@@ -124,8 +126,8 @@ def build_atlas(volume, profile, interlation, frames=FRAMES, cell=CELL):
     atlas = np.zeros((cell, cell * frames), dtype=np.uint8)
 
     for i in range(frames):
-        level = (i + 0.5) / frames                      # how far the change is, 0..1
-        t = level * ACTIVATE_SECONDS * TIME_SCALE       # the shader's AnimGenParams
+        level = (i + 0.5) / frames * FLASH_LEVEL        # how far the change is: the flash is the first half
+        t = i * TIME_STEP                               # the shader's AnimGenParams
         variation = (t % 1.0) * 2 * 0.1 * (1 - level)   # vConstants.x with no motion
         n = noise_chain(volume, px, py, pz, variation)
         rgb = (lookup(profile[:, 0], n + t + 0.1), lookup(profile[:, 1], n * 1.53 + t * 2 + 0.4), lookup(profile[:, 2], n * 1.7 + t * 1.4 + 0.2))
