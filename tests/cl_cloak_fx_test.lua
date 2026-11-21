@@ -703,6 +703,35 @@ return {
 			end
 		},
 		{
+			name = "DrawPhysgunBeam: the physgun draws its own glow sprites and beam (through this hook, which nothing drawn over the weapon can cover: a blue patch stayed in the camouflaged hand), so they are hidden while its owner is camouflaged, for whoever looks; nothing for a plain player, or with gry_cloak_fx 0",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local fn = hook.GetTable().DrawPhysgunBeam and hook.GetTable().DrawPhysgunBeam.GryCloakFX
+				expect(fn).to.exist()
+
+				local ply, other = fakePlayer(0), fakePlayer(0)
+				local weapon = fakePlayer(0)
+
+				-- no state: plain
+				expect(fn(ply, weapon, false, NULL)).to.beNil()
+
+				-- in the change and once done: hidden, whether he grabs something or not
+				setState(ply, 0.4)
+				expect(fn(ply, weapon, false, NULL)).to.beFalse()
+				setState(ply, 1)
+				expect(fn(ply, weapon, true, NULL)).to.beFalse()
+
+				-- somebody else's physgun is not touched; a state that has gone back to nothing neither
+				expect(fn(other, weapon, true, NULL)).to.beNil()
+				setState(other, 0)
+				expect(fn(other, weapon, true, NULL)).to.beNil()
+
+				-- the old look (gry_cloak_fx 0): the hook does nothing
+				stub(F, "Enabled", function() return false end)
+				expect(fn(ply, weapon, true, NULL)).to.beNil()
+			end
+		},
+		{
 			name = "PlayerDraw: with the effect off (gry_cloak_fx 0) the hooks do nothing: the old material does the job",
 			func = function(state)
 				local convar = GetConVar("gry_cloak_fx")
@@ -736,7 +765,7 @@ return {
 			name = "the draw hooks exist only while somebody is camouflaged: nobody, and the engine does not call them",
 			func = function(state)
 				local F = GryMod.CloakFX
-				local events = {"PrePlayerDraw", "PostDrawTranslucentRenderables", "PreDrawViewModel", "PostDrawViewModel", "PreDrawPlayerHands", "PostDrawPlayerHands"}
+				local events = {"PrePlayerDraw", "PostDrawTranslucentRenderables", "PreDrawViewModel", "PostDrawViewModel", "PreDrawPlayerHands", "PostDrawPlayerHands", "DrawPhysgunBeam"}
 				local ply = fakePlayer(0)
 				local flag = true
 				function ply:GetNW2Bool() return flag end

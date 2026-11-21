@@ -750,6 +750,17 @@ local function endFirstPerson(ent, ply)
 	end
 end
 
+-- The physgun draws its own glow sprites and beam, through this hook, inside the weapon's own draw: nothing drawn over the weapon covers them (a blue
+-- patch stayed in the camouflaged hand, in first person, however well the model was refracted: measured). Returning false hides them, for whoever
+-- looks, while the owner is camouflaged.
+drawHooks.DrawPhysgunBeam = function(ply)
+	local s = States[ply]
+
+	if s and s.amount > 0 and F.Enabled() then
+		return false
+	end
+end
+
 drawHooks.PreDrawViewModel = function(vm, ply, weapon)
 	startFirstPerson(vm, ply)
 end
