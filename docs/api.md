@@ -22,7 +22,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`. New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`. New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -144,7 +144,95 @@ GryMod.API.UnregisterHUDEvent("my_flash")
 hook.Add("GryMod_HUDEvent", "my_addon", function(name, data) end)   -- after a handler ran without error
 ```
 
-## Weapons and tracked entities
+## Weapons
 
-Wave B, not there yet: a weapon registry (fire mode, ammo, counters, icons) and a registry of scannable entities shared by the
-binoculars and the radar. `GryMod.API.Has("weapons")` and `GryMod.API.Has("tracked")` will tell when they exist.
+`GryMod.API.Has("weapons")` is true. The HUD never knows a weapon by its class name: it asks the weapon registry what the weapon is.
+The stock Half-Life 2 weapons are registered in the registry as data (`lua/grymod/sh_api_weapons_hl2.lua`), with the same call your
+addon uses: there is no private table and no special case for them.
+
+### Describe a weapon
+
+A weapon is described by a **definition**, a table of optional fields. A field you leave out is read from the weapon itself.
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `fire` | `"auto"`, `"semi"`, `"burst"`, `"none"`, or `function(wep)` returning one of them | the fire mode shown in the weapon slot (`"none"`: no gun icon, for a melee weapon) |
+| `burst` | integer, 2 to 32 | the size of a burst, when `fire` is `"burst"` |
+| `ammo` | ammo type name | the primary ammo (default: `Primary.Ammo`, then the engine's ammo of the weapon) |
+| `counter` | `"clip"`, `"none"`, or `function(wep)` returning a text | what the counter shows (default `"clip"`; `"none"` when `CustomAmmoDisplay` says `Draw = false`) |
+| `alt` | `"none"`, `"grenade"`, `"energy"`, `"zoom"`, `"doublebarrel"`, `"shoot"`, `"throwlow"`, `"melee"` | what the secondary fire (right click) is |
+| `altAmmo` | ammo type name | the ammo the secondary counts (`"SMG1_Grenade"` for a grenade launcher, `"AR2AltFire"` for the energy ball) |
+| `altShoots` | boolean | true when the secondary fires a shot. The camouflage ends on a right click that shoots. Default: true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow` |
+| `altLabel` | short text, 24 characters at most | the name of the secondary fire (`"40mm"`) |
+| `altIcon` | an icon key (see below) | the icon the HUD shows for the secondary fire |
+| `icon` | an icon key | the icon of the weapon slot (it wins over `fire`) |
+| `slotIcon` | an icon key | the stock icon of the weapon slot, when `icon` is not given |
+
+The icon keys are the ones of the HUD movie: `Single`, `Burst`, `Auto`, `Grenade`, `Shotgun`, `Mine`, `Repairkit`, `Missle`, `NoGun`,
+`HandGrenade` and the ones that no stock weapon uses, which are yours to choose: `Incendiary`, `Tranquilizer`, `infinity`, `Narrow`,
+`Moac`, `Moar`, `TACCannon`, `C4`, `Gauss`, `Gunner`, `Mounted`, `Claymore` (`GryMod.API.WeaponIcons` lists them all).
+
+What the HUD does with the secondary fire: with `alt = "grenade"` or `"energy"` the grenade slot (where the hand grenades are) counts
+`altAmmo` and shows `altIcon` (the 40 mm grenade icon when you give none) instead of the hand grenades. The SMG does this with its
+grenade, the AR2 with its energy ball. The other kinds show nothing there: the shotgun's double barrel uses the primary ammo, the
+crossbow's zoom has no counter. `altLabel` reaches the HUD (`GryMod.FlashHUD.LauncherLookFor(wep)`, and `hud:GetLauncherLabel()`), but
+the movie has no text field for it yet: it is not drawn.
+
+### Declare it from the weapon (no call to GryMod needed)
+
+```lua
+SWEP.GryHUD = {
+	fire = "burst", burst = 3,
+	ammo = "Gauss",
+	alt = "energy", altAmmo = "Gauss", altLabel = "PLASMA", altIcon = "Gauss",
+	icon = "Gauss",
+}
+```
+
+A weapon written like this works whether or not GryMod is installed.
+
+### Register it
+
+```lua
+if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
+	local ok, reason = GryMod.API.RegisterWeapon("weapon_my_rifle", {
+		fire = "auto",
+		ammo = "SMG1",
+		alt = "grenade", altAmmo = "SMG1_Grenade", altLabel = "40mm",
+	})
+
+	if not ok then print("GryMod refused my weapon: " .. reason) end
+end
+```
+
+- `RegisterWeapon(class, def)` returns `true`, or `false` and a reason. Fields it does not know are ignored; an invalid value (a `fire`
+  that is not in the list, an unknown icon key...) refuses the whole definition and keeps the previous one. Registering a class again
+  replaces its definition. A base class counts for the classes built on it (`SWEP.Base`).
+- `UnregisterWeapon(class)` removes the entry, `GetWeapon(class)` gives back a copy of it (no base class, no default).
+- `ResolveWeapon(wep)` is what the HUD uses: the final description of a weapon entity (or of a class name, then without the things only
+  an entity can tell), `nil` for an invalid weapon. `ResolveWeapon(wep, true)` gives only what is declared, with no default.
+  `WeaponValue(wep, field)` gives one field without building a table.
+- A function you give for `fire` or `counter` runs under `SafeCall` (see above): a broken one never breaks the HUD.
+
+### Where a field comes from
+
+For each field, the first of these that says something wins:
+
+1. the registry entry of the weapon's class, or of the nearest base class that has one;
+2. the `SWEP.GryHUD` table of the weapon;
+3. the weapon adapters (below);
+4. the defaults read from the weapon: `Primary.Automatic` (auto or semi), `Primary.Ammo` and `Secondary.Ammo` (or the engine's ammo of
+   the weapon), a secondary ammo that is a grenade type but not the hand grenade's (a launcher), and `CustomAmmoDisplay` (the table
+   the HUD addon holohud2 reads: `Draw`, `PrimaryClip`, `PrimaryAmmo`, `SecondaryAmmo`, `SecondaryClip`; its numbers are in the
+   `display` field of the resolved description).
+
+### Adapters for the weapon bases
+
+`GryMod.API.AddWeaponAdapter(id, fn)` adds a function `fn(wep)` that returns a partial definition (or nothing), asked through `SafeCall`
+in the order the adapters were added; `RemoveWeaponAdapter(id)` removes it. There is none today. Adapters for ArcCW, TFA, M9K and CW2
+weapons: later (the HUD already reads their fire mode through its own resolvers).
+
+## Tracked entities
+
+Not there yet: a registry of scannable entities shared by the binoculars and the radar. `GryMod.API.Has("tracked")` will tell when it
+exists.
