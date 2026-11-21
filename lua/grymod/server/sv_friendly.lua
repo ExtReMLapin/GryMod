@@ -26,7 +26,9 @@ local windows = setmetatable({}, {__mode = "k"}) -- [player] = {start = time, co
 -- attitude towards the player is like (D_LI); "hostile" for an NPC that hates him (D_HT); "neutral" for everything else (an NPC
 -- that is neutral or afraid, an animal, a player of another team, a prop, an invalid entity). The attitude of an NPC the engine
 -- cannot tell (no Disposition) is neutral.
-function Friendly.Relation(ply, ent)
+-- This is the built-in rule, the last step of the relation chain of the extension API (GryMod.API.Relation, sv_api.lua: the
+-- providers of other addons come first); Friendly.Relation below is the public name and asks the chain.
+function Friendly.BuiltinRelation(ply, ent)
 	if not ply or not IsValid(ply) or not ent or not IsValid(ent) then
 		return "neutral"
 	end
@@ -56,6 +58,18 @@ function Friendly.Relation(ply, ent)
 	end
 
 	return "neutral"
+end
+
+-- What an entity is to a player: "ally", "neutral" or "hostile". The one question the crosshair and the radar ask; the answer
+-- comes from the relation chain of the extension API when it is loaded, and from the built-in rule alone otherwise.
+function Friendly.Relation(ply, ent)
+	local API = GryMod.API
+
+	if API and API.Relation then
+		return API.Relation(ply, ent)
+	end
+
+	return Friendly.BuiltinRelation(ply, ent)
 end
 
 -- Whether the entity is an ally for the player (the friendly cross opens on it).

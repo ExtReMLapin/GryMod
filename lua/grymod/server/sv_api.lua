@@ -194,3 +194,97 @@ function API.EMP(pos, radius, seconds)
 
 	return GryMod.Malfunction.EMP(pos, radius, seconds)
 end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Relation: ally, neutral or hostile, decided in ONE place
+-- ---------------------------------------------------------------------------------------------------------
+
+-- Order of the chain:
+--   1. the relation providers of other addons (AddRelationProvider), the higher priority first, called through SafeCall;
+--   2. the registry of tracked entities (wave B: API._TrackedRelation, nil until that registry exists);
+--   3. the built-in rule (GryMod.Friendly.BuiltinRelation: the NPC's real attitude).
+-- A provider returns "ally", "neutral" or "hostile", or nil for no opinion; anything else is ignored.
+local VALID_RELATION = {ally = true, neutral = true, hostile = true}
+
+local providers = {} -- sorted: higher priority first, then in the order of registration
+local providerSeq = 0
+
+local function sortProviders()
+	table.sort(providers, function(a, b)
+		if a.priority ~= b.priority then
+			return a.priority > b.priority
+		end
+
+		return a.seq < b.seq
+	end)
+end
+
+-- Adds (or replaces, with the same id) a provider: fn(ply, ent) -> "ally" | "neutral" | "hostile" | nil. The default
+-- priority is 0. Returns true, or false and why not.
+function API.AddRelationProvider(id, fn, priority)
+	if not isstring(id) or id == "" then
+		return false, "invalid id"
+	end
+
+	if not isfunction(fn) then
+		return false, "invalid function"
+	end
+
+	if priority ~= nil and (not isnumber(priority) or priority ~= priority) then
+		return false, "invalid priority"
+	end
+
+	API.RemoveRelationProvider(id)
+	API.SafeCallReset("provider:" .. id) -- registering it again re-arms a provider that was disabled
+
+	providerSeq = providerSeq + 1
+	providers[#providers + 1] = {id = id, fn = fn, priority = priority or 0, seq = providerSeq, callId = "provider:" .. id}
+	sortProviders()
+
+	return true
+end
+
+-- Removes a provider; returns whether there was one.
+function API.RemoveRelationProvider(id)
+	for i, provider in ipairs(providers) do
+		if provider.id == id then
+			table.remove(providers, i)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+-- The hook point of the registry of tracked entities (wave B replaces it): its `relation` field, or nil.
+API._TrackedRelation = API._TrackedRelation or function() return nil end
+
+-- What the entity is to the player: "ally", "neutral" or "hostile". The only place that decides it (the crosshair's cross, the
+-- radar's colour, the binoculars). Server only: the client asks (gry_friendly_ask).
+function API.Relation(ply, ent)
+	-- an invalid player or entity is nobody's friend and nobody's enemy, and no provider is asked about it
+	if not IsValid(ply) or not IsValid(ent) then
+		return "neutral"
+	end
+
+	-- the usual case, quick: no provider is registered
+	if providers[1] then
+		for i = 1, #providers do
+			local provider = providers[i]
+			local ok, relation = API.SafeCall(provider.callId, provider.fn, ply, ent)
+
+			if ok and VALID_RELATION[relation] then
+				return relation
+			end
+		end
+	end
+
+	local tracked = API._TrackedRelation(ply, ent)
+
+	if tracked then
+		return tracked
+	end
+
+	return GryMod.Friendly.BuiltinRelation(ply, ent)
+end
