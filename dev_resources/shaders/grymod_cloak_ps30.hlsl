@@ -18,7 +18,7 @@ sampler2D PROFILE : register(s1);	// the spark profile, 256 x 1, repeating along
 
 float4 C0 : register(c0);	// x: model units to one volume (the original: 1 metre = 52.49 units), y: time t (the original's AnimGenParams), z: amount, w: screen rows to one period of the scan lines
 float4 C1 : register(c1);	// x, y: the variation (vConstants.xy), z: random offset of the scan lines in rows
-float4 C2 : register(c2);	// xyz: SparksColor
+float4 C2 : register(c2);	// xyz: SparksColor, w: the drift of the green lookup (the original used the distance to the world origin in metres; here the Lua gives a capped one)
 
 struct PS_INPUT {
 	float4 objPos : TEXCOORD0;
@@ -36,7 +36,7 @@ float4 main(PS_INPUT frag) : COLOR {
 
 	float3 rgb = float3(
 		tex2D(PROFILE, float2(n + t + 0.1, 0.5)).x,
-		tex2D(PROFILE, float2(n * 1.53 + t * 2.0 + 0.4 + frag.objPos.w * 0.1, 0.5)).y,
+		tex2D(PROFILE, float2(n * 1.53 + t * 2.0 + 0.4 + C2.w, 0.5)).y,
 		tex2D(PROFILE, float2(n * 1.7 + t * 1.4 + 0.2, 0.5)).z);
 
 	float3 spark = C2.xyz * dot(rgb, float3(2.0, 2.0, 2.0));

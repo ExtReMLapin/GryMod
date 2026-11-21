@@ -50,6 +50,16 @@ Sh.JUMP_RATE = 30
 -- Under this strength nothing is drawn.
 Sh.MIN_STRENGTH = 0.01
 
+-- The pattern's drift while the player moves. The original shifted the green lookup by the distance to the world origin, 0.1 of a profile length per
+-- METRE: in the game's units that was 52 times more, and walking made the pattern run 25 times faster, one way or the other. The drift is now
+-- given by the Lua (the fourth component of the colour register): 0.1 per metre a second as the original meant it, and never more than the
+-- rest rate of the animation (the green lookup runs at 2 x TIME_SCALE a second), so that the sparks run twice as fast at most.
+Sh.DRIFT_GAIN = 0.1
+Sh.DRIFT_CAP = 2 * Sh.TIME_SCALE
+
+-- The longest frame that counts for the drift (a pause or a loading screen is no movement).
+Sh.DRIFT_MAX_STEP = 0.1
+
 function Sh.Enabled()
 	return convar:GetBool()
 end
@@ -83,8 +93,51 @@ function Sh.RowOffset(curtime, period)
 	return math.floor(random * period)
 end
 
--- The three constant registers: {{units per volume, time, strength, rows to a period}, {variation x, variation y, row offset, 0}, {colour, 0}}.
-function Sh.Constants(curtime, amount, strength, screenHeight, index)
+-- How fast the pattern drifts for a player moving at `speed` units a second, in profile lengths a second.
+function Sh.DriftRate(speed)
+	if not (speed > 0) then return 0 end
+
+	return math.min(speed / Sh.UNITS * Sh.DRIFT_GAIN, Sh.DRIFT_CAP)
+end
+
+-- The one whose movement an entity follows: the player, the owner of his weapon, and for the view model and the hands (no owner of their own
+-- worth the name) the local player.
+local function ownerOf(ent)
+	if ent.IsPlayer and ent:IsPlayer() then return ent end
+
+	local owner = ent.GetOwner and ent:GetOwner()
+
+	if IsValid(owner) and owner.IsPlayer and owner:IsPlayer() then return owner end
+
+	return LocalPlayer()
+end
+
+local drifts = setmetatable({}, {__mode = "k"})
+
+-- The phase of the drift for an entity (0 up to 1, the profile repeats), advanced once per frame whatever the number of draws (the body, the
+-- weapon, a mirror) by the owner's speed at the capped rate.
+function Sh.Drift(ent)
+	local owner = ownerOf(ent)
+
+	if not IsValid(owner) then return 0 end
+
+	local frame, now = FrameNumber(), CurTime()
+	local state = drifts[owner]
+
+	if not state then
+		state = {phase = 0, frame = frame, time = now}
+		drifts[owner] = state
+	elseif state.frame ~= frame then
+		local step = math.min(math.max(now - state.time, 0), Sh.DRIFT_MAX_STEP)
+		state.phase = (state.phase + Sh.DriftRate(owner:GetVelocity():Length2D()) * step) % 1
+		state.frame, state.time = frame, now
+	end
+
+	return state.phase
+end
+
+-- The three constant registers: {{units per volume, time, strength, rows to a period}, {variation x, variation y, row offset, 0}, {colour, drift}}.
+function Sh.Constants(curtime, amount, strength, screenHeight, index, drift)
 	local time = Sh.Time(curtime, index)
 	local vx, vy = Sh.Variation(time, amount)
 	local period = Sh.RowPeriod(screenHeight)
@@ -92,7 +145,7 @@ function Sh.Constants(curtime, amount, strength, screenHeight, index)
 	return {
 		{Sh.UNITS, time, strength, period},
 		{vx, vy, Sh.RowOffset(curtime, period), 0},
-		{Sh.COLOR[1], Sh.COLOR[2], Sh.COLOR[3], 0}
+		{Sh.COLOR[1], Sh.COLOR[2], Sh.COLOR[3], drift or 0}
 	}
 end
 
@@ -218,7 +271,7 @@ function Sh.Draw(ent, strength, amount, draw)
 
 	local material = Sh.Material()
 
-	setConstants(material, Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex()))
+	setConstants(material, Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex(), Sh.Drift(ent)))
 
 	local ok = pcall(function()
 		render.MaterialOverride(material)

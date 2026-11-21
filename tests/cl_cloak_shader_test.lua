@@ -297,6 +297,87 @@ return {
 				expect(ok).to.beFalse()
 				expect(current).to.beNil()
 			end
+		},
+		{
+			name = "DriftRate: the pattern's drift while the player moves is the original's scale (0.1 of a profile length per metre a second), never more than the rest rate of its animation: the sparks run twice as fast at most",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				expect(S.DriftRate(0)).to.equal(0)
+				expect(S.DriftRate(-50)).to.equal(0)
+
+				-- a walk (200 units a second) and a run (400): the original's metres, not the game's units
+				expect(near(S.DriftRate(200), 200 / 52.49 * 0.1)).to.beTrue()
+				expect(S.DriftRate(200) < S.DriftRate(400)).to.beTrue()
+
+				-- the cap: the rate of the green lookup at rest (2 x the time's scale) added once, so twice as fast in all
+				expect(near(S.DRIFT_CAP, 2 * S.TIME_SCALE)).to.beTrue()
+				expect(S.DriftRate(400) <= S.DRIFT_CAP).to.beTrue()
+				expect(S.DriftRate(99999)).to.equal(S.DRIFT_CAP)
+				expect(S.DriftRate(1 / 0)).to.equal(S.DRIFT_CAP)
+			end
+		},
+		{
+			name = "Drift: the phase of the pattern grows with the owner's movement at the capped rate, once per frame whatever the number of draws, wraps at a whole period, and is nothing for a player who stands",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local frame, now = 100, 50
+				stub(_G, "FrameNumber", function() return frame end)
+				stub(_G, "CurTime", function() return now end)
+
+				local owner = {speed = 0}
+				function owner:IsValid() return true end
+				function owner:IsPlayer() return true end
+				function owner:GetVelocity() return Vector(owner.speed, 0, 0) end
+
+				-- the weapon in his hand, and the view model, draw with the owner's movement
+				local weapon = fakeEntity()
+				function weapon:GetOwner() return owner end
+
+				expect(S.Drift(owner)).to.equal(0)
+				frame, now = frame + 1, now + 0.1
+				expect(S.Drift(owner)).to.equal(0) -- standing: no drift at all
+
+				owner.speed = 200
+				frame, now = frame + 1, now + 0.05
+				local first = S.Drift(owner)
+				expect(near(first, S.DriftRate(200) * 0.05)).to.beTrue()
+
+				-- the same frame again (the body, the weapon, a mirror): nothing more
+				expect(S.Drift(owner)).to.equal(first)
+				expect(S.Drift(weapon)).to.equal(first)
+
+				-- a very long frame is cut (a pause or a loading screen is no movement)
+				owner.speed = 400
+				frame, now = frame + 1, now + 30
+				local second = S.Drift(owner)
+				expect(near((second - first) % 1, S.DriftRate(400) * 0.1)).to.beTrue()
+
+				-- always in a whole period: the profile repeats
+				for _ = 1, 40 do
+					frame, now = frame + 1, now + 0.1
+					local phase = S.Drift(owner)
+					expect(phase >= 0 and phase < 1).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "the drift goes to the shader's fourth component of the colour register, and Draw gives the owner's",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				expect(near(S.Constants(1, 0.5, 0.8, 1080, 3, 0.37)[3][4], 0.37)).to.beTrue()
+				expect(S.Constants(1, 0.5, 0.8, 1080, 3)[3][4]).to.equal(0)
+
+				stub(S, "works", true)
+				GetConVar(OPTION):SetString("1")
+				local material = {sets = {}}
+				function material:SetFloat(k, v) self.sets[k] = v end
+				stub(S, "Material", function() return material end)
+				stub(render, "MaterialOverride", function() end)
+				stub(S, "Drift", function() return 0.25 end)
+
+				S.Draw(fakeEntity(), 0.7, 0.5, function() end)
+				expect(near(material.sets["$c2_w"], 0.25)).to.beTrue()
+			end
 		}
 	}
 }
