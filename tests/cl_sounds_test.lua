@@ -39,6 +39,7 @@ return {
 	groupName = "GryMod sounds (client)",
 	beforeEach = function(state)
 		savedPlay = GryMod.PlaySound
+		GryMod.SoundMix.ResetLimits()
 		state.channel = GryMod.RegenSound.GetChannel()
 		setConVar("gry_sounds", "1")
 		setConVar("gry_sound_regen", "1")

@@ -21,6 +21,7 @@ end
 if SERVER then
 	AddCSLuaFile()
 	AddCSLuaFile("grymod/client/cl_hud.lua")
+	AddCSLuaFile("grymod/client/cl_sound_mix.lua")
 	AddCSLuaFile("grymod/client/cl_sounds.lua")
 	AddCSLuaFile("grymod/client/cl_options.lua")
 	AddCSLuaFile("grymod/client/cl_flash.lua")
@@ -139,6 +140,7 @@ if SERVER then
 end
 
 if CLIENT then
+	include("grymod/client/cl_sound_mix.lua")
 	include("grymod/client/cl_flash.lua")
 	include("grymod/client/cl_flash_draw.lua")
 	include("grymod/client/cl_hud_options.lua")

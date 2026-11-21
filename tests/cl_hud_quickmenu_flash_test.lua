@@ -35,6 +35,14 @@ end
 
 return {
 	groupName = "GryMod quick menu (Flash)",
+	-- opening and closing the menu play its sounds: nothing is played by the tests (the mix's single exit is replaced)
+	beforeEach = function(state)
+		state.realEmit = GryMod.SoundMix.Emit
+		GryMod.SoundMix.Emit = function() end
+	end,
+	afterEach = function(state)
+		GryMod.SoundMix.Emit = state.realEmit
+	end,
 	cases = {
 		{
 			name = "the angle of a pointer vector: 0 right, 90 up, 180 left, 270 down, anticlockwise",

@@ -2,7 +2,7 @@
 -- Needs a loaded map (singleplayer is enough).
 
 local realRunConsoleCommand = RunConsoleCommand
-local realPlaySound = surface.PlaySound
+local realEmit
 local savedConVars = {}
 local conVarNames = {"gry_hud", "gry_sounds", "gry_xadd", "gry_xdist"}
 
@@ -18,9 +18,14 @@ return {
 			savedConVars[name] = cv and cv:GetString() or nil
 		end
 	end,
+	-- nothing is played by these tests: the mix's single exit for sounds is replaced (and the mode voices, that wait half a
+	-- second, are cancelled before it is put back)
+	beforeEach = function(state)
+		realEmit = realEmit or GryMod.SoundMix.Emit
+		GryMod.SoundMix.Emit = function() end
+	end,
 	afterEach = function(state)
 		RunConsoleCommand = realRunConsoleCommand
-		surface.PlaySound = realPlaySound
 
 		if state.realCreate then
 			CreateClientConVar = state.realCreate
@@ -45,6 +50,8 @@ return {
 		-- back to Armor, icon included (the early return of SetNanosuitMode needs a different mode first)
 		LocalPlayer().NanosuitMode = -1
 		GryMod.ApplyServerMode(GryMod.Modes.ARMOR)
+		timer.Remove("GryModModeVoice")
+		GryMod.SoundMix.Emit = realEmit
 	end,
 	cases = {
 		{
@@ -133,7 +140,7 @@ return {
 			name = "sounds can be switched off",
 			func = function(state)
 				local played = 0
-				surface.PlaySound = function() played = played + 1 end
+				GryMod.SoundMix.Emit = function() played = played + 1 end
 				GetConVar("gry_sounds"):SetInt(1)
 				GryMod.PlaySound("suit/suit_maximum_armor.mp3")
 				expect(played).to.equal(1)

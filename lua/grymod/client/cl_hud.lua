@@ -8,13 +8,14 @@ local HUDEnabled = CreateClientConVar("gry_hud", "1", true, false, "Draw the Gry
 local SoundsEnabled = CreateClientConVar("gry_sounds", "1", true, false, "Play the GryMod suit sounds")
 local meta = FindMetaTable("Player")
 
--- Every GryMod sound goes through here, so players can switch them off (gry_sounds 0)
+-- Every GryMod sound goes through here, so players can switch them off (gry_sounds 0) and the mix sets their volume
+-- (cl_sound_mix.lua)
 function GryMod.PlaySound(path)
 	if not SoundsEnabled:GetBool() then
 		return false
 	end
 
-	surface.PlaySound(path)
+	GryMod.SoundMix.Emit(path, GryMod.SoundMix.Volume(path))
 
 	return true
 end
@@ -38,24 +39,40 @@ net.Receive("gry_jump", function()
 	GryMod.PlaySound("suit/strengthjump.mp3")
 end)
 
+-- The voice ("maximum armor"...) comes half a second after the sound of the mode, as in the original game (the two
+-- together made one muddy burst). A mode change before it is heard cancels it.
+GryMod.ModeVoiceDelay = 0.5
+
+local function playModeVoice(path)
+	timer.Remove("GryModModeVoice")
+	timer.Create("GryModModeVoice", GryMod.ModeVoiceDelay, 1, function()
+		GryMod.PlaySound(Sound(path))
+	end)
+end
+
 function meta:SetNanosuitMode(mode, networked)
 	if (mode == LocalPlayer().NanosuitMode) then
 		return
 	end
 
+	-- the voice of the last mode is not heard any more (dropping the suit's item is not a mode)
+	if mode ~= GryMod.Modes.DROP then
+		timer.Remove("GryModModeVoice")
+	end
+
 	if mode == GryMod.Modes.ARMOR then
-		GryMod.PlaySound(Sound("suit/suit_maximum_armor.mp3"))
 		GryMod.PlaySound(Sound("suit/suit_armor_108.mp3"))
+		playModeVoice("suit/suit_maximum_armor.mp3")
 	end
 
 	if mode == GryMod.Modes.SPEED then
-		GryMod.PlaySound(Sound("suit/suit_maximum_speed.mp3"))
 		GryMod.PlaySound(Sound("suit/suit_speed_activate_07_good.wa.mp3"))
+		playModeVoice("suit/suit_maximum_speed.mp3")
 	end
 
 	if mode == GryMod.Modes.STRENGTH then
-		GryMod.PlaySound(Sound("suit/suit_maximum_strength.mp3"))
 		GryMod.PlaySound(Sound("suit/strengthmode.mp3"))
+		playModeVoice("suit/suit_maximum_strength.mp3")
 	end
 
 	if mode == GryMod.Modes.CLOAK then
@@ -67,8 +84,8 @@ function meta:SetNanosuitMode(mode, networked)
 				LocalPlayer():GetHands():SetMaterial("cloak/organic")
 			end
 
-			GryMod.PlaySound(Sound("suit/suit_modification_engaged.mp3"))
 			GryMod.PlaySound(Sound("suit/suit_cloak_chameleon_101_r.mp3"))
+			playModeVoice("suit/suit_modification_engaged.mp3")
 		end
 	elseif IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 		LocalPlayer():GetViewModel():SetMaterial("")

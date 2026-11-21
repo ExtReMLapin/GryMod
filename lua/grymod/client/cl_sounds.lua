@@ -50,7 +50,11 @@ function GryMod.ResetArmorHitSounds()
 	armorHitLast = nil
 end
 
+-- the game plays at most 2 armor hits at a time (maxpb 2), and the mix leaves 60 ms between two: a shotgun's pellets or a
+-- burst would stack into one loud noise (see GryMod.SoundMix.MayPlay). A hit that is refused uses up no file of the shuffle.
 net.Receive("gry_armor_hit_sound",function()
+	if not GryMod.SoundMix.MayPlay("armor_hit", GryMod.SoundMix.Now()) then return end
+
 	GryMod.PlaySound(Sound(GryMod.NextArmorHitSound()))
 end)
 
@@ -61,10 +65,14 @@ end)
 
 -- The repair sound (suit_medical_use_new, 5.95 s). The server starts it (sv_health.lua); gry_sound_regen switches it off.
 local RegenEnabled = CreateClientConVar("gry_sound_regen", "1", true, false, "Play the suit repair sound when the health comes back")
+local REGEN_PATH = "suit/suit_medical_use_new.mp3"
 local healingSound
 
 -- hackysound system
-sound.PlayFile("sound/suit/suit_medical_use_new.mp3", "noblock noplay", function(soundchannel, error, str ) healingSound = soundchannel end)
+sound.PlayFile("sound/" .. REGEN_PATH, "noblock noplay", function(soundchannel, error, str )
+	healingSound = soundchannel
+	soundchannel:SetVolume(GryMod.SoundMix.Volume(REGEN_PATH))
+end)
 
 -- for the tests: the channel can be replaced by a recording one
 GryMod.RegenSound = {
@@ -80,11 +88,11 @@ net.Receive("gry_stop_health_regen",function ()
 			hook.Remove("Think", "GryModSoundhealthregenfadeaway")
 			return
 		end
-		healingSound:SetVolume(1 - (CurTime() - overtime) - 1) -- it fades away
+		healingSound:SetVolume(math.max(overtime - CurTime(), 0) * GryMod.SoundMix.Volume(REGEN_PATH)) -- it fades away
 		if CurTime() > overtime then
 			healingSound:Pause()
 			healingSound:SetTime(0)
-			healingSound:SetVolume(1)
+			healingSound:SetVolume(GryMod.SoundMix.Volume(REGEN_PATH))
 			hook.Remove("Think", "GryModSoundhealthregenfadeaway")
 		end
 
@@ -98,7 +106,7 @@ net.Receive("gry_start_health_regen",function ()
 	if not IsValid(healingSound) or not GryMod.SoundsEnabled() or not RegenEnabled:GetBool() then return end
 	-- a fade-out still running would pause the sound again a moment after it starts
 	hook.Remove("Think", "GryModSoundhealthregenfadeaway")
-	healingSound:SetVolume(1)
+	healingSound:SetVolume(GryMod.SoundMix.Volume(REGEN_PATH))
 	-- a sound that played to its end is still at its end: play it from the beginning every time
 	healingSound:SetTime(0)
 	healingSound:Play()
@@ -110,19 +118,68 @@ end)
 local speedLoopGround;
 local speedLoopUnderwater;
 
-sound.PlayFile("sound/suit/servo_speed_loop_01c.mp3", "noblock noplay",
+local GROUND_LOOP = "suit/servo_speed_loop_01c.mp3"
+local UNDERWATER_LOOP = "suit/servo_speed_loop_01_underwater.mp3"
+
+-- when the loop that plays now started (it fades in, see GryMod.SoundMix.FadeIn)
+local loopStart = 0
+
+-- The volume of the ground loop: the mix's volume (the original game's -27 dB plus the gain), lower as the player leaves
+-- the ground (nothing at 300 units), and fading in over the first hundredths of a second after the start (sinceStart,
+-- seconds). The earlier code set it to 1.0 on the ground at every frame, over the volume the loop was given.
+function GryMod.GroundLoopVolume(distanceFromGround, sinceStart)
+	local height = math.max(math.Remap(distanceFromGround, 0, 300, 1, 0), 0)
+
+	return GryMod.SoundMix.Volume(GROUND_LOOP) * height * GryMod.SoundMix.FadeIn(sinceStart or math.huge)
+end
+
+function GryMod.UnderwaterLoopVolume(sinceStart)
+	return GryMod.SoundMix.Volume(UNDERWATER_LOOP) * GryMod.SoundMix.FadeIn(sinceStart or math.huge)
+end
+
+-- for the tests: the channels can be replaced by recording ones
+GryMod.SpeedLoops = {
+	Get = function() return speedLoopGround, speedLoopUnderwater end,
+	Set = function(ground, underwater)
+		speedLoopGround = ground
+		speedLoopUnderwater = underwater
+	end
+}
+
+-- Sets the volume of both loops (the one that is not playing is paused, its volume does not matter): once per frame of a
+-- sprint, with the height above the ground.
+function GryMod.UpdateSpeedLoops(now, distanceFromGround)
+	local sinceStart = now - loopStart
+
+	if IsValid(speedLoopGround) then
+		speedLoopGround:SetVolume(GryMod.GroundLoopVolume(distanceFromGround, sinceStart))
+	end
+
+	if IsValid(speedLoopUnderwater) then
+		speedLoopUnderwater:SetVolume(GryMod.UnderwaterLoopVolume(sinceStart))
+	end
+end
+
+-- starts a loop from silence: the frame brings it up (a loop that starts at once at its level clicks)
+local function startLoop(channel)
+	loopStart = GryMod.SoundMix.Now()
+	channel:SetVolume(0)
+	channel:Play()
+end
+
+sound.PlayFile("sound/" .. GROUND_LOOP, "noblock noplay",
 	function(soundchannel, error, str )
 		speedLoopGround = soundchannel
 		soundchannel:EnableLooping(true)
-		soundchannel:SetVolume(0.5)
+		soundchannel:SetVolume(GryMod.SoundMix.Volume(GROUND_LOOP))
 
 	end)
 
-sound.PlayFile("sound/suit/servo_speed_loop_01_underwater.mp3", "noblock noplay",
+sound.PlayFile("sound/" .. UNDERWATER_LOOP, "noblock noplay",
 	function(soundchannel, error, str )
 	speedLoopUnderwater = soundchannel
 	soundchannel:EnableLooping(true)
-	soundchannel:SetVolume(0.5)
+	soundchannel:SetVolume(GryMod.SoundMix.Volume(UNDERWATER_LOOP))
 end)
 
 
@@ -135,7 +192,7 @@ hook.Add("GryModStartSprinting", "sound", function()
 	local channel = LocalPlayer():WaterLevel() < 3 and speedLoopGround or speedLoopUnderwater
 
 	if IsValid(channel) then
-		channel:Play()
+		startLoop(channel)
 	end
 end)
 
@@ -203,14 +260,18 @@ hook.Add("Think", "GryModSounds", function()
 
 	-- the ground loop fades out when the player leaves the ground: only needed (and only worth a long
 	-- trace every frame) while the loop is playing
-	if wasSprinting and IsValid(speedLoopGround) then
-		local tr = util.TraceLine( {
-		start = LocalPlayer():GetPos(),
-		endpos = LocalPlayer():EyePos() + Vector(0,0,-50000000),
-	} )
-		local distanceFromGround = LocalPlayer():GetPos():Distance(tr.HitPos)
-		local volume = math.Max(math.Remap(distanceFromGround, 0, 300, 1, 0),0)
-		speedLoopGround:SetVolume(volume)
+	if wasSprinting then
+		local distanceFromGround = 0
+
+		if IsValid(speedLoopGround) then
+			local tr = util.TraceLine( {
+			start = LocalPlayer():GetPos(),
+			endpos = LocalPlayer():EyePos() + Vector(0,0,-50000000),
+		} )
+			distanceFromGround = LocalPlayer():GetPos():Distance(tr.HitPos)
+		end
+
+		GryMod.UpdateSpeedLoops(GryMod.SoundMix.Now(), distanceFromGround)
 	end
 
 	-- if we get from water to air or to air from water, swap the two sounds
@@ -220,7 +281,7 @@ hook.Add("Think", "GryModSounds", function()
 		wasUnderwater = false
 		if (wasSprinting and bothLoops) then
 			speedLoopGround:SetTime(speedLoopUnderwater:GetTime())
-			speedLoopGround:Play()
+			startLoop(speedLoopGround)
 			speedLoopUnderwater:Pause()
 			speedLoopUnderwater:SetTime(0)
 		end
@@ -228,7 +289,7 @@ hook.Add("Think", "GryModSounds", function()
 		wasUnderwater = true
 		if (wasSprinting and bothLoops) then
 			speedLoopUnderwater:SetTime(speedLoopGround:GetTime())
-			speedLoopUnderwater:Play()
+			startLoop(speedLoopUnderwater)
 			speedLoopGround:Pause()
 			speedLoopGround:SetTime(0)
 		end

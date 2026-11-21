@@ -98,6 +98,8 @@ function GryMod.GryOptionschute(Panel)
 
 	Panel:CheckBox("Draw the HUD (health, energy, ammo, radar)", "gry_hud")
 	Panel:CheckBox("Suit sounds", "gry_sounds")
+	-- the original game's levels plus this gain (0 dB: as quiet as in the game, +12 dB: the loud ones at full volume)
+	Panel:NumSlider("Interface and suit sound level (dB)", "gry_sound_volume", -20, 12, 0)
 	Panel:CheckBox("Repair sound when the health comes back", "gry_sound_regen")
 	-- the rules of the suit (server setting, for the host or an admin): the original game's numbers, or GryMod's earlier ones
 	Panel:AddControl("ComboBox", {
