@@ -90,6 +90,8 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Suit malfunctions: EMP and electric hits (server)", "gry_malfunction")
 	-- client setting: the HUD also goes down (Lost, then Reboot) while the energy bar is empty, GryMod's old rule
 	Panel:CheckBox("HUD malfunction also when the energy bar is empty (the original: only on an EMP, an electric attack or death)", "gry_malfunction_empty")
+	-- client setting: the quick menu icon that was chosen stays lit while the menu fades out
+	Panel:CheckBox("Quick menu: the icon you chose stays lit while the menu fades out (the original; off: it goes plain at the release)", "gry_menu_keep_highlight")
 	-- client setting: the start-up log and its sounds belong to the start of the level in the original
 	Panel:CheckBox("Start-up log and sounds at every spawn (off: only at the first spawn after the map loads, as in the original)", "gry_boot_every_spawn")
 

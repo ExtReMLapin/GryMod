@@ -39,9 +39,12 @@ return {
 	beforeEach = function(state)
 		state.realEmit = GryMod.SoundMix.Emit
 		GryMod.SoundMix.Emit = function() end
+		state.savedKeep = GetConVar("gry_menu_keep_highlight"):GetString()
+		GetConVar("gry_menu_keep_highlight"):SetString("1")
 	end,
 	afterEach = function(state)
 		GryMod.SoundMix.Emit = state.realEmit
+		GetConVar("gry_menu_keep_highlight"):SetString(state.savedKeep)
 	end,
 	cases = {
 		{
@@ -206,6 +209,67 @@ return {
 				run(menu, 0.4)
 				menu:Update(1 / 30)
 				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(2) -- applied as soon as the movie can
+			end
+		},
+		{
+			name = "the chosen icon stays lit while the menu fades out (the original goes back to the plain icon only when the pointer moves)",
+			func = function(state)
+				local menu = openMenu()
+				menu:Select("Speed")
+				menu:Update(1 / 30)
+				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(2)
+				menu:Close()
+				expect(menu.closing).to.beTrue()
+				menu:Update(0.1)
+				expect(menu.qm:CurrentFrame() > 8).to.beTrue() -- in the fade, not at its end
+				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(2)
+				expect(modeClip(menu, "Cloak"):CurrentFrame()).to.equal(1)
+				-- one frame later, still in the fade (the film itself drops the icons from its frame 14)
+				menu:Update(1 / 30)
+				expect(menu:IsShown()).to.beTrue()
+				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(2)
+				run(menu, 0.5)
+				expect(menu:IsShown()).to.beFalse()
+			end
+		},
+		{
+			name = "with gry_menu_keep_highlight 0 the icons go back to plain at the release, as before; the switch is saved, on by default, with a check box",
+			func = function(state)
+				local convar = GetConVar("gry_menu_keep_highlight")
+				expect(convar:GetDefault()).to.equal("1")
+				convar:SetString("0")
+				local menu = openMenu()
+				menu:Select("Speed")
+				menu:Update(1 / 30)
+				menu:Close()
+				menu:Update(0.1)
+				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(1)
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_menu_keep_highlight"]).to.beTrue()
 			end
 		},
 		{

@@ -137,6 +137,9 @@ Instance.__index = Instance
 local READY_FRAME = 8
 local END_FRAME = 18
 
+-- Switch: the icon that was chosen stays lit while the menu fades out (the original); off: it goes plain at the release.
+local KeepHighlight = CreateClientConVar("gry_menu_keep_highlight", "1", true, false, "The quick menu icon that was chosen stays lit during the fade-out, as in the original (0: it goes back to plain at the release)")
+
 function Menu.New(movie, theme)
 	if not movie then
 		return nil
@@ -253,7 +256,8 @@ end
 -- and the ring.
 function Instance:_applyStates()
 	local qm = self.qm
-	local ready = not self.closing and qm:CurrentFrame() >= READY_FRAME
+	-- the original keeps the chosen icon lit through the close: it only changes it when the selection moves
+	local ready = (KeepHighlight:GetBool() or not self.closing) and qm:CurrentFrame() >= READY_FRAME
 	local choice = ready and self:Choice()
 	local choiceName = choice and iconName(choice)
 
