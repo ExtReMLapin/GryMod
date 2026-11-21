@@ -40,13 +40,9 @@ end
 -- before it comes back).
 Grenade.OWN_WARN_RANGE = 15
 
--- The projectiles a player FIRES: a missile that leaves, a rifle grenade, an energy ball. They never warn the player, not even
--- with gry_grenade_own_warn. CHOICE: the original warns about them too (nothing there looks at who fired).
-Grenade.FIRED = {
-	rpg_missile = true,
-	grenade_ar2 = true,
-	prop_combine_ball = true
-}
+-- The projectiles a player FIRES (the `ownMissile` flag of the danger entry in the registry): a missile that leaves, a rifle
+-- grenade, an energy ball. They never warn the player, not even with gry_grenade_own_warn. CHOICE: the original warns about them
+-- too (nothing there looks at who fired).
 
 -- The line of sight is read at most this often for a projectile, and a view that was lost is kept this long.
 Grenade.LOS_EVERY = 0.2
@@ -63,17 +59,21 @@ local HALF_ICON = 18 -- stage pixels from the icon's corner to the centre of its
 local EDGE = 0.03 -- the screen position is held between 3 and 97 percent
 local OPEN_LAST_FRAME = 27
 
-local TYPES = {
-	npc_grenade_frag = "FRAG GRENADE",
-	grenade_ar2 = "RIFLE GRENADE",
-	rpg_missile = "MISSILE",
-	grenade_helicopter = "BOMB",
-	combine_mine = "MINE",
-	prop_combine_ball = "ENERGY BALL"
-}
+-- Which projectiles are dangerous, what they are called, which ones the player fires, how far each is warned about: all of it is
+-- the registry's `danger` field (GryMod.API.RegisterTracked, sh_api_tracked.lua), the stock Half-Life 2 ones are registered as data
+-- in sh_api_tracked_hl2.lua and an addon's own go through the same code. The entry that names the class, or nil: none, or no
+-- registry (a hot reload of this file).
+local function dangerEntry(class)
+	local API = GryMod.API
 
+	return API and API.GetDanger and API.GetDanger(class) or nil
+end
+
+-- The text the warning shows for a class (the `label` of its danger entry), nil for a class that is not a danger.
 function Grenade.TypeFor(class)
-	return TYPES[class]
+	local entry = dangerEntry(class)
+
+	return entry and entry.danger.label or nil
 end
 
 -- The size of the icon in percent for a distance in metres: 100 minus 1.5 a metre, never under 45.
@@ -102,8 +102,19 @@ end
 function Grenade.Warns(c, armedOnly, opts)
 	opts = opts or {}
 	local range = opts.range or Grenade.DEFAULT_RANGE
+	local entry = dangerEntry(c.class)
 
-	if not TYPES[c.class] or not c.onScreen or c.metres < Grenade.MIN_OWN or c.metres > range then
+	-- only the entries whose indicator is the warning (the grenade-detect film) are drawn here; "marker" and "none" are stored
+	if not entry or entry.indicator ~= "warning" then
+		return false
+	end
+
+	-- the entry's own range can only shorten the player's
+	if entry.danger.range and entry.danger.range < range then
+		range = entry.danger.range
+	end
+
+	if not c.onScreen or c.metres < Grenade.MIN_OWN or c.metres > range then
 		return false
 	end
 
@@ -113,7 +124,7 @@ function Grenade.Warns(c, armedOnly, opts)
 
 	if c.own then
 		-- what the player threw or fired never warns; with the old rule on, the hand grenade does while it is close
-		if Grenade.FIRED[c.class] or not opts.ownWarn or c.metres > Grenade.OWN_WARN_RANGE then
+		if entry.danger.ownMissile or not opts.ownWarn or c.metres > Grenade.OWN_WARN_RANGE then
 			return false
 		end
 	end
@@ -349,9 +360,18 @@ local function scan()
 	nextScan = now + 0.2
 	scanned = {}
 
-	for class in pairs(TYPES) do
-		for _, ent in ipairs(ents.FindByClass(class)) do
-			scanned[#scanned + 1] = ent
+	local API = GryMod.API
+
+	if not API or not API.DangerClasses then
+		return
+	end
+
+	-- by class, through the registry: the classes that have a danger entry drawn as a warning
+	for _, class in ipairs(API.DangerClasses()) do
+		if API.GetDanger(class).indicator == "warning" then
+			for _, ent in ipairs(ents.FindByClass(class)) do
+				scanned[#scanned + 1] = ent
+			end
 		end
 	end
 end
@@ -432,7 +452,7 @@ hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
 	end
 
 	warning:Show()
-	warning:SetType(TYPES[best.class])
+	warning:SetType(Grenade.TypeFor(best.class))
 	warning:SetDistance(best.metres)
 	warning:SetPosition(Grenade.StagePosition(best.screen.x, best.screen.y, ScrW(), ScrH(), best.metres))
 

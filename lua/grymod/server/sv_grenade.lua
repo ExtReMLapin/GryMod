@@ -2,8 +2,11 @@
 -- engine's internal variables, so the server marks each projectile with the networked bool "GryArmed": true while
 -- it is ACTIVE, that is really a danger coming (a grenade whose fuse runs, a mine in the air, a rocket in flight...),
 -- false for an inert one lying around (the spawn menu makes them inert, a Half-Life 2 grenade is only armed when
--- thrown or picked up). What "active" means for each class was measured on live entities, see
--- docs/superpowers/plans/2026-11-21-grenade-entities.md.
+-- thrown or picked up). Which classes are dangerous and what "active" means for each one is the registry's (the `danger`
+-- field of an entry of GryMod.API.RegisterTracked, sh_api_tracked.lua): the Half-Life 2 ones are registered as data in
+-- sh_api_tracked_hl2.lua (what "active" means for each class was measured on live entities, see
+-- docs/superpowers/plans/2026-11-21-grenade-entities.md), an addon's mine or missile is registered the same way and goes
+-- through the same code here. An entry without an `armed` reader is dangerous as soon as it exists.
 --
 -- The entities are followed from their creation (OnEntityCreated), so nothing is searched in the world: with no
 -- projectile around, the five-times-a-second tick finds an empty list and returns.
@@ -18,79 +21,36 @@ local armedOnly = CreateConVar("gry_grenade_armed_only", "1", bit.bor(FCVAR_ARCH
 
 Grenade.ConVar = armedOnly
 
--- Units a second under which a projectile counts as at rest.
-local MOVING = 50
-local FALLING = 300 -- a bomb that is not ticking yet but falls this fast is coming at someone
-local HOPPING = 100 -- a mine in the air (its hop is 300 and more, the clicking before it under 40)
+-- The registry entry with a danger for an entity (or a class name), or nil: none, or no registry (a hot reload of this file).
+local function dangerOf(ent)
+	local API = GryMod.API
 
--- The class -> the rule that says whether it is active, given the state read from the entity: detonate (seconds left
--- before the explosion: the engine tells minus the game time of an unarmed grenade), speed (units a second),
--- activated (the bomb), mineState (1 on the ground, 3 armed, 4 triggered: clicking, then jumping), launched, held (in the
--- player's hands, or by the gravity gun: then it is not a danger coming, the player has it).
-local RULES = {
-	-- npc_grenade_frag: the fuse runs. Measured: a grenade made at rest has -CurTime(), SetTimer 3 gives 3 counting down,
-	-- a pick-up by the player arms it with 1.5.
-	npc_grenade_frag = function(s)
-		return (s.detonate or 0) > 0
-	end,
-	-- grenade_ar2 and rpg_missile are fired live (m_bIsLive is true from their creation) and have no other state: in flight
-	grenade_ar2 = function(s)
-		return (s.speed or 0) > MOVING
-	end,
-	rpg_missile = function(s)
-		return (s.speed or 0) > MOVING
-	end,
-	-- grenade_helicopter: m_bActivated turns on at the first impact and the 5 seconds count down; before it, a bomb that
-	-- falls fast is coming
-	grenade_helicopter = function(s)
-		return s.activated == true or (s.speed or 0) > FALLING
-	end,
-	-- combine_mine: m_iMineState 1 on the ground, 3 armed (a foe is near), 4 triggered (it clicks, then jumps)
-	combine_mine = function(s)
-		return s.mineState == 4 and (s.speed or 0) > HOPPING
-	end,
-	-- prop_combine_ball: m_bLaunched from the weapon's fire or a launcher, m_bHeld by a gravity gun
-	prop_combine_ball = function(s)
-		return s.launched == true
-	end
-}
-
--- The classes the warning knows (the client has their names).
-Grenade.Classes = {}
-
-for class in pairs(RULES) do
-	Grenade.Classes[class] = true
+	return API and API.GetDanger and API.GetDanger(ent) or nil
 end
 
-function Grenade.IsActive(class, state)
-	local rule = class and RULES[class]
-	state = state or {}
+-- Whether the projectile is a danger coming now: its class has a danger entry, no player holds it (a grenade held in the hands has
+-- its fuse running, picked up with the use key it is armed with 1.5 s: no warning; the gravity gun too), and the entry's `armed`
+-- reader says so (a reader that raises an error is no danger: it runs under SafeCall).
+function Grenade.IsActive(ent)
+	local entry = dangerOf(ent)
 
-	-- a grenade held in the hands has its fuse running (picked up with the use key it is armed with 1.5 s): no warning
-	if state.held == true then
+	if not entry then
 		return false
 	end
 
-	return rule ~= nil and rule(state) == true
-end
-
--- The values the rules read, from the entity itself.
-function Grenade.ReadState(ent)
-	local s = {speed = ent:GetVelocity():Length(), held = ent:IsPlayerHolding()}
-	local class = ent:GetClass()
-
-	if class == "npc_grenade_frag" then
-		s.detonate = ent:GetInternalVariable("m_flDetonateTime")
-	elseif class == "grenade_helicopter" then
-		s.activated = ent:GetInternalVariable("m_bActivated") == true
-	elseif class == "combine_mine" then
-		s.mineState = ent:GetInternalVariable("m_iMineState")
-	elseif class == "prop_combine_ball" then
-		s.launched = ent:GetInternalVariable("m_bLaunched") == true
-		s.held = s.held or ent:GetInternalVariable("m_bHeld") == true
+	if ent:IsPlayerHolding() then
+		return false
 	end
 
-	return s
+	local armed = entry.danger.armed
+
+	if armed == nil then
+		return true
+	end
+
+	local ok, answer = GryMod.API.SafeCall(entry.armedId, armed, ent)
+
+	return ok and answer == true
 end
 
 -- The first player among the values given (an owner, a thrower, an owner entity: any of them may be missing, not be a
@@ -108,9 +68,21 @@ function Grenade.PlayerOf(...)
 	return nil
 end
 
--- Who threw or fired the projectile: a player, or nil.
+-- Who threw or fired the projectile: a player, or nil. The entry's `ownerOf` (an addon's projectile that keeps its owner in
+-- its own field) comes first, then what the engine knows.
 function Grenade.ThrowerOf(ent)
-	return Grenade.PlayerOf(ent:GetOwner(), (ent:GetInternalVariable("m_hThrower")), (ent:GetInternalVariable("m_hOwnerEntity")))
+	local entry = dangerOf(ent)
+	local owner
+
+	if entry and entry.danger.ownerOf then
+		local ok, answer = GryMod.API.SafeCall(entry.ownerId, entry.danger.ownerOf, ent)
+
+		if ok then
+			owner = answer
+		end
+	end
+
+	return Grenade.PlayerOf(owner, ent:GetOwner(), (ent:GetInternalVariable("m_hThrower")), (ent:GetInternalVariable("m_hOwnerEntity")))
 end
 
 -- Marks one projectile (the values are only sent when they change). The thrower is written first, so a client that sees
@@ -126,7 +98,7 @@ function Grenade.Update(ent)
 		ent:SetNWEntity("GryThrower", thrower)
 	end
 
-	local armed = Grenade.IsActive(ent:GetClass(), Grenade.ReadState(ent))
+	local armed = Grenade.IsActive(ent)
 
 	if ent:GetNWBool("GryArmed") ~= armed then
 		ent:SetNWBool("GryArmed", armed)
@@ -141,7 +113,7 @@ local tracked = {}
 local count = 0
 
 function Grenade.Track(ent)
-	if IsValid(ent) and Grenade.Classes[ent:GetClass()] and not tracked[ent] then
+	if IsValid(ent) and dangerOf(ent) and not tracked[ent] then
 		tracked[ent] = true
 		count = count + 1
 	end
@@ -174,7 +146,7 @@ end
 
 -- The player picks one up or throws it: marked at once (the state of the hands changes after the hook, so one frame on)
 local function markSoon(_, ent)
-	if IsValid(ent) and Grenade.Classes[ent:GetClass()] then
+	if IsValid(ent) and dangerOf(ent) then
 		Grenade.Track(ent)
 
 		timer.Simple(0, function()
@@ -188,16 +160,21 @@ hook.Add("OnPlayerPhysicsDrop", "GRYGRENADEHELD", markSoon)
 
 hook.Add("OnEntityCreated", "GRYGRENADETRACK", function(ent)
 	-- the class is known when the entity is made
-	if IsValid(ent) and Grenade.Classes[ent:GetClass()] then
+	if IsValid(ent) and dangerOf(ent) then
 		Grenade.Track(ent)
 	end
 end)
 
 timer.Create("GRYGRENADEMARK", 0.2, 0, Grenade.Tick)
 
--- The ones that exist when this file is loaded (a reload, or the module started late).
-for class in pairs(Grenade.Classes) do
-	for _, ent in ipairs(ents.FindByClass(class)) do
-		Grenade.Track(ent)
+-- The ones that exist when this file is loaded (a reload, or the module started late). An entry registered later follows the
+-- entities made after it: the ones that already stand are not looked for again.
+local API = GryMod.API
+
+if API and API.DangerClasses then
+	for _, class in ipairs(API.DangerClasses()) do
+		for _, ent in ipairs(ents.FindByClass(class)) do
+			Grenade.Track(ent)
+		end
 	end
 end

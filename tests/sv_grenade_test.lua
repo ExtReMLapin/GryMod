@@ -20,6 +20,24 @@ local function spawn(class, pos)
 	return e
 end
 
+-- An entity stand-in for the rules (the `armed` readers of the registry's entries ask the entity itself): its class, its speed, the
+-- internal variables they read and whether a player holds it.
+local function stand(class, fields)
+	fields = fields or {}
+
+	return {
+		IsValid = function() return true end,
+		GetClass = function() return class end,
+		GetVelocity = function() return Vector(fields.speed or 0, 0, 0) end,
+		GetInternalVariable = function(_, name) return (fields.vars or {})[name] end,
+		IsPlayerHolding = function() return fields.held == true end
+	}
+end
+
+local function active(class, fields)
+	return GryMod.Grenade.IsActive(stand(class, fields))
+end
+
 return {
 	groupName = "GryMod grenade marks (server)",
 	beforeAll = function(state)
@@ -40,6 +58,12 @@ return {
 		end
 
 		spawned = {}
+
+		if GryMod.API.UnregisterTracked then
+			GryMod.API.UnregisterTracked("t_third_mine")
+			GryMod.API.SafeCallReset("tracked:t_third_mine/armed")
+			GryMod.API.SafeCallReset("tracked:t_third_mine/owner")
+		end
 	end,
 	cases = {
 		{
@@ -50,56 +74,58 @@ return {
 				expect(GetConVar("gry_grenade_armed_only"):GetInt()).to.equal(1)
 				expect(GetConVar("gry_grenade_armed_only"):IsFlagSet(FCVAR_REPLICATED)).to.beTrue()
 
+				-- the classes are the registry's: stock entries with danger (sh_api_tracked_hl2.lua), no table of the grenade module
 				for _, class in ipairs({"npc_grenade_frag", "grenade_ar2", "rpg_missile", "grenade_helicopter", "combine_mine", "prop_combine_ball"}) do
-					expect(G.Classes[class]).toNot.beNil()
+					expect(GryMod.API.GetDanger(class)).toNot.beNil()
 				end
 
-				expect(G.Classes.prop_physics).to.beNil()
+				expect(GryMod.API.GetDanger("prop_physics")).to.beNil()
+				expect(G.Classes).to.beNil()
 			end
 		},
 		{
 			name = "a frag grenade is active from the moment its fuse runs (the time of the explosion is in the future), not before",
 			func = function(state)
-				expect(G.IsActive("npc_grenade_frag", {detonate = -47.2})).to.beFalse() -- never armed: minus the game time
-				expect(G.IsActive("npc_grenade_frag", {detonate = 0})).to.beFalse()
-				expect(G.IsActive("npc_grenade_frag", {detonate = 2.49})).to.beTrue()
-				expect(G.IsActive("npc_grenade_frag", {})).to.beFalse()
+				expect(active("npc_grenade_frag", {vars = {m_flDetonateTime = -47.2}})).to.beFalse() -- never armed: minus the game time
+				expect(active("npc_grenade_frag", {vars = {m_flDetonateTime = 0}})).to.beFalse()
+				expect(active("npc_grenade_frag", {vars = {m_flDetonateTime = 2.49}})).to.beTrue()
+				expect(active("npc_grenade_frag", {})).to.beFalse()
 			end
 		},
 		{
 			name = "a rifle grenade and a missile are active while they fly (they have no state: they are fired already live)",
 			func = function(state)
-				expect(G.IsActive("grenade_ar2", {speed = 0})).to.beFalse() -- one made at rest (the spawn menu) stays harmless
-				expect(G.IsActive("grenade_ar2", {speed = 900})).to.beTrue()
-				expect(G.IsActive("rpg_missile", {speed = 0})).to.beFalse()
-				expect(G.IsActive("rpg_missile", {speed = 1100})).to.beTrue()
+				expect(active("grenade_ar2", {speed = 0})).to.beFalse() -- one made at rest (the spawn menu) stays harmless
+				expect(active("grenade_ar2", {speed = 900})).to.beTrue()
+				expect(active("rpg_missile", {speed = 0})).to.beFalse()
+				expect(active("rpg_missile", {speed = 1100})).to.beTrue()
 			end
 		},
 		{
 			name = "a helicopter bomb is active once it has fallen and ticks (activated), or while it falls fast",
 			func = function(state)
-				expect(G.IsActive("grenade_helicopter", {speed = 0, activated = false})).to.beFalse()
-				expect(G.IsActive("grenade_helicopter", {speed = 450, activated = false})).to.beTrue() -- falling at you
-				expect(G.IsActive("grenade_helicopter", {speed = 0, activated = true})).to.beTrue() -- the countdown runs
+				expect(active("grenade_helicopter", {speed = 0, vars = {m_bActivated = false}})).to.beFalse()
+				expect(active("grenade_helicopter", {speed = 450, vars = {m_bActivated = false}})).to.beTrue() -- falling at you
+				expect(active("grenade_helicopter", {speed = 0, vars = {m_bActivated = true}})).to.beTrue() -- the countdown runs
 			end
 		},
 		{
 			name = "a hopping mine is active in the air only: not asleep, not armed on the ground, not clicking before the jump",
 			func = function(state)
-				expect(G.IsActive("combine_mine", {mineState = 1, speed = 0})).to.beFalse() -- on the ground
-				expect(G.IsActive("combine_mine", {mineState = 3, speed = 0})).to.beFalse() -- armed, waits for a foe
-				expect(G.IsActive("combine_mine", {mineState = 4, speed = 0})).to.beFalse() -- triggered, clicking
-				expect(G.IsActive("combine_mine", {mineState = 4, speed = 20})).to.beFalse() -- the little shuffle
-				expect(G.IsActive("combine_mine", {mineState = 4, speed = 376})).to.beTrue() -- jumping
-				expect(G.IsActive("combine_mine", {mineState = 1, speed = 376})).to.beFalse() -- a mine thrown by physics, not hopping
+				expect(active("combine_mine", {vars = {m_iMineState = 1}, speed = 0})).to.beFalse() -- on the ground
+				expect(active("combine_mine", {vars = {m_iMineState = 3}, speed = 0})).to.beFalse() -- armed, waits for a foe
+				expect(active("combine_mine", {vars = {m_iMineState = 4}, speed = 0})).to.beFalse() -- triggered, clicking
+				expect(active("combine_mine", {vars = {m_iMineState = 4}, speed = 20})).to.beFalse() -- the little shuffle
+				expect(active("combine_mine", {vars = {m_iMineState = 4}, speed = 376})).to.beTrue() -- jumping
+				expect(active("combine_mine", {vars = {m_iMineState = 1}, speed = 376})).to.beFalse() -- a mine thrown by physics, not hopping
 			end
 		},
 		{
 			name = "an energy ball is active once launched and not held by the gravity gun",
 			func = function(state)
-				expect(G.IsActive("prop_combine_ball", {launched = false})).to.beFalse()
-				expect(G.IsActive("prop_combine_ball", {launched = true, held = false})).to.beTrue()
-				expect(G.IsActive("prop_combine_ball", {launched = true, held = true})).to.beFalse()
+				expect(active("prop_combine_ball", {vars = {m_bLaunched = false}})).to.beFalse()
+				expect(active("prop_combine_ball", {vars = {m_bLaunched = true, m_bHeld = false}})).to.beTrue()
+				expect(active("prop_combine_ball", {vars = {m_bLaunched = true, m_bHeld = true}})).to.beFalse()
 			end
 		},
 		{
@@ -155,8 +181,9 @@ return {
 		{
 			name = "an unknown class is never active",
 			func = function(state)
-				expect(G.IsActive("prop_physics", {speed = 999, detonate = 5, launched = true})).to.beFalse()
-				expect(G.IsActive(nil, {})).to.beFalse()
+				expect(active("prop_physics", {speed = 999, vars = {m_flDetonateTime = 5, m_bLaunched = true}})).to.beFalse()
+				expect(G.IsActive(nil)).to.beFalse()
+				expect(G.IsActive(NULL)).to.beFalse()
 			end
 		},
 		{
@@ -182,7 +209,7 @@ return {
 				p:PickupObject(g) -- the engine arms it (1.5 s) and the player holds it
 				expect(g:IsPlayerHolding()).to.beTrue()
 				expect(g:GetInternalVariable("m_flDetonateTime") > 0).to.beTrue()
-				expect(G.ReadState(g).held).to.beTrue()
+				expect(G.IsActive(g)).to.beFalse() -- the fuse runs, but the player has it
 				G.Update(g)
 				expect(g:GetNWBool("GryArmed")).to.beFalse()
 				p:DropObject()
@@ -194,10 +221,10 @@ return {
 		{
 			name = "a held projectile is never active, whatever its class",
 			func = function(state)
-				expect(G.IsActive("npc_grenade_frag", {detonate = 1.5, held = true})).to.beFalse()
-				expect(G.IsActive("npc_grenade_frag", {detonate = 1.5, held = false})).to.beTrue()
-				expect(G.IsActive("grenade_helicopter", {activated = true, held = true})).to.beFalse()
-				expect(G.IsActive("rpg_missile", {speed = 900, held = true})).to.beFalse()
+				expect(active("npc_grenade_frag", {vars = {m_flDetonateTime = 1.5}, held = true})).to.beFalse()
+				expect(active("npc_grenade_frag", {vars = {m_flDetonateTime = 1.5}, held = false})).to.beTrue()
+				expect(active("grenade_helicopter", {vars = {m_bActivated = true}, held = true})).to.beFalse()
+				expect(active("rpg_missile", {speed = 900, held = true})).to.beFalse()
 			end
 		},
 		{
@@ -221,17 +248,18 @@ return {
 			end
 		},
 		{
-			name = "the state is read from the entity: the time of the explosion, the mine state, the bomb's flag",
+			name = "the state is read from the real entity by the registry's readers: a mine, a bomb and a ball made at rest are not active",
 			func = function(state)
 				local p = ply()
 				local mine = spawn("combine_mine", p:EyePos() + p:GetForward() * 150)
-				local read = G.ReadState(mine)
-				expect(read.mineState).to.equal(mine:GetInternalVariable("m_iMineState"))
-				expect(read.speed).to.equal(mine:GetVelocity():Length())
+				expect(mine:GetInternalVariable("m_iMineState")).toNot.beNil()
+				expect(G.IsActive(mine)).to.beFalse()
 				local bomb = spawn("grenade_helicopter", p:EyePos() + p:GetForward() * 150 + Vector(0, 100, 0))
-				expect(G.ReadState(bomb).activated).to.beFalse()
+				expect(bomb:GetInternalVariable("m_bActivated")).to.beFalse()
+				expect(G.IsActive(bomb)).to.beFalse()
 				local ball = spawn("prop_combine_ball", p:EyePos() + p:GetForward() * 150 + Vector(0, -100, 0))
-				expect(G.ReadState(ball).launched).to.beFalse()
+				expect(ball:GetInternalVariable("m_bLaunched")).to.beFalse()
+				expect(G.IsActive(ball)).to.beFalse()
 			end
 		},
 		{
@@ -265,6 +293,77 @@ return {
 				G.Tick()
 				expect(G.TrackedCount()).to.equal(before + 1)
 				g:Remove()
+			end
+		},
+		{
+			name = "a third-party mine registered with RegisterTracked (an invented class, its own armed reader) is followed from its creation and marked by the same path as combine_mine",
+			func = function(state)
+				local p = ply()
+				scripted_ents.Register({Type = "anim", Base = "base_anim"}, "t_third_mine")
+				expect(GryMod.API.RegisterTracked("t_third_mine", {
+					class = "t_third_mine",
+					danger = {label = "TRAP", type = "mine", armed = function(ent) return ent.TestArmed == true end}
+				})).to.beTrue()
+
+				G.Tick() -- forgets the dead ones
+				local before = G.TrackedCount()
+				local mine = spawn("t_third_mine", p:EyePos() + p:GetForward() * 150)
+				expect(G.TrackedCount()).to.equal(before + 1) -- OnEntityCreated followed it, as for a combine_mine
+
+				G.Tick()
+				expect(mine:GetNWBool("GryArmed")).to.beFalse() -- its own reader says no
+				mine.TestArmed = true
+				G.Tick()
+				expect(mine:GetNWBool("GryArmed")).to.beTrue() -- the five-times-a-second tick marks it: the client warns
+				expect(G.IsActive(mine)).to.beTrue()
+
+				mine.TestArmed = false
+				G.Tick()
+				expect(mine:GetNWBool("GryArmed")).to.beFalse()
+
+				-- a registered class is the same everywhere: removing the entry stops the marks
+				GryMod.API.UnregisterTracked("t_third_mine")
+				mine.TestArmed = true
+				expect(G.IsActive(mine)).to.beFalse()
+			end
+		},
+		{
+			name = "a danger with no armed reader is dangerous as soon as it exists, but not while a player holds it; a reader that raises an error is no danger and never reaches the tick",
+			func = function(state)
+				local p = ply()
+				scripted_ents.Register({Type = "anim", Base = "base_anim"}, "t_third_mine")
+				GryMod.API.RegisterTracked("t_third_mine", {class = "t_third_mine", danger = {label = "TRAP"}})
+				local mine = spawn("t_third_mine", p:EyePos() + p:GetForward() * 150)
+				G.Update(mine)
+				expect(mine:GetNWBool("GryArmed")).to.beTrue()
+
+				local held = true
+				local stand = {IsValid = function() return true end, GetClass = function() return "t_third_mine" end, IsPlayerHolding = function() return held end}
+				expect(G.IsActive(stand)).to.beFalse()
+				held = false
+				expect(G.IsActive(stand)).to.beTrue()
+
+				local realMsgN = MsgN
+				MsgN = function() end
+				GryMod.API.RegisterTracked("t_third_mine", {class = "t_third_mine", danger = {armed = function() error("broken reader") end}})
+				local ok, active = pcall(G.IsActive, mine)
+				MsgN = realMsgN
+				expect(ok).to.beTrue()
+				expect(active).to.beFalse()
+			end
+		},
+		{
+			name = "ownerOf says whose a third-party projectile is: that player is the thrower (GryThrower), so the client never warns them about it",
+			func = function(state)
+				local p = ply()
+				scripted_ents.Register({Type = "anim", Base = "base_anim"}, "t_third_mine")
+				GryMod.API.RegisterTracked("t_third_mine", {class = "t_third_mine", danger = {ownerOf = function(ent) return ent.Planter end}})
+				local mine = spawn("t_third_mine", p:EyePos() + p:GetForward() * 150)
+				G.Update(mine)
+				expect(IsValid(mine:GetNWEntity("GryThrower"))).to.beFalse()
+				mine.Planter = p
+				G.Update(mine)
+				expect(mine:GetNWEntity("GryThrower")).to.equal(p)
 			end
 		},
 		{

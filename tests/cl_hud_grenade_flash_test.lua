@@ -18,6 +18,11 @@ end
 
 return {
 	groupName = "GryMod grenade warning (Flash)",
+	afterEach = function(state)
+		if GryMod.API and GryMod.API.UnregisterTracked then
+			GryMod.API.UnregisterTracked("t_cl_trap")
+		end
+	end,
 	cases = {
 		{
 			name = "the warning is hidden until shown, then plays its opening and stays on the last frame of it",
@@ -273,8 +278,80 @@ return {
 					{class = "rpg_missile", metres = 20, onScreen = true, own = false, armed = true}
 				})
 				expect(picked.metres).to.equal(20)
-				expect(G.FIRED.rpg_missile).to.beTrue()
-				expect(G.FIRED.npc_grenade_frag).to.equal(nil)
+				-- which ones are fired is the registry's `ownMissile`, no table of this module
+				expect(G.FIRED).to.beNil()
+				expect(GryMod.API.GetDanger("rpg_missile").danger.ownMissile).to.beTrue()
+				expect(GryMod.API.GetDanger("npc_grenade_frag").danger.ownMissile).to.beFalse()
+			end
+		},
+		{
+			name = "a third-party danger registered with RegisterTracked (invented class) warns by the same path as the stock ones: its label, the options (armed only, range, line of sight, own grenades) apply to it",
+			func = function(state)
+				local G, API = GryMod.FlashGrenade, GryMod.API
+				expect(API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "TRAP", type = "mine"}})).to.beTrue()
+				local ok, err = pcall(function()
+					expect(G.TypeFor("t_cl_trap")).to.equal("TRAP")
+					local function c(fields)
+						local base = {class = "t_cl_trap", metres = 12, onScreen = true, own = false, armed = true}
+						for k, v in pairs(fields or {}) do base[k] = v end
+						return base
+					end
+
+					expect(G.Pick({c()}) ~= nil).to.beTrue()
+					expect(G.Pick({c({armed = false})})).to.equal(nil) -- gry_grenade_armed_only
+					expect(G.Pick({c({armed = false})}, false) ~= nil).to.beTrue()
+					expect(G.Pick({c({onScreen = false})})).to.equal(nil)
+					expect(G.Pick({c({metres = 41})})).to.equal(nil) -- the player's range
+					expect(G.Pick({c({metres = 0.5})})).to.equal(nil)
+					expect(G.Pick({c({visible = false})}, true, {los = true})).to.equal(nil)
+					expect(G.Pick({c({visible = false})}, true, {los = false}) ~= nil).to.beTrue()
+					-- its own, thrown by the player: never, unless the old rule is on, and then within 15 m (it is not a fired missile)
+					expect(G.Pick({c({own = true})})).to.equal(nil)
+					expect(G.Pick({c({own = true})}, true, {ownWarn = true}) ~= nil).to.beTrue()
+					expect(G.Pick({c({own = true, metres = 20})}, true, {ownWarn = true})).to.equal(nil)
+				end)
+				API.UnregisterTracked("t_cl_trap")
+				if not ok then error(err, 0) end
+				expect(G.TypeFor("t_cl_trap")).to.beNil()
+				expect(G.Pick({{class = "t_cl_trap", metres = 12, onScreen = true, own = false, armed = true}})).to.equal(nil)
+			end
+		},
+		{
+			name = "danger.ownMissile makes a third-party projectile one the player fires (never warns their own, even with the old rule); danger.range caps the player's range for that entry only",
+			func = function(state)
+				local G, API = GryMod.FlashGrenade, GryMod.API
+				API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "ROCKET", ownMissile = true, range = 20}})
+				local ok, err = pcall(function()
+					local mine = {class = "t_cl_trap", metres = 12, onScreen = true, own = true, armed = true}
+					expect(G.Pick({mine}, true, {ownWarn = true})).to.equal(nil)
+					expect(G.Pick({{class = "t_cl_trap", metres = 12, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
+					-- the entry's range of 20 m: nearer than the player's 100 m
+					local far = {class = "t_cl_trap", metres = 25, onScreen = true, own = false, armed = true}
+					expect(G.Pick({far}, true, {range = 100})).to.equal(nil)
+					expect(G.Pick({{class = "t_cl_trap", metres = 15, onScreen = true, own = false, armed = true}}, true, {range = 10})).to.equal(nil) -- the player's range still applies
+					-- the stock ones keep the player's range alone
+					expect(G.Pick({{class = "npc_grenade_frag", metres = 25, onScreen = true, own = false, armed = true}}, true, {range = 100}) ~= nil).to.beTrue()
+				end)
+				API.UnregisterTracked("t_cl_trap")
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			name = "indicator marker or none: the entry has no warning (accepted and stored, drawn by no part of the HUD yet); the stock ones warn",
+			func = function(state)
+				local G, API = GryMod.FlashGrenade, GryMod.API
+				local candidate = {class = "t_cl_trap", metres = 12, onScreen = true, own = false, armed = true}
+
+				for _, indicator in ipairs({"marker", "none"}) do
+					API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "TRAP"}, indicator = indicator})
+					expect(G.Pick({candidate})).to.equal(nil)
+					expect(G.TypeFor("t_cl_trap")).to.equal("TRAP")
+				end
+
+				API.RegisterTracked("t_cl_trap", {class = "t_cl_trap", danger = {label = "TRAP"}, indicator = "warning"})
+				expect(G.Pick({candidate}) ~= nil).to.beTrue()
+				API.UnregisterTracked("t_cl_trap")
+				expect(GryMod.API.GetDanger("combine_mine").indicator).to.equal("warning")
 			end
 		},
 		{
