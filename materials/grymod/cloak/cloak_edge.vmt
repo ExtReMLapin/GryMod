@@ -1,0 +1,16 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/debug/debugwhite"
+	"$bumpmap" "grymod/cloak/cloak_n"
+	"$model" 1
+	"$additive" 1
+	"$color2" "[0 0 0]"
+	"$phong" 1
+	"$phongtint" "[0.3 0.5 1]"
+	"$phongexponent" 10
+	"$phongboost" 8
+	"$phongfresnelranges" "[0.1 0.5 1]"
+	"$rimlight" 1
+	"$rimlightexponent" 2
+	"$rimlightboost" 6
+}

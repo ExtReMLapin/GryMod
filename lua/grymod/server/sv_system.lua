@@ -80,16 +80,13 @@ function meta:SetNanosuitMode(mode, networked)
 	local hands = self:GetHands()
 
 	if (mode == GryMod.Modes.CLOAK) then
-		self:SetMaterial("cloak/organic")
-
-		-- some gamemodes do not give c_arms hands
-		if IsValid(hands) then
-			hands:SetMaterial("cloak/organic")
-		end
-
+		-- the look is made on each client from this switch (cl_cloak_fx.lua): the picture behind the player is bent,
+		-- and it fades in and out. A client that turned it off (gry_cloak_fx 0) puts the old material on itself.
+		self:SetNWBool("GryCloak", true)
 		self:SetNoTarget(true)
 		self:DrawWorldModel(false)
 	else
+		self:SetNWBool("GryCloak", false)
 		self:SetMaterial("")
 
 		if IsValid(hands) then

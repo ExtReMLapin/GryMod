@@ -77,11 +77,14 @@ function meta:SetNanosuitMode(mode, networked)
 
 	if mode == GryMod.Modes.CLOAK then
 		if IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
-			LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
+			-- the view model and the hands are made camouflaged by cl_cloak_fx.lua; the old material only with gry_cloak_fx 0
+			if not GryMod.CloakFX.Enabled() then
+				LocalPlayer():GetViewModel():SetMaterial("cloak/organic")
 
-			-- some gamemodes do not give c_arms hands
-			if IsValid(LocalPlayer():GetHands()) then
-				LocalPlayer():GetHands():SetMaterial("cloak/organic")
+				-- some gamemodes do not give c_arms hands
+				if IsValid(LocalPlayer():GetHands()) then
+					LocalPlayer():GetHands():SetMaterial("cloak/organic")
+				end
 			end
 
 			GryMod.PlaySound(Sound("suit/suit_cloak_chameleon_101_r.mp3"))

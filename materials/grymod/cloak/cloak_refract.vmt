@@ -1,0 +1,10 @@
+// The picture behind a camouflaged player, bent by a small normal map (cl_cloak_fx.lua animates $refractamount)
+"Refract"
+{
+	"$model" 1
+	"$normalmap" "grymod/cloak/cloak_n"
+	"$refractamount" "0.06"
+	"$refracttint" "[1 1 1]"
+	"$bluramount" "0"
+	"$nocull" 1
+}

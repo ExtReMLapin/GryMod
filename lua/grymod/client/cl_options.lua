@@ -114,6 +114,7 @@ function GryMod.GryOptionschute(Panel)
 		}
 	})
 	Panel:CheckBox("Camouflage: striders, hunters and manhacks forget you (server)", "gry_cloak_ai")
+	Panel:CheckBox("Camouflage: bend the picture behind the player and fade in and out (off: the old material)", "gry_cloak_fx")
 
 	-- the key of the quick menu (a `bind <key> +crysishud` in the console works too)
 	if GryMod.MenuKey then
