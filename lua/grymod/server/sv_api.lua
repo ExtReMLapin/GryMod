@@ -201,7 +201,7 @@ end
 
 -- Order of the chain:
 --   1. the relation providers of other addons (AddRelationProvider), the higher priority first, called through SafeCall;
---   2. the registry of tracked entities (wave B: API._TrackedRelation, nil until that registry exists);
+--   2. the `relation` field of the registry of tracked entities (sh_api_tracked.lua: API._TrackedRelation);
 --   3. the built-in rule (GryMod.Friendly.BuiltinRelation: the NPC's real attitude).
 -- A provider returns "ally", "neutral" or "hostile", or nil for no opinion; anything else is ignored.
 local VALID_RELATION = {ally = true, neutral = true, hostile = true}
@@ -262,7 +262,8 @@ local function isobject(value)
 	return isentity(value) or istable(value)
 end
 
--- The hook point of the registry of tracked entities (wave B replaces it): its `relation` field, or nil.
+-- The hook point of the registry of tracked entities: sh_api_tracked.lua replaces it (its `relation` field, or nil). This stub
+-- only answers while that file is not loaded.
 API._TrackedRelation = API._TrackedRelation or function() return nil end
 
 -- What the entity is to the player: "ally", "neutral" or "hostile". The only place that decides it (the crosshair's cross, the
