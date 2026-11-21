@@ -477,6 +477,92 @@ return {
 			end
 		},
 		{
+			name = "the menu is also cancelled while the cursor is up, the player types, the console is open, or the key it was opened with is no longer down",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local alive = {Alive = function() return true end}
+				expect(M.ShouldCancel(alive, false, {})).to.beFalse()
+				expect(M.ShouldCancel(alive, false, {cursor = false, typing = false, console = false, keyUp = false})).to.beFalse()
+				expect(M.ShouldCancel(alive, false, {cursor = true})).to.beTrue()
+				expect(M.ShouldCancel(alive, false, {typing = true})).to.beTrue()
+				expect(M.ShouldCancel(alive, false, {console = true})).to.beTrue()
+				expect(M.ShouldCancel(alive, false, {keyUp = true})).to.beTrue()
+			end
+		},
+		{
+			name = "opening the chat with the key held cancels the menu: the key release never comes (StartChat)",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				M.Reset()
+				expect(M.Begin()).to.beTrue()
+				local handler = hook.GetTable().StartChat and hook.GetTable().StartChat["GRYQUICKMENU"]
+				expect(handler).to.beA("function")
+				handler()
+				expect(M.IsOpen()).to.beFalse()
+				M.Reset()
+			end
+		},
+		{
+			name = "the per frame check cancels an open menu when a panel has the cursor, the player types, the console is up or the key is up, and leaves it open otherwise",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local meta = FindMetaTable("Player")
+				local K = GryMod.MenuKey
+				local cmd = {
+					GetMouseX = function() return 0 end,
+					GetMouseY = function() return 0 end,
+					GetButtons = function() return 0 end,
+					SetButtons = function() end,
+					SetViewAngles = function() end,
+					SetMouseX = function() end,
+					SetMouseY = function() end
+				}
+				local real = {cursor = vgui.CursorVisible, typing = meta.IsTyping, console = gui.IsConsoleVisible, down = input.IsButtonDown, pressed = K.pressed}
+				local fake = {cursor = false, typing = false, console = false, down = true}
+				vgui.CursorVisible = function() return fake.cursor end
+				meta.IsTyping = function() return fake.typing end
+				gui.IsConsoleVisible = function() return fake.console end
+				input.IsButtonDown = function() return fake.down end
+
+				local ok, err = pcall(function()
+					local frame = hook.GetTable().CreateMove["GRYQUICKMENU"]
+					K.pressed = KEY_F7
+
+					local function openThen(change)
+						fake.cursor, fake.typing, fake.console, fake.down = false, false, false, true
+						M.Reset()
+						expect(M.Begin()).to.beTrue()
+						K.pressed = KEY_F7
+						change()
+						frame(cmd)
+
+						return M.IsOpen()
+					end
+
+					expect(openThen(function() end)).to.beTrue() -- the key is held, nothing in the way
+					expect(openThen(function() fake.cursor = true end)).to.beFalse()
+					expect(openThen(function() fake.typing = true end)).to.beFalse()
+					expect(openThen(function() fake.console = true end)).to.beFalse()
+					expect(openThen(function() fake.down = false end)).to.beFalse()
+
+					-- opened with no known key (the console command): the key cannot be polled
+					fake.cursor, fake.typing, fake.console, fake.down = false, false, false, false
+					M.Reset()
+					expect(M.Begin()).to.beTrue()
+					K.pressed = nil
+					frame(cmd)
+					expect(M.IsOpen()).to.beTrue()
+				end)
+
+				vgui.CursorVisible, meta.IsTyping, gui.IsConsoleVisible, input.IsButtonDown, K.pressed = real.cursor, real.typing, real.console, real.down, real.pressed
+				M.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "a missing movie gives no menu instead of an error",
 			func = function(state)
 				expect(GryMod.FlashMenu.New(nil)).to.equal(nil)

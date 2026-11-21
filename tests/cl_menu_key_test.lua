@@ -74,6 +74,81 @@ return {
 			end
 		},
 		{
+			name = "the button that opened the menu is remembered until it is released: the chosen key, or the key bound to +crysishud",
+			func = function(state)
+				local K = GryMod.MenuKey
+				local convar = GetConVar("gry_menu_key")
+				local key, lookup, pressed = convar:GetInt(), input.LookupKeyBinding, K.pressed
+				input.LookupKeyBinding = function(button) return button == KEY_F9 and "+crysishud" or nil end
+
+				local ok, err = pcall(function()
+					convar:SetInt(KEY_F7)
+					K.pressed = nil
+					expect(K.Pressed()).to.beNil()
+
+					K.Track(KEY_F8, true) -- not the menu's key
+					expect(K.Pressed()).to.beNil()
+					K.Track(KEY_F7, true)
+					expect(K.Pressed()).to.equal(KEY_F7)
+					K.Track(KEY_F8, false) -- another key going up changes nothing
+					expect(K.Pressed()).to.equal(KEY_F7)
+					K.Track(KEY_F7, false)
+					expect(K.Pressed()).to.beNil()
+
+					K.Track(KEY_F9, true) -- bind F9 +crysishud
+					expect(K.Pressed()).to.equal(KEY_F9)
+					K.Forget()
+					expect(K.Pressed()).to.beNil()
+				end)
+
+				input.LookupKeyBinding = lookup
+				convar:SetInt(key)
+				K.pressed = pressed
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the key hooks only act on the first prediction of a press, so a press is not handled several times",
+			func = function(state)
+				local K = GryMod.MenuKey
+				local convar = GetConVar("gry_menu_key")
+				local key, openClose, first, pressed = convar:GetInt(), GryMod.CryOpenClose, IsFirstTimePredicted, K.pressed
+				local calls = {}
+				GryMod.CryOpenClose = function(_, command) calls[#calls + 1] = command end
+				convar:SetInt(KEY_F7)
+
+				local ok, err = pcall(function()
+					local down = hook.GetTable().PlayerButtonDown["GRYMENUKEY"]
+					local up = hook.GetTable().PlayerButtonUp["GRYMENUKEY"]
+
+					IsFirstTimePredicted = function() return false end
+					down(LocalPlayer(), KEY_F7)
+					up(LocalPlayer(), KEY_F7)
+					expect(#calls).to.equal(0)
+
+					IsFirstTimePredicted = function() return true end
+					down(LocalPlayer(), KEY_F7)
+					expect(calls[1]).to.equal("+crysishud")
+					expect(K.Pressed()).to.equal(KEY_F7)
+					up(LocalPlayer(), KEY_F7)
+					expect(calls[2]).to.equal("-crysishud")
+					expect(K.Pressed()).to.beNil()
+				end)
+
+				IsFirstTimePredicted = first
+				GryMod.CryOpenClose = openClose
+				convar:SetInt(key)
+				K.pressed = pressed
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "choosing a key saves it and closes the prompt; Escape and nothing are refused",
 			func = function(state)
 				local K = GryMod.MenuKey

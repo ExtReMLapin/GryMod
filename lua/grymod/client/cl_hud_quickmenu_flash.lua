@@ -487,14 +487,19 @@ function Menu.Finish()
 	end
 end
 
--- The menu closes without changing anything when the player dies or a game menu opens (the key release may never
--- reach us then).
-function Menu.ShouldCancel(ply, gameUiVisible)
+-- The menu closes without changing anything when the player dies or a game menu opens, and when the key release may never
+-- reach us: a panel took the cursor or the keyboard (the chat, the Q or C menu), the console is up, or the key it was
+-- opened with is not down any more. `extra` (optional): {cursor, typing, console, keyUp}, true for each case that holds.
+function Menu.ShouldCancel(ply, gameUiVisible, extra)
 	if not ply or not ply.Alive then
 		return true
 	end
 
-	return not ply:Alive() or gameUiVisible
+	if not ply:Alive() or gameUiVisible then
+		return true
+	end
+
+	return extra ~= nil and (extra.cursor == true or extra.typing == true or extra.console == true or extra.keyUp == true)
 end
 
 function Menu.Cancel()
@@ -504,6 +509,10 @@ function Menu.Cancel()
 
 	opened = false
 
+	if GryMod.MenuKey then
+		GryMod.MenuKey.Forget()
+	end
+
 	if menu then
 		menu:Close()
 	end
@@ -511,12 +520,27 @@ function Menu.Cancel()
 	play(snd_close)
 end
 
+-- one table, filled each frame the menu is open
+local reasons = {}
+
+hook.Add("StartChat", "GRYQUICKMENU", function()
+	Menu.Cancel()
+end)
+
 hook.Add("CreateMove", "GRYQUICKMENU", function(cmd)
 	if not opened then
 		return
 	end
 
-	if Menu.ShouldCancel(LocalPlayer(), gui.IsGameUIVisible()) then
+	local ply = LocalPlayer()
+	local key = GryMod.MenuKey and GryMod.MenuKey.Pressed()
+
+	reasons.cursor = vgui.CursorVisible()
+	reasons.typing = IsValid(ply) and ply:IsTyping()
+	reasons.console = gui.IsConsoleVisible()
+	reasons.keyUp = key ~= nil and not input.IsButtonDown(key)
+
+	if Menu.ShouldCancel(ply, gui.IsGameUIVisible(), reasons) then
 		Menu.Cancel()
 
 		return
