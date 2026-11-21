@@ -32,6 +32,23 @@ end
 
 return {
 	groupName = "GryMod crosshair (Flash)",
+	beforeEach = function(state)
+		-- the player's own saved settings must not leak into these tests (they are saved in cfg/client.vdf, which every client reads):
+		-- no own zoom key, so that the tests see the game's zoom
+		local key = GetConVar("gry_zoom_key")
+		state.savedZoomKey = key and key:GetString()
+
+		if key then
+			key:SetString("0")
+		end
+	end,
+	afterEach = function(state)
+		local key = GetConVar("gry_zoom_key")
+
+		if key and state.savedZoomKey then
+			key:SetString(state.savedZoomKey)
+		end
+	end,
 	cases = {
 		{
 			name = "a missing movie gives no crosshair instead of an error",

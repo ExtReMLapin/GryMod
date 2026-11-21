@@ -30,6 +30,7 @@ return {
 			own = setting(OWN) and setting(OWN):GetString(),
 			key = setting(KEY) and setting(KEY):GetString(),
 			toggle = setting(TOGGLE) and setting(TOGGLE):GetString(),
+			sway = setting("gry_binoculars_sway") and setting("gry_binoculars_sway"):GetString(),
 			read = Z and Z.Read,
 			drop = Bino and Bino.Drop,
 			emit = GryMod.SoundMix.Emit,
@@ -59,6 +60,8 @@ return {
 			setting(OWN):SetString("1")
 			setting(KEY):SetString(tostring(KEY_F7))
 			setting(TOGGLE):SetString("0")
+			-- (the view tests read the game's own angles: no sway, whatever the player has saved or the default is)
+			if setting("gry_binoculars_sway") then setting("gry_binoculars_sway"):SetString("0") end
 			Z.Reset()
 		end
 
@@ -88,6 +91,7 @@ return {
 			if saved.own then setting(OWN):SetString(saved.own) end
 			if saved.key then setting(KEY):SetString(saved.key) end
 			if saved.toggle then setting(TOGGLE):SetString(saved.toggle) end
+			if saved.sway then setting("gry_binoculars_sway"):SetString(saved.sway) end
 		end
 
 		if Z then

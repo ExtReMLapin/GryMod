@@ -28,6 +28,35 @@ end
 
 return {
 	groupName = "GryMod binoculars (Flash)",
+	beforeEach = function(state)
+		-- the player's own saved settings must not leak into these tests (they are saved in cfg/client.vdf, which every client reads):
+		-- no own zoom key, so that the tests see the game's zoom
+		local key = GetConVar("gry_zoom_key")
+		local sway = GetConVar("gry_binoculars_sway")
+		state.savedZoomKey = key and key:GetString()
+		state.savedSway = sway and sway:GetString()
+
+		if key then
+			key:SetString("0")
+		end
+
+		-- (and no sway, which is on by default: the view tests read the game's own angles; the sway tests turn it on themselves)
+		if sway then
+			sway:SetString("0")
+		end
+	end,
+	afterEach = function(state)
+		local key = GetConVar("gry_zoom_key")
+		local sway = GetConVar("gry_binoculars_sway")
+
+		if key and state.savedZoomKey then
+			key:SetString(state.savedZoomKey)
+		end
+
+		if sway and state.savedSway then
+			sway:SetString(state.savedSway)
+		end
+	end,
 	cases = {
 		{
 			name = "the binoculars are hidden until shown, and the colour holders never show",
@@ -1595,7 +1624,7 @@ return {
 			end
 		},
 		{
-			name = "the stages are on three hooks of the game under one name each (CalcView, PlayerBindPress, AdjustMouseSensitivity) and have their own switch (gry_binoculars_stages, saved, OFF by default: it changes the feel of the mouse) with a check box",
+			name = "the stages are on three hooks of the game under one name each (CalcView, PlayerBindPress, AdjustMouseSensitivity) and have their own switch (gry_binoculars_stages, saved, ON by default: it changes the feel of the mouse) with a check box",
 			func = function(state)
 				local hooks = hook.GetTable()
 				expect(hooks.CalcView and hooks.CalcView["GRYBINOCULARSZOOM"]).toNot.beNil()
@@ -1604,7 +1633,7 @@ return {
 
 				local convar = GetConVar("gry_binoculars_stages")
 				expect(convar).toNot.beNil()
-				expect(convar:GetDefault()).to.equal("0")
+				expect(convar:GetDefault()).to.equal("1")
 				expect(isfunction(GryMod.FlashBinoculars.StagesEnabled)).to.beTrue()
 
 				local found = {}
@@ -1849,7 +1878,7 @@ return {
 			end
 		},
 		{
-			name = "sway with the stages: one view with the stage's field of view and the swayed angles; Reset puts the sway away; it has its own switch (gry_binoculars_sway, saved, OFF by default) with a check box",
+			name = "sway with the stages: one view with the stage's field of view and the swayed angles; Reset puts the sway away; it has its own switch (gry_binoculars_sway, saved, ON by default) with a check box",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local now, wanted, enabled, stages, sway, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled, M.Now
@@ -1890,7 +1919,7 @@ return {
 
 				local convar = GetConVar("gry_binoculars_sway")
 				expect(convar).toNot.beNil()
-				expect(convar:GetDefault()).to.equal("0")
+				expect(convar:GetDefault()).to.equal("1")
 				expect(isfunction(M.SwayEnabled)).to.beTrue()
 
 				local found = {}

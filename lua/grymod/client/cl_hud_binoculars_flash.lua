@@ -37,10 +37,10 @@ local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, 
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
 local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "The original's cryvision sound mood while the binoculars are up: explosions, collisions and vehicles are lowered (in and out in half a second)")
 local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC scanned through the binoculars is outlined in pale blue from the last 0.3 s of its scan until the binoculars come down (at most 8 at once; needs the tag switch: the scan is the tag's)")
-local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s to open and close and 0.055 s between two stages (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
+local StagesConVar = CreateClientConVar("gry_binoculars_stages", "1", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s to open and close and 0.055 s between two stages (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels; on by default")
 
 local VisionConVar = CreateClientConVar("gry_binoculars_vision", "0", true, false, "The renderer's full-screen binoculars vision: a cool tint (0.7, 0.8, 1.0), fine scan lines (period of 4 pixels) and a darkening towards the edges (1 - 0.6 * distance from the centre). The original shows it in the High quality only and the film already has its own vignette: the edges get darker twice. Off by default")
-local SwayConVar = CreateClientConVar("gry_binoculars_sway", "0", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view; off by default")
+local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view (on by default)")
 
 -- The stages are on with their own switch, and always with the suit zoom's own key (gry_zoom_own): the wheel is its interface.
 function Bino.StagesEnabled()
@@ -881,7 +881,7 @@ function Bino.ZoomLabelMode(z, base, engineFov)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
--- The sway of the zoom (option gry_binoculars_sway, off by default; research note 8.2 and recipe 8.6): the original's zoom class
+-- The sway of the zoom (option gry_binoculars_sway, on by default; research note 8.2 and recipe 8.6): the original's zoom class
 -- (vtable 0x3927e0b8, slot 22, the function 0x3917aba0) turns the VIEW, never the field of view, by two angles that are a
 -- deterministic figure of eight (no noise): with t the seconds since the zoom started and p = 0.3 t (mod 1),
 --   pitch = 0.012 * k * sin(4 pi p), yaw = 0.015 * k * -cos(2 pi p), both in radians (the zoomSway block of Binoculars.xml),
