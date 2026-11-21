@@ -114,6 +114,68 @@ return {
 			end
 		},
 		{
+			name = "the energy-critical voice is due when the energy crosses 25 (50 of the game's 200) downwards, 30 s after the last one",
+			func = function(state)
+				local due = GryMod.EnergyCriticalDue
+				expect(due).toNot.beNil()
+				expect(GryMod.ENERGY_CRITICAL_LEVEL).to.equal(25)
+				expect(GryMod.ENERGY_CRITICAL_PAUSE).to.equal(30)
+				-- the crossing: above the level before, at or under it now
+				expect(due(26, 25, nil, 100)).to.beTrue()
+				expect(due(80, 10, nil, 100)).to.beTrue()
+				expect(due(30, 24.9, nil, 100)).to.beTrue()
+				-- no crossing: still above, already under, rising through it, or exactly on the level before
+				expect(due(80, 30, nil, 100)).to.beFalse()
+				expect(due(24, 10, nil, 100)).to.beFalse()
+				expect(due(10, 50, nil, 100)).to.beFalse()
+				expect(due(25, 20, nil, 100)).to.beFalse()
+				-- the old rule (a fifth of the bar) is gone: 21 to 19 is not a crossing of 25
+				expect(due(21, 19, nil, 100)).to.beFalse()
+				-- the pause: silent for 30 s after the last time, then allowed again
+				expect(due(26, 20, 100, 110)).to.beFalse()
+				expect(due(26, 20, 100, 129.9)).to.beFalse()
+				expect(due(26, 20, 100, 130)).to.beTrue()
+				expect(due(26, 20, 100, 131)).to.beTrue()
+				-- no value yet
+				expect(due(nil, 10, nil, 100)).to.beFalse()
+				expect(due(80, nil, nil, 100)).to.beFalse()
+			end
+		},
+		{
+			name = "the Think hook plays the energy-critical voice through the mix once, then waits the 30 s",
+			func = function(state)
+				local hookFunc = hook.GetTable().Think["GryModSounds"]
+				expect(hookFunc).toNot.beNil()
+				local realDue, realNow = GryMod.EnergyCriticalDue, GryMod.SoundMix.Now
+				local calls, plays, now = {}, {}, 1000
+				local surfaced = 0
+				local realSurface = surface.PlaySound
+				local ok, err = pcall(function()
+					GryMod.PlaySound = function(path) plays[#plays + 1] = path end
+					GryMod.SoundMix.Now = function() return now end
+					surface.PlaySound = function() surfaced = surfaced + 1 end
+					GryMod.EnergyCriticalDue = function(prev, cur, lastAt, t)
+						calls[#calls + 1] = {prev, cur, lastAt, t}
+
+						return #calls == 1 or realDue(prev, cur, lastAt, t)
+					end
+					hookFunc()
+					expect(#plays).to.equal(1)
+					expect(plays[1]).to.equal(Sound("suit/suit_energy_critical.mp3"))
+					expect(calls[1][4]).to.equal(1000)
+					now = 1010
+					hookFunc()
+					-- the Think passes the time of the last play, so the real rule can hold it back
+					expect(calls[2][3]).to.equal(1000)
+					expect(calls[2][4]).to.equal(1010)
+					expect(surfaced).to.equal(0)
+				end)
+				GryMod.EnergyCriticalDue, GryMod.SoundMix.Now, surface.PlaySound = realDue, realNow, realSurface
+				GryMod.ResetEnergyCritical()
+				assert(ok, err)
+			end
+		},
+		{
 			name = "gry_sound_regen exists, is on by default and saved",
 			func = function(state)
 				local convar = GetConVar("gry_sound_regen")

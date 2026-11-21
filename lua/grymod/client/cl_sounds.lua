@@ -232,6 +232,32 @@ end
 
 
 
+-- The energy-critical voice (suit_energy_critical). The original plays it when the energy goes from above 50 to 50
+-- or less of its 200 (a quarter of the bar, 25 of GryMod's 100), and not again for 30 s after the last time.
+GryMod.ENERGY_CRITICAL_LEVEL = 25
+GryMod.ENERGY_CRITICAL_PAUSE = 30
+
+-- Whether the voice is due: the energy (previous, now) crosses the level downwards, and the pause since the last
+-- play (lastAt, in the same seconds as t; nil = never) is over.
+function GryMod.EnergyCriticalDue(previous, energy, lastAt, t)
+	if previous == nil or energy == nil or t == nil then
+		return false
+	end
+
+	if not (previous > GryMod.ENERGY_CRITICAL_LEVEL and energy <= GryMod.ENERGY_CRITICAL_LEVEL) then
+		return false
+	end
+
+	return lastAt == nil or t - lastAt >= GryMod.ENERGY_CRITICAL_PAUSE
+end
+
+local lastCriticalAt
+
+-- forget the last play (the tests start from a voice that was never played)
+function GryMod.ResetEnergyCritical()
+	lastCriticalAt = nil
+end
+
 local wasSprinting = false
 local wasUnderwater = false
 hook.Add("Think", "GryModSounds", function()
@@ -242,7 +268,10 @@ hook.Add("Think", "GryModSounds", function()
 		if energy == 0 then return end
 		lastenergy = energy
 	end
-	if (lastenergy >= 20 and energy < 20) then
+	local now = GryMod.SoundMix.Now()
+
+	if GryMod.EnergyCriticalDue(lastenergy, energy, lastCriticalAt, now) then
+		lastCriticalAt = now
 		GryMod.PlaySound(Sound("suit/suit_energy_critical.mp3"))
 	end
 	lastenergy = energy
