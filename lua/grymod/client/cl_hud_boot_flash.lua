@@ -375,3 +375,59 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 		sequences[current]:Draw(Boot.Placement(ScrW(), ScrH()))
 	end
 end)
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The built-in HUD events of the extension API (cl_api.lua, docs/api.md): GryMod.API.HUDEvent("boot" | "reboot" | "lost" |
+-- "malfunction"). They play the sequences above, as the game's own states do, and respect the player's choice (the HUD boot
+-- sequences option, gry_hud_boot): when it is off they play nothing.
+-- ---------------------------------------------------------------------------------------------------------
+
+local API_MALFUNCTION_TIMER = "GryApiMalfunction"
+local DEFAULT_MALFUNCTION_SECONDS = 5
+
+-- The end of a malfunction asked by the "malfunction" event: the HUD reboots.
+function Boot.EndApiMalfunction()
+	timer.Remove(API_MALFUNCTION_TIMER)
+	Boot.OnStatus(0)
+end
+
+function Boot.RegisterEvents()
+	local API = GryMod.API
+
+	if not (API and API.RegisterHUDEvent) then
+		return
+	end
+
+	-- the start-up log of the HUD (HUD_Initialize), with its sound
+	API.RegisterHUDEvent("boot", function()
+		if enabled() and begin("initialize") then
+			play(snd_reboot)
+		end
+	end)
+
+	-- the suit is down: the emergency shutdown animation (HUD_Lost) with its sound, until a "reboot"
+	API.RegisterHUDEvent("lost", function()
+		Boot.OnStatus(1)
+	end)
+
+	-- the suit comes back: the reboot sequence (silent, as in the original game)
+	API.RegisterHUDEvent("reboot", function()
+		timer.Remove(API_MALFUNCTION_TIMER)
+
+		if malfunctioning then
+			Boot.OnStatus(0)
+		elseif enabled() then
+			begin("reboot")
+		end
+	end)
+
+	-- a malfunction of the HUD for data.seconds (5 by default, from 0.1 to 60): the shutdown animation, then the reboot
+	API.RegisterHUDEvent("malfunction", function(data)
+		local seconds = math.Clamp(tonumber(data.seconds) or DEFAULT_MALFUNCTION_SECONDS, 0.1, 60)
+
+		Boot.OnStatus(1)
+		timer.Create(API_MALFUNCTION_TIMER, seconds, 1, Boot.EndApiMalfunction)
+	end)
+end
+
+Boot.RegisterEvents()

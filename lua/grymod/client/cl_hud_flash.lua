@@ -857,11 +857,23 @@ function Module.Available()
 	return Flash.Load(Module.MOVIE) ~= nil
 end
 
--- Whether the HUD is on (gry_hud) and can be drawn.
+-- Whether the suit of the player is on. An addon can switch it off (GryMod.API.SetSuitEnabled on the server: the suit is not on
+-- the player's body yet): the HUD is then hidden. Nothing to hide for a player that is not there yet.
+function Module.SuitOn(ply)
+	local API = GryMod.API
+
+	if not (API and API.IsSuitEnabled) or not IsValid(ply) then
+		return true
+	end
+
+	return API.IsSuitEnabled(ply)
+end
+
+-- Whether the HUD is on (gry_hud, and the suit is on) and can be drawn.
 function Module.Enabled()
 	local convar = GetConVar("gry_hud")
 
-	return (not convar or convar:GetBool()) and Module.Available()
+	return (not convar or convar:GetBool()) and Module.SuitOn(LocalPlayer()) and Module.Available()
 end
 
 local hud, panel
@@ -985,7 +997,7 @@ function Module.Paint()
 
 	local ply = LocalPlayer()
 
-	if not IsValid(ply) or not ply:Alive() then
+	if not IsValid(ply) or not ply:Alive() or not Module.SuitOn(ply) then
 		Module.Reset()
 
 		return
