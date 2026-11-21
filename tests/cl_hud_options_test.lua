@@ -189,6 +189,91 @@ return {
 				expect(statusOnly).to.equal(1)
 				expect(none).to.equal(0)
 			end
+		},
+		{
+			name = "the options panel starts with a Keys section: its title, then the quick menu key picker, the zoom key picker with the hold / toggle box right under it, then the other zoom boxes, all before any other setting",
+			func = function(state)
+				local realRun = RunConsoleCommand
+				local panel
+				local order = {}
+
+				local ok, err = pcall(function()
+					RunConsoleCommand = function() end
+					panel = vgui.Create("ControlPanel")
+					GryMod.GryOptionschute(panel)
+
+					-- every control in the order it was made (a label by its text, a picker as "binder", a box by its setting)
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DBinder" then
+								order[#order + 1] = "binder"
+							elseif child.ClassName == "DCheckBoxLabel" and child.Button then
+								order[#order + 1] = "box:" .. tostring(child.Button.m_strConVar)
+							elseif child.ClassName == "DLabel" and child.GetText and #child:GetText() > 0 and child:GetParent() ~= nil and child:GetParent().ClassName ~= "DCheckBoxLabel" then
+								order[#order + 1] = "label:" .. child:GetText()
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				RunConsoleCommand = realRun
+
+				if IsValid(panel) then
+					panel:Remove()
+				end
+
+				if not ok then
+					error(err, 0)
+				end
+
+				local function find(pattern, from)
+					for i = from or 1, #order do
+						if string.find(order[i], pattern, 1, true) then
+							return i
+						end
+					end
+				end
+
+				local keys = find("label:Keys")
+				expect(keys).toNot.beNil()
+				local firstBinder = find("binder")
+				local secondBinder = find("binder", firstBinder + 1)
+				expect(firstBinder).toNot.beNil()
+				expect(secondBinder).toNot.beNil()
+				expect(find("binder", secondBinder + 1)).to.beNil() -- the two keys of the mod, nothing else asks for one
+				expect(keys < firstBinder).to.beTrue()
+
+				-- the toggle box is the control right after the zoom key picker, the own zoom box is in the section too
+				expect(order[secondBinder + 1]).to.equal("box:gry_zoom_toggle")
+				local own = find("box:gry_zoom_own")
+				expect(own).toNot.beNil()
+				expect(own > secondBinder).to.beTrue()
+
+				-- the section comes first: no other setting before the last of its controls
+				local lastOfSection = math.max(own, secondBinder + 1)
+				local other = find("box:gry_hud")
+				expect(other).toNot.beNil()
+				expect(other > lastOfSection).to.beTrue()
+
+				for _, convar in ipairs({"gry_sounds", "gry_cloak_fx", "gry_binoculars_sounds", "gry_screenfx"}) do
+					local at = find("box:" .. convar)
+					expect(at).toNot.beNil()
+					expect(at > lastOfSection).to.beTrue()
+				end
+
+				-- and the keys are not asked for a second time further down
+				local count = 0
+				for _, entry in ipairs(order) do
+					if entry == "box:gry_zoom_own" or entry == "box:gry_zoom_toggle" then
+						count = count + 1
+					end
+				end
+				expect(count).to.equal(2)
+			end
 		}
 	}
 }

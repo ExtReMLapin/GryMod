@@ -71,28 +71,9 @@ function GryMod.GryHUDOptions(Panel)
 		Panel:CheckBox(option.label, "gry_hud_" .. option.name)
 	end
 
-	-- what was added to the binoculars (the zoom key), each on its own: the screen itself is the "Binoculars" element above
-	Panel:Help("Binoculars (hold the zoom key)")
-
-	-- the binoculars' own zoom key: the Half-Life 2 zoom key stays out of it, and the wheel is the zoom's while it is up
-	if GryMod.SuitZoom then
-		Panel:CheckBox("Binoculars own zoom key, chosen below (the Half-Life 2 zoom key then does nothing; the mouse wheel steps the zoom 2x, 4x, 8x while you zoom, and does not change weapon)", "gry_zoom_own")
-		Panel:AddControl("Label", {
-			Text = "Binoculars zoom key (a `bind <key> +gry_zoom` in the console works too):"
-		})
-
-		local zoomBinder = vgui.Create("DBinder")
-		zoomBinder:SetValue(GetConVar("gry_zoom_key"):GetInt())
-		zoomBinder.OnChange = function(self, code)
-			-- a key that is refused (Escape, the wheel, the quick menu's key) is not shown as chosen
-			if not GryMod.SuitZoom.Key.SetKey(code) then
-				self:SetValue(GryMod.SuitZoom.Key.Chosen())
-			end
-		end
-		Panel:AddItem(zoomBinder)
-
-		Panel:CheckBox("Binoculars zoom key: press once to open and again to close (off: hold the key)", "gry_zoom_toggle")
-	end
+	-- what was added to the binoculars, each on its own: the screen itself is the "Binoculars" element above (the zoom key is in the Keys
+	-- section at the top of the panel)
+	Panel:Help("Binoculars")
 
 	Panel:CheckBox("Binoculars sounds: opening, closing, ambience loop, target locked", "gry_binoculars_sounds")
 	Panel:CheckBox("Original aim rules: 4 rays, 300 m, the distance to the entity aimed at", "gry_binoculars_aim")
@@ -144,11 +125,56 @@ function GryMod.GryHUDOptions(Panel)
 	})
 end
 
+-- The keys, all together at the top of the panel so that nobody has to scroll for them: each key picker with a short description (a
+-- `bind <key> <command>` in the console works as well), and the boxes that go with a key right under it. A picker refuses what its
+-- key refuses (Escape, the mouse wheel, the other key) and shows the key that is saved.
+function GryMod.KeysOptions(Panel)
+	Panel:Help("Keys")
+
+	-- the key of the quick menu
+	if GryMod.MenuKey then
+		Panel:AddControl("Label", {
+			Text = "Quick menu key: hold it, point with the mouse, release (a `bind <key> +crysishud` in the console works too)"
+		})
+
+		local binder = vgui.Create("DBinder")
+		binder:SetValue(GetConVar("gry_menu_key"):GetInt())
+		binder.OnChange = function(self, code)
+			if not GryMod.MenuKey.SetKey(code) then
+				self:SetValue(GryMod.MenuKey.Chosen())
+			end
+		end
+		Panel:AddItem(binder)
+	end
+
+	-- the binoculars' own zoom key: the Half-Life 2 zoom key stays out of it once a key is chosen, and the wheel is the zoom's while it is up
+	if GryMod.SuitZoom then
+		Panel:AddControl("Label", {
+			Text = "Binoculars zoom key: hold it to zoom, the mouse wheel steps 2x, 4x, 8x. Until a key is chosen the Half-Life 2 zoom key stays as it is (a `bind <key> +gry_zoom` in the console works too)"
+		})
+
+		local zoomBinder = vgui.Create("DBinder")
+		zoomBinder:SetValue(GetConVar("gry_zoom_key"):GetInt())
+		zoomBinder.OnChange = function(self, code)
+			-- a key that is refused (Escape, the wheel, the quick menu's key) is not shown as chosen
+			if not GryMod.SuitZoom.Key.SetKey(code) then
+				self:SetValue(GryMod.SuitZoom.Key.Chosen())
+			end
+		end
+		Panel:AddItem(zoomBinder)
+
+		Panel:CheckBox("Binoculars zoom key: press once to open and again to close (off: hold the key)", "gry_zoom_toggle")
+		Panel:CheckBox("Binoculars own zoom key on (off: the Half-Life 2 zoom key drives the binoculars)", "gry_zoom_own")
+	end
+end
+
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
 function GryMod.GryOptionschute(Panel)
 	Panel:AddControl("Label", {
 		Text = "GryMod Config"
 	})
+
+	GryMod.KeysOptions(Panel)
 
 	Panel:CheckBox("Draw the HUD (health, energy, ammo, radar)", "gry_hud")
 	Panel:CheckBox("Suit sounds", "gry_sounds")
@@ -173,20 +199,6 @@ function GryMod.GryOptionschute(Panel)
 	Panel:CheckBox("Camouflage: the change is progressive, with the sparks, in first and third person (off: it switches at once)", "gry_cloak_transition")
 	Panel:CheckBox("Camouflage: a right click that really fires also ends it (shotgun double barrel, SMG grenade, AR2 ball, frag lob; the crossbow zoom does not)", "gry_cloak_altfire")
 	Panel:CheckBox("Camouflage: firing out of it plays the glitch (flash, HUD jump, shake) at any energy, not only above 20 %", "gry_decloak_glitch")
-
-	-- the key of the quick menu (a `bind <key> +crysishud` in the console works too)
-	if GryMod.MenuKey then
-		Panel:AddControl("Label", {
-			Text = "Quick menu key (hold it, point with the mouse, release):"
-		})
-
-		local binder = vgui.Create("DBinder")
-		binder:SetValue(GetConVar("gry_menu_key"):GetInt())
-		binder.OnChange = function(_, code)
-			GryMod.MenuKey.SetKey(code)
-		end
-		Panel:AddItem(binder)
-	end
 
 	GryMod.GryHUDOptions(Panel)
 
