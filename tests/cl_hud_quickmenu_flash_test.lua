@@ -33,6 +33,104 @@ local function near(a, b)
 	return math.abs(a - b) < 0.01
 end
 
+-- ---------------------------------------------------------------------------------------------------------
+-- A mouse moving in segments of constant velocity (counts per second), seen by frames of any rate
+-- ---------------------------------------------------------------------------------------------------------
+
+local function position(segments, t)
+	local x, y, start = 0, 0, 0
+
+	for _, s in ipairs(segments) do
+		local d = math.min(math.max(t - start, 0), s.time)
+		x, y = x + s.vx * d, y + s.vy * d
+		start = start + s.time
+	end
+
+	return x, y
+end
+
+local function duration(segments)
+	local total = 0
+
+	for _, s in ipairs(segments) do
+		total = total + s.time
+	end
+
+	return total
+end
+
+local function angleDifference(a, b)
+	return (a - b + 180) % 360 - 180
+end
+
+-- Every frame of `fps` hands the pointer the counts the mouse made during it. quantised: whole counts, as the sensor sends them.
+-- film: the film pointer (fixed clock, eased arrow); not film: what the first port did, the rule on every frame's counts and the
+-- arrow at the vector's angle. Returns the angle the arrow shows after each frame, and the selection.
+local function drive(pointer, segments, fps, quantised, film)
+	local out = {}
+	local px, py = 0, 0
+
+	if film then
+		pointer:Feed(0, 0, 0) -- the menu opens at t = 0 on every client: the clock starts there
+	end
+
+	for i = 1, math.floor(duration(segments) * fps + 0.5) do
+		local t = i / fps
+		local x, y = position(segments, t)
+
+		if quantised then
+			x, y = math.floor(x), math.floor(y)
+		end
+
+		if film then
+			pointer:Feed(x - px, y - py, t)
+		else
+			pointer:Move(x - px, y - py)
+		end
+
+		px, py = x, y
+		out[i] = {t = t, theta = film and pointer:DisplayTheta() or pointer:Theta(), selection = pointer:Selection()}
+	end
+
+	return out
+end
+
+local function shownAt(out, t)
+	for _, frame in ipairs(out) do
+		if math.abs(frame.t - t) < 1e-6 then
+			return frame.theta
+		end
+	end
+end
+
+-- how many times a second the arrow turns back (the "very fast oscillation") after `warm` seconds
+local function reversalsPerSecond(out, warm)
+	local last, count, first, final
+
+	for i = 2, #out do
+		if out[i].t >= warm then
+			local d = angleDifference(out[i].theta, out[i - 1].theta)
+			first = first or out[i].t
+			final = out[i].t
+
+			if math.abs(d) > 1e-9 then
+				local sign = d > 0 and 1 or -1
+
+				if last and sign ~= last then
+					count = (count or 0) + 1
+				end
+
+				last = sign
+			end
+		end
+	end
+
+	return (count or 0) / (final - first)
+end
+
+-- a mouse at 400 counts per second towards the bottom right, 35 degrees under the horizontal
+local DIAGONAL = {{time = 3, vx = 400 * math.cos(math.rad(35)), vy = 400 * math.sin(math.rad(35))}}
+
 return {
 	groupName = "GryMod quick menu (Flash)",
 	-- opening and closing the menu play its sounds: nothing is played by the tests (the mix's single exit is replaced)
@@ -42,10 +140,13 @@ return {
 		GetConVar("gry_menu_keep_highlight"):SetString("1")
 		state.savedRing = GetConVar("gry_menu_ring_film"):GetString()
 		GetConVar("gry_menu_ring_film"):SetString("1")
+		state.savedFilm = GetConVar("gry_menu_pointer_film"):GetString()
+		GetConVar("gry_menu_pointer_film"):SetString("1")
 		state.realEmit = GryMod.SoundMix.Emit
 		GryMod.SoundMix.Emit = function() end
 	end,
 	afterEach = function(state)
+		GetConVar("gry_menu_pointer_film"):SetString(state.savedFilm)
 		GryMod.SoundMix.Emit = state.realEmit
 		GetConVar("gry_menu_keep_highlight"):SetString(state.savedKeep)
 		GetConVar("gry_menu_ring_film"):SetString(state.savedRing)
@@ -560,6 +661,239 @@ return {
 				if not ok then
 					error(err, 0)
 				end
+			end
+		},
+		{
+			name = "the arrow does not flutter at a high frame rate: the previous rule turns back 60 times a second at 240 fps, the film pointer under 30, at every rate",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				-- the report: moving steadily towards the bottom right made the arrow vibrate (the rule ran on every frame of a fast client)
+				expect(reversalsPerSecond(drive(M.NewPointer("Cloak"), DIAGONAL, 240, true, false), 0.6)).to.beGreaterThan(60)
+
+				for _, fps in ipairs({30, 60, 144, 166, 240}) do
+					local rate = reversalsPerSecond(drive(M.NewPointer("Cloak"), DIAGONAL, fps, true, true), 0.6)
+					expect(rate < 30).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "the film pointer gives the same angle at the same instant whatever the frame rate; the rule on every frame does not",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				-- down right, then a turn up right at 1500 counts per second
+				local turn = {
+					{time = 0.5, vx = 1500 * math.cos(math.rad(35)), vy = 1500 * math.sin(math.rad(35))},
+					{time = 0.5, vx = 1500 * math.cos(math.rad(35)), vy = -1500 * math.sin(math.rad(35))}
+				}
+				local reference = drive(M.NewPointer("Cloak"), turn, 240, false, true)
+
+				for _, fps in ipairs({30, 60, 120}) do
+					local out = drive(M.NewPointer("Cloak"), turn, fps, false, true)
+
+					for _, t in ipairs({0.5, 16 / 30, 0.6, 0.7, 0.9}) do
+						expect(math.abs(angleDifference(shownAt(out, t), shownAt(reference, t))) < 0.05).to.beTrue()
+					end
+				end
+
+				-- the previous rule: 33 ms after the turn the arrow of a 30 fps client is already round, the one of a 240 fps client is not
+				local slow = shownAt(drive(M.NewPointer("Cloak"), turn, 30, false, false), 16 / 30)
+				local fast = shownAt(drive(M.NewPointer("Cloak"), turn, 240, false, false), 16 / 30)
+				expect(math.abs(angleDifference(slow, fast)) > 5).to.beTrue()
+			end
+		},
+		{
+			name = "the film pointer: the counts of a frame wait for the next step of the clock, whatever the frame is",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local pointer = M.NewPointer()
+				pointer:Feed(0, 0, 10)
+				pointer:Feed(40, 0, 10) -- the same instant: nothing can have moved yet
+				expect(pointer:Selection()).to.equal("Center")
+				pointer:Feed(0, 0, 10 + M.POINTER_STEP / 2) -- half a step later: still waiting
+				expect(pointer:Selection()).to.equal("Center")
+				pointer:Feed(0, 0, 10 + M.POINTER_STEP * 1.01)
+				expect(pointer:Selection()).to.equal("Strength") -- the step has come
+				expect(near(math.sqrt(pointer.x * pointer.x + pointer.y * pointer.y), 25)).to.beTrue()
+
+				-- a stall (the game was frozen for a second): the clock moves by 0.1 s at most, the counts are still used
+				local stalled = M.NewPointer()
+				stalled:Feed(0, 0, 5)
+				stalled:Feed(60, 0, 6)
+				expect(stalled:Selection()).to.equal("Strength")
+				expect(stalled.clock).to.equal(6)
+			end
+		},
+		{
+			name = "the film pointer keeps the game's rule: a small movement stays at the centre, a flick selects, coming back under 12.5 returns to the centre",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local pointer = M.NewPointer()
+				local t = 0
+				pointer:Feed(0, 0, t)
+
+				-- one step of the clock per move: the whole movement is applied at once
+				local function move(dx, dy)
+					t = t + M.POINTER_STEP
+					pointer:Feed(dx, dy, t)
+				end
+
+				move(8, 0)
+				expect(pointer:Selection()).to.equal("Center")
+				move(40, 0)
+				expect(pointer:Selection()).to.equal("Strength")
+				move(-10, 0) -- between the two thresholds: nothing changes
+				expect(pointer:Selection()).to.equal("Strength")
+				move(-8, 0) -- back under 12.5: the centre, the accumulator reset
+				expect(pointer:Selection()).to.equal("Center")
+				expect(pointer.x).to.equal(0)
+				expect(pointer.y).to.equal(0)
+				move(0, -40) -- a flick up
+				expect(pointer:Selection()).to.equal("Speed")
+				move(-40, 0) -- a flick left: from the clamp (0, -25) the sum is (-40, -25), angle 148 degrees
+				expect(pointer:Selection()).to.equal("Defense")
+			end
+		},
+		{
+			name = "going towards the bottom right and keeping going selects the cloak, the arrow settles on 315 degrees",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local down = {{time = 1, vx = 800, vy = 800}}
+
+				for _, fps in ipairs({30, 166}) do
+					local pointer = M.NewPointer("Speed")
+					local out = drive(pointer, down, fps, true, true)
+					expect(pointer:Selection()).to.equal("Cloak")
+					expect(math.abs(angleDifference(out[#out].theta, 315)) < 3).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "the arrow turns by the short way across the right (0 degrees) and never jumps",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				-- starts on Strength, a hair under the horizontal axis, then the mouse goes up right
+				local pointer = M.NewPointer("Strength")
+				pointer.x, pointer.y = 24.6, 4.3
+				pointer.shown = pointer:Theta()
+				local out = drive(pointer, {{time = 0.5, vx = 1000, vy = -1000}}, 240, false, true)
+				local previous = 350.1
+
+				for _, frame in ipairs(out) do
+					expect(math.abs(angleDifference(frame.theta, previous)) < 15).to.beTrue()
+					previous = frame.theta
+				end
+
+				expect(math.abs(angleDifference(out[#out].theta, 45)) < 2).to.beTrue()
+			end
+		},
+		{
+			name = "the arrow starts on the angle of the current mode and stays there while the mouse is still",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local pointer = M.NewPointer("Speed")
+				expect(near(pointer:DisplayTheta(), 90)).to.beTrue()
+				local out = drive(pointer, {{time = 0.5, vx = 0, vy = 0}}, 166, true, true)
+
+				for _, frame in ipairs(out) do
+					expect(near(frame.theta, 90)).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "the convar picks the rule: on, a flick waits for the clock's step; off, it counts at once as before",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local meta = FindMetaTable("Player")
+				local K = GryMod.MenuKey
+				local cmd = {
+					x = 40,
+					GetMouseX = function(self) return self.x end,
+					GetMouseY = function() return 0 end,
+					GetButtons = function() return 0 end,
+					SetButtons = function() end,
+					SetViewAngles = function() end,
+					SetMouseX = function() end,
+					SetMouseY = function() end
+				}
+				local real = {cursor = vgui.CursorVisible, typing = meta.IsTyping, console = gui.IsConsoleVisible, down = input.IsButtonDown, pressed = K.pressed, time = RealTime}
+				local now = 100
+				vgui.CursorVisible = function() return false end
+				meta.IsTyping = function() return false end
+				gui.IsConsoleVisible = function() return false end
+				input.IsButtonDown = function() return true end
+				RealTime = function() return now end
+
+				local ok, err = pcall(function()
+					local frame = hook.GetTable().CreateMove["GRYQUICKMENU"]
+
+					local function flick(film)
+						GetConVar("gry_menu_pointer_film"):SetString(film)
+						M.Reset()
+						expect(M.Begin()).to.beTrue()
+						K.pressed = KEY_F7
+						local pointer = M.GetPointer()
+						pointer.x, pointer.y, pointer.active = 0, 0, false
+						cmd.x = 40
+						now = now + 1
+						frame(cmd)
+						local immediately = pointer:Selection()
+						cmd.x = 0
+						now = now + M.POINTER_STEP * 1.5
+						frame(cmd)
+
+						return immediately, pointer:Selection()
+					end
+
+					local immediately, later = flick("1")
+					expect(immediately).to.equal("Center")
+					expect(later).to.equal("Strength")
+					immediately, later = flick("0")
+					expect(immediately).to.equal("Strength")
+					expect(later).to.equal("Strength")
+				end)
+
+				vgui.CursorVisible, meta.IsTyping, gui.IsConsoleVisible, input.IsButtonDown, K.pressed, RealTime = real.cursor, real.typing, real.console, real.down, real.pressed, real.time
+				M.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "gry_menu_pointer_film is saved, on by default, with a check box",
+			func = function(state)
+				local cvar = GetConVar("gry_menu_pointer_film")
+				expect(cvar ~= nil).to.beTrue()
+				expect(cvar:GetDefault()).to.equal("1")
+				-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: same flags as a saved sibling)
+				expect(cvar:GetFlags()).to.equal(GetConVar("gry_menu_ring_film"):GetFlags())
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_menu_pointer_film"]).to.beTrue()
 			end
 		},
 		{

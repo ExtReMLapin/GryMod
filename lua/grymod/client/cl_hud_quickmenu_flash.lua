@@ -64,11 +64,12 @@ Menu.RELEASE_DISTANCE = 12.5
 local START = {Speed = {0, -30}, Strength = {30, 0}, Cloak = {20, 30}, Armor = {-30, 0}}
 
 function Menu.NewPointer(mode)
-	local pointer = setmetatable({x = 0, y = 0, active = false}, Pointer)
+	local pointer = setmetatable({x = 0, y = 0, active = false, pendX = 0, pendY = 0, pendTime = 0, shown = 90}, Pointer)
 	local start = START[mode]
 
 	if start then
 		pointer:Move(start[1], start[2])
+		pointer.shown = pointer:Theta()
 	end
 
 	return pointer
@@ -88,6 +89,83 @@ end
 
 function Pointer:Theta()
 	return Menu.ThetaFor(self.x, self.y)
+end
+
+-- The film pointer. The game runs its rule once per frame of a 2007 engine on the sum of the mouse counts of the frame; on a client
+-- at 144 to 240 fps the same rule, run on every frame, turns the arrow back over a hundred times a second (the counts are integers
+-- of a few units on a radius of 25: see 2026-11-21-quickmenu-pointer-research.md). Here the rule (Pointer:Move) runs on a fixed clock:
+-- the counts of a frame are spread over the time since the previous call, so the result depends on the movement and not on how it was cut
+-- into frames. The angle the arrow shows eases toward the vector's angle by the short way (exact for a target that changes at the steps).
+Menu.POINTER_STEP = 1 / 30 -- the movie's own frame rate
+Menu.POINTER_EASE = 0.015 -- seconds
+Menu.POINTER_MAX_DT = 0.1 -- a stall counts for this much
+
+local function easeBy(pointer, seconds)
+	if pointer.active then
+		local k = 1 - math.exp(-seconds / Menu.POINTER_EASE)
+		pointer.shown = (pointer.shown + ((Menu.ThetaFor(pointer.x, pointer.y) - pointer.shown + 180) % 360 - 180) * k) % 360
+	end
+end
+
+-- Mouse counts dx, dy made since the previous call, `now` in seconds (RealTime). Call it with 0, 0 on a frame the mouse did not move: the
+-- arrow keeps easing.
+function Pointer:Feed(dx, dy, now)
+	local dt = self.clock and now - self.clock or 0
+	self.clock = now
+
+	if dt <= 0 then
+		-- the same instant: the counts wait for the next step
+		self.pendX, self.pendY = self.pendX + dx, self.pendY + dy
+
+		return
+	end
+
+	dt = math.min(dt, Menu.POINTER_MAX_DT)
+	local vx, vy = dx / dt, dy / dt
+	local step = Menu.POINTER_STEP
+	local left = dt
+
+	while left > 1e-9 do
+		local use = math.min(step - self.pendTime, left)
+		self.pendX, self.pendY = self.pendX + vx * use, self.pendY + vy * use
+		self.pendTime = self.pendTime + use
+		left = left - use
+		easeBy(self, use)
+
+		if self.pendTime >= step - 1e-9 then
+			local wasActive = self.active
+			self:Move(self.pendX, self.pendY)
+			self.pendX, self.pendY, self.pendTime = 0, 0, 0
+
+			-- a pointer that has just left the centre points at once (nothing to ease from)
+			if self.active and not wasActive then
+				self.shown = self:Theta()
+			end
+		end
+	end
+end
+
+-- The angle the arrow shows (the film pointer).
+function Pointer:DisplayTheta()
+	return self.shown
+end
+
+-- One mouse sample into the pointer: the film pointer (fixed clock) or the previous rule (every sample).
+function Menu.PointerInput(pointer, dx, dy, now, film)
+	if film then
+		pointer:Feed(dx, dy, now)
+	else
+		pointer:Move(dx, dy)
+	end
+end
+
+-- The angle the arrow shows: eased for the film pointer, the vector's own for the previous rule.
+function Menu.PointerAngle(pointer, film)
+	if film then
+		return pointer:DisplayTheta()
+	end
+
+	return pointer:Theta()
 end
 
 -- "Center", or the name of the sector (Speed, Strength, Cloak, Defense, Weapon).
@@ -136,6 +214,10 @@ Instance.__index = Instance
 -- The frame of the movie's QuickMenu where its functions exist (the hover sent before is not understood).
 local READY_FRAME = 8
 local END_FRAME = 18
+
+-- Switch: the pointer runs the game's rule on a fixed clock and the arrow is eased, so that it does not flutter at a high frame rate;
+-- off: the rule runs on every mouse sample and the arrow shows the vector's angle as it comes (the first port).
+local PointerFilm = CreateClientConVar("gry_menu_pointer_film", "1", true, false, "The quick menu pointer runs the game's rule on a fixed 1/30 s clock and the arrow is eased: it does not flutter at a high frame rate (0: the rule runs on every mouse sample)")
 
 -- Switch: the icon that was chosen stays lit while the menu fades out (the original); off: it goes plain at the release.
 local KeepHighlight = CreateClientConVar("gry_menu_keep_highlight", "1", true, false, "The quick menu icon that was chosen stays lit during the fade-out, as in the original (0: it goes back to plain at the release)")
@@ -402,6 +484,11 @@ function Menu.IsOpen()
 	return opened
 end
 
+-- The pointer of the open menu (nil when it is closed); for the tests.
+function Menu.GetPointer()
+	return opened and pointer or nil
+end
+
 local function feedStates(ply)
 	-- while the suit is down the menu is in its malfunction state: nothing can be chosen
 	menu:Destroy(GryMod.FlashBoot and GryMod.FlashBoot.IsLost() and 1 or 0)
@@ -546,7 +633,7 @@ hook.Add("CreateMove", "GRYQUICKMENU", function(cmd)
 		return
 	end
 
-	pointer:Move(cmd:GetMouseX(), cmd:GetMouseY())
+	Menu.PointerInput(pointer, cmd:GetMouseX(), cmd:GetMouseY(), RealTime(), PointerFilm:GetBool())
 
 	-- the mouse moves the pointer, not the view, and shooting is off while the menu is open
 	if locked then
@@ -568,9 +655,16 @@ hook.Add("HUDPaint", "GRYQUICKMENUDRAW", function()
 	lastTime = now
 
 	if opened then
+		local film = PointerFilm:GetBool()
+
+		-- the clock of the film pointer runs on every frame, whether the mouse moved or not (the arrow keeps easing)
+		if film then
+			pointer:Feed(0, 0, now)
+		end
+
 		local selection = pointer:Selection()
 		menu:Select(selection)
-		menu:SetAngle(pointer:Theta())
+		menu:SetAngle(Menu.PointerAngle(pointer, film))
 
 		if selection ~= lastSelection then
 			lastSelection = selection
