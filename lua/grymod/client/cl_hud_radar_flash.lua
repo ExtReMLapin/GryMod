@@ -21,6 +21,7 @@ Radar.NORTH_YAW = -6.256798
 
 local Panel = {}
 Panel.__index = Panel
+Radar.Panel = Panel -- cl_hud_radar_units.lua adds the contacts (SetObjects)
 
 function Radar.New(movie, theme)
 	if not movie then
