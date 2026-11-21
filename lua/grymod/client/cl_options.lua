@@ -55,6 +55,7 @@ function GryMod.GryHUDOptions(Panel)
 		Panel:CheckBox(option.label, "gry_hud_" .. option.name)
 	end
 
+	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)
 	Panel:Button("Switch every element back on", "gry_hud_reset")
 end
 
