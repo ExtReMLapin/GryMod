@@ -179,53 +179,90 @@ return {
 			end
 		},
 		{
-			name = "Offset: the lines jump to another place every frame (a whole number of lines), the blotches drift slowly; the same frame gives the same offset",
+			name = "Offset: the lines jump by a whole number of rows (0 to 3: the interlation has four rows to a period) at every frame, the picture drifts slowly sideways; the same frame gives the same offset",
 			func = function()
 				local L = GryMod.CloakFX.Lines
-				local u1, v1 = L.Offset(10, 2)
-				local u1b, v1b = L.Offset(10, 2)
-				expect(u1).to.equal(u1b)
-				expect(v1).to.equal(v1b)
+				local ox1, oy1 = L.Offset(10, 2)
+				local ox2, oy2 = L.Offset(10, 2)
+				expect(ox1).to.equal(ox2)
+				expect(oy1).to.equal(oy2)
 
 				local seen = {}
 
 				for frame = 1, 40 do
-					local u, v = L.Offset(frame, 2)
-					expect(u >= 0 and u < 1).to.beTrue()
-					expect(v >= 0 and v < 1).to.beTrue()
-
-					-- a whole number of line periods in the texture
-					local lines = v * L.TEXTURE / L.PERIOD
-					expect(math.abs(lines - math.floor(lines + 0.5)) < 0.0001).to.beTrue()
-					seen[math.floor(v * 1000)] = true
+					local ox, oy = L.Offset(frame, 2)
+					expect(oy >= 0 and oy < L.PERIOD).to.beTrue()
+					expect(oy).to.equal(math.floor(oy))
+					expect(ox >= 0 and ox < L.CELL).to.beTrue()
+					seen[oy] = true
 				end
 
 				local distinct = 0
 
 				for _ in pairs(seen) do distinct = distinct + 1 end
 
-				expect(distinct).to.beGreaterThan(5)
+				-- every phase of the lines comes up
+				expect(distinct).to.equal(L.PERIOD)
 
-				-- the drift of the blotches: later in time, further along
-				local ua = L.Offset(5, 1)
-				local ub = L.Offset(5, 1.5)
-				expect(ua ~= ub).to.beTrue()
+				-- the drift: later in time, further along
+				local oa = L.Offset(5, 1)
+				local ob = L.Offset(5, 1.5)
+				expect(oa ~= ob).to.beTrue()
 			end
 		},
 		{
-			name = "UV: one texel is one pixel of a 1080 screen; the picture is bigger on a bigger screen and smaller on a smaller one (the lines keep their look)",
+			name = "Frame: the picture of the sparks follows the level of the change, one cell of the atlas for each eighth, never out of the atlas",
 			func = function()
 				local L = GryMod.CloakFX.Lines
-				local u0, v0, u1, v1 = L.UV(512, 256, 1080, 0.25, 0.5)
 
-				expect(u0).to.equal(0.25)
-				expect(v0).to.equal(0.5)
-				expect(u1 - u0).to.aboutEqual(512 / L.TEXTURE, 0.0001)
-				expect(v1 - v0).to.aboutEqual(256 / L.TEXTURE, 0.0001)
+				expect(L.Frame(0)).to.equal(0)
+				expect(L.Frame(0.05)).to.equal(0)
+				expect(L.Frame(0.13)).to.equal(1)
+				expect(L.Frame(0.5)).to.equal(4)
+				expect(L.Frame(0.99)).to.equal(L.FRAMES - 1)
+				expect(L.Frame(1)).to.equal(L.FRAMES - 1)
+				expect(L.Frame(7)).to.equal(L.FRAMES - 1)
+				expect(L.Frame(-2)).to.equal(0)
+			end
+		},
+		{
+			name = "Tiles: the cells of the picture laid side by side over the box cover it exactly, once, each quad reading inside the cell of its frame; the cell is as many pixels as the screen's height says (one texel a pixel at 1080)",
+			func = function()
+				local L = GryMod.CloakFX.Lines
+				local frame = 3
 
-				-- twice the height: half the texture covers the same box
-				local _, _, a1 = L.UV(512, 256, 2160, 0, 0)
-				expect(a1).to.aboutEqual(256 / L.TEXTURE, 0.0001)
+				for _, case in ipairs({
+					{x = 100, y = 50, w = 700, h = 400, ox = 0, oy = 0, sh = 1080},
+					{x = 13, y = 7, w = 1000, h = 900, ox = 100, oy = 3, sh = 1080},
+					{x = 0, y = 0, w = 3840, h = 2160, ox = 77, oy = 2, sh = 2160},
+					{x = 500, y = 500, w = 40, h = 40, ox = 5, oy = 1, sh = 720}
+				}) do
+					local quads = L.Tiles(case.x, case.y, case.w, case.h, case.sh, case.ox, case.oy, frame)
+					local area = 0
+					local u0 = frame * L.CELL / (L.CELL * L.FRAMES)
+					local u1 = (frame + 1) * L.CELL / (L.CELL * L.FRAMES)
+
+					for _, q in ipairs(quads) do
+						expect(q.x >= case.x and q.y >= case.y).to.beTrue()
+						expect(q.x + q.w <= case.x + case.w + 0.001 and q.y + q.h <= case.y + case.h + 0.001).to.beTrue()
+						expect(q.w > 0 and q.h > 0).to.beTrue()
+						expect(q.u0 >= u0 - 0.0001 and q.u1 <= u1 + 0.0001 and q.u0 < q.u1).to.beTrue()
+						expect(q.v0 >= -0.0001 and q.v1 <= 1.0001 and q.v0 < q.v1).to.beTrue()
+						area = area + q.w * q.h
+					end
+
+					-- no hole, no overlap: the areas add up to the box
+					expect(math.abs(area - case.w * case.h) < 1).to.beTrue()
+				end
+
+				-- one tile is CELL pixels at 1080 and twice that at 2160: a box smaller than a tile, away from its edge, is one quad
+				local one = L.Tiles(10, 10, 100, 100, 1080, 0, 0, 0)
+				expect(#one).to.equal(1)
+				expect(one[1].u1 - one[1].u0).to.aboutEqual(100 / (L.CELL * L.FRAMES), 0.0001)
+				expect(one[1].v1 - one[1].v0).to.aboutEqual(100 / L.CELL, 0.0001)
+
+				local big = L.Tiles(10, 10, 100, 100, 2160, 0, 0, 0)
+				expect(big[1].u1 - big[1].u0).to.aboutEqual(50 / (L.CELL * L.FRAMES), 0.0001)
 			end
 		},
 		{
@@ -280,14 +317,24 @@ return {
 				expect(drawnWhile.colorWrite).to.beFalse()
 				expect(drawnWhile.compare).to.equal(STENCIL_ALWAYS)
 
-				-- the lines: one textured quad, with the stencil tested (equal) and the colours written, in the box
-				expect(count(log, "DrawTexturedRectUV")).to.equal(1)
-				local quad = first(log, "DrawTexturedRectUV")
-				expect(quad.stencil).to.beTrue()
-				expect(quad.colorWrite).to.beTrue()
-				expect(quad.compare).to.equal(STENCIL_EQUAL)
-				expect(quad.args[1]).to.equal(400 - L.MARGIN)
-				expect(quad.args[2]).to.equal(200 - L.MARGIN)
+				-- the lines: textured quads, with the stencil tested (equal) and the colours written, together the box
+				expect(count(log, "DrawTexturedRectUV") >= 1).to.beTrue()
+				local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+
+				for _, c in ipairs(log.calls) do
+					if c.name == "DrawTexturedRectUV" then
+						expect(c.stencil).to.beTrue()
+						expect(c.colorWrite).to.beTrue()
+						expect(c.compare).to.equal(STENCIL_EQUAL)
+						minX, minY = math.min(minX, c.args[1]), math.min(minY, c.args[2])
+						maxX, maxY = math.max(maxX, c.args[1] + c.args[3]), math.max(maxY, c.args[2] + c.args[4])
+					end
+				end
+
+				expect(minX).to.equal(400 - L.MARGIN)
+				expect(minY).to.equal(200 - L.MARGIN)
+				expect(math.abs(maxX - (560 + L.MARGIN)) < 0.01).to.beTrue()
+				expect(math.abs(maxY - (640 + L.MARGIN)) < 0.01).to.beTrue()
 				expect(count(log, "Start2D")).to.equal(1)
 				expect(count(log, "End2D")).to.equal(1)
 
@@ -321,14 +368,19 @@ return {
 				stub(L, "ScreenPoints", function() error("no box wanted", 0) end)
 
 				local ok = L.Draw(fakePlayer(), 1, function() end, true)
-				local quad = first(log, "DrawTexturedRectUV")
 
 				expect(ok).to.beTrue()
-				expect(quad ~= nil).to.beTrue()
-				expect(quad.args[1]).to.equal(0)
-				expect(quad.args[2]).to.equal(0)
-				expect(quad.args[3]).to.equal(ScrW())
-				expect(quad.args[4]).to.equal(ScrH())
+				expect(count(log, "DrawTexturedRectUV") >= 1).to.beTrue()
+
+				local area = 0
+
+				for _, c in ipairs(log.calls) do
+					if c.name == "DrawTexturedRectUV" then
+						area = area + c.args[3] * c.args[4]
+					end
+				end
+
+				expect(math.abs(area - ScrW() * ScrH()) < 2).to.beTrue()
 				expect(log.stencil).to.beFalse()
 				expect(log.colorWrite).to.beTrue()
 			end

@@ -460,7 +460,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				local flash = F.TransitionSpark(s.amount)
 
 				if distance <= F.DetailDistance and flash > 0.02 and F.Lines then
-					F.Lines.Draw(ply, flash, drawPlain)
+					F.Lines.Draw(ply, flash, drawPlain, false, s.amount)
 				end
 
 				-- the weapon in the hand follows the body (its world model is hidden by the server, see sv_system.lua, so
@@ -554,7 +554,7 @@ local function endFirstPerson(ent, ply)
 	local flash = F.TransitionSpark(s.amount)
 
 	if flash > 0.02 and F.Lines and IsValid(ent) then
-		F.Lines.Draw(ent, flash, drawPlain, true)
+		F.Lines.Draw(ent, flash, drawPlain, true, s.amount)
 	end
 end
 
