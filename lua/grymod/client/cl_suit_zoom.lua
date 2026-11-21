@@ -65,8 +65,9 @@ local S = {
 	-- the frame of the last view that the binoculars' CalcView gave (Zoom.Stamp)
 	frame = 0,
 	reason = nil,
-	-- the frames in a row in which the key was found up while it was held
-	upFrames = 0
+	-- the frames in a row in which the key was found up while it was held, and the last frame counted
+	upFrames = 0,
+	upCounted = -1
 }
 
 Zoom.State = S
@@ -340,7 +341,13 @@ function Zoom.Guard()
 		return
 	end
 
-	S.upFrames = S.upFrames + 1
+	-- (Guard runs from Think and from the binoculars' CalcView: one frame counts once)
+	local frame = FrameNumber()
+
+	if S.upCounted ~= frame then
+		S.upCounted = frame
+		S.upFrames = S.upFrames + 1
+	end
 
 	if S.upFrames >= Zoom.RELEASE_FRAMES then
 		Zoom.Forget()

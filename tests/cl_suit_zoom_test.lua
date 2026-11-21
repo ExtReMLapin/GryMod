@@ -32,9 +32,13 @@ return {
 			toggle = setting(TOGGLE) and setting(TOGGLE):GetString(),
 			read = Z and Z.Read,
 			drop = Bino and Bino.Drop,
-			emit = GryMod.SoundMix.Emit
+			emit = GryMod.SoundMix.Emit,
+			frame = FrameNumber
 		}
 		GryMod.SoundMix.Emit = function() end
+		-- the frame number is the test's: two calls of Guard in one frame (Think and CalcView) are one frame of the poll
+		state.frame = 1000
+		FrameNumber = function() return state.frame end
 
 		state.world = calm()
 		state.drops = 0
@@ -71,6 +75,7 @@ return {
 
 		if saved then
 			GryMod.SoundMix.Emit = saved.emit
+			FrameNumber = saved.frame or FrameNumber
 
 			if Z then
 				Z.Read = saved.read
@@ -389,6 +394,9 @@ return {
 				state.world.keyUp = true
 				Z.Guard()
 				expect(Z.IsActive()).to.beTrue() -- one frame: the key may not have been seen down yet
+				Z.Guard() -- (Think and CalcView both ask in one frame: still that one frame)
+				expect(Z.IsActive()).to.beTrue()
+				state.frame = state.frame + 1
 				Z.Guard()
 				expect(Z.IsActive()).to.beFalse()
 				expect(Z.State.reason).to.equal("release")
@@ -406,8 +414,10 @@ return {
 				Z.Press("key", true)
 				state.world.keyUp = true
 				Z.Guard()
+				state.frame = state.frame + 1
 				state.world.keyUp = false
 				Z.Guard()
+				state.frame = state.frame + 1
 				state.world.keyUp = true
 				Z.Guard()
 				expect(Z.IsActive()).to.beTrue()
@@ -421,6 +431,7 @@ return {
 				Z.Press("key", true)
 				state.world.keyUp = true
 				Z.Guard()
+				state.frame = state.frame + 1
 				Z.Guard()
 				expect(Z.IsActive()).to.beTrue()
 				expect(Z.State.held.key).to.beFalse()
