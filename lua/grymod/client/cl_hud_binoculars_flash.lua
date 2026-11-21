@@ -268,9 +268,12 @@ local binoculars
 local lastTime
 local fed = {}
 
-local function enabled()
-	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled()
+-- The HUD is on and so are the binoculars (gry_hud_binoculars).
+function Bino.Enabled()
+	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("binoculars"))
 end
+
+local enabled = Bino.Enabled
 
 -- Whether the player is zooming: the suit zoom key held, alive, not in a menu.
 function Bino.Wanted(ply)

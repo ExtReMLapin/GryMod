@@ -68,6 +68,23 @@ return {
 			end
 		},
 		{
+			name = "the grenade warning, the binoculars and the quick menu each follow their own switch",
+			func = function(state)
+				local hud = GetConVar("gry_hud"):GetString()
+				GetConVar("gry_hud"):SetString("1")
+
+				for name, module in pairs({grenade = GryMod.FlashGrenade, binoculars = GryMod.FlashBinoculars, quickmenu = GryMod.FlashMenu}) do
+					GetConVar("gry_hud_" .. name):SetString("1")
+					expect(module.Enabled()).to.beTrue()
+					GetConVar("gry_hud_" .. name):SetString("0")
+					expect(module.Enabled()).to.beFalse()
+					GetConVar("gry_hud_" .. name):SetString("1")
+				end
+
+				GetConVar("gry_hud"):SetString(hud)
+			end
+		},
+		{
 			name = "the status panel and the radar panel are each drawn or not by their own switch",
 			func = function(state)
 				local Flash = GryMod.Flash

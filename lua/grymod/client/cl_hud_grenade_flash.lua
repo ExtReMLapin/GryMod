@@ -173,9 +173,12 @@ end
 local warning
 local lastTime
 
-local function enabled()
-	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled()
+-- The HUD is on and so is this piece (gry_hud_grenade).
+function Grenade.Enabled()
+	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("grenade"))
 end
+
+local enabled = Grenade.Enabled
 
 -- The grenades in the world are looked for five times a second; their positions are read every frame.
 local scanned = {}

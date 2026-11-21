@@ -344,7 +344,7 @@ end
 
 -- Whether the quick menu can be drawn (its movie is there); it works with the HUD off too.
 function Menu.Enabled()
-	return Flash.Load(Menu.MOVIE) ~= nil
+	return Flash.Load(Menu.MOVIE) ~= nil and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("quickmenu"))
 end
 
 function Menu.IsOpen()
