@@ -743,12 +743,12 @@ local groupMaterials = {}
 -- atlasLoads: pictures turned into materials (each one is a freeze of up to a second), targetCreates: render targets made
 Flash.Stats = {groupRenders = 0, groupReuses = 0, atlasLoads = 0, targetCreates = 0}
 
--- The side of the render target that holds a group of n pixels: a power of two while small (the images of the many
--- small groups are then interchangeable in the pool), a multiple of 128 beyond 512 (a full-screen group of 3825 pixels
--- is 3840 and not 4096: a float image costs 8 bytes a pixel, so the rounding of a 4K group up to 4096 x 4096 is
--- 128 MB against 66 MB).
+-- The side of the render target that holds a group of n pixels: a power of two up to 1024 (the images of the many
+-- small groups are then interchangeable in the pool), a multiple of 512 beyond, so that the full-screen groups of a
+-- movie (a few hundred pixels apart in size) still share one image: a 3825 x 2151 group is 4096 x 2560 and not
+-- 4096 x 4096 (a float image costs 8 bytes a pixel: 84 MB against 128 MB).
 function Flash.TargetSide(n)
-	if n <= 512 then
+	if n <= 1024 then
 		local p = 64
 
 		while p < n do
@@ -758,7 +758,7 @@ function Flash.TargetSide(n)
 		return p
 	end
 
-	return math.ceil(n / 128) * 128
+	return math.ceil(n / 512) * 512
 end
 
 local function acquireTarget(width, height)
