@@ -71,6 +71,13 @@ function GryMod.GryHUDOptions(Panel)
 		Panel:CheckBox(option.label, "gry_hud_" .. option.name)
 	end
 
+	-- what was added to the binoculars (the zoom key), each on its own: the screen itself is the "Binoculars" element above
+	Panel:Help("Binoculars (hold the zoom key)")
+	Panel:CheckBox("Binoculars sounds: opening, closing, ambience loop, target locked", "gry_binoculars_sounds")
+	Panel:CheckBox("Original aim rules: 4 rays, 300 m, the distance to the entity aimed at", "gry_binoculars_aim")
+	Panel:CheckBox("Horizon ladder that follows where you look", "gry_binoculars_horizon")
+	Panel:CheckBox("Tag an NPC aimed at for half a second (the radar shows it)", "gry_binoculars_tag")
+
 	Panel:CheckBox("Screen effects of damage: heavy armor hit flash and shake, red tint and blur at low health", "gry_screenfx")
 	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)
 	Panel:Button("Switch every element back on", "gry_hud_reset")

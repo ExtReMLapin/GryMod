@@ -10,6 +10,7 @@
 
 util.AddNetworkString("gry_radar")
 util.AddNetworkString("gry_radar_want")
+util.AddNetworkString("gry_radar_scan")
 
 GryMod = GryMod or {}
 
@@ -109,6 +110,27 @@ function Radar.Mark(st, key, now)
 	end
 
 	st.markers[key] = now + S.MARKER_SECONDS
+end
+
+-- The binoculars' scan ended on an NPC (the client counted the 0.55 s of the original's scanner): it is tagged for this
+-- player, as if it had been noticed within 26 m, and stays on the radar until it dies. The ray of the binoculars is 300 m
+-- long; a tenth more is allowed for the lag between the client's aim and the server's positions. Returns whether it was tagged.
+local SCAN_METRES = 300 * 1.1
+
+function Radar.Scan(ply, npc)
+	if not IsValid(ply) or not ply:Alive() or not IsValid(npc) or not npc:IsNPC() or npc:Health() <= 0 then
+		return false
+	end
+
+	if ply:GetPos():Distance(npc:GetPos()) * S.METRES_PER_UNIT > SCAN_METRES then
+		return false
+	end
+
+	local st = Radar.State(ply)
+	st.tagged[npc] = true
+	st.markers[npc] = nil
+
+	return true
 end
 
 -- The rules. descs: what Describe gives for the NPCs around `origin` (the markers' too, wherever they are); st: the
@@ -272,6 +294,15 @@ net.Receive("gry_radar_want", function(_, ply)
 	end
 
 	ply.GryRadarWant = net.ReadBool()
+end)
+
+-- The client says which entity its binoculars scanned (13 bits, as the contacts' ids).
+net.Receive("gry_radar_scan", function(_, ply)
+	if not IsValid(ply) then
+		return
+	end
+
+	Radar.Scan(ply, Entity(net.ReadUInt(13)))
 end)
 
 timer.Create("GryMod radar", INTERVAL, 0, function()

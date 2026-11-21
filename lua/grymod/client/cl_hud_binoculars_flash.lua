@@ -1,7 +1,11 @@
 -- The binoculars drawn from the original Scaleform movie (HUD_Binoculars), see cl_flash.lua. In GryMod they are the
 -- Half-Life 2 suit zoom (the zoom key): the movie shows while it is held, with the distance of what is aimed at,
 -- the zoom factor and the world position. Hand-ported parts of its ActionScript: setVisible, closeBinoculars,
--- setPosition, setDistance, setZoomMode. Not ported: the horizon ladder (Attitude), the target lock icons (hidden).
+-- setPosition, setDistance, setZoomMode, and the horizon ladder (Attitude._y, sent by the game's code every frame). Not
+-- ported: the target lock icons (hidden). Added from the original's code, each with its own switch (see
+-- docs/superpowers/plans/2026-11-21-binoculars-features.md): the aim rules (4 rays 0.3 m off the centre, 300 m, the
+-- distance to the entity itself), the sounds of opening and closing with the ambience loop, and the scan that tags an NPC
+-- aimed at for 0.55 s (the radar shows it).
 
 GryMod = GryMod or {}
 
@@ -17,6 +21,24 @@ Instance.__index = Instance
 
 -- World units in a metre (the same ratio as the original game's scale: 1 unit = 1.905 cm).
 Bino.UNITS_PER_METRE = 52.49
+
+-- The aim rules of the original (hud_binocsScanningWidth 0.3, a ray 300 m long, hud_radarScanningDelay 0.55 and the
+-- 0.05 s that an aimed entity waits before its scan queues): see the features note.
+Bino.RAY_OFFSET = 0.3 * Bino.UNITS_PER_METRE
+Bino.RANGE = 300 * Bino.UNITS_PER_METRE
+Bino.SCAN_SECONDS = 0.55
+Bino.SCAN_DEBOUNCE = 0.05
+
+-- one saved switch for each addition: the binoculars are the original's whatever they say, these only choose the extras
+local SoundsConVar = CreateClientConVar("gry_binoculars_sounds", "1", true, false, "The binoculars' sounds: opening, closing, the ambience loop, a target locked")
+local AimConVar = CreateClientConVar("gry_binoculars_aim", "1", true, false, "The original's aim rules: four rays 0.3 m off the centre, 300 m, the distance to the entity aimed at (off: one ray, 1000 m, the distance to the point hit)")
+local HorizonConVar = CreateClientConVar("gry_binoculars_horizon", "1", true, false, "The binoculars' horizon ladder follows where you look")
+local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
+
+function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
+function Bino.AimRules() return AimConVar:GetBool() end
+function Bino.HorizonEnabled() return HorizonConVar:GetBool() end
+function Bino.TagEnabled() return TagConVar:GetBool() end
 
 -- The mode (1 to 4, shown as X02 to X08) of a zoom: the factor is the ratio of the tangents of the half fields
 -- of view, and each mode covers two factors.
@@ -48,19 +70,79 @@ function Bino.MetresFrom(units)
 	return int, math.floor((metres - int) * 100 + 1e-6)
 end
 
-local function degrees(value)
-	-- "DDD° MM.MM": a world coordinate in metres as degrees (60 metres each) and minutes
-	local whole = math.floor(value / 60)
-	local minutes = value - whole * 60
+-- One coordinate of the readout: the original prints a number as digit groups, DD"MM'SS.hh (not base 60: the seconds go
+-- on past 59). The number is 50155927 at the origin for the first one and 10647257 for the second, and grows by ten
+-- per metre (the metres times ten, cut toward zero).
+local ORIGIN_N, ORIGIN_W = 50155927, 10647257
 
-	return string.format("%03d° %05.2f", whole, minutes)
+local function cut(value)
+	-- the epsilon keeps 5 metres at 50, whatever the division by the scale did to the last bit
+	if value >= 0 then
+		return math.floor(value + 1e-6)
+	end
+
+	return math.ceil(value - 1e-6)
 end
 
--- setPosition's two strings for a world position: north from y, west from -x.
+local function group(number)
+	return string.format("%02d\"%02d'%02d.%02d", math.floor(number / 1000000), math.floor((number % 1000000) / 10000),
+		math.floor((number % 10000) / 100), number % 100)
+end
+
+-- setPosition's two strings for a world position: the first is "N" and follows x, the second "W" and follows y.
 function Bino.PositionStrings(position)
 	local x, y = position.x / Bino.UNITS_PER_METRE, position.y / Bino.UNITS_PER_METRE
+	local north, west = Flash.Localise("@ui_N"), Flash.Localise("@ui_W")
 
-	return degrees(math.abs(y)) .. (y >= 0 and " N" or " S"), degrees(math.abs(x)) .. (x <= 0 and " W" or " E")
+	return group(ORIGIN_N + cut(x * 10)) .. " " .. north, group(ORIGIN_W + cut(y * 10)) .. " " .. west
+end
+
+-- The horizon ladder's place in the movie (Root.Binoculars.Attitude._y): forward.z * 360 + 336 every frame, with no easing.
+function Bino.HorizonY(forwardZ)
+	if type(forwardZ) ~= "number" or forwardZ ~= forwardZ then
+		return 336
+	end
+
+	return math.Clamp(forwardZ, -1, 1) * 360 + 336
+end
+
+-- The four rays that look for what is aimed at start at the corners of a square 0.3 m each way around the eye, in this
+-- order: right and up, right and down, left and down, left and up; they all run along the view.
+function Bino.RayOrigins(eye, right, up, width)
+	local r, u = right * width, up * width
+
+	return {eye + r + u, eye + r - u, eye - r - u, eye - r + u}
+end
+
+-- What the four rays say: rays is a list of {hit, distance, entity} (hit: found something that is not the sky; entity:
+-- an entity that is not the world), centre(entity) the distance to an entity. The first ray that found an entity gives
+-- the distance to that entity (not to the point hit); with none, the hit of the LAST ray gives the distance, and a last
+-- ray that found nothing gives none whatever the others did. Returns the distance in world units (or nil) and the entity.
+function Bino.AimedDistance(rays, centre)
+	for i = 1, #rays do
+		local ray = rays[i]
+
+		if ray.hit and ray.entity then
+			return centre(ray.entity), ray.entity
+		end
+	end
+
+	local last = rays[#rays]
+
+	if last and last.hit then
+		return last.distance, nil
+	end
+
+	return nil, nil
+end
+
+-- How many rays are cast and how far: the original's four of 300 m, or the port's earlier single one of 1000 m.
+function Bino.TraceCount()
+	return Bino.AimRules() and 4 or 1
+end
+
+function Bino.TraceLength()
+	return Bino.AimRules() and Bino.RANGE or 1000 * Bino.UNITS_PER_METRE
 end
 
 function Bino.New(movie, theme)
@@ -92,7 +174,8 @@ function Bino.New(movie, theme)
 		north = "000° 000.00 N",
 		west = "000° 000.00 W",
 		metres = 0,
-		hundredths = 0
+		hundredths = 0,
+		horizon = nil
 	}, Instance)
 end
 
@@ -135,6 +218,20 @@ end
 function Instance:SetDistance(metres, hundredths)
 	self.metres, self.hundredths = metres, hundredths
 	self:_applyDistance()
+end
+
+-- Root.Binoculars.Attitude._y (the horizon ladder): the game's code sends it every frame, from the pitch of the view.
+function Instance:SetHorizon(y)
+	self.horizon = y
+	self:_applyHorizon()
+end
+
+function Instance:_applyHorizon()
+	local attitude = self.horizon and self.bino:Child("Attitude")
+
+	if attitude then
+		attitude:SetY(self.horizon)
+	end
 end
 
 function Instance:_applyZoom()
@@ -243,6 +340,7 @@ function Instance:_apply()
 	self:_applyZoom()
 	self:_applyPosition()
 	self:_applyDistance()
+	self:_applyHorizon()
 end
 
 function Instance:Update(dt)
@@ -274,6 +372,207 @@ function Instance:Draw(x, y, scale)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
+-- Sounds: the original plays binocular_select and starts binocular_ambience (a loop) when the binoculars come up, and
+-- plays binocular_deselect and stops the loop when they go; the zoom steps' own sounds belong to the wheel, which the
+-- Half-Life 2 zoom has not (not wired).
+-- ---------------------------------------------------------------------------------------------------------
+
+Bino.Sounds = {
+	select = "grymod/binoculars/binocular_select.wav",
+	deselect = "grymod/binoculars/binocular_deselect.wav",
+	loop = "grymod/binoculars/binocular_ambience.wav",
+	locked = "grymod/binoculars/binocular_tagged.wav"
+}
+
+-- What to do when the binoculars go from wanted to not wanted or back: a list of cue names.
+function Bino.SoundCues(wasWanted, wanted)
+	if wanted and not wasWanted then
+		return {"select", "loop_start"}
+	end
+
+	if wasWanted and not wanted then
+		return {"deselect", "loop_stop"}
+	end
+
+	return {}
+end
+
+-- the ambience loop: a channel made once (the loading is asynchronous), played from silence and brought up by the frame
+local loop = {channel = nil, loading = false, playing = false, start = 0}
+
+-- the volume of the loop: the mix's level for its file, brought up over the first hundredths of a second (a loop that
+-- starts at once at its level clicks)
+function Bino.LoopVolume(elapsed)
+	return GryMod.SoundMix.Volume(Bino.Sounds.loop) * GryMod.SoundMix.FadeIn(elapsed)
+end
+
+function Bino.StartLoop()
+	loop.playing = true
+	loop.start = GryMod.SoundMix.Now()
+
+	if IsValid(loop.channel) then
+		loop.channel:SetTime(0)
+		loop.channel:SetVolume(0)
+		loop.channel:Play()
+
+		return
+	end
+
+	if loop.loading then
+		return
+	end
+
+	loop.loading = true
+
+	sound.PlayFile("sound/" .. Bino.Sounds.loop, "noblock noplay", function(created)
+		loop.loading = false
+
+		if not IsValid(created) then
+			return
+		end
+
+		loop.channel = created
+		created:EnableLooping(true)
+
+		if loop.playing then
+			loop.start = GryMod.SoundMix.Now()
+			created:SetVolume(0)
+			created:Play()
+		end
+	end)
+end
+
+function Bino.StopLoop()
+	loop.playing = false
+
+	if IsValid(loop.channel) then
+		loop.channel:SetVolume(0)
+		loop.channel:Pause()
+	end
+end
+
+local audio = {wanted = false, looping = false}
+
+function Bino.AudioReset()
+	audio.wanted, audio.looping = false, false
+end
+
+-- Once per frame: wanted says whether the binoculars are up. The sounds go through GryMod.PlaySound (the mix's level and
+-- pitch); with the sounds off nothing plays and a loop that was going stops, and what is up when they come back on
+-- is not announced again.
+function Bino.AudioStep(wanted)
+	local cues = Bino.SoundCues(audio.wanted, wanted)
+	audio.wanted = wanted
+
+	if not Bino.SoundsEnabled() then
+		if audio.looping then
+			audio.looping = false
+			Bino.StopLoop()
+		end
+
+		return
+	end
+
+	for i = 1, #cues do
+		local cue = cues[i]
+
+		if cue == "loop_start" then
+			audio.looping = true
+			Bino.StartLoop()
+		elseif cue == "loop_stop" then
+			audio.looping = false
+			Bino.StopLoop()
+		else
+			GryMod.PlaySound(Bino.Sounds[cue])
+		end
+	end
+
+	if loop.playing and IsValid(loop.channel) then
+		loop.channel:SetVolume(Bino.LoopVolume(GryMod.SoundMix.Now() - loop.start))
+	end
+end
+
+-- The sound of a scan that ends on an entity (binocular_target_locked, at the pitch of its event).
+function Bino.PlayLocked()
+	if Bino.SoundsEnabled() then
+		GryMod.PlaySound(Bino.Sounds.locked)
+	end
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The scan (CHUDRadar::UpdateScanner): an entity aimed at for 0.05 s joins a queue; the scans run one at a time, 0.55 s
+-- each (they go on if the aim leaves the entity); the entity at the end of its scan is tagged.
+-- ---------------------------------------------------------------------------------------------------------
+
+local EPSILON = 1e-9
+
+function Bino.NewScan()
+	return {target = nil, debounce = 0, queue = {}, current = nil, timer = 0}
+end
+
+function Bino.ScanReset(st)
+	st.target, st.debounce, st.queue, st.current, st.timer = nil, 0, {}, nil, 0
+end
+
+-- One frame: target is what the aim finds (nil for nothing), accepts(entity) whether an entity may be scanned (it is asked
+-- when the debounce ends, when a scan starts and when it ends). Returns the entity whose scan just ended, or nil.
+function Bino.ScanStep(st, target, dt, accepts)
+	local finished
+
+	if target == nil then
+		st.target = nil
+	elseif target ~= st.target then
+		st.target = target
+		st.debounce = Bino.SCAN_DEBOUNCE
+	elseif st.debounce > 0 then
+		st.debounce = st.debounce - dt
+
+		if st.debounce <= EPSILON then
+			st.debounce = 0
+
+			if target ~= st.current and accepts(target) then
+				local queued = false
+
+				for i = 1, #st.queue do
+					queued = queued or st.queue[i] == target
+				end
+
+				if not queued then
+					st.queue[#st.queue + 1] = target
+				end
+			end
+		end
+	end
+
+	if st.timer > 0 then
+		st.timer = st.timer - dt
+
+		if st.timer <= EPSILON then
+			local entity = st.current
+			st.timer, st.current = 0, nil
+
+			if entity ~= nil and accepts(entity) then
+				finished = entity
+			end
+		end
+	end
+
+	if st.timer <= 0 then
+		while #st.queue > 0 do
+			local entity = table.remove(st.queue, 1)
+
+			if accepts(entity) then
+				st.current, st.timer = entity, Bino.SCAN_SECONDS
+
+				break
+			end
+		end
+	end
+
+	return finished
+end
+
+-- ---------------------------------------------------------------------------------------------------------
 -- In the game: the Half-Life 2 suit zoom (the zoom key) shows the binoculars
 -- ---------------------------------------------------------------------------------------------------------
 
@@ -282,6 +581,9 @@ local lastTime
 local fed = {}
 -- the movie could not be loaded: the Half-Life 2 zoom overlay must stay then
 local missing = false
+local scan = Bino.NewScan()
+-- the entities this player has tagged (the server keeps them until their death, or the player's)
+local tagged = setmetatable({}, {__mode = "k"})
 
 -- The HUD is on and so are the binoculars (gry_hud_binoculars).
 function Bino.Enabled()
@@ -295,7 +597,71 @@ function Bino.Wanted(ply)
 	return IsValid(ply) and ply:Alive() and ply:KeyDown(IN_ZOOM)
 end
 
-local function feed(ply)
+-- An entity whose own position reads as a distance: the living (NPCs, players) and vehicles. A prop's origin can be
+-- anywhere in it and a brush entity's far off the surface that was hit: they read as the point hit.
+local function aimable(entity)
+	return IsValid(entity) and not entity:IsWorld() and (entity:IsNPC() or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle())
+end
+
+local trace = {}
+local traced = {}
+local rays = {{}, {}, {}, {}}
+local aimer
+
+local function centreOf(entity)
+	return aimer:GetPos():Distance(entity:GetPos())
+end
+
+-- The distance (world units, or nil) and the entity of what the player aims at, by the original's rules or the earlier
+-- single ray (see Bino.TraceCount).
+local function aim(ply)
+	local eye = ply:EyePos()
+	local angles = ply:EyeAngles()
+	local forward = angles:Forward()
+	local length = Bino.TraceLength()
+
+	trace.filter, trace.mask, trace.output = ply, MASK_SHOT, traced
+
+	if not Bino.AimRules() then
+		trace.start, trace.endpos = eye, eye + forward * length
+		util.TraceLine(trace)
+
+		return traced.Hit and not traced.HitSky and eye:Distance(traced.HitPos) or nil, aimable(traced.Entity) and traced.Entity or nil
+	end
+
+	local origins = Bino.RayOrigins(eye, angles:Right(), angles:Up(), Bino.RAY_OFFSET)
+	local along = forward * length
+
+	for i = 1, 4 do
+		trace.start, trace.endpos = origins[i], origins[i] + along
+		util.TraceLine(trace)
+
+		local ray = rays[i]
+		ray.hit = traced.Hit and not traced.HitSky
+		ray.distance = ray.hit and origins[i]:Distance(traced.HitPos) or 0
+		ray.entity = ray.hit and aimable(traced.Entity) and traced.Entity or nil
+	end
+
+	aimer = ply
+
+	return Bino.AimedDistance(rays, centreOf)
+end
+
+-- An NPC that is alive and not tagged yet may be scanned.
+local function scannable(entity)
+	return IsValid(entity) and entity:IsNPC() and entity:Health() > 0 and not tagged[entity]
+end
+
+-- The scan ended on an entity: its sound, and the server tags it (the radar shows it).
+local function locked(entity)
+	tagged[entity] = true
+	Bino.PlayLocked()
+	net.Start("gry_radar_scan")
+	net.WriteUInt(entity:EntIndex(), 13)
+	net.SendToServer()
+end
+
+local function feed(ply, dt)
 	local defaultFov = ply:GetInfoNum("fov_desired", 75)
 	local zoom = Bino.ZoomModeFor(defaultFov, ply:GetFOV())
 
@@ -311,26 +677,53 @@ local function feed(ply)
 		binoculars:SetPosition(north, west)
 	end
 
-	local start = ply:EyePos()
-	local trace = util.TraceLine({start = start, endpos = start + ply:EyeAngles():Forward() * 52.49 * 1000, filter = ply, mask = MASK_SHOT})
-	local metres, hundredths = Bino.MetresFrom(trace.Hit and not trace.HitSky and start:Distance(trace.HitPos) or nil)
+	local units, entity = aim(ply)
+	local metres, hundredths = Bino.MetresFrom(units)
 
 	if fed.metres ~= metres or fed.hundredths ~= hundredths then
 		fed.metres, fed.hundredths = metres, hundredths
 		binoculars:SetDistance(metres, hundredths)
 	end
+
+	if Bino.HorizonEnabled() then
+		local y = Bino.HorizonY(ply:EyeAngles():Forward().z)
+
+		if fed.horizon ~= y then
+			fed.horizon = y
+			binoculars:SetHorizon(y)
+		end
+	end
+
+	if Bino.TagEnabled() then
+		local done = Bino.ScanStep(scan, entity, dt, scannable)
+
+		if done then
+			locked(done)
+		end
+	else
+		Bino.ScanReset(scan)
+	end
 end
 
 hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	if not enabled() then
+		Bino.AudioStep(false)
+		Bino.ScanReset(scan)
+
 		return
 	end
 
 	local ply = LocalPlayer()
 	local wanted = Bino.Wanted(ply)
 
+	if not IsValid(ply) or not ply:Alive() then
+		tagged = setmetatable({}, {__mode = "k"})
+	end
+
 	if not binoculars then
 		if not wanted then
+			Bino.AudioStep(false)
+
 			return
 		end
 
@@ -347,23 +740,27 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 		fed, lastTime = {}, nil
 	end
 
+	Bino.AudioStep(wanted)
+
 	if wanted then
 		binoculars:Show()
 	else
 		binoculars:Close()
+		Bino.ScanReset(scan)
 	end
 
 	if not binoculars:IsShown() then
 		return
 	end
 
-	if wanted then
-		feed(ply)
-	end
-
 	local now = RealTime()
 	local dt = math.min(now - (lastTime or now), 0.1)
 	lastTime = now
+
+	if wanted then
+		feed(ply, dt)
+	end
+
 	binoculars:Update(dt)
 
 	-- the stage is 1366 x 768: scaled to the screen height, centred
@@ -386,4 +783,7 @@ function Bino.Reset()
 
 	binoculars = nil
 	missing = false
+	Bino.StopLoop()
+	Bino.AudioReset()
+	Bino.ScanReset(scan)
 end

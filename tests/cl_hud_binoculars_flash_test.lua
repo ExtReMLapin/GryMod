@@ -184,15 +184,117 @@ return {
 			end
 		},
 		{
-			name = "the position strings: degrees and minutes of the world position, hemisphere letters from the sign",
+			name = "the position strings are the original's: a number that grows by ten per metre, printed as DD\"MM'SS.hh, N from x and W from y",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
-				local n, w = M.PositionStrings(Vector(-52.49 * 70, 52.49 * 125.5, 0))
-				expect(n).to.equal("002° 05.50 N")
-				expect(w).to.equal("001° 10.00 W")
-				n, w = M.PositionStrings(Vector(52.49 * 10, -52.49 * 10, 0))
-				expect(n).to.equal("000° 10.00 S")
-				expect(w).to.equal("000° 10.00 E")
+				-- at the origin: 50155927 and 10647257 (digit groups, not base 60: the seconds can pass 59)
+				local n, w = M.PositionStrings(Vector(0, 0, 0))
+				expect(n).to.equal("50\"15'59.27 N")
+				expect(w).to.equal("10\"64'72.57 W")
+				-- 12.34 m along x: +123 (the metres times ten, cut toward zero) = 50156050
+				n, w = M.PositionStrings(Vector(52.49 * 12.34, 52.49 * 5, 0))
+				expect(n).to.equal("50\"15'60.50 N")
+				expect(w).to.equal("10\"64'73.07 W")
+				-- behind the origin: -100 m is -1000, cut toward zero
+				n, w = M.PositionStrings(Vector(-52.49 * 100, -52.49 * 0.55, 0))
+				expect(n).to.equal("50\"15'49.27 N")
+				-- -0.55 m is -5.5, cut to -5
+				expect(w).to.equal("10\"64'72.52 W")
+			end
+		},
+		{
+			name = "the horizon ladder sits at forward.z * 360 + 336 (the movie's own units), whatever the input",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.HorizonY(0)).to.equal(336)
+				expect(M.HorizonY(1)).to.equal(696)
+				expect(M.HorizonY(-1)).to.equal(-24)
+				expect(math.abs(M.HorizonY(0.5) - 516) < 1e-9).to.beTrue()
+				-- a forward vector is never out of [-1, 1]; a rounding error or a missing value does not break the ladder
+				expect(M.HorizonY(1.5)).to.equal(696)
+				expect(M.HorizonY(nil)).to.equal(336)
+				expect(M.HorizonY(0 / 0)).to.equal(336)
+			end
+		},
+		{
+			name = "the horizon is placed on the Attitude clip, and stays there while the intro rebuilds the clips",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				b:SetHorizon(450)
+				local attitude = b.bino:Child("Attitude")
+				expect(attitude).toNot.beNil()
+				expect(attitude.entry.m[6]).to.equal(450)
+				run(b, 1.5)
+				expect(attitude.entry.m[6]).to.equal(450)
+				b:SetHorizon(500)
+				expect(attitude.entry.m[6]).to.equal(500)
+			end
+		},
+		{
+			name = "the four scan rays start at the corners of a square, in the original's order, and run along the view",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local o = M.RayOrigins(Vector(100, 0, 0), Vector(0, -1, 0), Vector(0, 0, 1), 10)
+				expect(#o).to.equal(4)
+				-- right and up, right and down, left and down, left and up
+				expect(o[1]).to.equal(Vector(100, -10, 10))
+				expect(o[2]).to.equal(Vector(100, -10, -10))
+				expect(o[3]).to.equal(Vector(100, 10, -10))
+				expect(o[4]).to.equal(Vector(100, 10, 10))
+				-- 0.3 m each way, 300 m long, in world units
+				expect(math.abs(M.RAY_OFFSET - 0.3 * M.UNITS_PER_METRE) < 1e-9).to.beTrue()
+				expect(math.abs(M.RANGE - 300 * M.UNITS_PER_METRE) < 1e-9).to.beTrue()
+			end
+		},
+		{
+			name = "the aimed distance: the first ray that finds an entity gives the distance to that entity, else the last ray's hit",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local e1, e2 = {name = "e1"}, {name = "e2"}
+				local centre = function(e) return e == e1 and 1000 or 2000 end
+				local function ray(hit, distance, entity) return {hit = hit, distance = distance, entity = entity} end
+
+				-- an entity on the second ray: its own distance, not the ray's, and the first ray (a wall) does not count
+				local d, e = M.AimedDistance({ray(true, 500), ray(true, 900, e1), ray(true, 900, e2), ray(true, 300)}, centre)
+				expect(d).to.equal(1000)
+				expect(e).to.equal(e1)
+
+				-- no entity anywhere: the hit of the last ray only
+				d, e = M.AimedDistance({ray(true, 500), ray(true, 600), ray(true, 700), ray(true, 800)}, centre)
+				expect(d).to.equal(800)
+				expect(e).to.beNil()
+
+				-- the last ray found nothing (sky, or out of range): no distance, even if the others hit
+				d, e = M.AimedDistance({ray(true, 500), ray(true, 600), ray(true, 700), ray(false, 0)}, centre)
+				expect(d).to.beNil()
+				expect(e).to.beNil()
+
+				-- a ray that missed does not carry an entity
+				d, e = M.AimedDistance({ray(false, 0, e1), ray(false, 0), ray(false, 0), ray(false, 0)}, centre)
+				expect(d).to.beNil()
+				expect(M.AimedDistance({}, centre)).to.beNil()
+			end
+		},
+		{
+			name = "the original's aim rules are a choice: with them off the distance is the eye's to the single ray's hit, up to 1000 m",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local rules = M.AimRules
+				local ok, err = pcall(function()
+					M.AimRules = function() return false end
+					expect(M.TraceCount()).to.equal(1)
+					expect(M.TraceLength()).to.equal(1000 * M.UNITS_PER_METRE)
+					M.AimRules = function() return true end
+					expect(M.TraceCount()).to.equal(4)
+					expect(M.TraceLength()).to.equal(M.RANGE)
+				end)
+
+				M.AimRules = rules
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		{
@@ -221,6 +323,321 @@ return {
 				if not ok then
 					error(err, 0)
 				end
+			end
+		},
+		{
+			name = "the sound cues: opening plays the select sound and starts the loop, closing plays the deselect sound and stops it, nothing otherwise",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local function cues(wasWanted, wanted)
+					return table.concat(M.SoundCues(wasWanted, wanted), ",")
+				end
+
+				expect(cues(false, true)).to.equal("select,loop_start")
+				expect(cues(true, false)).to.equal("deselect,loop_stop")
+				expect(cues(true, true)).to.equal("")
+				expect(cues(false, false)).to.equal("")
+			end
+		},
+		{
+			name = "the files of the cues are binocular sounds that exist, each with a level in the mix's table, and the lock keeps its pitch",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				for _, name in ipairs({"select", "deselect", "loop", "locked"}) do
+					local path = M.Sounds[name]
+					expect(isstring(path)).to.beTrue()
+					expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+					expect(GryMod.SoundMix.Original[GryMod.SoundMix.Normalize(path)] ~= nil).to.beTrue()
+				end
+
+				expect(GryMod.SoundMix.Pitch(M.Sounds.locked)).to.equal(143)
+			end
+		},
+		{
+			name = "the audio plays the cues through GryMod.PlaySound only, and nothing when the binoculars' sounds are off",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local playSound, startLoop, stopLoop, enabled = GryMod.PlaySound, M.StartLoop, M.StopLoop, M.SoundsEnabled
+				local played, loops = {}, {}
+
+				local ok, err = pcall(function()
+					GryMod.PlaySound = function(path) played[#played + 1] = path return true end
+					M.StartLoop = function() loops[#loops + 1] = "start" end
+					M.StopLoop = function() loops[#loops + 1] = "stop" end
+					M.SoundsEnabled = function() return true end
+					M.AudioReset()
+
+					M.AudioStep(false)
+					expect(#played).to.equal(0)
+					M.AudioStep(true)
+					expect(played[1]).to.equal(M.Sounds.select)
+					expect(loops[1]).to.equal("start")
+					M.AudioStep(true)
+					expect(#played).to.equal(1)
+					M.AudioStep(false)
+					expect(played[2]).to.equal(M.Sounds.deselect)
+					expect(loops[2]).to.equal("stop")
+
+					-- switched off: no sound, no loop
+					M.SoundsEnabled = function() return false end
+					played, loops = {}, {}
+					M.AudioStep(true)
+					M.AudioStep(false)
+					expect(#played).to.equal(0)
+					expect(#loops).to.equal(0)
+
+					-- the lock sound
+					M.PlayLocked()
+					expect(#played).to.equal(0)
+					M.SoundsEnabled = function() return true end
+					M.PlayLocked()
+					expect(played[1]).to.equal(M.Sounds.locked)
+				end)
+
+				GryMod.PlaySound, M.StartLoop, M.StopLoop, M.SoundsEnabled = playSound, startLoop, stopLoop, enabled
+				M.AudioReset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the sounds switched off while the binoculars are up stop the loop, and switching them on again plays no select sound",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local playSound, startLoop, stopLoop, enabled = GryMod.PlaySound, M.StartLoop, M.StopLoop, M.SoundsEnabled
+				local loops, played = {}, {}
+
+				local ok, err = pcall(function()
+					GryMod.PlaySound = function(path) played[#played + 1] = path return true end
+					M.StartLoop = function() loops[#loops + 1] = "start" end
+					M.StopLoop = function() loops[#loops + 1] = "stop" end
+					M.SoundsEnabled = function() return true end
+					M.AudioReset()
+					M.AudioStep(true)
+					M.SoundsEnabled = function() return false end
+					M.AudioStep(true)
+					expect(loops[#loops]).to.equal("stop")
+					M.SoundsEnabled = function() return true end
+					M.AudioStep(true)
+					expect(#played).to.equal(1)
+				end)
+
+				GryMod.PlaySound, M.StartLoop, M.StopLoop, M.SoundsEnabled = playSound, startLoop, stopLoop, enabled
+				M.AudioReset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the loop's volume is the mix's level for its file, brought up over the first hundredths of a second",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local full = GryMod.SoundMix.Volume(M.Sounds.loop)
+				expect(M.LoopVolume(0)).to.equal(0)
+				expect(M.LoopVolume(10)).to.equal(full)
+				expect(M.LoopVolume(GryMod.SoundMix.FadeInSeconds / 2) < full).to.beTrue()
+			end
+		},
+		{
+			name = "the scan: an entity aimed at for 0.05 s joins the queue, and 0.55 s later it is scanned (once)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local st = M.NewScan()
+				local e = {}
+				local always = function() return true end
+				local scanned
+
+				-- the frame the entity comes into view starts the debounce (it is counted down on the frames after): nothing is queued yet
+				expect(M.ScanStep(st, e, 0.02, always)).to.beNil()
+				expect(st.current).to.beNil()
+				expect(M.ScanStep(st, e, 0.02, always)).to.beNil()
+				expect(M.ScanStep(st, e, 0.02, always)).to.beNil()
+				-- 0.04 s are gone: not yet; the fourth step takes it under zero, the scan starts at once (the queue was empty)
+				expect(st.current).to.beNil()
+				expect(M.ScanStep(st, e, 0.02, always)).to.beNil()
+				expect(st.current).to.equal(e)
+				expect(math.abs(st.timer - M.SCAN_SECONDS) < 1e-9).to.beTrue()
+
+				-- the countdown runs 0.55 s; the entity is given back once, when it ends
+				for _ = 1, 10 do
+					scanned = M.ScanStep(st, e, 0.05, always) or scanned
+				end
+
+				expect(scanned).to.beNil()
+				scanned = M.ScanStep(st, e, 0.05, always)
+				expect(scanned).to.equal(e)
+				-- and it is not scanned again while it is aimed at (the caller says it is tagged)
+				local again = false
+				local tagged = function(x) return x ~= e end
+
+				for _ = 1, 40 do
+					again = again or M.ScanStep(st, e, 0.05, tagged) ~= nil
+				end
+
+				expect(again).to.beFalse()
+			end
+		},
+		{
+			name = "the scan: a glance of less than 0.05 s queues nothing, a target change starts the debounce again, no target changes nothing",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local st = M.NewScan()
+				local a, b = {}, {}
+				local always = function() return true end
+
+				M.ScanStep(st, a, 0.03, always)
+				M.ScanStep(st, nil, 0.03, always)
+				expect(st.current).to.beNil()
+				-- back on `a` after looking at nothing: the debounce goes on from where it was (the target was cleared, so it starts again)
+				M.ScanStep(st, a, 0.03, always)
+				expect(st.current).to.beNil()
+				M.ScanStep(st, b, 0.04, always)
+				M.ScanStep(st, b, 0.04, always)
+				expect(st.current).to.beNil()
+				M.ScanStep(st, b, 0.04, always)
+				expect(st.current).to.equal(b)
+			end
+		},
+		{
+			name = "the scan goes on after the aim leaves the entity, and the next entity waits in the queue for the end of the scan",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local st = M.NewScan()
+				local a, b = {}, {}
+				local always = function() return true end
+				local order = {}
+
+				local function run(target, seconds)
+					for _ = 1, math.floor(seconds / 0.05 + 0.5) do
+						local done = M.ScanStep(st, target, 0.05, always)
+
+						if done then
+							order[#order + 1] = done
+						end
+					end
+				end
+
+				run(a, 0.15)
+				expect(st.current).to.equal(a)
+				-- the aim moves to b while a is being scanned: b is queued, a still ends
+				run(b, 0.2)
+				expect(#st.queue).to.equal(1)
+				expect(st.queue[1]).to.equal(b)
+				run(nil, 0.5)
+				expect(order[1]).to.equal(a)
+				-- b starts when a ends, and ends 0.55 s later
+				expect(st.current).to.equal(b)
+				run(nil, 0.6)
+				expect(order[2]).to.equal(b)
+				expect(st.current).to.beNil()
+			end
+		},
+		{
+			name = "the scan refuses what the caller refuses (not an NPC, already tagged), and forgets what it queued when it is reset",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local st = M.NewScan()
+				local e = {}
+
+				for _ = 1, 4 do
+					M.ScanStep(st, e, 0.05, function() return false end)
+				end
+
+				expect(st.current).to.beNil()
+				expect(#st.queue).to.equal(0)
+
+				-- a target refused when its debounce ends is not asked again until the aim leaves it and comes back
+				M.ScanStep(st, nil, 0.05, function() return true end)
+
+				for _ = 1, 4 do
+					M.ScanStep(st, e, 0.05, function() return true end)
+				end
+
+				expect(st.current).to.equal(e)
+				M.ScanReset(st)
+				expect(st.current).to.beNil()
+				expect(st.timer).to.equal(0)
+				expect(#st.queue).to.equal(0)
+			end
+		},
+		{
+			name = "a finished scan is not given back for an entity the caller no longer accepts (it died while it was scanned)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local st = M.NewScan()
+				local e = {}
+				local alive = true
+				local accepts = function() return alive end
+
+				for _ = 1, 4 do
+					M.ScanStep(st, e, 0.05, accepts)
+				end
+
+				expect(st.current).to.equal(e)
+				alive = false
+				local done
+
+				for _ = 1, 14 do
+					done = M.ScanStep(st, nil, 0.05, accepts) or done
+				end
+
+				expect(done).to.beNil()
+				expect(st.current).to.beNil()
+			end
+		},
+		{
+			name = "each addition to the binoculars has its own switch (a client convar), on by default",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				for _, name in ipairs({"gry_binoculars_sounds", "gry_binoculars_aim", "gry_binoculars_horizon", "gry_binoculars_tag"}) do
+					local convar = GetConVar(name)
+					expect(convar).toNot.beNil()
+					expect(convar:GetDefault()).to.equal("1")
+				end
+
+				expect(isfunction(M.SoundsEnabled)).to.beTrue()
+				expect(isfunction(M.AimRules)).to.beTrue()
+				expect(isfunction(M.HorizonEnabled)).to.beTrue()
+				expect(isfunction(M.TagEnabled)).to.beTrue()
+			end
+		},
+		{
+			name = "the options panel has a check box for each of the binoculars' switches, and opening it writes nothing",
+			func = function(state)
+				local writes = {}
+				local realRun = RunConsoleCommand
+				RunConsoleCommand = function(name, value) writes[#writes + 1] = tostring(name) end
+				local found = {}
+
+				local ok, err = pcall(function()
+					local panel = vgui.Create("ControlPanel")
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+					panel:Remove()
+				end)
+
+				RunConsoleCommand = realRun
+				expect(ok).to.beTrue()
+				for _, name in ipairs({"gry_binoculars_sounds", "gry_binoculars_aim", "gry_binoculars_horizon", "gry_binoculars_tag"}) do
+					expect(found[name]).to.beTrue()
+				end
+
+				expect(#writes).to.equal(0)
 			end
 		},
 		{

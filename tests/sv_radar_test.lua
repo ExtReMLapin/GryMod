@@ -489,6 +489,77 @@ return {
 				expect(wantAfter).to.beFalse()
 				expect(pcall(receiver, 1, nil)).to.beTrue()
 			end
+		},
+		{
+			name = "a scan from the binoculars tags the NPC for the player: the message exists, and the rule checks the NPC and its range",
+			func = function(state)
+				expect(util.NetworkStringToID("gry_radar_scan") ~= 0).to.beTrue()
+				local p = ply()
+				local near = spawnNPC("npc_combine_s", p:GetPos() + Vector(400, 0, 20))
+				local far = spawnNPC("npc_combine_s", p:GetPos() + Vector(52.49 * 400, 0, 20))
+				local st = R.State(p)
+
+				expect(R.Scan(p, near)).to.beTrue()
+				expect(st.tagged[near]).to.beTrue()
+				-- 400 m is beyond the 300 m of the ray, with a margin for the lag
+				expect(R.Scan(p, far)).to.beFalse()
+				expect(st.tagged[far]).to.beNil()
+			end
+		},
+		{
+			name = "a scan tags nothing that is not an NPC that is alive, nothing for a dead player, and takes the marker's place",
+			func = function(state)
+				local p = ply()
+				local st = R.State(p)
+				local prop = ents.Create("prop_physics")
+				prop:SetModel("models/props_junk/PopCan01a.mdl")
+				prop:SetPos(p:GetPos() + Vector(200, 0, 20))
+				prop:Spawn()
+				spawned[#spawned + 1] = prop
+				expect(R.Scan(p, prop)).to.beFalse()
+				expect(R.Scan(p, NULL)).to.beFalse()
+				expect(R.Scan(p, nil)).to.beFalse()
+				expect(R.Scan(nil, prop)).to.beFalse()
+
+				local npc = spawnNPC("npc_combine_s", p:GetPos() + Vector(300, 0, 20))
+				st.markers[npc] = CurTime() + 10
+				expect(R.Scan(p, npc)).to.beTrue()
+				-- a tagged unit is not also a marker
+				expect(st.markers[npc]).to.beNil()
+
+				local dead = spawnNPC("npc_combine_s", p:GetPos() + Vector(300, 100, 20))
+				dead:SetHealth(0)
+				expect(R.Scan(p, dead)).to.beFalse()
+			end
+		},
+		{
+			name = "the scan message tags the entity of its index, and a missing player is ignored",
+			func = function(state)
+				local p = ply()
+				local npc = spawnNPC("npc_combine_s", p:GetPos() + Vector(300, 0, 20))
+				local receiver = net.Receivers["gry_radar_scan"]
+				expect(receiver).toNot.beNil()
+				local realRead = net.ReadUInt
+				net.ReadUInt = function(bits) return npc:EntIndex() end
+				local ok, err = pcall(receiver, 1, p)
+				local ok2 = pcall(receiver, 1, nil)
+				net.ReadUInt = realRead
+				assert(ok, err)
+				expect(ok2).to.beTrue()
+				expect(R.State(p).tagged[npc]).to.beTrue()
+			end
+		},
+		{
+			name = "a tagged calm hostile NPC is on the radar's list (a scan is the same tag as the first detection)",
+			func = function(state)
+				local st = newState()
+				local d = npc(500, {state = NPC_STATE_IDLE})
+				expect(#step({d}, st, 0)).to.equal(0)
+				st.tagged[d.key] = true
+				local list = step({d}, st, 0.2)
+				expect(#list).to.equal(1)
+				expect(list[1].sub).to.equal(2)
+			end
 		}
 	}
 }
