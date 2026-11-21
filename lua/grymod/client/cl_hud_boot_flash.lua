@@ -201,6 +201,11 @@ end
 
 -- The HUD changes its state (1: malfunction, 0: normal), as the movie's destroy(status).
 function Boot.OnStatus(status)
+	-- 2 is the flicker of a light shock: neither a malfunction nor the end of one
+	if status == 2 then
+		return
+	end
+
 	if not enabled() then
 		malfunctioning = false
 		current = nil

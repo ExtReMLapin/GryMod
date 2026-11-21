@@ -68,6 +68,11 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 
 	local amt = dmginfo:GetDamage()
 
+	-- electric hits burn energy and heavy impacts can put the suit down (sv_malfunction.lua)
+	if GryMod.Malfunction then
+		GryMod.Malfunction.OnDamage(ply, dmginfo)
+	end
+
 	if ply.Nanosuit_mode == GryMod.Modes.ARMOR then
 		local energy = ply:GetNWFloat("GryEnergy")
 		-- what the bar holds once the hit is taken (the infinite armor takes nothing)
@@ -179,7 +184,8 @@ hook.Add("Think", "GryMod health think", function()
 
 		local curenergy = ply:GetNWFloat("GryEnergy")
 
-		if (ply.next_energy_regen and ply.next_energy_regen < CurTime()) then
+		-- a suit that is down does not recharge (sv_malfunction.lua)
+		if (ply.next_energy_regen and ply.next_energy_regen < CurTime()) and not (GryMod.Malfunction and GryMod.Malfunction.IsActive(ply)) then
 			if (curenergy >= 100) then
 				ply.next_energy_regen = 0
 			else

@@ -50,6 +50,7 @@ if SERVER then
 	include("grymod/server/sv_health.lua")
 	include("grymod/server/sv_feedback.lua")
 	include("grymod/server/sv_system.lua")
+	include("grymod/server/sv_malfunction.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.png")

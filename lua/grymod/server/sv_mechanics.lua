@@ -111,3 +111,59 @@ function Mech.IsMoving(ply)
 
 	return velocity:Length2D() > 0.1 * 52.49
 end
+
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Malfunctions (sv_malfunction.lua): the suit goes down. The original game's only cause is the EMP, and its
+-- downtime is g_emp_nanosuit_downtime = 10 s (research-mech/NOTES.md); the shock rules are GryMod's own choices
+-- (docs/superpowers/plans/2026-11-21-suit-malfunction-notes.md).
+-- ---------------------------------------------------------------------------------------------------------
+
+-- Seconds the suit stays down, by cause.
+local MALFUNCTION_SECONDS = {emp = 10, shock = 5, overload = 5, impact = 3}
+
+function Mech.MalfunctionSeconds(kind)
+	return MALFUNCTION_SECONDS[kind] or MALFUNCTION_SECONDS.shock
+end
+
+-- After a restart the suit cannot be shocked down again for this long (a rollermine would lock it for ever).
+function Mech.MalfunctionGrace()
+	return 3
+end
+
+-- How long the HUD flickers on a light shock.
+function Mech.ShockFlickerSeconds()
+	return 0.8
+end
+
+local SHOCK_TYPES = bit.bor(DMG_SHOCK, DMG_ENERGYBEAM, DMG_PLASMA)
+local STRONG_SHOCK = 25
+
+-- "light" or "strong" for an electric hit (nil when it is not one). The combine ball is always strong.
+function Mech.ShockClass(damageType, damage, inflictorClass)
+	if inflictorClass == "prop_combine_ball" then
+		return "strong"
+	end
+
+	if bit.band(damageType, SHOCK_TYPES) == 0 then
+		return nil
+	end
+
+	return damage >= STRONG_SHOCK and "strong" or "light"
+end
+
+-- The energy a light shock burns on top of what the armor absorbs: 1.5 per point of damage, from 5 to 30.
+function Mech.ShockEnergyDrain(damage)
+	return math.Clamp(damage * 1.5, 5, 30)
+end
+
+local HEAVY_MACHINES = {npc_hunter = true, npc_strider = true, npc_combinegunship = true, npc_helicopter = true}
+
+-- A hit from one of these that breaks the armor puts the suit down.
+function Mech.IsHeavyMachine(class)
+	return HEAVY_MACHINES[class] == true
+end
+
+function Mech.HeavyImpactDamage()
+	return 25
+end

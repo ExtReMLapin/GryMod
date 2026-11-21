@@ -352,6 +352,8 @@ function Menu.IsOpen()
 end
 
 local function feedStates(ply)
+	-- while the suit is down the menu is in its malfunction state: nothing can be chosen
+	menu:Destroy(GryMod.FlashBoot and GryMod.FlashBoot.IsLost() and 1 or 0)
 	menu:SetStates({
 		Speed = true,
 		Strength = true,
@@ -406,7 +408,14 @@ function Menu.Finish()
 
 	opened = false
 	local choice = menu:Choice()
+	local refused = menu.malfunction == 1 and menu.selected ~= "Center" -- the suit is down: the original beeps
 	menu:Close()
+
+	if refused then
+		play(snd_error)
+
+		return
+	end
 
 	local ply = LocalPlayer()
 	local mode = choice and Menu.ModeFromName(choice)

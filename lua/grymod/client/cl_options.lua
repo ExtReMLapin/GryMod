@@ -74,6 +74,9 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)
 	Panel:Button("Switch every element back on", "gry_hud_reset")
 
+	-- server setting (the host or an admin): EMP, electric hits and heavy impacts put the suit down for a few seconds
+	Panel:CheckBox("Suit malfunctions: EMP and electric hits (server)", "gry_malfunction")
+
 	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)
 	Panel:Help("Preloading of the interface (only the elements above that are on)")
 	Panel:AddControl("ComboBox", {

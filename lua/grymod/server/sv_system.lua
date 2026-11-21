@@ -57,6 +57,12 @@ function meta:SetNanosuitMode(mode, networked)
 		return
 	end
 
+	-- a suit that is down stays in armor mode (sv_malfunction.lua); the client is told the real mode
+	if mode ~= GryMod.Modes.ARMOR and GryMod.Malfunction and GryMod.Malfunction.IsActive(self) then
+		mode = GryMod.Modes.ARMOR
+		networked = true
+	end
+
 	if mode == GryMod.Modes.SPEED then
 		self:SetWalkSpeed(400)
 		self:SetRunSpeed(600)

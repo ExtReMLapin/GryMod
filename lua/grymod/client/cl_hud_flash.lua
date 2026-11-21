@@ -747,6 +747,37 @@ function Module.MalfunctionFor(energy, current)
 	return 0
 end
 
+-- The status the HUD shows. The server says when the suit is down (GryMod.Malfunction: an EMP, an electric hit...):
+-- that is status 1 whatever the energy. Otherwise the empty-bar rule above applies, except just after a restart
+-- (restarted): the bar is still empty then and the HUD reboots anyway. A flicker (a light shock) is status 2 when
+-- nothing else is wrong.
+function Module.StatusFor(energy, current, down, restarted, flicker)
+	if down then
+		return 1
+	end
+
+	local status = restarted and 0 or Module.MalfunctionFor(energy, current)
+
+	if status == 0 and flicker then
+		return 2
+	end
+
+	return status
+end
+
+-- The restart hold: armed while the suit is down, released once the bar has started to recharge.
+function Module.RestartHold(held, down, energy)
+	if down then
+		return true
+	end
+
+	if held and type(energy) == "number" and energy > 0 then
+		return false
+	end
+
+	return held
+end
+
 -- Whether the movie is there (the HUD and the other pieces need it).
 function Module.Available()
 	return Flash.Load(Module.MOVIE) ~= nil
@@ -779,7 +810,11 @@ local function feed(ply)
 		hud:SetEnergy(energy)
 	end
 
-	local status = Module.MalfunctionFor(ply:GetNWFloat("GryEnergy"), hud.status)
+	-- the server says when the suit is down (an EMP, an electric hit) and when a light shock flickers the HUD
+	local down = ply:GetNWBool("GryMalfunction", false)
+	local rawEnergy = ply:GetNWFloat("GryEnergy")
+	fed.restartHold = Module.RestartHold(fed.restartHold or false, down, rawEnergy)
+	local status = Module.StatusFor(rawEnergy, hud.status, down, fed.restartHold and not down, ply:GetNWFloat("GryFlicker", 0) > CurTime())
 
 	if status ~= hud.status then
 		hud:Destroy(status)
