@@ -2340,6 +2340,84 @@ return {
 			end
 		},
 		{
+			name = "the binoculars going up or down are told once to the others (hook GryMod_BinocularsToggled): at the own zoom's events and at the game's zoom key, only on a change, whatever wakes it",
+			func = function(state)
+				local B = GryMod.FlashBinoculars
+				local told = {}
+				local savedWanted = B.Wanted
+				local weaponZoom = GryMod.WeaponZoom
+				local savedSend = weaponZoom and weaponZoom.Send
+				local world = false
+				local ply = LocalPlayer()
+
+				local ok, err = pcall(function()
+					expect(isfunction(B.CheckToggled)).to.beTrue()
+
+					-- (the real listener of the event must not send anything to the server from here)
+					if weaponZoom then
+						weaponZoom.Send = function() end
+					end
+
+					B.Wanted = function() return world end
+					B.CheckToggled()
+					hook.Add("GryMod_BinocularsToggled", "GRYTESTTOGGLED", function(wanted)
+						told[#told + 1] = wanted
+					end)
+
+					-- no change: nothing is told, however often it is asked
+					B.CheckToggled()
+					expect(#told).to.equal(0)
+
+					-- the own zoom opens, and stays open while the game's key joins in: one "up"
+					world = true
+					hook.GetTable()["GryMod_SuitZoom"]["GRYBINOCULARSTOGGLED"](true)
+					expect(#told).to.equal(1)
+					expect(told[1]).to.equal(true)
+					hook.GetTable()["KeyPress"]["GRYBINOCULARSTOGGLED"](ply, IN_ZOOM)
+					expect(#told).to.equal(1)
+
+					-- another key of the player's is none of its business
+					hook.GetTable()["KeyPress"]["GRYBINOCULARSTOGGLED"](ply, IN_ATTACK)
+					hook.GetTable()["KeyRelease"]["GRYBINOCULARSTOGGLED"](ply, IN_ATTACK)
+					expect(#told).to.equal(1)
+
+					-- both end: one "down"
+					world = false
+					hook.GetTable()["KeyRelease"]["GRYBINOCULARSTOGGLED"](ply, IN_ZOOM)
+					expect(#told).to.equal(2)
+					expect(told[2]).to.equal(false)
+					hook.GetTable()["GryMod_SuitZoom"]["GRYBINOCULARSTOGGLED"](false, "release")
+					expect(#told).to.equal(2)
+
+					-- the game's key alone
+					world = true
+					hook.GetTable()["KeyPress"]["GRYBINOCULARSTOGGLED"](ply, IN_ZOOM)
+					expect(#told).to.equal(3)
+					expect(told[3]).to.equal(true)
+					world = false
+					hook.GetTable()["KeyRelease"]["GRYBINOCULARSTOGGLED"](ply, IN_ZOOM)
+					expect(#told).to.equal(4)
+					expect(told[4]).to.equal(false)
+
+					-- a key of another player is not ours to look at
+					world = true
+					hook.GetTable()["KeyPress"]["GRYBINOCULARSTOGGLED"](Entity(0), IN_ZOOM)
+					expect(#told).to.equal(4)
+				end)
+
+				hook.Remove("GryMod_BinocularsToggled", "GRYTESTTOGGLED")
+				B.Wanted = savedWanted
+
+				if weaponZoom then
+					weaponZoom.Send = savedSend
+				end
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

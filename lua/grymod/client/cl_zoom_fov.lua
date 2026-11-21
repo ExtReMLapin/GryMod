@@ -91,7 +91,7 @@ local function wantedFov(ply)
 	return ZoomFov.Target(true, Bino.ZoomState.stage, ply:GetInfoNum("fov_desired", 75))
 end
 
--- Once per frame.
+-- One look at the world: sends what has to be sent.
 function ZoomFov.Step(ply, now)
 	local send = ZoomFov.Decide(state, wantedFov(ply), now)
 
@@ -100,6 +100,47 @@ function ZoomFov.Step(ply, now)
 	end
 end
 
-hook.Add("Think", "GRYZOOMFOV", function()
-	ZoomFov.Step(LocalPlayer(), RealTime())
+-- The stage changes (the wheel), the option, the HUD and the heartbeat are not events of their own: they are looked at at every frame, but
+-- only while the own zoom is up. The Think hook is put when the own zoom opens and taken off by the frame in which the own zoom is down
+-- and 0 has been sent, so that a player who does not zoom pays nothing (see the hook GryMod_SuitZoom below, and cl_suit_zoom.lua).
+local THINK = "GRYZOOMFOV"
+
+local function zoomUp()
+	local suit = GryMod.SuitZoom
+
+	return suit ~= nil and suit.IsActive()
+end
+
+-- A look at the world (Step) and, when the own zoom is down and nothing is left to take back, the Think hook goes.
+function ZoomFov.Update(ply, now)
+	ZoomFov.Step(ply, now)
+
+	if state.sent == 0 and not zoomUp() then
+		hook.Remove("Think", THINK)
+	end
+end
+
+local function think()
+	ZoomFov.Update(LocalPlayer(), RealTime())
+end
+
+-- The own zoom opens or closes (cl_suit_zoom.lua runs this hook in both cases, once, in the same frame).
+function ZoomFov.OnSuitZoom(active)
+	if active then
+		hook.Add("Think", THINK, think)
+	else
+		-- (0 is sent now, not a frame later)
+		ZoomFov.Update(LocalPlayer(), RealTime())
+	end
+end
+
+hook.Add("GryMod_SuitZoom", "GRYZOOMFOV", function(active)
+	ZoomFov.OnSuitZoom(active)
 end)
+
+-- This file loaded again: the hook of an older copy that watched at every frame goes, unless the own zoom is up already.
+if zoomUp() then
+	hook.Add("Think", THINK, think)
+else
+	hook.Remove("Think", THINK)
+end

@@ -1004,6 +1004,39 @@ function Bino.Wanted(ply)
 	return suit ~= nil and suit.IsActive()
 end
 
+-- The others are told when the binoculars go up or down: the hook GryMod_BinocularsToggled(wanted), run once at each change of
+-- Bino.Wanted. Wanted is read from two sources that have an event of their own (the own zoom's hook, the game's zoom key as KeyPress /
+-- KeyRelease), so it is looked at when one of them speaks, not at every frame. (A player who dies with the game's key held, and lets go of
+-- it while dead, leaves the last answer stale until the next event of those two: the others then miss one change.)
+local toldWanted = Bino.Wanted(LocalPlayer())
+
+function Bino.CheckToggled()
+	local wanted = Bino.Wanted(LocalPlayer())
+
+	if wanted == toldWanted then
+		return
+	end
+
+	toldWanted = wanted
+	hook.Run("GryMod_BinocularsToggled", wanted)
+end
+
+hook.Add("GryMod_SuitZoom", "GRYBINOCULARSTOGGLED", function()
+	Bino.CheckToggled()
+end)
+
+hook.Add("KeyPress", "GRYBINOCULARSTOGGLED", function(ply, key)
+	if key == IN_ZOOM and ply == LocalPlayer() then
+		Bino.CheckToggled()
+	end
+end)
+
+hook.Add("KeyRelease", "GRYBINOCULARSTOGGLED", function(ply, key)
+	if key == IN_ZOOM and ply == LocalPlayer() then
+		Bino.CheckToggled()
+	end
+end)
+
 -- Whether the movie could not be loaded (the own zoom is then not offered).
 function Bino.IsMissing()
 	return missing

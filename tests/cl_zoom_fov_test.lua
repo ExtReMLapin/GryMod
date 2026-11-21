@@ -71,6 +71,11 @@ return {
 			Z.Reset()
 		end
 
+		-- (a Think hook that a case left is taken off, unless the real own zoom is really up)
+		if not suit.IsActive() then
+			hook.Remove("Think", "GRYZOOMFOV")
+		end
+
 		if saved.option and setting(OPTION) then
 			setting(OPTION):SetString(saved.option)
 		end
@@ -232,6 +237,102 @@ return {
 				Z.Step(LocalPlayer(), 10.1)
 				expect(#state.sent).to.equal(2)
 				expect(state.sent[2]).to.equal(0)
+			end
+		},
+		{
+			name = "no permanent Think hook: at rest there is none (the own zoom is down), and the own zoom's event hook exists",
+			func = function(state)
+				state.world.own = false
+				hook.Remove("Think", "GRYZOOMFOV")
+				GryMod.ZoomFov.Update(LocalPlayer(), 10)
+
+				expect(hook.GetTable().Think["GRYZOOMFOV"]).to.beNil()
+				expect(isfunction(hook.GetTable()["GryMod_SuitZoom"]["GRYZOOMFOV"])).to.beTrue()
+			end
+		},
+		{
+			name = "the own zoom opening puts a Think hook that sends the stage's field of view; the own zoom closing sends 0 at once and takes the hook off",
+			func = function(state)
+				local event = hook.GetTable()["GryMod_SuitZoom"]["GRYZOOMFOV"]
+
+				hook.Remove("Think", "GRYZOOMFOV")
+				state.world.own = true
+				GryMod.FlashBinoculars.ZoomState.stage = 0
+
+				event(true)
+				expect(isfunction(hook.GetTable().Think["GRYZOOMFOV"])).to.beTrue()
+				expect(#state.sent).to.equal(0)
+
+				-- (the binoculars' view gives the first stage a frame later, then the wheel steps)
+				GryMod.FlashBinoculars.ZoomState.stage = 2
+				hook.GetTable().Think["GRYZOOMFOV"]()
+				hook.GetTable().Think["GRYZOOMFOV"]()
+				expect(#state.sent).to.equal(1)
+				expect(state.sent[1]).to.beBetween(33.1, 33.3)
+
+				GryMod.FlashBinoculars.ZoomState.stage = 3
+				hook.GetTable().Think["GRYZOOMFOV"]()
+				expect(#state.sent).to.equal(2)
+
+				-- the zoom ends: 0 is sent by the event itself, not a frame later, and the hook is gone
+				state.world.own = false
+				event(false, "release")
+				expect(#state.sent).to.equal(3)
+				expect(state.sent[3]).to.equal(0)
+				expect(hook.GetTable().Think["GRYZOOMFOV"]).to.beNil()
+			end
+		},
+		{
+			name = "an own zoom that ends with no event (a silent reset) still sends 0 and takes the Think hook off at the next frame; with nothing sent the hook just goes",
+			func = function(state)
+				local event = hook.GetTable()["GryMod_SuitZoom"]["GRYZOOMFOV"]
+
+				hook.Remove("Think", "GRYZOOMFOV")
+				state.world.own = true
+				GryMod.FlashBinoculars.ZoomState.stage = 1
+				event(true)
+				hook.GetTable().Think["GRYZOOMFOV"]()
+				expect(#state.sent).to.equal(1)
+
+				state.world.own = false
+				hook.GetTable().Think["GRYZOOMFOV"]()
+				expect(#state.sent).to.equal(2)
+				expect(state.sent[2]).to.equal(0)
+				expect(hook.GetTable().Think["GRYZOOMFOV"]).to.beNil()
+
+				-- nothing was ever sent (the stage never came): the hook goes without a message
+				GryMod.FlashBinoculars.ZoomState.stage = 0
+				state.world.own = true
+				event(true)
+				state.world.own = false
+				hook.GetTable().Think["GRYZOOMFOV"]()
+				expect(#state.sent).to.equal(2)
+				expect(hook.GetTable().Think["GRYZOOMFOV"]).to.beNil()
+			end
+		},
+		{
+			name = "the file loaded again: a Think hook of an older copy is taken off when no zoom is up, and one is put when the own zoom is already up; one hook either way",
+			func = function(state)
+				local ok, err = pcall(function()
+					state.world.own = false
+					hook.Add("Think", "GRYZOOMFOV", function() end)
+					include("grymod/client/cl_zoom_fov.lua")
+					expect(hook.GetTable().Think["GRYZOOMFOV"]).to.beNil()
+					expect(isfunction(hook.GetTable()["GryMod_SuitZoom"]["GRYZOOMFOV"])).to.beTrue()
+
+					state.world.own = true
+					include("grymod/client/cl_zoom_fov.lua")
+					expect(isfunction(hook.GetTable().Think["GRYZOOMFOV"])).to.beTrue()
+				end)
+
+				-- (the file's own Send is back after the load: stub it again before anything can step)
+				hook.Remove("Think", "GRYZOOMFOV")
+				GryMod.ZoomFov.Send = function(fov) state.sent[#state.sent + 1] = fov end
+				GryMod.ZoomFov.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		{

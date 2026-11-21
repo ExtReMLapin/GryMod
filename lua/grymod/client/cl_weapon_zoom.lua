@@ -4,7 +4,7 @@
 -- jump to the weapon's zoom (measured, see docs/superpowers/plans/2026-11-21-weapon-zoom-cancel.md). The Half-Life 2 zoom key cannot take
 -- the zoom from a weapon that owns it either, so the binoculars opened by that key behave the same.
 --
--- The decision is made at the OPENING of the binoculars (Bino.Wanted going from false to true, whichever of the own zoom or the Half-Life 2
+-- The decision is made at the OPENING of the binoculars (the event GryMod_BinocularsToggled with true, whichever of the own zoom or the Half-Life 2
 -- key opened them) and only there: the weapon in hand zooms with its right click (the crossbow: alt = "zoom" in the weapon registry) and the player's field of view is below the normal one
 -- (fov_desired). The client cannot always tell the weapon's zoom from the Half-Life 2 zoom just starting with the same weapon in hand
 -- (measured: the key can be seen down a frame after the suit's field of view began to move, and a request was then sent for nothing), so
@@ -23,8 +23,6 @@ local OptionConVar = CreateClientConVar("gry_zoom_cancel_weapon", "1", true, fal
 
 -- a field of view this much below the normal one is a zoom (degrees)
 WeaponZoom.TOLERANCE = 0.5
-
-local previous = false
 
 function WeaponZoom.Enabled()
 	return OptionConVar:GetBool()
@@ -54,19 +52,12 @@ function WeaponZoom.Send()
 	net.SendToServer()
 end
 
--- Forgets that the binoculars were up.
-function WeaponZoom.Reset()
-	previous = false
-end
-
--- Once per frame: reads the world only at an opening of the binoculars.
-function WeaponZoom.Step(ply)
+-- The binoculars have just gone up (the event GryMod_BinocularsToggled, cl_hud_binoculars_flash.lua): reads the world once, now, and asks
+-- if it must.
+function WeaponZoom.Opened(ply)
 	local Bino = GryMod.FlashBinoculars
-	local wanted = Bino ~= nil and IsValid(ply) and Bino.Wanted(ply) or false
-	local was = previous
-	previous = wanted
 
-	if was or not wanted or not WeaponZoom.Enabled() then
+	if not WeaponZoom.Enabled() or Bino == nil or not IsValid(ply) then
 		return
 	end
 
@@ -77,11 +68,16 @@ function WeaponZoom.Step(ply)
 
 	local weapon = ply:GetActiveWeapon()
 
-	if WeaponZoom.Decide(true, was, wanted, IsValid(weapon) and weapon or nil, ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)) then
+	if WeaponZoom.Decide(true, false, true, IsValid(weapon) and weapon or nil, ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)) then
 		WeaponZoom.Send()
 	end
 end
 
-hook.Add("Think", "GRYWEAPONZOOM", function()
-	WeaponZoom.Step(LocalPlayer())
+-- No Think hook: the opening is an event. (A hook of an older copy of this file that looked at every frame goes.)
+hook.Remove("Think", "GRYWEAPONZOOM")
+
+hook.Add("GryMod_BinocularsToggled", "GRYWEAPONZOOM", function(wanted)
+	if wanted then
+		WeaponZoom.Opened(LocalPlayer())
+	end
 end)

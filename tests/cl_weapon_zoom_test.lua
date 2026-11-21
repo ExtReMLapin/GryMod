@@ -31,7 +31,6 @@ return {
 
 		if W then
 			W.Send = function() state.sent = state.sent + 1 end
-			W.Reset()
 		end
 
 		if setting(OPTION) then
@@ -76,7 +75,6 @@ return {
 
 		if W then
 			W.Send = saved.send
-			W.Reset()
 		end
 
 		if saved.option and setting(OPTION) then
@@ -157,7 +155,29 @@ return {
 			end
 		},
 		{
-			name = "a third-party weapon registered through the API with alt = zoom gets the crossbow's treatment (decision and step); one registered with another alt, or not at all, does not",
+			name = "no permanent Think hook: at rest there is none, and the event of the binoculars going up or down has the hook; the file loaded again takes an older copy's Think hook off",
+			func = function(state)
+				expect(hook.GetTable().Think["GRYWEAPONZOOM"]).to.beNil()
+				expect(isfunction(hook.GetTable()["GryMod_BinocularsToggled"]["GRYWEAPONZOOM"])).to.beTrue()
+
+				local ok, err = pcall(function()
+					hook.Add("Think", "GRYWEAPONZOOM", function() end)
+					include("grymod/client/cl_weapon_zoom.lua")
+					expect(hook.GetTable().Think["GRYWEAPONZOOM"]).to.beNil()
+					expect(isfunction(hook.GetTable()["GryMod_BinocularsToggled"]["GRYWEAPONZOOM"])).to.beTrue()
+				end)
+
+				-- (the file's own Send is back after the load: stub it again before anything can ask)
+				hook.Remove("Think", "GRYWEAPONZOOM")
+				GryMod.WeaponZoom.Send = function() state.sent = state.sent + 1 end
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "a third-party weapon registered through the API with alt = zoom gets the crossbow's treatment (decision and opening); one registered with another alt, or not at all, does not",
 			func = function(state)
 				local W = GryMod.WeaponZoom
 				local API = GryMod.API
@@ -175,14 +195,12 @@ return {
 				expect(W.Decide(true, false, true, "doc_test_grenade_gun", 20, 100)).to.beFalse()
 				expect(W.Decide(true, false, true, "doc_test_unregistered_gun", 20, 100)).to.beFalse()
 
-				-- (the weapon entity is accepted too: that is what the step gives)
+				-- (the weapon entity is accepted too: that is what the opening gives)
 				expect(W.Decide(true, false, true, {GetClass = function() return "doc_test_zoom_gun" end, IsValid = function() return true end}, 20, 100)).to.beTrue()
 
 				state.world.class = "doc_test_zoom_gun"
 				state.world.fov = 20
-				W.Step(ply)
-				state.world.wanted = true
-				W.Step(ply)
+				W.Opened(ply)
 				expect(state.sent).to.equal(1)
 
 				-- unregistered: back to nothing
@@ -191,107 +209,92 @@ return {
 			end
 		},
 		{
-			name = "step: the crossbow zoomed, the binoculars open: one request, at the opening only (not again while they stay up)",
+			name = "opening: the crossbow zoomed, the binoculars go up (the event): one request, at the going up only (not when they go down)",
 			func = function(state)
-				local W = GryMod.WeaponZoom
-				local ply = LocalPlayer()
+				local event = hook.GetTable()["GryMod_BinocularsToggled"]["GRYWEAPONZOOM"]
 
 				state.world.fov = 20
-				W.Step(ply)
-				expect(state.sent).to.equal(0)
-
-				state.world.wanted = true
-				W.Step(ply)
+				event(true)
 				expect(state.sent).to.equal(1)
 
-				W.Step(ply)
-				W.Step(ply)
+				-- closing: nothing
+				event(false)
 				expect(state.sent).to.equal(1)
 
-				-- closed, then open again with the zoom up again: a second request
-				state.world.wanted = false
-				W.Step(ply)
-				state.world.wanted = true
-				W.Step(ply)
+				-- open again with the zoom up again: a second request
+				event(true)
 				expect(state.sent).to.equal(2)
 			end
 		},
 		{
-			name = "step: the binoculars alone (the field of view is the normal one when they open), or the Half-Life 2 zoom that follows a moment later: nothing is asked",
+			name = "end to end: the binoculars' own check (Bino.CheckToggled, woken by the own zoom's or the game key's event) runs the event and the request goes out once, at the opening",
 			func = function(state)
-				local W = GryMod.WeaponZoom
-				local ply = LocalPlayer()
+				local Bino = GryMod.FlashBinoculars
 
-				state.world.wanted = true
-				W.Step(ply)
+				state.world.fov = 20
+				state.world.wanted = false
+				Bino.CheckToggled()
 				expect(state.sent).to.equal(0)
 
-				-- (the Half-Life 2 zoom reaches 25 degrees after the opening: the opening was the moment to look, and it is past)
-				state.world.fov = 25
-				W.Step(ply)
+				state.world.wanted = true
+				Bino.CheckToggled()
+				Bino.CheckToggled()
+				expect(state.sent).to.equal(1)
+
+				-- (leaves the binoculars' memory as the world is: down)
+				state.world.wanted = false
+				Bino.CheckToggled()
+				expect(state.sent).to.equal(1)
+			end
+		},
+		{
+			name = "opening: the binoculars alone (the field of view is the normal one when they go up) asks nothing",
+			func = function(state)
+				local event = hook.GetTable()["GryMod_BinocularsToggled"]["GRYWEAPONZOOM"]
+
+				-- (the Half-Life 2 zoom reaches 25 degrees after the opening: the opening was the moment to look)
+				event(true)
+				expect(state.sent).to.equal(0)
+				event(false)
 				expect(state.sent).to.equal(0)
 			end
 		},
 		{
-			name = "step: another weapon in hand with a zoom (a field of view below the normal one) sends nothing",
+			name = "opening: another weapon in hand with a zoom (a field of view below the normal one) sends nothing",
 			func = function(state)
-				local W = GryMod.WeaponZoom
-				local ply = LocalPlayer()
+				local event = hook.GetTable()["GryMod_BinocularsToggled"]["GRYWEAPONZOOM"]
 
 				state.world.class = "weapon_ar2"
 				state.world.fov = 20
-				W.Step(ply)
-				state.world.wanted = true
-				W.Step(ply)
+				event(true)
 				expect(state.sent).to.equal(0)
 			end
 		},
 		{
-			name = "step: the option off, the binoculars element off, or the movie missing: nothing is asked",
+			name = "opening: the option off, the binoculars element off, or the movie missing: nothing is asked",
 			func = function(state)
-				local W = GryMod.WeaponZoom
-				local ply = LocalPlayer()
+				local event = hook.GetTable()["GryMod_BinocularsToggled"]["GRYWEAPONZOOM"]
 
 				state.world.fov = 20
 
 				setting(OPTION):SetString("0")
-				W.Step(ply)
-				state.world.wanted = true
-				W.Step(ply)
+				event(true)
 				expect(state.sent).to.equal(0)
 
 				setting(OPTION):SetString("1")
-				state.world.wanted = false
-				W.Step(ply)
 				state.world.enabled = false
-				state.world.wanted = true
-				W.Step(ply)
+				event(true)
 				expect(state.sent).to.equal(0)
 
 				state.world.enabled = true
 				state.world.missing = true
-				state.world.wanted = false
-				W.Step(ply)
-				state.world.wanted = true
-				W.Step(ply)
+				event(true)
 				expect(state.sent).to.equal(0)
-			end
-		},
-		{
-			name = "step: the binoculars already up when the option comes on, or the step starts, are not an opening; and a Reset forgets that they were up",
-			func = function(state)
-				local W = GryMod.WeaponZoom
-				local ply = LocalPlayer()
 
-				state.world.fov = 20
-				state.world.wanted = true
-				W.Step(ply)
-				-- (the first look of the step sees them up: it asked at once, they were just opened)
+				-- (and with everything on, the same call asks: the three checks above were the reason)
+				state.world.missing = false
+				event(true)
 				expect(state.sent).to.equal(1)
-
-				W.Reset()
-				W.Step(ply)
-				expect(state.sent).to.equal(2)
 			end
 		},
 		{
