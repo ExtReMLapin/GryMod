@@ -281,6 +281,19 @@ local live = {}
 -- How the entity of a contact is found (replaced by the tests).
 Radar.FindEntity = Entity
 
+-- The way an entity faces, in degrees: its yaw, except for a vehicle, which faces 90 degrees from it (the Buggy and the airboat at
+-- yaw 0 face along +y: the forward vector says so). The same rule as the server's (Radar.Facing, sv_radar.lua), which this replaces
+-- whenever the client has the entity.
+function Radar.Facing(ent)
+	if isfunction(ent.IsVehicle) and ent:IsVehicle() then
+		local forward = ent:GetForward()
+
+		return math.deg(math.atan2(forward.y, forward.x))
+	end
+
+	return ent:GetAngles().y
+end
+
 function Radar.Live()
 	local snapshot = Radar.Snapshot
 	local count = #snapshot
@@ -302,7 +315,7 @@ function Radar.Live()
 		if IsValid(ent) and not ent:IsDormant() then
 			local at = ent:GetPos()
 			l.x, l.y, l.z = at.x, at.y, at.z
-			l.yaw = ent:GetAngles().y
+			l.yaw = Radar.Facing(ent)
 		end
 	end
 

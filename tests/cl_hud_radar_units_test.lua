@@ -321,6 +321,29 @@ return {
 			end
 		},
 		{
+			name = "the live facing of a vehicle is the way it faces (its forward vector, 90 degrees from its yaw), not its yaw: the rectangle points where it drives",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				local realFind, realSnapshot = R.FindEntity, R.Snapshot
+				local function ent(vehicle)
+					return {IsValid = function() return true end, IsDormant = function() return false end, IsVehicle = function() return vehicle end,
+						GetPos = function() return Vector(10, 20, 30) end, GetAngles = function() return Angle(0, 30, 0) end,
+						GetForward = function() return Vector(math.cos(math.rad(120)), math.sin(math.rad(120)), 0) end}
+				end
+				local ents = {[7] = ent(true), [8] = ent(false)}
+				R.FindEntity = function(id) return ents[id] end
+				R.Snapshot = {
+					{id = 7, x = 1, y = 1, z = 0, yaw = 0, type = 3, sub = 0, marker = false, big = false},
+					{id = 8, x = 2, y = 2, z = 0, yaw = 0, type = 1, sub = 2, marker = false, big = false}
+				}
+				local ok, live = pcall(R.Live)
+				R.FindEntity, R.Snapshot = realFind, realSnapshot
+				assert(ok, live)
+				expect(math.abs(math.AngleDifference(live[1].yaw, 120)) < 0.5).to.beTrue()
+				expect(live[2].yaw).to.equal(30)
+			end
+		},
+		{
 			name = "the live contacts take the position and facing of the entity when the client has it, the server's otherwise",
 			func = function(state)
 				local R = GryMod.FlashRadar
