@@ -214,6 +214,21 @@ end
   `WeaponValue(wep, field)` gives one field without building a table.
 - A function you give for `fire` or `counter` runs under `SafeCall` (see above): a broken one never breaks the HUD.
 
+### Which side uses which field
+
+Your registration file is shared: the same declarations run on the server and on the client (put them in a file that both
+realms include, see the full example at the end of this document). A field that one side does not use is stored there and ignored,
+without an error. The weapon registry is read by the HUD, so it is the client that uses every field today; the server keeps the
+entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
+
+| Field | Used by | What for |
+| --- | --- | --- |
+| `fire`, `burst` | client | the fire-mode icon of the weapon slot |
+| `ammo`, `counter` | client | the ammo counter |
+| `alt`, `altAmmo`, `altLabel`, `altIcon` | client | the grenade slot (which ammo it counts, its icon) |
+| `altShoots` | client | the camouflage: a right click that shoots ends it (the HUD tells the server) |
+| `icon`, `slotIcon` | client | the icon of the weapon slot |
+
 ### Where a field comes from
 
 For each field, the first of these that says something wins:
@@ -234,9 +249,15 @@ weapons: later (the HUD already reads their fire mode through its own resolvers)
 
 ## Tracked entities
 
-`GryMod.API.Has("tracked")` is true. The registry of tracked entities says what an NPC or a nextbot is for the radar and the
-binoculars: its icon, when the radar lists it, what it is to the player (ally, neutral or hostile) and whether the binoculars may
-tag it. An entity that is not registered behaves as it always did: the radar reads its class and its attitude.
+`GryMod.API.Has("tracked")` is true. The registry of tracked entities says what an entity is for the HUD. For an NPC or a nextbot: its
+icon on the radar, when the radar lists it, what it is to the player (ally, neutral or hostile) and whether the binoculars may tag it.
+For a projectile or a trap (a grenade, a mine, a missile): that it is a **danger** the player is warned about, what to call it and
+how the server knows it is armed. An entity that is not registered behaves as it always did: the radar reads its class and its
+attitude.
+
+Everything the HUD knows about Half-Life 2 entities is registered here as plain data (`lua/grymod/sh_api_tracked_hl2.lua`: the icon
+classes of the radar and the six dangerous projectiles), with the same call your addon uses. There is no private table and no special
+case: the radar and the grenade warning only read the registry.
 
 ### Register a class
 
@@ -279,13 +300,21 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `type` | `"human"`, `"flying"`, `"machine"` or 1, 2, 3 | the icon of the radar: a soldier, a flying unit, a machine; nothing: the class decides (unknown classes are `"human"`) |
 | `size` | `"normal"`, `"big"` | `"big"` draws the icon twice the size (the Strider's); nothing: the class decides |
 | `label` | text, or `function(ent)` | a name for the entity. Stored; no part of the HUD shows it yet |
-| `shape` | `"unit"` (default), `"rect"` | `"rect"` is stored and reserved for vehicles: it is not drawn yet |
+| `shape` | `"unit"` (default), `"dot"`, `"rect"`, `"triangle"` | how it is drawn on the radar. Only `"unit"` (the radar's soldier, machine and flying icons) is drawn today; the other shapes are accepted and stored, never an error (`"rect"` is for vehicles, `"triangle"` for dangers) |
+| `danger` | a table (below) | the entity is a projectile or a trap the player must be warned about (the grenade warning) |
+| `indicator` | `"warning"`, `"marker"`, `"none"` | how a danger shows on the screen. `"warning"` (the default for an entry with `danger`) is the grenade-detect warning: an icon with the label and the distance. `"marker"` and `"none"` are accepted and stored: the warning does not draw them, and no marker is drawn yet |
+| `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
 
 At least one of `class`, `base` and `match` is needed. The entity matches when ANY of the ones you give matches, tried in this order
-of cost: the class, then the base, then the function (which is not called when the class or the base matched). Entries are tried in
-the order they were registered, and the first that matches wins. The class and base answers are kept in a cache by class (emptied by
+of cost: the class, then the base, then the function (which is not called when the class or the base matched). Entries are tried by
+priority (the higher first), and in the order they were registered among the same priority: the first that matches wins. The stock
+Half-Life 2 entries have a priority of -100, so an entry of your addon for one of their classes (say `npc_strider`, to make it an
+ally) beats them whatever the order the addons load in. The class and base answers are kept in a cache by class (emptied by
 every `RegisterTracked` and `UnregisterTracked`), so `GetTracked` is cheap enough for the radar to ask it for every NPC at every tick.
 A `match` function is asked about every entity of a class that no earlier entry took: keep it short.
+
+`GetTrackedByClass(class)` is the same question for a class name instead of an entity: the first entry that names the class in its
+`class` list (a `base` or a `match` needs an entity to be asked). The radar uses it for the icon of a class.
 
 ### `radar`: when the contact is listed
 
@@ -312,3 +341,91 @@ no NPC state and no enemy: it is calm, and `radar = "always"` or a scan lists it
 `relation`). Other entities, vehicles included, are accepted by the registry but ignored by the radar: their drawing comes with their own
 part (`shape = "rect"`). The `label` does not travel to the client either: the radar's message has no room for text and the movies have
 no field for a name; it is there for a later part.
+
+### Dangers: the grenade warning
+
+An entry with a `danger` table makes the entity a danger: the HUD warns the player about it with the grenade-detect icon (its label,
+its distance, shrinking as it goes away) while it is coming. The stock warning covers the frag grenade, the rifle grenade, the
+missile, the helicopter bomb, the Combine mine and the energy ball; yours goes through the same code.
+
+```lua
+danger = {
+	label = "MINE",              -- the text of the warning, 32 characters at most (default: the entry's label, then "DANGER")
+	type = "mine",               -- the kind of icon (any short word: "grenade", "missile", "mine", "bomb", "energy"). Stored: the warning has one icon
+	armed = function(ent) ... end,   -- SERVER: is it dangerous now? Without it, the entity is dangerous as soon as it exists
+	range = 25,                  -- metres, 200 at most: warn within this distance (it can only shorten the player's own range)
+	ownerOf = function(ent) ... end, -- SERVER: the player who threw or fired it, when the engine does not say
+	ownMissile = true,           -- a projectile the player FIRES: it never warns its shooter (default false)
+}
+```
+
+- A **danger needs a `class`** (a name or a list): the client looks for these entities by class. A `base` or a `match` alone is
+  refused with a reason.
+- `armed(ent)` runs on the **server only**: the client cannot read the engine's internal variables (`m_flDetonateTime`,
+  `m_iMineState`...). The server follows every entity that has a danger entry from its creation (`OnEntityCreated`; the ones that
+  stand before the entry is registered are not looked for again), asks `armed` five times a second and sends the answer to the
+  clients in the networked boolean `GryArmed`. A projectile a player holds in the hands (or with the gravity gun) is never armed,
+  whatever `armed` says. `armed` runs under `SafeCall`: an error means "not armed", and 5 errors in a row disable it with one console
+  line. Return `true` only for a danger that is coming (a grenade whose fuse runs, a mine in the air), not for one that lies around.
+- `ownerOf(ent)` helps for a projectile that keeps its owner in a field of its own; the server also reads the engine's owner and
+  thrower. The thrower is networked in `GryThrower`.
+- The player's settings apply to every entry with a danger, yours included: the range (`gry_grenade_range`, the entry's `range` can only
+  make it shorter), the rule for the player's own grenades (`gry_grenade_own_warn`: what the player threw never warns, and with the
+  setting on a thrown one warns within 15 m, but a `ownMissile` one never), the line of sight (`gry_grenade_los`) and
+  `gry_grenade_armed_only` (off: every projectile of the list warns, armed or not).
+- Nothing is warned about within 1 m of the eye or off the screen.
+
+### Which side uses which field
+
+The same declarations run on both realms (put them in a shared file, see the example below). A field that a side does not use is
+stored and ignored there, with no error. The server decides what the radar lists, what an entity is to the player, which projectile
+is armed and what the binoculars may tag; the client draws.
+
+| Field | Server | Client | Used for |
+| --- | :---: | :---: | --- |
+| `class`, `base`, `match` | yes | yes | matching: the server for the radar, the relation, the scan and the danger it follows; the client for the binoculars and the warning's scan (by `class`) |
+| `scan` | yes | yes | the server refuses the tag of the binoculars; the client skips the lock sound |
+| `radar` | yes | | the radar's contact rules (the client draws the list the server sends) |
+| `relation` | yes | | the relation chain (the client asks the server: the crosshair's friendly cross) |
+| `type`, `size` | yes | | the icon of the radar contact in the message |
+| `label` | stored | stored | the entry's name; it is also the fallback label of a danger. No part of the HUD shows it |
+| `shape` | stored | stored | only `"unit"` is drawn, by the radar; the other shapes are for later |
+| `priority` | yes | yes | the order of the entries |
+| `danger.armed` | yes | | the server reads the state and networks it (`GryArmed`) |
+| `danger.ownerOf` | yes | | who threw it (`GryThrower`) |
+| `danger.label` | | yes | the text of the warning |
+| `danger.type` | stored | stored | the kind of icon: stored, the warning has one icon |
+| `danger.range` | | yes | the warning's range |
+| `danger.ownMissile` | | yes | a projectile the player fires never warns them |
+| `danger` (the table itself) | yes | yes | the server follows and marks these entities, the client looks for them by class |
+| `indicator` | | yes | `"warning"` draws the warning; `"marker"` and `"none"` draw nothing yet |
+
+### Full example: an addon registers its mine
+
+One file, included by both realms (`lua/autorun/my_addon_shared.lua`, which runs on the server and on the client), registers the
+entity as a danger for the warning (the server reads its state, the client draws the warning). Its entity (`ENT.Type = "anim"`, class `my_addon_mine`) keeps who
+planted it in `ENT.Planter` and a state in `ENT.Armed`.
+
+```lua
+-- lua/autorun/my_addon_shared.lua (shared)
+if GRYMOD_INSTALLED and GryMod.API.Has("tracked") then
+	local ok, reason = GryMod.API.RegisterTracked("my_addon_mine", {
+		class = "my_addon_mine",
+		danger = {
+			label = "PROXIMITY MINE",
+			type = "mine",
+			range = 20,                                   -- client: not warned about from farther than 20 m
+			armed = function(ent) return ent.Armed == true end,   -- server: the state the client cannot read
+			ownerOf = function(ent) return ent.Planter end,       -- server: the player who planted it never gets the warning
+		},
+		-- the same entry says the rest of what the HUD needs to know about it:
+		scan = false,        -- the binoculars do not tag it
+		shape = "dot",       -- stored: the radar draws units only for now
+	})
+
+	if not ok then print("GryMod refused my mine: " .. reason) end
+end
+```
+
+On the server the entity is followed from its creation and `GryArmed` follows `ent.Armed`; on the client the warning shows `PROXIMITY MINE`
+and its distance while it is armed, within the player's range and 20 m. Nothing else to write: no hook, no net message.
