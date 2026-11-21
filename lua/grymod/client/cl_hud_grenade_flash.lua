@@ -16,8 +16,10 @@ Grenade.MOVIE = "hud_grenadedetect"
 -- Metres from which a grenade is warned about (not in the original code we could read).
 Grenade.RANGE = 60
 
--- The player's own grenade is not warned about while it is within this distance of the eye: the one thrown by
--- weapon_frag appears 0.7 m from the eye and is 3 m away a tenth of a second later (measured), the hand is no danger.
+-- Nothing is warned about within this distance of the eye: a grenade that leaves the hand appears 0.7 m from the eye
+-- (the one thrown by weapon_frag) or at 0.9 m (a picked up one that is let go) and is 3 m away a tenth of a second
+-- later (measured), so the player's own throw does not blink at the hand. A projectile that close is on top of the
+-- player: the warning has nothing left to tell.
 Grenade.MIN_OWN = 1
 
 local STAGE_W, STAGE_H = 1366, 768
@@ -58,12 +60,12 @@ end
 -- the server's mark (sv_grenade.lua): true for a projectile that is active and not held in the player's hands, so an
 -- inert one (lying around, a mine on the ground) and the one in the hands are not warned about, unless armedOnly is
 -- false (the switch gry_grenade_armed_only, for debugging). The player's own thrown grenade is warned about like an
--- enemy's, except at the hand (MIN_OWN).
+-- enemy's, once it is more than MIN_OWN from the eye.
 function Grenade.Pick(candidates, armedOnly)
 	local best
 
 	for _, c in ipairs(candidates or {}) do
-		if TYPES[c.class] and c.onScreen and not (c.own and c.metres < Grenade.MIN_OWN) and c.metres <= Grenade.RANGE and (armedOnly == false or c.armed) and (not best or c.metres < best.metres) then
+		if TYPES[c.class] and c.onScreen and c.metres >= Grenade.MIN_OWN and c.metres <= Grenade.RANGE and (armedOnly == false or c.armed) and (not best or c.metres < best.metres) then
 			best = c
 		end
 	end
@@ -242,23 +244,29 @@ local function scan()
 	end
 end
 
+-- What Pick reads of an entity: its class, the distance in metres from the eye, whether it is on the screen (the point
+-- is its projection), the server's mark (sv_grenade.lua) and whether it is the player's own.
+function Grenade.Candidate(ent, ply, point)
+	point = point or ent:WorldSpaceCenter():ToScreen()
+	local owner = ent:GetOwner()
+
+	return {
+		ent = ent,
+		class = ent:GetClass(),
+		metres = ply:EyePos():Distance(ent:GetPos()) / 52.49,
+		onScreen = point.visible,
+		own = IsValid(owner) and owner == ply,
+		armed = ent:GetNWBool("GryArmed"),
+		screen = point
+	}
+end
+
 local function candidates(ply)
 	local list = {}
-	local eye = ply:EyePos()
 
 	for _, ent in ipairs(scanned) do
 		if IsValid(ent) then
-			local point = ent:WorldSpaceCenter():ToScreen()
-			local owner = ent:GetOwner()
-
-			list[#list + 1] = {
-				ent = ent,
-				class = ent:GetClass(),
-				metres = eye:Distance(ent:GetPos()) / 52.49,
-				onScreen = point.visible,
-				own = IsValid(owner) and owner == ply,
-				screen = point
-			}
+			list[#list + 1] = Grenade.Candidate(ent, ply)
 		end
 	end
 

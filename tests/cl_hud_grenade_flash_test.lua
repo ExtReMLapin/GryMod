@@ -198,7 +198,7 @@ return {
 			end
 		},
 		{
-			name = "the player's own thrown grenade is warned about like an enemy's, but not while it is still at the hand (under 1 m)",
+			name = "the player's own thrown grenade is warned about like an enemy's, but nothing is warned about within 1 m of the eye (the grenade that leaves the hand)",
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				expect(G.MIN_OWN).to.equal(1)
@@ -209,8 +209,9 @@ return {
 				-- at the hand, the instant it is thrown: nothing yet
 				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.7, onScreen = true, own = true, armed = true}})).to.equal(nil)
 				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.99, onScreen = true, own = true, armed = true}})).to.equal(nil)
-				-- an enemy's is not held to that
-				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.7, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
+				-- a grenade the player let go of after picking it up has no owner in the engine (only a thrower): same at the hand
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.9, onScreen = true, own = false, armed = true}})).to.equal(nil)
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 1.1, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
 				-- and an own one that is not armed (the server marks it so while it is held in the hands) is not warned about
 				expect(G.Pick({{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = false}})).to.equal(nil)
 				-- the nearest of an own one and an enemy's
@@ -233,6 +234,33 @@ return {
 				expect(G.Pick(list, true).metres).to.equal(15)
 				expect(G.Pick(list, false).metres).to.equal(4) -- the old behaviour
 				expect(G.Pick({{class = "combine_mine", metres = 9, onScreen = true, own = false, armed = false}})).to.equal(nil)
+			end
+		},
+		{
+			name = "a candidate is built from the entity: its class, its distance in metres, the server's mark and whether the player owns it",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local eye = Vector(0, 0, 0)
+				local me = {}
+				local function stub(owner, armed)
+					return {
+						IsValid = function() return true end,
+						GetClass = function() return "npc_grenade_frag" end,
+						GetPos = function() return Vector(524.9, 0, 0) end,
+						WorldSpaceCenter = function() return Vector(524.9, 0, 0) end,
+						GetOwner = function() return owner end,
+						GetNWBool = function(_, name) return name == "GryArmed" and armed end
+					}
+				end
+				local ply = {EyePos = function() return eye end}
+				local c = G.Candidate(stub(NULL, true), ply, {x = 100, y = 50, visible = true})
+				expect(c.class).to.equal("npc_grenade_frag")
+				expect(near(c.metres, 10)).to.beTrue()
+				expect(c.armed).to.beTrue()
+				expect(c.own).to.beFalse()
+				expect(c.onScreen).to.beTrue()
+				expect(G.Candidate(stub(NULL, false), ply, {x = 0, y = 0, visible = false}).armed).to.beFalse()
+				expect(G.Candidate(stub(NULL, false), ply, {x = 0, y = 0, visible = false}).onScreen).to.beFalse()
 			end
 		},
 		{
