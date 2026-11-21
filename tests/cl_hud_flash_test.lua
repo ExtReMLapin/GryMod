@@ -502,7 +502,69 @@ return {
 			end
 		},
 		{
-			name = "a missing movie gives no HUD instead of an error",
+			name = "a colour setting is three numbers 0 to 255 written as 'r g b'; anything else is refused",
+				func = function(state)
+					local M = GryMod.FlashHUD
+					local c = M.ParseColour("10 20 30")
+					expect(c[1]).to.equal(10)
+					expect(c[2]).to.equal(20)
+					expect(c[3]).to.equal(30)
+					c = M.ParseColour("300 -5 12.7")
+					expect(c[1]).to.equal(255)
+					expect(c[2]).to.equal(0)
+					expect(c[3]).to.equal(13)
+					expect(M.ParseColour("10 20")).to.beNil()
+					expect(M.ParseColour("a b c")).to.beNil()
+					expect(M.ParseColour("")).to.beNil()
+					expect(M.ParseColour(nil)).to.beNil()
+				end
+			},
+			{
+				name = "the custom theme takes its three colours from the gry_hud_color_* settings, the blue ones where a setting is invalid",
+				func = function(state)
+					local M = GryMod.FlashHUD
+					local line, over, text = GetConVar("gry_hud_color_line"), GetConVar("gry_hud_color_over"), GetConVar("gry_hud_color_text")
+					local saved = {line:GetString(), over:GetString(), text:GetString(), GetConVar("gry_hud_theme"):GetString()}
+					line:SetString("1 2 3")
+					over:SetString("nonsense")
+					text:SetString("250 251 252")
+					M.SetTheme("custom")
+					expect(M.Theme.Line[1]).to.equal(1)
+					expect(M.Theme.Line[3]).to.equal(3)
+					expect(M.Theme.Over[1]).to.equal(M.Themes.blue.Over[1])
+					expect(M.Theme.Over[3]).to.equal(M.Themes.blue.Over[3])
+					expect(M.Theme.Text[2]).to.equal(251)
+					line:SetString(saved[1])
+					over:SetString(saved[2])
+					text:SetString(saved[3])
+					M.SetTheme(saved[4])
+				end
+			},
+			{
+				name = "changing a custom colour while the custom theme is on rebuilds the interface with it, and does nothing under another theme",
+				func = function(state)
+					local M = GryMod.FlashHUD
+					local line = GetConVar("gry_hud_color_line")
+					local themeVar = GetConVar("gry_hud_theme")
+					local saved = {line:GetString(), themeVar:GetString()}
+					local calls, original = 0, M.ResetAll
+					M.ResetAll = function() calls = calls + 1 end
+					themeVar:SetString("custom")
+					calls = 0
+					line:SetString("9 8 7")
+					expect(calls).to.equal(1)
+					expect(M.Theme.Line[1]).to.equal(9)
+					themeVar:SetString("white")
+					calls = 0
+					line:SetString("90 80 70")
+					M.ResetAll = original
+					expect(calls).to.equal(0)
+					line:SetString(saved[1])
+					themeVar:SetString(saved[2])
+				end
+			},
+			{
+				name = "a missing movie gives no HUD instead of an error",
 			func = function(state)
 				expect(GryMod.FlashHUD.New(nil)).to.beNil()
 			end

@@ -378,11 +378,54 @@ end
 -- GryMod's values, and the paint hook
 -- ---------------------------------------------------------------------------------------------------------
 
-local themeConVar = CreateClientConVar("gry_hud_theme", "blue", true, false)
+local themeConVar = CreateClientConVar("gry_hud_theme", "blue", true, false, "HUD colours: blue, default, white, orange or custom (gry_hud_color_*)")
 
--- Chooses the colours (blue, default, white, orange) of the HUD drawn from now on.
+-- The three colours of the "custom" theme, each written "r g b" (0 to 255), as the original's hud_colorLine,
+-- hud_colorOver and hud_colorText but readable.
+local CUSTOM_CONVARS = {
+	Line = CreateClientConVar("gry_hud_color_line", "77 131 179", true, false, "Custom HUD colour of the outlines and icons: r g b"),
+	Over = CreateClientConVar("gry_hud_color_over", "90 156 177", true, false, "Custom HUD colour of the active indicators: r g b"),
+	Text = CreateClientConVar("gry_hud_color_text", "120 183 185", true, false, "Custom HUD colour of the digits and letters: r g b")
+}
+
+-- "r g b" as {r, g, b} with each number held between 0 and 255; nil when it is not three numbers.
+function Module.ParseColour(text)
+	if type(text) ~= "string" then
+		return nil
+	end
+
+	local r, g, b, rest = string.match(text, "^%s*(%-?[%d%.]+)%s+(%-?[%d%.]+)%s+(%-?[%d%.]+)%s*(.*)$")
+	r, g, b = tonumber(r), tonumber(g), tonumber(b)
+
+	if not (r and g and b) or rest ~= "" then
+		return nil
+	end
+
+	return {
+		math.Clamp(math.Round(r), 0, 255),
+		math.Clamp(math.Round(g), 0, 255),
+		math.Clamp(math.Round(b), 0, 255)
+	}
+end
+
+-- The theme made of the gry_hud_color_* settings (the blue colour stands in for a setting that cannot be read).
+function Module.CustomTheme()
+	local result = {}
+
+	for part, convar in pairs(CUSTOM_CONVARS) do
+		result[part] = Module.ParseColour(convar:GetString()) or Module.Themes.blue[part]
+	end
+
+	return result
+end
+
+-- Chooses the colours (blue, default, white, orange, custom) of the HUD drawn from now on.
 function Module.SetTheme(name)
-	Module.Theme = Module.Themes[name] or Module.Themes.blue
+	if name == "custom" then
+		Module.Theme = Module.CustomTheme()
+	else
+		Module.Theme = Module.Themes[name] or Module.Themes.blue
+	end
 end
 
 Module.SetTheme(themeConVar:GetString())
@@ -787,4 +830,19 @@ cvars.AddChangeCallback("gry_hud_theme", function(_, _, value)
 		Module.ResetAll()
 	end
 end, "GryModHUDTheme")
+
+-- a custom colour changes: the interface follows it, but only while the custom theme is the one in use
+for part, convar in pairs(CUSTOM_CONVARS) do
+	cvars.AddChangeCallback(convar:GetName(), function()
+		if themeConVar:GetString() ~= "custom" then
+			return
+		end
+
+		Module.SetTheme("custom")
+
+		if GryMod.ApplyHUD then
+			Module.ResetAll()
+		end
+	end, "GryModHUDColour" .. part)
+end
 
