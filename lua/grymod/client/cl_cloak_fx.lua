@@ -289,6 +289,7 @@ function F.Update(ply)
 			render.SetBlend(1)
 		end
 
+		F.ClearWeaponProxy(ply)
 		States[ply] = nil
 
 		if not next(States) then
@@ -335,6 +336,7 @@ hook.Add("Think", "GryCloakFX", function()
 		if IsValid(ply) then
 			F.Update(ply)
 		else
+			F.ClearWeaponProxy(ply)
 			States[ply] = nil
 
 			if not next(States) then
@@ -469,6 +471,67 @@ drawHooks.PrePlayerDraw = function(ply)
 	end
 end
 
+-- The weapon in a camouflaged player's hand. The server hides its world model (EF_NODRAW, sv_system.lua) so that the engine does not draw it plain,
+-- and a weapon entity with that flag is out of the engine's render list: DrawModel on it draws NOTHING, whoever asks (measured in a mirror: the
+-- calls were made every frame, with no error, and the hand held air). So it is drawn through a client model of its world model, bone-merged on the
+-- player the way the engine does, which draws wherever it is asked. One for each player, made when the weapon first shows, kept while the model is
+-- the same, replaced when it changes, removed with the player's state.
+local proxies = setmetatable({}, {__mode = "k"})
+
+function F.ClearWeaponProxy(ply)
+	local entry = proxies[ply]
+
+	if entry then
+		proxies[ply] = nil
+
+		if IsValid(entry.ent) then
+			entry.ent:Remove()
+		end
+	end
+end
+
+-- The entity to draw for `weapon` (the player's active weapon), or nil when it has no world model to copy (then the weapon itself is drawn).
+function F.WeaponProxy(ply, weapon)
+	if not IsValid(weapon) then
+		F.ClearWeaponProxy(ply)
+
+		return nil
+	end
+
+	local model = weapon:GetModel()
+
+	if not model or model == "" then
+		F.ClearWeaponProxy(ply)
+
+		return nil
+	end
+
+	local entry = proxies[ply]
+
+	if entry and entry.model == model and IsValid(entry.ent) then
+		return entry.ent
+	end
+
+	F.ClearWeaponProxy(ply)
+
+	local ent = ClientsideModel(model)
+
+	if not IsValid(ent) then return nil end
+
+	ent:SetNoDraw(true) -- the engine never draws it: it is drawn from here only
+	ent:SetParent(ply)
+	ent:AddEffects(EF_BONEMERGE)
+	ent:SetSkin(weapon:GetSkin())
+
+	for group = 0, weapon:GetNumBodyGroups() - 1 do
+		ent:SetBodygroup(group, weapon:GetBodygroup(group))
+	end
+
+	proxies[ply] = {ent = ent, model = model}
+
+	return ent
+end
+
 -- Farther than this the sparks and the weapon are not drawn (not worth the cost); farther than the second one the
 -- player is not drawn at all.
 F.DetailDistance = 1200
@@ -552,11 +615,15 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				local weapon = ply:GetActiveWeapon()
 
 				if IsValid(weapon) and distance <= F.DetailDistance then
-					drawLayers(weapon, refract, base, 0, s.amount)
+					local held = F.WeaponProxy(ply, weapon) or weapon
+
+					drawLayers(held, refract, base, 0, s.amount)
 
 					if shader and strength > 0 then
-						shader.Draw(weapon, strength, s.amount, drawPlain)
+						shader.Draw(held, strength, s.amount, drawPlain)
 					end
+				elseif not IsValid(weapon) then
+					F.ClearWeaponProxy(ply)
 				end
 			end
 		end

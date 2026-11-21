@@ -37,6 +37,7 @@ local function fakePlayer(speed)
 	function ply:GetNW2Bool() return false end
 	function ply:EntIndex() return 99 end
 	function ply:GetVelocity() return Vector(speed or 0, 0, 0) end
+	function ply:GetModel() return "" end -- no world model to copy: the weapon itself is drawn (cases of the proxy give one)
 	function ply:DrawModel()
 		self.draws = self.draws + 1
 
@@ -598,6 +599,107 @@ return {
 				setState(ply, 1)
 				translucent()
 				expect(weapon.draws).to.equal(1)
+			end
+		},
+		{
+			name = "WeaponProxy: the weapon the server hides (EF_NODRAW: the engine then refuses to draw it, whoever asks) is drawn through a client model of its world model, bone-merged on the player, made once and kept while the weapon is the same, replaced when it changes, gone with the player's state",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local made, removed = {}, {}
+
+				stub(_G, "ClientsideModel", function(model)
+					local ent = {model = model, effects = 0}
+					function ent:IsValid() return not self.gone end
+					function ent:SetNoDraw(on) self.nodraw = on end
+					function ent:SetParent(parent) self.parent = parent end
+					function ent:AddEffects(flags) self.effects = bit.bor(self.effects, flags) end
+					function ent:SetSkin(skin) self.skin = skin end
+					function ent:SetBodygroup(group, value) self.groups = self.groups or {} self.groups[group] = value end
+					function ent:Remove() self.gone = true removed[#removed + 1] = self end
+					made[#made + 1] = ent
+
+					return ent
+				end)
+
+				local ply = fakePlayer(0)
+				local function weaponOf(model, skin)
+					local w = fakePlayer(0)
+					function w:GetModel() return model end
+					function w:GetSkin() return skin or 0 end
+					function w:GetNumBodyGroups() return 2 end
+					function w:GetBodygroup(i) return i + 1 end
+
+					return w
+				end
+
+				local a = weaponOf("models/weapons/w_pistol.mdl", 1)
+				local proxy = F.WeaponProxy(ply, a)
+				expect(proxy ~= nil).to.beTrue()
+				expect(#made).to.equal(1)
+				expect(proxy.model).to.equal("models/weapons/w_pistol.mdl")
+				expect(proxy.nodraw).to.beTrue()
+				expect(proxy.parent).to.equal(ply)
+				expect(bit.band(proxy.effects, EF_BONEMERGE) ~= 0).to.beTrue()
+				expect(proxy.skin).to.equal(1)
+				expect(proxy.groups[0]).to.equal(1)
+				expect(proxy.groups[1]).to.equal(2)
+
+				-- the same weapon (or another of the same model) next frame: the same proxy
+				expect(F.WeaponProxy(ply, a)).to.equal(proxy)
+				expect(F.WeaponProxy(ply, weaponOf("models/weapons/w_pistol.mdl"))).to.equal(proxy)
+				expect(#made).to.equal(1)
+
+				-- another model: the old one is removed, a new one is made
+				local other = F.WeaponProxy(ply, weaponOf("models/weapons/w_crossbow.mdl"))
+				expect(other ~= proxy).to.beTrue()
+				expect(#made).to.equal(2)
+				expect(removed[1]).to.equal(proxy)
+
+				-- no world model (or no weapon): nothing to draw through, and no proxy is kept
+				expect(F.WeaponProxy(ply, weaponOf(""))).to.beNil()
+				expect(removed[2]).to.equal(other)
+				expect(F.WeaponProxy(ply, NULL)).to.beNil()
+
+				-- ClearWeaponProxy takes it away, once
+				local third = F.WeaponProxy(ply, weaponOf("models/weapons/w_smg1.mdl"))
+				F.ClearWeaponProxy(ply)
+				expect(third.gone).to.beTrue()
+				F.ClearWeaponProxy(ply)
+				expect(#removed).to.equal(3)
+			end
+		},
+		{
+			name = "PlayerDraw: the weapon is drawn through its proxy when there is one (the real one is not drawn), with the shader's sparks too; and the proxy goes when the player's state does",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				local weapon, proxy = fakePlayer(0), fakePlayer(0)
+				weapon.center, proxy.center = Vector(300, 0, 0), Vector(300, 0, 0)
+				function ply:GetActiveWeapon() return weapon end
+				stub(F, "WeaponProxy", function(p, w) return proxy end)
+
+				setState(ply, 0.5)
+				translucent()
+				expect(proxy.draws).to.equal(2) -- refraction, plain model
+				expect(weapon.draws).to.equal(0)
+				expect(leftClean(log)).to.beTrue()
+
+				-- the sparks of the shader go on the proxy as well
+				stub(F.Shader, "Active", function() return true end)
+				local sparked = {}
+				stub(F.Shader, "Draw", function(ent, strength) sparked[ent] = strength return true end)
+				translucent()
+				expect(sparked[proxy]).to.equal(F.SparkRest)
+				expect(sparked[weapon]).to.beNil()
+
+				-- when the player is plain again the proxy is taken away
+				local cleared = {}
+				stub(F, "ClearWeaponProxy", function(p) cleared[#cleared + 1] = p end)
+				function ply:GetNW2Bool() return false end
+				stub(_G, "FrameTime", function() return 10 end)
+				F.Update(ply)
+				expect(cleared[1]).to.equal(ply)
 			end
 		},
 		{
