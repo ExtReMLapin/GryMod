@@ -81,6 +81,9 @@ return {
 				expect(API.Relation(p, fakeNPC(100))).to.equal("neutral")
 				expect(API.Relation(p, NULL)).to.equal("neutral")
 				expect(API.Relation(p, nil)).to.equal("neutral")
+				expect(API.Relation(p, 5)).to.equal("neutral") -- junk from another addon never raises
+				expect(API.Relation(p, "npc")).to.equal("neutral")
+				expect(API.Relation(7, fakeNPC(D_LI))).to.equal("neutral")
 				expect(API.Relation(NULL, fakeNPC(D_LI))).to.equal("neutral")
 				expect(API.Relation(p, p)).to.equal("neutral") -- never the asker itself
 			end

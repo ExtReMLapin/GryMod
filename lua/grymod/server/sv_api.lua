@@ -16,7 +16,7 @@ end
 local Modes = GryMod.Modes
 
 local function isPlayer(ply)
-	return IsValid(ply) and ply:IsPlayer()
+	return isentity(ply) and IsValid(ply) and ply:IsPlayer()
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -257,6 +257,11 @@ function API.RemoveRelationProvider(id)
 	return false
 end
 
+-- An entity, or a table (a stand-in with an IsValid method): IsValid raises an error on a number, and a number is junk.
+local function isobject(value)
+	return isentity(value) or istable(value)
+end
+
 -- The hook point of the registry of tracked entities (wave B replaces it): its `relation` field, or nil.
 API._TrackedRelation = API._TrackedRelation or function() return nil end
 
@@ -264,7 +269,7 @@ API._TrackedRelation = API._TrackedRelation or function() return nil end
 -- radar's colour, the binoculars). Server only: the client asks (gry_friendly_ask).
 function API.Relation(ply, ent)
 	-- an invalid player or entity is nobody's friend and nobody's enemy, and no provider is asked about it
-	if not IsValid(ply) or not IsValid(ent) then
+	if not isobject(ply) or not isobject(ent) or not IsValid(ply) or not IsValid(ent) then
 		return "neutral"
 	end
 
@@ -287,4 +292,44 @@ function API.Relation(ply, ent)
 	end
 
 	return GryMod.Friendly.BuiltinRelation(ply, ent)
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- HUD events: the server asks a client to play a HUD effect (the client side is cl_api.lua)
+-- ---------------------------------------------------------------------------------------------------------
+
+util.AddNetworkString("gry_api_hud")
+
+-- Plays the HUD event `name` on the clients of `players` (a player, or a list of players; what is not a valid player is left
+-- out). `data` is nil or a small table of numbers, strings and booleans (see GryMod.API.HUDEventLimits). The events that exist
+-- are the built-in ones (boot, reboot, lost, malfunction) and the ones other addons register on the client. Returns true and
+-- how many clients were asked, or false and why not.
+function API.HUDEvent(players, name, data)
+	local ok, reason = API.CheckHUDEvent(name, data)
+
+	if not ok then
+		return false, reason
+	end
+
+	local recipients = {}
+
+	if isPlayer(players) then
+		recipients[1] = players
+	elseif istable(players) then
+		for _, ply in ipairs(players) do
+			if isPlayer(ply) then
+				recipients[#recipients + 1] = ply
+			end
+		end
+	end
+
+	if #recipients == 0 then
+		return false, "no valid recipient"
+	end
+
+	net.Start("gry_api_hud")
+	API.WriteHUDEvent(name, data)
+	net.Send(recipients)
+
+	return true, #recipients
 end

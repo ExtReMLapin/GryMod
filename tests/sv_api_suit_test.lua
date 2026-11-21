@@ -144,6 +144,10 @@ return {
 				expect(API.SetEnergy(nil, 10)).to.beFalse()
 				expect(API.SetEnergy(NULL, 10)).to.beFalse()
 				expect(API.SetEnergy(game.GetWorld(), 10)).to.beFalse()
+				expect(API.SetEnergy(5, 10)).to.beFalse() -- junk raises nothing (IsValid itself errors on a number)
+				expect(API.SetMode("player", GryMod.Modes.ARMOR)).to.beFalse()
+				expect(API.GetMode(12)).to.beNil()
+				expect(API.IsSuitEnabled(12)).to.beFalse()
 				expect(API.GetEnergy(p)).to.equal(60)
 				expect(API.GetEnergy(nil)).to.beNil()
 			end

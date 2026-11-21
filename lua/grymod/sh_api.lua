@@ -100,3 +100,137 @@ function API.SafeCall(id, fn, ...)
 
 	return finish(id, pcall(fn, ...))
 end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- HUD events: the message the server sends and the client reads (gry_api_hud, sv_api.lua and cl_api.lua)
+-- ---------------------------------------------------------------------------------------------------------
+
+-- The payload is a name and a small table of numbers, strings and booleans, bounded in size.
+local LIMITS = {name = 32, fields = 8, key = 24, string = 128}
+API.HUDEventLimits = LIMITS
+
+local TYPE_NUMBER, TYPE_STRING, TYPE_BOOL = 0, 1, 2
+
+local function validName(name, max)
+	return isstring(name) and #name >= 1 and #name <= max and string.find(name, "^[%w_]+$") ~= nil
+end
+
+local function validNumber(n)
+	return isnumber(n) and n == n and n ~= math.huge and n ~= -math.huge
+end
+
+-- Whether a name (letters, digits and underscore, at most 32) is a valid HUD event name.
+function API.IsValidHUDEventName(name)
+	return validName(name, LIMITS.name)
+end
+
+-- Whether name and data (nil, or a table of at most 8 fields: key -> number, string or boolean) can be sent. Returns true,
+-- or false and why.
+function API.CheckHUDEvent(name, data)
+	if not validName(name, LIMITS.name) then
+		return false, "invalid event name"
+	end
+
+	if data == nil then
+		return true
+	end
+
+	if not istable(data) then
+		return false, "the data must be a table"
+	end
+
+	local count = 0
+
+	for key, value in pairs(data) do
+		count = count + 1
+
+		if count > LIMITS.fields then
+			return false, "too many fields (" .. LIMITS.fields .. " at most)"
+		end
+
+		if not validName(key, LIMITS.key) then
+			return false, "invalid field name"
+		end
+
+		if isstring(value) then
+			if #value > LIMITS.string then
+				return false, "string too long in field '" .. key .. "'"
+			end
+		elseif not isbool(value) and not validNumber(value) then
+			return false, "field '" .. key .. "' must be a finite number, a string or a boolean"
+		end
+	end
+
+	return true
+end
+
+-- Writes the message (the caller has started it and checked it with CheckHUDEvent).
+function API.WriteHUDEvent(name, data)
+	local count = 0
+
+	for _ in pairs(data or {}) do
+		count = count + 1
+	end
+
+	net.WriteString(name)
+	net.WriteUInt(count, 4)
+
+	for key, value in pairs(data or {}) do
+		net.WriteString(key)
+
+		if isstring(value) then
+			net.WriteUInt(TYPE_STRING, 2)
+			net.WriteString(value)
+		elseif isbool(value) then
+			net.WriteUInt(TYPE_BOOL, 2)
+			net.WriteBool(value)
+		else
+			net.WriteUInt(TYPE_NUMBER, 2)
+			net.WriteDouble(value)
+		end
+	end
+end
+
+-- Reads the message: the name and the table, or nil when it breaks the bounds (it is dropped, never trusted).
+function API.ReadHUDEvent()
+	local name = net.ReadString()
+	local count = net.ReadUInt(4)
+
+	if not validName(name, LIMITS.name) or count > LIMITS.fields then
+		return nil
+	end
+
+	local data = {}
+
+	for _ = 1, count do
+		local key = net.ReadString()
+		local kind = net.ReadUInt(2)
+		local value
+
+		if kind == TYPE_STRING then
+			value = net.ReadString()
+
+			if #value > LIMITS.string then
+				return nil
+			end
+		elseif kind == TYPE_BOOL then
+			value = net.ReadBool()
+		elseif kind == TYPE_NUMBER then
+			value = net.ReadDouble()
+
+			if not validNumber(value) then
+				return nil
+			end
+		else
+			return nil
+		end
+
+		if not validName(key, LIMITS.key) then
+			return nil
+		end
+
+		data[key] = value
+	end
+
+	return name, data
+end
