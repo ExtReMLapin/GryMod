@@ -125,6 +125,40 @@ return {
 			end
 		},
 		{
+			name = "a grenade held in the player's hands is not armed, and is again once it is let go",
+			func = function(state)
+				local p = ply()
+				local g = spawn("npc_grenade_frag", p:EyePos() + p:GetForward() * 60)
+				p:PickupObject(g) -- the engine arms it (1.5 s) and the player holds it
+				expect(g:IsPlayerHolding()).to.beTrue()
+				expect(g:GetInternalVariable("m_flDetonateTime") > 0).to.beTrue()
+				expect(G.ReadState(g).held).to.beTrue()
+				G.Update(g)
+				expect(g:GetNWBool("GryArmed")).to.beFalse()
+				p:DropObject()
+				expect(g:IsPlayerHolding()).to.beFalse()
+				G.Update(g)
+				expect(g:GetNWBool("GryArmed")).to.beTrue()
+			end
+		},
+		{
+			name = "a held projectile is never active, whatever its class",
+			func = function(state)
+				expect(G.IsActive("npc_grenade_frag", {detonate = 1.5, held = true})).to.beFalse()
+				expect(G.IsActive("npc_grenade_frag", {detonate = 1.5, held = false})).to.beTrue()
+				expect(G.IsActive("grenade_helicopter", {activated = true, held = true})).to.beFalse()
+				expect(G.IsActive("rpg_missile", {speed = 900, held = true})).to.beFalse()
+			end
+		},
+		{
+			name = "the pick-up and the throw (the engine's hooks) mark the grenade at once, without waiting for the tick",
+			func = function(state)
+				local hooks = hook.GetTable()
+				expect(hooks.OnPlayerPhysicsPickup and hooks.OnPlayerPhysicsPickup.GRYGRENADEHELD ~= nil).to.beTrue()
+				expect(hooks.OnPlayerPhysicsDrop and hooks.OnPlayerPhysicsDrop.GRYGRENADEHELD ~= nil).to.beTrue()
+			end
+		},
+		{
 			name = "a mine on the ground and a bomb at rest are not armed",
 			func = function(state)
 				local p = ply()

@@ -16,6 +16,10 @@ Grenade.MOVIE = "hud_grenadedetect"
 -- Metres from which a grenade is warned about (not in the original code we could read).
 Grenade.RANGE = 60
 
+-- The player's own grenade is not warned about while it is within this distance of the eye: the one thrown by
+-- weapon_frag appears 0.7 m from the eye and is 3 m away a tenth of a second later (measured), the hand is no danger.
+Grenade.MIN_OWN = 1
+
 local STAGE_W, STAGE_H = 1366, 768
 local HALF_ICON = 18 -- stage pixels from the icon's corner to the centre of its hexagon, at full size
 local EDGE = 0.03 -- the screen position is held between 3 and 97 percent
@@ -51,13 +55,15 @@ function Grenade.StagePosition(screenX, screenY, screenW, screenH, metres)
 end
 
 -- The nearest of the candidates ({class, metres, onScreen, own, armed}) that deserves a warning, or nil. `armed` is
--- the server's mark (sv_grenade.lua): an inert projectile (one lying around, a mine on the ground) is not warned about,
--- unless armedOnly is false (the switch gry_grenade_armed_only, for debugging).
+-- the server's mark (sv_grenade.lua): true for a projectile that is active and not held in the player's hands, so an
+-- inert one (lying around, a mine on the ground) and the one in the hands are not warned about, unless armedOnly is
+-- false (the switch gry_grenade_armed_only, for debugging). The player's own thrown grenade is warned about like an
+-- enemy's, except at the hand (MIN_OWN).
 function Grenade.Pick(candidates, armedOnly)
 	local best
 
 	for _, c in ipairs(candidates or {}) do
-		if TYPES[c.class] and c.onScreen and not c.own and c.metres <= Grenade.RANGE and (armedOnly == false or c.armed) and (not best or c.metres < best.metres) then
+		if TYPES[c.class] and c.onScreen and not (c.own and c.metres < Grenade.MIN_OWN) and c.metres <= Grenade.RANGE and (armedOnly == false or c.armed) and (not best or c.metres < best.metres) then
 			best = c
 		end
 	end

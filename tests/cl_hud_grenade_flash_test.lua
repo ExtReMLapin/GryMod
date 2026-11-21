@@ -182,13 +182,12 @@ return {
 			end
 		},
 		{
-			name = "the warning picks the nearest dangerous projectile in front of the player, not the player's own, within range",
+			name = "the warning picks the nearest dangerous projectile in front of the player, within range, the player's own thrown one included",
 			func = function(state)
 				local G = GryMod.FlashGrenade
 				local picked = G.Pick({
 					{class = "npc_grenade_frag", metres = 20, onScreen = true, own = false, armed = true},
 					{class = "npc_grenade_frag", metres = 8, onScreen = false, own = false, armed = true}, -- behind the camera
-					{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = true}, -- thrown by the player
 					{class = "prop_physics", metres = 3, onScreen = true, own = false, armed = true}, -- not a grenade
 					{class = "grenade_ar2", metres = 12, onScreen = true, own = false, armed = true},
 					{class = "npc_grenade_frag", metres = G.RANGE + 1, onScreen = true, own = false, armed = true} -- too far
@@ -196,6 +195,29 @@ return {
 				expect(picked.metres).to.equal(12)
 				expect(G.Pick({})).to.equal(nil)
 				expect(G.Pick(nil)).to.equal(nil)
+			end
+		},
+		{
+			name = "the player's own thrown grenade is warned about like an enemy's, but not while it is still at the hand (under 1 m)",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				expect(G.MIN_OWN).to.equal(1)
+				-- armed and free: the one the player threw, falling or rolling near them
+				local picked = G.Pick({{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = true}})
+				expect(picked ~= nil and picked.metres == 5).to.beTrue()
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 1.5, onScreen = true, own = true, armed = true}}) ~= nil).to.beTrue()
+				-- at the hand, the instant it is thrown: nothing yet
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.7, onScreen = true, own = true, armed = true}})).to.equal(nil)
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.99, onScreen = true, own = true, armed = true}})).to.equal(nil)
+				-- an enemy's is not held to that
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 0.7, onScreen = true, own = false, armed = true}}) ~= nil).to.beTrue()
+				-- and an own one that is not armed (the server marks it so while it is held in the hands) is not warned about
+				expect(G.Pick({{class = "npc_grenade_frag", metres = 5, onScreen = true, own = true, armed = false}})).to.equal(nil)
+				-- the nearest of an own one and an enemy's
+				expect(G.Pick({
+					{class = "npc_grenade_frag", metres = 6, onScreen = true, own = true, armed = true},
+					{class = "grenade_ar2", metres = 9, onScreen = true, own = false, armed = true}
+				}).metres).to.equal(6)
 			end
 		},
 		{

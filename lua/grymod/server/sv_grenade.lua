@@ -25,7 +25,8 @@ local HOPPING = 100 -- a mine in the air (its hop is 300 and more, the clicking 
 
 -- The class -> the rule that says whether it is active, given the state read from the entity: detonate (seconds left
 -- before the explosion: the engine tells minus the game time of an unarmed grenade), speed (units a second),
--- activated (the bomb), mineState (1 on the ground, 3 armed, 4 triggered: clicking, then jumping), launched, held.
+-- activated (the bomb), mineState (1 on the ground, 3 armed, 4 triggered: clicking, then jumping), launched, held (in the
+-- player's hands, or by the gravity gun: then it is not a danger coming, the player has it).
 local RULES = {
 	-- npc_grenade_frag: the fuse runs. Measured: a grenade made at rest has -CurTime(), SetTimer 3 gives 3 counting down,
 	-- a pick-up by the player arms it with 1.5.
@@ -50,7 +51,7 @@ local RULES = {
 	end,
 	-- prop_combine_ball: m_bLaunched from the weapon's fire or a launcher, m_bHeld by a gravity gun
 	prop_combine_ball = function(s)
-		return s.launched == true and s.held ~= true
+		return s.launched == true
 	end
 }
 
@@ -63,13 +64,19 @@ end
 
 function Grenade.IsActive(class, state)
 	local rule = class and RULES[class]
+	state = state or {}
 
-	return rule ~= nil and rule(state or {}) == true
+	-- a grenade held in the hands has its fuse running (picked up with the use key it is armed with 1.5 s): no warning
+	if state.held == true then
+		return false
+	end
+
+	return rule ~= nil and rule(state) == true
 end
 
 -- The values the rules read, from the entity itself.
 function Grenade.ReadState(ent)
-	local s = {speed = ent:GetVelocity():Length()}
+	local s = {speed = ent:GetVelocity():Length(), held = ent:IsPlayerHolding()}
 	local class = ent:GetClass()
 
 	if class == "npc_grenade_frag" then
@@ -80,7 +87,7 @@ function Grenade.ReadState(ent)
 		s.mineState = ent:GetInternalVariable("m_iMineState")
 	elseif class == "prop_combine_ball" then
 		s.launched = ent:GetInternalVariable("m_bLaunched") == true
-		s.held = ent:GetInternalVariable("m_bHeld") == true
+		s.held = s.held or ent:GetInternalVariable("m_bHeld") == true
 	end
 
 	return s
@@ -137,6 +144,20 @@ function Grenade.Tick()
 		end
 	end
 end
+
+-- The player picks one up or throws it: marked at once (the state of the hands changes after the hook, so one frame on)
+local function markSoon(_, ent)
+	if IsValid(ent) and Grenade.Classes[ent:GetClass()] then
+		Grenade.Track(ent)
+
+		timer.Simple(0, function()
+			Grenade.Update(ent)
+		end)
+	end
+end
+
+hook.Add("OnPlayerPhysicsPickup", "GRYGRENADEHELD", markSoon)
+hook.Add("OnPlayerPhysicsDrop", "GRYGRENADEHELD", markSoon)
 
 hook.Add("OnEntityCreated", "GRYGRENADETRACK", function(ent)
 	-- the class is known when the entity is made
