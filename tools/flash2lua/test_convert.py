@@ -19,6 +19,17 @@ class ConvertTest(unittest.TestCase):
         lua_file = os.path.join(lua_dir, "hud_ammohealthenergysuit.lua")
         self.assertTrue(os.path.exists(lua_file))
         text = open(lua_file, encoding="utf8").read()
+        self.assertIn('"grymod/flash/hud_ammohealthenergysuit_1"', text)
+        self.assertTrue(os.path.exists(os.path.join(mat_dir, "hud_ammohealthenergysuit_1.vtf")))
+        self.assertTrue(os.path.exists(os.path.join(mat_dir, "hud_ammohealthenergysuit_1.vmt")))
+        self.assertTrue(os.path.exists(os.path.join(mat_dir, "hud_ammohealthenergysuit_1_w.vtf")))
+        self.assertFalse(any(f.endswith(".png") for f in os.listdir(mat_dir)))
+
+    def test_png_option_keeps_the_png_atlases(self):
+        tmp = tempfile.mkdtemp()
+        lua_dir, mat_dir = os.path.join(tmp, "lua"), os.path.join(tmp, "materials")
+        convert.convert_movie(PAK, "HUD_AmmoHealthEnergySuit", FFDEC, lua_dir, mat_dir, png=True)
+        text = open(os.path.join(lua_dir, "hud_ammohealthenergysuit.lua"), encoding="utf8").read()
         self.assertIn("grymod/flash/hud_ammohealthenergysuit_1.png", text)
         self.assertTrue(os.path.exists(os.path.join(mat_dir, "hud_ammohealthenergysuit_1.png")))
 
@@ -28,7 +39,8 @@ class ConvertTest(unittest.TestCase):
         with open(os.path.join(tmp, "lua", "hud_ammohealthenergysuit.lua"), encoding="utf8") as f:
             text = f.read()
         self.assertIn("fonts={", text)
-        self.assertTrue(os.path.exists(os.path.join(tmp, "m", "hud_ammohealthenergysuit_font.png")))
+        self.assertIn("grymod/flash/hud_font", text)
+        self.assertTrue(os.path.exists(os.path.join(tmp, "m", "hud_font.vtf")))
 
     def test_second_run_is_byte_identical(self):
         outs = []

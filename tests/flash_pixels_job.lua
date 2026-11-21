@@ -2,8 +2,8 @@
 -- the same SWF (tools/flash2lua/compare_pixels.py). Run as a gmod-mcp lua_job in the CLIENT realm:
 --   lua_job {realm = "client", path = ".../tests/flash_pixels_job.lua",
 --            args = {movie = "hud_ammohealthenergysuit", out = "grymod_dev/flash_px.png"}}
--- The atlas PNGs must be in garrysmod/data/grymod_dev/ (copy materials/grymod/flash/*.png there): a branch that is
--- not mounted as an addon has no materials folder in the game's search path.
+-- The atlases are VTF textures of the addon's materials folder, found when the addon is mounted. A branch that is not
+-- mounted as an addon can keep PNG atlases in garrysmod/data/grymod_dev/ (args.dataAtlases = true, see atlasSuffix).
 -- The result is written under garrysmod/data/ (out). Optional args: width, height (1024x768), scale (1), bg,
 -- twice (draw a second time and save out_2.png: it must be identical, from the group caches),
 -- radar = {bearing, fov, stealth} (the compass panel), advance (seconds of timeline to play before drawing the HUD),
@@ -25,10 +25,13 @@ Flash.IgnoreBlendModes = args.ignoreBlend == true
 -- (copy hud_x_1.png to data/grymod_dev/hud_x_1<suffix>.png and pass the suffix)
 local suffix = args.atlasSuffix or ""
 
-Flash.AtlasMaterialPath = function(path)
-	local name = path:match("[^/]+$"):gsub("%.png$", suffix .. ".png")
+if args.dataAtlases then
+	-- PNG atlases kept in garrysmod/data/grymod_dev/ (<name>.png) instead of the addon's VTF textures
+	Flash.AtlasMaterialPath = function(path)
+		local name = path:match("[^/]+$"):gsub("%.png$", "") .. suffix .. ".png"
 
-	return "../data/grymod_dev/" .. name
+		return "../data/grymod_dev/" .. name
+	end
 end
 
 if Flash.ClearMaterialCache then
