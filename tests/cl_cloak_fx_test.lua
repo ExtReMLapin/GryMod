@@ -206,37 +206,58 @@ return {
 			end
 		},
 		{
-			name = "moving makes the plain model a little more visible, 3 points of opacity at full speed and nothing else: the bend and the sparks are those of standing still",
+			name = "moving changes neither the plain model's opacity nor the bend: only the electricity, faintly (3 % at full speed) once the change is done; in the change it is the change's own, whatever the speed",
 			func = function(state)
 				local F = GryMod.CloakFX
-				expect(F.MovingVisibility).to.equal(0.03)
+				expect(F.MovingSpark).to.equal(0.03)
+				expect(F.MovingVisibility).to.beNil()
 
 				local refractStill, baseStill, sparkStill = F.Visibility(1, 0)
 				local refractRun, baseRun, sparkRun = F.Visibility(1, F.FullSpeed)
-				expect(baseRun - baseStill).to.aboutEqual(0.03, 0.0001)
 				expect(refractRun).to.equal(refractStill)
-				expect(sparkRun).to.equal(sparkStill)
+				expect(baseRun).to.equal(baseStill)
+				expect(sparkStill).to.equal(0)
+				expect(sparkRun).to.aboutEqual(0.03, 0.000001)
 
-				-- half the speed, half the supplement; a higher one is capped; a negative one counts for nothing
-				expect(select(2, F.Visibility(1, F.FullSpeed / 2)) - baseStill).to.aboutEqual(0.015, 0.0001)
-				expect(select(2, F.Visibility(1, 99999))).to.aboutEqual(baseRun, 0.000001)
-				expect(select(2, F.Visibility(1, -50))).to.aboutEqual(baseStill, 0.000001)
+				-- half the speed, half the strength; a higher speed is capped; a negative one counts for nothing
+				expect(select(3, F.Visibility(1, F.FullSpeed / 2))).to.aboutEqual(0.015, 0.000001)
+				expect(select(3, F.Visibility(1, 99999))).to.aboutEqual(0.03, 0.000001)
+				expect(select(3, F.Visibility(1, -50))).to.equal(0)
+				expect(select(3, F.Visibility(1))).to.equal(0)
 
-				-- in the change it grows with the level (the plain model is what has not gone yet)
-				local _, mid = F.Visibility(0.5, 0)
-				local _, midRun = F.Visibility(0.5, F.FullSpeed)
-				expect(midRun - mid).to.aboutEqual(0.015, 0.0001)
+				-- in the change: the change's own intensity, the same whether he moves or not (not added to)
+				for _, speed in ipairs({0, 150, 300, 400}) do
+					local refract, base, spark = F.Visibility(0.5, speed)
+					expect(spark).to.equal(F.SparkRest)
+					expect(refract).to.equal((F.Visibility(0.5, 0)))
+					expect(base).to.equal(select(2, F.Visibility(0.5, 0)))
+				end
 
-				-- a plain player stays plain; the speed is not needed
+				-- a plain player stays plain
 				local refract, base, spark = F.Visibility(0, 400)
 				expect(refract).to.equal(0)
 				expect(base).to.equal(1)
 				expect(spark).to.equal(0)
-				expect(select(2, F.Visibility(1))).to.equal(baseStill)
 			end
 		},
 		{
-			name = "SmoothSpeed follows the real speed with a short delay, so that the supplement does not flicker at every step",
+			name = "SparkStrength takes the speed: the change's intensity in the change, the faint motion once done, nothing for a plain player; TransitionSpark (the scan lines) is the change's alone",
+			func = function(state)
+				local F = GryMod.CloakFX
+				expect(F.SparkStrength(0, 300)).to.equal(0)
+				expect(F.SparkStrength(0.5, 0)).to.equal(F.SparkRest)
+				expect(F.SparkStrength(0.5, 300)).to.equal(F.SparkRest)
+				expect(F.SparkStrength(1, 0)).to.equal(0)
+				expect(F.SparkStrength(1, 300)).to.aboutEqual(0.03, 0.000001)
+				expect(F.SparkStrength(1)).to.equal(0)
+
+				expect(F.TransitionSpark(0.5)).to.equal(F.SparkRest)
+				expect(F.TransitionSpark(1)).to.equal(0)
+				expect(F.TransitionSpark(0)).to.equal(0)
+			end
+		},
+		{
+			name = "SmoothSpeed follows the real speed with a short delay, so that the faint sparks of a walk do not flicker at every step",
 			func = function(state)
 				local F = GryMod.CloakFX
 				expect(F.SmoothSpeed(0, 300, 0)).to.equal(0)
@@ -424,7 +445,7 @@ return {
 				expect(#log.color).to.beGreaterThan(0)
 				expect(leftClean(log)).to.beTrue()
 
-				-- done: no sparks, whether he moves or not; the plain model is nearly gone when still, back at 6 % when he runs
+				-- done and standing: the refraction only, no sparks; done and running: the faint sparks of a walk, here the older outline layer (3 %)
 				GryMod.CloakFX.States[ply] = nil
 				local still = fakePlayer(0)
 				setState(still, 1)
@@ -434,7 +455,7 @@ return {
 				local running = fakePlayer(400)
 				setState(running, 1, 400)
 				translucent()
-				expect(running.draws).to.equal(2) -- the refraction and the plain model, faint
+				expect(running.draws).to.equal(2) -- the refraction and the faint outline; the plain model is still nearly gone
 				expect(leftClean(log)).to.beTrue()
 			end
 		},
@@ -936,6 +957,30 @@ return {
 			end
 		},
 		{
+			name = "pixel shader, third person: a camouflaged player who has finished and moves gets the faint sparks of a walk (3 % at full speed, none when he stands, none far away)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local running, walking, far = fakePlayer(0), fakePlayer(0), fakePlayer(0)
+				far.center = Vector(F.DetailDistance + 500, 0, 0)
+				stub(F.Shader, "Active", function() return true end)
+
+				local strengths = {}
+				stub(F.Shader, "Draw", function(ent, strength) strengths[ent] = strength return true end)
+
+				setState(running, 1, F.FullSpeed)
+				setState(walking, 1, F.FullSpeed / 2)
+				setState(far, 1, F.FullSpeed)
+				stub(_G, "EyePos", function() return Vector(0, 0, 0) end)
+				stub(_G, "EyeVector", function() return Vector(1, 0, 0) end)
+				hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, false, false)
+
+				expect(strengths[running]).to.aboutEqual(0.03, 0.000001)
+				expect(strengths[walking]).to.aboutEqual(0.015, 0.000001)
+				expect(strengths[far]).to.beNil()
+			end
+		},
+		{
 			name = "pixel shader, third person: refraction and plain model, then the shader added at the faint intensity while the change lasts, whoever moves",
 			func = function(state)
 				local F = GryMod.CloakFX
@@ -1066,12 +1111,20 @@ return {
 				expect(linesDrawn).to.equal(0)
 				expect(leftClean(log)).to.beTrue()
 
-				-- done: no sparks
+				-- done and standing: no sparks
 				calls = {}
 				setState(me, 1)
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(#calls).to.equal(0)
+
+				-- done and moving: the faint sparks of a walk
+				calls = {}
+				setState(me, 1, F.FullSpeed)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(#calls).to.equal(1)
+				expect(calls[1].strength).to.aboutEqual(0.03, 0.000001)
 			end
 		},
 		{
