@@ -37,12 +37,13 @@ return {
 	groupName = "GryMod quick menu (Flash)",
 	-- opening and closing the menu play its sounds: nothing is played by the tests (the mix's single exit is replaced)
 	beforeEach = function(state)
-		state.realEmit = GryMod.SoundMix.Emit
-		GryMod.SoundMix.Emit = function() end
+		-- (the convars first: a failure here must not leave the sound exit replaced)
 		state.savedKeep = GetConVar("gry_menu_keep_highlight"):GetString()
 		GetConVar("gry_menu_keep_highlight"):SetString("1")
 		state.savedRing = GetConVar("gry_menu_ring_film"):GetString()
 		GetConVar("gry_menu_ring_film"):SetString("1")
+		state.realEmit = GryMod.SoundMix.Emit
+		GryMod.SoundMix.Emit = function() end
 	end,
 	afterEach = function(state)
 		GryMod.SoundMix.Emit = state.realEmit
