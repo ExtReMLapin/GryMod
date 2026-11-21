@@ -28,9 +28,32 @@ def noise_volume_bytes(volume):
     return vtf.vtf_bytes(volume, "i8", srgb=False, mips=False, clamp="")
 
 
+# The original's sparks are thin lines that its HDR output and bloom make glow; Source here has neither, so the peaks of the profile are widened
+# and brightened a little in the data itself (the lines of the noise they are read through get thicker, in step with the peaks).
+PROFILE_GLOW_RADIUS = 2
+PROFILE_GLOW_GAIN = 2.0
+
+
+def glow_profile(profile, radius=PROFILE_GLOW_RADIUS, gain=PROFILE_GLOW_GAIN):
+    """(n, 3) floats 0..1 -> the same with every channel's peaks widened by `radius` texels and brightened: never dimmer than the input,
+    at most 1, and wrapping round the ends (the profile repeats)."""
+    if radius <= 0:
+        return profile.copy()
+
+    acc = np.zeros_like(profile, dtype=np.float64)
+    for shift in range(-radius, radius + 1):
+        acc += np.roll(profile, shift, axis=0)
+
+    return np.clip(np.maximum(profile, acc / (2 * radius + 1) * gain), 0.0, 1.0)
+
+
 def spark_profile_bytes(profile):
-    """The VTF of the (1, 256, 4) spark profile: colours that repeat along the row, no mips, no sRGB."""
-    return vtf.vtf_bytes(profile, "rgba8888", srgb=False, mips=False, clamp="t")
+    """The VTF of the (1, 256, 4) spark profile, glowing: colours that repeat along the row, no mips, no sRGB."""
+    rgb = profile[0, :, :3].astype(np.float64) / 255
+    out = profile.copy()
+    out[0, :, :3] = np.round(glow_profile(rgb) * 255).astype(np.uint8)
+
+    return vtf.vtf_bytes(out, "rgba8888", srgb=False, mips=False, clamp="t")
 
 
 def load_inputs(dds_dir):

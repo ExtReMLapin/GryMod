@@ -58,13 +58,79 @@ class SparkProfileTest(unittest.TestCase):
         self.assertTrue(flags & vtf.FLAG_CLAMPT)
         self.assertFalse(flags & vtf.FLAG_SRGB)
 
-    def test_the_three_channels_survive_the_round_trip(self):
+    def test_the_three_channels_keep_their_own_peaks_where_and_as_high_as_they_were(self):
+        profile = np.zeros((1, 256, 4), dtype=np.uint8)
+        profile[0, 40, 0] = 200
+        profile[0, 120, 1] = 150
+        profile[0, 200, 2] = 90
+        profile[0, :, 3] = 255
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "p.vtf")
             with open(path, "wb") as out:
-                out.write(mcs.spark_profile_bytes(self.profile()))
+                out.write(mcs.spark_profile_bytes(profile))
             back = vtf.read_vtf_top(path)
-        self.assertTrue((back[:, :, :3] == self.profile()[:, :, :3]).all())
+        self.assertEqual(back[0, 40, 0], 200)
+        self.assertEqual(back[0, 120, 1], 150)
+        self.assertEqual(back[0, 200, 2], 90)
+        self.assertEqual(back[0, 40, 1], 0)
+        self.assertEqual(back[0, 40, 2], 0)
+        self.assertTrue((back[0, :, 3] == 255).all())
+
+
+class GlowTest(unittest.TestCase):
+    """The original's sparks are thin and its HDR output and bloom make them glow; here the peaks of the profile are widened in the data."""
+
+    def peak(self, at=100, value=0.5):
+        profile = np.zeros((256, 3))
+        profile[at, :] = value
+
+        return profile
+
+    def test_a_peak_gets_wider_and_brighter_by_the_radius(self):
+        out = mcs.glow_profile(self.peak(), radius=2, gain=2.0)
+        self.assertTrue((out[98:103] > 0).all())
+        self.assertEqual(out[96, 0], 0)
+        self.assertEqual(out[104, 0], 0)
+        self.assertGreater(out[100, 0], 0.5 - 1e-9)
+
+    def test_never_dimmer_than_the_input_and_never_above_one(self):
+        rng = np.random.default_rng(5)
+        profile = rng.random((256, 3)) ** 8
+        out = mcs.glow_profile(profile, radius=3, gain=4.0)
+        self.assertTrue((out >= profile - 1e-12).all())
+        self.assertLessEqual(out.max(), 1.0)
+
+    def test_the_profile_repeats_so_the_glow_wraps_round_its_ends(self):
+        out = mcs.glow_profile(self.peak(at=0), radius=2, gain=2.0)
+        self.assertGreater(out[255, 0], 0)
+        self.assertGreater(out[254, 0], 0)
+        self.assertGreater(out[2, 0], 0)
+
+    def test_each_channel_is_widened_on_its_own(self):
+        profile = np.zeros((256, 3))
+        profile[50, 0] = 0.4
+        profile[150, 2] = 0.6
+        out = mcs.glow_profile(profile, radius=2, gain=2.0)
+        self.assertGreater(out[51, 0], 0)
+        self.assertEqual(out[51, 1], 0)
+        self.assertEqual(out[51, 2], 0)
+        self.assertGreater(out[151, 2], 0)
+
+    def test_radius_zero_leaves_the_profile_as_it_is(self):
+        profile = self.peak()
+        self.assertTrue((mcs.glow_profile(profile, radius=0, gain=3.0) == profile).all())
+
+    def test_the_written_profile_carries_the_glow(self):
+        profile = np.zeros((1, 256, 4), dtype=np.uint8)
+        profile[0, 100, :3] = 100
+        profile[0, :, 3] = 255
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "p.vtf")
+            with open(path, "wb") as out:
+                out.write(mcs.spark_profile_bytes(profile))
+            back = vtf.read_vtf_top(path)
+        self.assertGreater(back[0, 99, 0], 0)
+        self.assertGreater(back[0, 101, 0], 0)
 
 
 if __name__ == "__main__":

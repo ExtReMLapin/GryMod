@@ -95,5 +95,18 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(sorted(built), ["a_ps30_r2.vcs", "a_vs30_r2.vcs"])
 
 
+class PackagingTest(unittest.TestCase):
+    def test_the_workshop_package_leaves_the_shader_sources_out_but_ships_the_compiled_ones(self):
+        """gmad's white list takes shaders/fxc/*.vcs and not .hlsl: the sources stay in the repository, the .vcs go to the players."""
+        import json
+
+        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        with open(os.path.join(root, "addon.json"), encoding="utf8") as f:
+            ignore = json.load(f)["ignore"]
+        self.assertIn("shaders/src/*", ignore)
+        self.assertFalse(any(pattern.startswith("shaders/fxc") or pattern == "*.vcs" for pattern in ignore))
+        self.assertTrue(any(name.endswith(".vcs") for name in os.listdir(os.path.join(root, "shaders", "fxc"))))
+
+
 if __name__ == "__main__":
     unittest.main()
