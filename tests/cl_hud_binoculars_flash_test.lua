@@ -11,6 +11,14 @@ local function run(b, seconds)
 	end
 end
 
+-- the strength (0 to 1) of the vignette, the full-screen black gradient of the film: the colour transform of the picture
+-- held by the clip called Alpha (its alpha is a multiplier of 1 when it has none)
+local function vignetteAlpha(b)
+	local entry = b.root:Find("Root.Alpha"):EntryAt(1)
+
+	return entry.cx and entry.cx[4] or 1
+end
+
 -- the text of the field called `name` held directly by `clip`
 local function field(clip, name)
 	local entry = clip.names[name]
@@ -595,7 +603,7 @@ return {
 			name = "each addition to the binoculars has its own switch (a client convar), on by default",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
-				for _, name in ipairs({"gry_binoculars_sounds", "gry_binoculars_aim", "gry_binoculars_horizon", "gry_binoculars_tag"}) do
+				for _, name in ipairs({"gry_binoculars_sounds", "gry_binoculars_aim", "gry_binoculars_horizon", "gry_binoculars_tag", "gry_binoculars_vignette"}) do
 					local convar = GetConVar(name)
 					expect(convar).toNot.beNil()
 					expect(convar:GetDefault()).to.equal("1")
@@ -635,11 +643,118 @@ return {
 
 				RunConsoleCommand = realRun
 				expect(ok).to.beTrue()
-				for _, name in ipairs({"gry_binoculars_sounds", "gry_binoculars_aim", "gry_binoculars_horizon", "gry_binoculars_tag"}) do
+				for _, name in ipairs({"gry_binoculars_sounds", "gry_binoculars_aim", "gry_binoculars_horizon", "gry_binoculars_tag", "gry_binoculars_vignette"}) do
 					expect(found[name]).to.beTrue()
 				end
 
 				expect(#writes).to.equal(0)
+			end
+		},
+		{
+			name = "the vignette (the film's full-screen black gradient, the clip called Alpha) is there from the first frame of the intro, at full strength, as in the film",
+			func = function(state)
+				local b = newBinoculars()
+				local alpha = b.root:Find("Root.Alpha")
+				expect(alpha).toNot.beNil()
+				b:Show()
+				expect(vignetteAlpha(b)).to.equal(1)
+				run(b, 0.2)
+				expect(vignetteAlpha(b)).to.equal(1)
+				run(b, 1.5)
+				expect(vignetteAlpha(b)).to.equal(1)
+			end
+		},
+		{
+			name = "closing fades the vignette out frame by frame as the film's script does (Binoculars frame 26 plays Alpha's close): 14 frames of the film, 0.93 down to 0, while the rest of the close animation goes on",
+			func = function(state)
+				local b = newBinoculars()
+				local fade = GryMod.FlashBinoculars.VignetteFade
+				local ok, err = pcall(function()
+					GryMod.FlashBinoculars.VignetteFade = function() return true end
+					b:Show()
+					run(b, 1.5)
+					b:Close()
+					-- the values of the film's frames 2 to 15 of the clip (0.929688 ... 0), one per 1/30 s, the first at once
+					local expected = {0.929688, 0.855469, 0.785156, 0.714844, 0.644531, 0.570312, 0.5, 0.429688, 0.355469, 0.285156, 0.214844, 0.144531, 0.0703125, 0}
+					for i, value in ipairs(expected) do
+						expect(math.abs(vignetteAlpha(b) - value) < 1e-6).to.beTrue()
+						b:Update(1 / 30)
+					end
+
+					-- gone, while the binoculars are still closing (the close animation is longer)
+					expect(vignetteAlpha(b)).to.equal(0)
+					expect(b:IsShown()).to.beTrue()
+					run(b, 2)
+					expect(b:IsShown()).to.beFalse()
+				end)
+
+				GryMod.FlashBinoculars.VignetteFade = fade
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "with the fade off the vignette stays at full strength until the binoculars are gone, as before",
+			func = function(state)
+				local b = newBinoculars()
+				local fade = GryMod.FlashBinoculars.VignetteFade
+				local ok, err = pcall(function()
+					GryMod.FlashBinoculars.VignetteFade = function() return false end
+					b:Show()
+					run(b, 1.5)
+					b:Close()
+					run(b, 0.5)
+					expect(vignetteAlpha(b)).to.equal(1)
+				end)
+
+				GryMod.FlashBinoculars.VignetteFade = fade
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "opening again after a close starts the vignette over at full strength (the film is not left at its faded frame)",
+			func = function(state)
+				local b = newBinoculars()
+				local fade = GryMod.FlashBinoculars.VignetteFade
+				local ok, err = pcall(function()
+					GryMod.FlashBinoculars.VignetteFade = function() return true end
+					b:Show()
+					run(b, 1.5)
+					b:Close()
+					run(b, 3)
+					expect(b:IsShown()).to.beFalse()
+					b:Show()
+					expect(vignetteAlpha(b)).to.equal(1)
+					run(b, 1.5)
+					expect(vignetteAlpha(b)).to.equal(1)
+
+					-- and one that comes while the close is under way
+					b:Close()
+					run(b, 0.2)
+					expect(vignetteAlpha(b) < 1).to.beTrue()
+					b:Show()
+					expect(vignetteAlpha(b)).to.equal(1)
+				end)
+
+				GryMod.FlashBinoculars.VignetteFade = fade
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the vignette's fade has its own switch, on by default, with a check box in the options",
+			func = function(state)
+				local convar = GetConVar("gry_binoculars_vignette")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(isfunction(GryMod.FlashBinoculars.VignetteFade)).to.beTrue()
 			end
 		},
 		{

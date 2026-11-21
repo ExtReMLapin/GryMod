@@ -33,12 +33,14 @@ Bino.SCAN_DEBOUNCE = 0.05
 local SoundsConVar = CreateClientConVar("gry_binoculars_sounds", "1", true, false, "The binoculars' sounds: opening, closing, the ambience loop, a target locked")
 local AimConVar = CreateClientConVar("gry_binoculars_aim", "1", true, false, "The original's aim rules: four rays 0.3 m off the centre, 300 m, the distance to the entity aimed at (off: one ray, 1000 m, the distance to the point hit)")
 local HorizonConVar = CreateClientConVar("gry_binoculars_horizon", "1", true, false, "The binoculars' horizon ladder follows where you look")
+local VignetteConVar = CreateClientConVar("gry_binoculars_vignette", "1", true, false, "The dark vignette of the binoculars fades out as they close, in the 14 frames of the original's film (off: it goes with the picture, at once)")
 local TagConVar = CreateClientConVar("gry_binoculars_tag", "1", true, false, "An NPC aimed at through the binoculars for half a second is tagged: the radar shows it")
 
 function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
 function Bino.AimRules() return AimConVar:GetBool() end
 function Bino.HorizonEnabled() return HorizonConVar:GetBool() end
 function Bino.TagEnabled() return TagConVar:GetBool() end
+function Bino.VignetteFade() return VignetteConVar:GetBool() end
 
 -- The mode (1 to 4, shown as X02 to X08) of a zoom: the factor is the ratio of the tangents of the half fields
 -- of view, and each mode covers two factors.
@@ -188,7 +190,16 @@ function Instance:IsShown()
 	return self.shown
 end
 
--- setVisible(true, true): the intro plays from its first frame.
+-- The vignette: the film's full-screen black gradient (clear in the middle, 0.93 black in the corners), held by the clip
+-- called Alpha beside the Binoculars clip. Its own timeline is one still frame at full strength, and a "close" label
+-- that fades it out in 14 frames; the Binoculars clip starts that fade from its frame 26 (its script
+-- `_root.Root.Alpha.gotoAndPlay("close")`), the call the converted film does not carry.
+function Instance:_vignette()
+	return self.root:Find("Root.Alpha")
+end
+
+-- setVisible(true, true): the intro plays from its first frame; the vignette is there at full strength at once, as in
+-- the film (it has no fade in).
 function Instance:Show()
 	if self.shown and not self.closing then
 		return
@@ -197,10 +208,18 @@ function Instance:Show()
 	self.shown = true
 	self.closing = false
 	self.bino:GotoAndPlay(1)
+
+	local vignette = self:_vignette()
+
+	if vignette then
+		vignette:GotoAndStop(1)
+	end
+
 	self:_apply()
 end
 
--- closeBinoculars(): the close animation; the binoculars are hidden at its end.
+-- closeBinoculars(): the close animation; the binoculars are hidden at its end. The vignette fades out with it
+-- (Bino.VignetteFade), otherwise it stays until the picture is gone.
 function Instance:Close()
 	if not self.shown or self.closing then
 		return
@@ -208,6 +227,12 @@ function Instance:Close()
 
 	self.closing = true
 	self.bino:GotoAndPlay("close")
+
+	local vignette = self:_vignette()
+
+	if vignette and Bino.VignetteFade() then
+		vignette:GotoAndPlay("close")
+	end
 end
 
 function Instance:SetZoomMode(mode)
