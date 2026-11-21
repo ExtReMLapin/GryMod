@@ -1,4 +1,4 @@
-"""Checks that what the addon ships (maps/, models/, materials/) is still used, and that what the Lua asks the clients to download exists:
+"""Checks that what the addon ships (maps/, models/, materials/, resource/ fonts) is still used, and that what the Lua asks the clients to download exists:
 
     python tools/test_shipped_resources.py
 
@@ -23,7 +23,7 @@ def lua_files():
 
 
 def shipped_files():
-    for top in ("maps", "models", "materials"):
+    for top in ("maps", "models", "materials", "resource"):
         for folder, _, names in os.walk(os.path.join(ROOT, top)):
             for name in names:
                 path = os.path.relpath(os.path.join(folder, name), ROOT).replace("\\", "/")
@@ -53,11 +53,14 @@ def code_text():
 
 
 def key(path):
-    """How the code and the .vmt files name a file: materials/a/b.vtf is a/b, anything else keeps its folder and extension."""
+    """How the code and the .vmt files name a file: materials/a/b.vtf is a/b, a font is its name (Agency FB.ttf is agency fb), anything else keeps its folder and extension."""
     lower = path.lower()
 
     if lower.startswith("materials/"):
         return os.path.splitext(lower[len("materials/"):])[0]
+
+    if lower.startswith("resource/fonts/"):
+        return os.path.splitext(os.path.basename(lower))[0]
 
     return lower
 
