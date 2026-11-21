@@ -193,7 +193,7 @@ return {
 			end
 		},
 		{
-			name = "an empty energy bar malfunctions the HUD, and it reboots once the energy is back above a tenth",
+			name = "the old empty-bar rule (gry_malfunction_empty 1): an empty energy bar malfunctions the HUD, and it reboots once the energy is back above a tenth",
 			func = function(state)
 				local M = GryMod.FlashHUD
 				expect(M.MalfunctionFor(0, 0)).to.equal(1)
@@ -555,15 +555,26 @@ return {
 			end
 		},
 		{
-			name = "choosing a theme changes the colours of the next HUD, an unknown name gives the blue one",
+			name = "choosing a theme changes the colours of the next HUD, an unknown name gives the game's own default (military green)",
 			func = function(state)
 				local M = GryMod.FlashHUD
 				local saved = GetConVar("gry_hud_theme"):GetString()
-				M.SetTheme("default")
-				expect(M.Theme.Line[1]).to.equal(68)
-				M.SetTheme("nothing")
+				M.SetTheme("blue")
 				expect(M.Theme.Line[1]).to.equal(77)
+				M.SetTheme("nothing")
+				expect(M.Theme.Line[1]).to.equal(68)
 				M.SetTheme(saved)
+			end
+		},
+		{
+			name = "the default colour set is the game's own, military green (hud_colorLine/Over/Text 4481854 / 14125840 / 12386209 in its shipped profile and in its code)",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				expect(GetConVar("gry_hud_theme"):GetDefault()).to.equal("default")
+				expect(M.Themes.default.Line[1]).to.equal(68)
+				expect(M.Themes.default.Over[1]).to.equal(215)
+				expect(M.Themes.default.Text[2]).to.equal(255)
+				expect(M.DefaultTheme).to.equal(M.Themes.default)
 			end
 		},
 		{
@@ -606,7 +617,7 @@ return {
 				end
 			},
 			{
-				name = "the custom theme takes its three colours from the gry_hud_color_* settings, the blue ones where a setting is invalid",
+				name = "the custom theme takes its three colours from the gry_hud_color_* settings, the default ones where a setting is invalid",
 				func = function(state)
 					local M = GryMod.FlashHUD
 					local line, over, text = GetConVar("gry_hud_color_line"), GetConVar("gry_hud_color_over"), GetConVar("gry_hud_color_text")
@@ -617,8 +628,8 @@ return {
 					M.SetTheme("custom")
 					expect(M.Theme.Line[1]).to.equal(1)
 					expect(M.Theme.Line[3]).to.equal(3)
-					expect(M.Theme.Over[1]).to.equal(M.Themes.blue.Over[1])
-					expect(M.Theme.Over[3]).to.equal(M.Themes.blue.Over[3])
+					expect(M.Theme.Over[1]).to.equal(M.Themes.default.Over[1])
+					expect(M.Theme.Over[3]).to.equal(M.Themes.default.Over[3])
 					expect(M.Theme.Text[2]).to.equal(251)
 					line:SetString(saved[1])
 					over:SetString(saved[2])

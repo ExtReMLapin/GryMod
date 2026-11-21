@@ -84,6 +84,8 @@ function GryMod.GryHUDOptions(Panel)
 
 	-- server setting (the host or an admin): EMP, electric hits and heavy impacts put the suit down for a few seconds
 	Panel:CheckBox("Suit malfunctions: EMP and electric hits (server)", "gry_malfunction")
+	-- client setting: the HUD also goes down (Lost, then Reboot) while the energy bar is empty, GryMod's old rule
+	Panel:CheckBox("HUD malfunction also when the energy bar is empty (the original: only on an EMP, an electric attack or death)", "gry_malfunction_empty")
 
 	-- server setting: the grenade warning only for a projectile that is active (an armed grenade, a mine in the air...)
 	Panel:CheckBox("Grenade warning only for armed grenades, mines in the air... (server; off: also the ones lying around)", "gry_grenade_armed_only")

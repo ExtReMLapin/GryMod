@@ -238,7 +238,7 @@ return {
 			end
 		},
 		{
-			name = "the HUD reports its malfunction to the sequences when its status changes",
+			name = "the HUD reports its malfunction to the sequences when its status changes (the empty-bar rule on, gry_malfunction_empty 1)",
 			func = function(state)
 				local HUD = GryMod.FlashHUD
 				local ply = LocalPlayer()
@@ -247,6 +247,9 @@ return {
 					return
 				end
 
+				local convar = GetConVar("gry_malfunction_empty")
+				local savedValue = convar:GetString()
+				convar:SetString("1")
 				local real, realDraw = HUD.MalfunctionFor, GryMod.Flash.Draw
 				GryMod.Flash.Draw = function() end
 				HUD.Reset()
@@ -258,10 +261,38 @@ return {
 				local after = Boot.Current()
 				HUD.MalfunctionFor = real
 				GryMod.Flash.Draw = realDraw
+				convar:SetString(savedValue)
 				HUD.Reset()
 
 				expect(lost).to.beTrue()
 				expect(after).to.equal("reboot")
+			end
+		},
+		{
+			name = "with the default setting an empty bar alone puts nothing on: no Lost sequence, the HUD is not told of a malfunction",
+			func = function(state)
+				local HUD = GryMod.FlashHUD
+				local ply = LocalPlayer()
+
+				if not IsValid(ply) or not ply:Alive() then
+					return
+				end
+
+				local convar = GetConVar("gry_malfunction_empty")
+				local savedValue = convar:GetString()
+				convar:SetString("0")
+				local real, realDraw = HUD.MalfunctionFor, GryMod.Flash.Draw
+				GryMod.Flash.Draw = function() end
+				HUD.Reset()
+				HUD.MalfunctionFor = function() return 1 end
+				HUD.Paint()
+				local lost = Boot.IsLost()
+				HUD.MalfunctionFor = real
+				GryMod.Flash.Draw = realDraw
+				convar:SetString(savedValue)
+				HUD.Reset()
+
+				expect(lost).to.beFalse()
 			end
 		}
 	}

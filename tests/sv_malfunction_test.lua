@@ -498,6 +498,27 @@ return {
 
 				expect(found).to.beTrue()
 			end
+		},
+		{
+			name = "firing out of the camouflage empties the bar (the client's message) and puts no malfunction on: no flag, no pending cause, the recharge goes on",
+			func = function(state)
+				local p = ply()
+				p:SetNanosuitMode(GryMod.Modes.CLOAK, true)
+				expect(p:GetNWFloat("GryEnergy") > 0).to.beTrue()
+
+				-- what cl_hud.lua sends when the attack key is pressed while camouflaged
+				p:SetNanosuitMode(GryMod.Modes.ARMOR, true)
+				net.Receivers["gry_empty_energy"](0, p)
+
+				expect(p:GetNWFloat("GryEnergy")).to.equal(0)
+				expect(p:GetNWBool("GryMalfunction", false)).to.beFalse()
+				expect(p.gryMalfunctionPending).to.beNil()
+				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
+
+				-- the frame after: nothing starts it either
+				GryMod.Malfunction.Resolve(p)
+				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
+			end
 		}
 	}
 }

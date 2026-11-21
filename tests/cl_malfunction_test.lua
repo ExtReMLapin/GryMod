@@ -1,5 +1,6 @@
 -- Tests of the HUD side of the suit malfunctions, GLuaTest format, client realm: the state the server replicates
--- (GryMalfunction, GryFlicker) gives the HUD status in addition to the old "empty bar" rule, the HUD reboots when
+-- (GryMalfunction, GryFlicker) gives the HUD status (an empty bar is no malfunction, as in the original: leaving the
+-- camouflage by firing empties the bar; gry_malfunction_empty 1 brings the old GryMod rule back), the HUD reboots when
 -- the suit restarts even though the bar is still empty, a flicker is not a reboot, and the quick menu refuses
 -- choices while the suit is down. Server rules: tests/sv_malfunction_test.lua.
 
@@ -38,12 +39,52 @@ return {
 			end
 		},
 		{
-			name = "with the server state up the old rule stays: an empty bar is a malfunction, with its hysteresis",
+			name = "with the server state up, an empty bar is no malfunction (leaving the camouflage by firing empties it, in the original too)",
 			func = function(state)
-				expect(HUD.StatusFor(0, 0, false, false, false)).to.equal(1)
-				expect(HUD.StatusFor(5, 1, false, false, false)).to.equal(1)
-				expect(HUD.StatusFor(10, 1, false, false, false)).to.equal(0)
-				expect(HUD.StatusFor(50, 0, false, false, false)).to.equal(0)
+				expect(HUD.StatusFor(0, 0, false, false, false)).to.equal(0)
+				expect(HUD.StatusFor(0, 1, false, false, false)).to.equal(0)
+				expect(HUD.StatusFor(5, 1, false, false, false)).to.equal(0)
+				expect(HUD.StatusFor(0, 0, false, false, true)).to.equal(2) -- a flicker is still shown
+			end
+		},
+		{
+			name = "gry_malfunction_empty 1: the old rule, an empty bar is a malfunction, with its hysteresis",
+			func = function(state)
+				expect(HUD.StatusFor(0, 0, false, false, false, true)).to.equal(1)
+				expect(HUD.StatusFor(5, 1, false, false, false, true)).to.equal(1)
+				expect(HUD.StatusFor(10, 1, false, false, false, true)).to.equal(0)
+				expect(HUD.StatusFor(50, 0, false, false, false, true)).to.equal(0)
+				expect(HUD.StatusFor(0, 1, false, true, false, true)).to.equal(0) -- the restart still wins
+			end
+		},
+		{
+			name = "gry_malfunction_empty exists, off by default (it is created with CreateClientConVar(..., true): saved)",
+			func = function(state)
+				local convar = GetConVar("gry_malfunction_empty")
+				expect(convar).to.exist()
+				expect(convar:GetDefault()).to.equal("0")
+			end
+		},
+		{
+			name = "the HUD options panel has the switch of the old rule",
+			func = function(state)
+				local found = false
+				local panel = vgui.Create("ControlPanel")
+				GryMod.GryHUDOptions(panel)
+
+				local function walk(p)
+					if p.ClassName == "DCheckBoxLabel" and p.Button and p.Button.m_strConVar == "gry_malfunction_empty" then
+						found = true
+					end
+
+					for _, child in ipairs(p:GetChildren()) do
+						walk(child)
+					end
+				end
+
+				walk(panel)
+				panel:Remove()
+				expect(found).to.beTrue()
 			end
 		},
 		{
@@ -68,7 +109,7 @@ return {
 			func = function(state)
 				expect(HUD.StatusFor(80, 0, false, false, true)).to.equal(2)
 				expect(HUD.StatusFor(80, 2, false, false, false)).to.equal(0) -- over: back to normal
-				expect(HUD.StatusFor(0, 0, false, false, true)).to.equal(1)
+				expect(HUD.StatusFor(0, 0, false, false, true, true)).to.equal(1) -- the old rule: an empty bar is a malfunction, the flicker does not replace it
 			end
 		},
 		{

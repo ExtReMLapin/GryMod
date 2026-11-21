@@ -32,7 +32,9 @@ Module.Themes = {
 	orange = theme(12612932, 16761744, 15108923)
 }
 
-Module.Theme = Module.Themes.blue
+-- The game's own default (its code and its shipped profile): military green. The other three are choices of its options menu.
+Module.DefaultTheme = Module.Themes.default
+Module.Theme = Module.DefaultTheme
 
 local HUD = {}
 HUD.__index = HUD
@@ -476,7 +478,7 @@ end
 -- GryMod's values, and the paint hook
 -- ---------------------------------------------------------------------------------------------------------
 
-local themeConVar = CreateClientConVar("gry_hud_theme", "blue", true, false, "HUD colours: blue, default, white, orange or custom (gry_hud_color_*)")
+local themeConVar = CreateClientConVar("gry_hud_theme", "default", true, false, "HUD colours: default (military green), blue (ice blue), white, orange or custom (gry_hud_color_*)")
 
 -- The three colours of the "custom" theme, each written "r g b" (0 to 255), as the original's hud_colorLine,
 -- hud_colorOver and hud_colorText but readable.
@@ -506,23 +508,23 @@ function Module.ParseColour(text)
 	}
 end
 
--- The theme made of the gry_hud_color_* settings (the blue colour stands in for a setting that cannot be read).
+-- The theme made of the gry_hud_color_* settings (the default colour stands in for a setting that cannot be read).
 function Module.CustomTheme()
 	local result = {}
 
 	for part, convar in pairs(CUSTOM_CONVARS) do
-		result[part] = Module.ParseColour(convar:GetString()) or Module.Themes.blue[part]
+		result[part] = Module.ParseColour(convar:GetString()) or Module.DefaultTheme[part]
 	end
 
 	return result
 end
 
--- Chooses the colours (blue, default, white, orange, custom) of the HUD drawn from now on.
+-- Chooses the colours (default, blue, white, orange, custom) of the HUD drawn from now on.
 function Module.SetTheme(name)
 	if name == "custom" then
 		Module.Theme = Module.CustomTheme()
 	else
-		Module.Theme = Module.Themes[name] or Module.Themes.blue
+		Module.Theme = Module.Themes[name] or Module.DefaultTheme
 	end
 end
 
@@ -774,8 +776,8 @@ function Module.AmmoFor(ply, weapon)
 	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode
 end
 
--- The energy (0 to 100) at which the suit stops: the HUD malfunctions (red) while the bar is empty and reboots
--- once it is back above RECOVER_AT. Between the two, and with no usable value, the state stays as it is.
+-- The energy (0 to 100) at which the suit stops under GryMod's old rule (gry_malfunction_empty): the HUD malfunctions
+-- (red) while the bar is empty and reboots once it is back above RECOVER_AT. Between the two, and with no usable value, the state stays as it is.
 Module.RECOVER_AT = 10
 
 function Module.MalfunctionFor(energy, current)
@@ -796,16 +798,26 @@ function Module.MalfunctionFor(energy, current)
 	return 0
 end
 
+-- GryMod's earlier rule: the HUD also malfunctions while the energy bar is empty (see MalfunctionFor). In the original
+-- the HUD only goes down on an EMP or a death, and leaving the camouflage by firing or striking empties the bar without
+-- any malfunction, so the rule is off by default. The case of an electric attack that ends the armor bar is the server's
+-- (GryMalfunction, sv_malfunction.lua).
+local emptyRuleConVar = CreateClientConVar("gry_malfunction_empty", "0", true, false, "1: the HUD malfunctions while the energy bar is empty (GryMod's old rule); 0: only when the server says the suit is down (EMP, electric attack), as in the original")
+
 -- The status the HUD shows. The server says when the suit is down (GryMod.Malfunction: an EMP, an electric hit...):
--- that is status 1 whatever the energy. Otherwise the empty-bar rule above applies, except just after a restart
--- (restarted): the bar is still empty then and the HUD reboots anyway. A flicker (a light shock) is status 2 when
--- nothing else is wrong.
-function Module.StatusFor(energy, current, down, restarted, flicker)
+-- that is status 1 whatever the energy. With emptyRule (gry_malfunction_empty) the empty-bar rule above applies too,
+-- except just after a restart (restarted): the bar is still empty then and the HUD reboots anyway. A flicker (a light
+-- shock) is status 2 when nothing else is wrong.
+function Module.StatusFor(energy, current, down, restarted, flicker, emptyRule)
 	if down then
 		return 1
 	end
 
-	local status = restarted and 0 or Module.MalfunctionFor(energy, current)
+	local status = 0
+
+	if emptyRule and not restarted then
+		status = Module.MalfunctionFor(energy, current)
+	end
 
 	if status == 0 and flicker then
 		return 2
@@ -865,7 +877,7 @@ local function feed(ply)
 	local down = ply:GetNWBool("GryMalfunction", false)
 	local rawEnergy = ply:GetNWFloat("GryEnergy")
 	fed.restartHold = Module.RestartHold(fed.restartHold or false, down, rawEnergy)
-	local status = Module.StatusFor(rawEnergy, hud.status, down, fed.restartHold and not down, ply:GetNWFloat("GryFlicker", 0) > CurTime())
+	local status = Module.StatusFor(rawEnergy, hud.status, down, fed.restartHold and not down, ply:GetNWFloat("GryFlicker", 0) > CurTime(), emptyRuleConVar:GetBool())
 
 	if status ~= hud.status then
 		hud:Destroy(status)
