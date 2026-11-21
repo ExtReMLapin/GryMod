@@ -15,7 +15,7 @@ import struct
 import numpy as np
 from PIL import Image
 
-FORMATS = {"rgba8888": 0, "bgra8888": 12, "dxt1": 13, "dxt5": 15}
+FORMATS = {"rgba8888": 0, "i8": 5, "bgra8888": 12, "dxt1": 13, "dxt5": 15}
 
 FLAG_CLAMPS = 0x4
 FLAG_CLAMPT = 0x8
@@ -325,16 +325,23 @@ def _mip_bytes(rgba, fmt):
         return np.ascontiguousarray(rgba[:, :, [2, 1, 0, 3]]).tobytes()
     if fmt == "rgba8888":
         return np.ascontiguousarray(rgba).tobytes()
+    if fmt == "i8":
+        # one byte per pixel: the red channel (the engine reads it back as grey, alpha 255)
+        return np.ascontiguousarray(rgba[:, :, 0]).tobytes()
     raise ValueError(fmt)
 
 
-def vtf_bytes(rgba, fmt="dxt5", srgb=True, mips=True, nolod=True):
-    """The content of a VTF 7.2 file for an (h, w, 4) uint8 image (sizes are powers of two)."""
+def vtf_bytes(rgba, fmt="dxt5", srgb=True, mips=True, nolod=True, clamp="st"):
+    """The content of a VTF 7.2 file for an (h, w, 4) uint8 image (sizes are powers of two).
+
+    clamp: the axes whose texture coordinates are clamped ("s" and/or "t", "" for a texture that repeats on both)."""
     h, w = rgba.shape[:2]
     if w & (w - 1) or h & (h - 1):
         raise ValueError("the size of a texture is a power of two")
+    if set(clamp) - set("st"):
+        raise ValueError(f"clamp is made of 's' and 't': {clamp!r}")
     chain = mip_chain(rgba, srgb) if mips else [rgba]
-    flags = FLAG_CLAMPS | FLAG_CLAMPT
+    flags = (FLAG_CLAMPS if "s" in clamp else 0) | (FLAG_CLAMPT if "t" in clamp else 0)
     if srgb:
         flags |= FLAG_SRGB
     if not mips:
@@ -351,13 +358,13 @@ def vtf_bytes(rgba, fmt="dxt5", srgb=True, mips=True, nolod=True):
     return header + body
 
 
-def write_vtf(path, rgba, fmt="dxt5", srgb=True, mips=True, nolod=True):
+def write_vtf(path, rgba, fmt="dxt5", srgb=True, mips=True, nolod=True, clamp="st"):
     with open(path, "wb") as out:
-        out.write(vtf_bytes(rgba, fmt, srgb, mips, nolod))
+        out.write(vtf_bytes(rgba, fmt, srgb, mips, nolod, clamp))
 
 
 def read_vtf_top(path):
-    """The biggest image of a VTF this module wrote (DXT5 or BGRA8888), as (h, w, 4) uint8: tests and comparisons."""
+    """The biggest image of a VTF this module wrote (DXT5, BGRA8888, RGBA8888 or I8), as (h, w, 4) uint8: tests and comparisons."""
     with open(path, "rb") as source:
         raw = source.read()
     width, height = struct.unpack_from("<HH", raw, 16)
@@ -368,6 +375,8 @@ def read_vtf_top(path):
         w, h = max(1, width >> level), max(1, height >> level)
         if fmt == FORMATS["dxt5"]:
             return ((w + 3) // 4) * ((h + 3) // 4) * 16
+        if fmt == FORMATS["i8"]:
+            return w * h
         return w * h * 4
 
     top = size(0)
@@ -376,6 +385,9 @@ def read_vtf_top(path):
     data = raw[start:]
     if fmt == FORMATS["dxt5"]:
         return decode_dxt5(data, width, height)
+    if fmt == FORMATS["i8"]:
+        grey = np.frombuffer(data, dtype=np.uint8).reshape(height, width)
+        return np.stack([grey, grey, grey, np.full_like(grey, 255)], axis=2)
     arr = np.frombuffer(data, dtype=np.uint8).reshape(height, width, 4)
     if fmt == FORMATS["bgra8888"]:
         arr = arr[:, :, [2, 1, 0, 3]]

@@ -167,5 +167,62 @@ class WriterTest(unittest.TestCase):
         self.assertLess(np.abs(back[:, :, :3] - smooth[:, :, :3]).mean(), 3.0)
 
 
+class RepeatAndGreyTest(unittest.TestCase):
+    """Textures that must repeat (noise, interference) and 8-bit grey data (a volume cut into tiles)."""
+
+    def flags_of(self, **kwargs):
+        raw = vtf.vtf_bytes(gradient(16, 4), "bgra8888", srgb=False, mips=False, **kwargs)
+        return struct.unpack_from("<I", raw, 20)[0]
+
+    def test_clamps_both_axes_by_default(self):
+        flags = self.flags_of()
+        self.assertTrue(flags & vtf.FLAG_CLAMPS and flags & vtf.FLAG_CLAMPT)
+
+    def test_clamp_can_be_taken_off_per_axis(self):
+        flags = self.flags_of(clamp="")
+        self.assertFalse(flags & (vtf.FLAG_CLAMPS | vtf.FLAG_CLAMPT))
+        flags = self.flags_of(clamp="t")
+        self.assertFalse(flags & vtf.FLAG_CLAMPS)
+        self.assertTrue(flags & vtf.FLAG_CLAMPT)
+        flags = self.flags_of(clamp="s")
+        self.assertTrue(flags & vtf.FLAG_CLAMPS)
+        self.assertFalse(flags & vtf.FLAG_CLAMPT)
+
+    def test_clamp_rejects_unknown_axes(self):
+        with self.assertRaises(ValueError):
+            vtf.vtf_bytes(gradient(4, 4), "bgra8888", clamp="x")
+
+    def test_i8_is_one_byte_per_pixel_and_reads_back_as_grey(self):
+        img = gradient(16, 8)
+        raw = vtf.vtf_bytes(img, "i8", srgb=False, mips=False, clamp="")
+        self.assertEqual(struct.unpack_from("<i", raw, 52)[0], 5)  # IMAGE_FORMAT_I8
+        self.assertEqual(len(raw), 80 + 16 * 8)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.vtf")
+            with open(path, "wb") as out:
+                out.write(raw)
+            back = vtf.read_vtf_top(path)
+        self.assertTrue((back[:, :, 0] == img[:, :, 0]).all())
+        self.assertTrue((back[:, :, 1] == back[:, :, 0]).all() and (back[:, :, 2] == back[:, :, 0]).all())
+        self.assertTrue((back[:, :, 3] == 255).all())
+
+    def test_a_texture_one_texel_high_is_allowed(self):
+        img = gradient(256, 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.vtf")
+            vtf.write_vtf(path, img, "bgra8888", srgb=False, mips=False, clamp="")
+            back = vtf.read_vtf_top(path)
+        self.assertEqual(back.shape, (1, 256, 4))
+        self.assertTrue((back == img).all())
+
+    def test_read_back_with_mips_of_a_flat_texture(self):
+        img = gradient(256, 8)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.vtf")
+            vtf.write_vtf(path, img, "bgra8888", srgb=False, mips=True, clamp="")
+            back = vtf.read_vtf_top(path)
+        self.assertTrue((back == img).all())
+
+
 if __name__ == "__main__":
     unittest.main()
