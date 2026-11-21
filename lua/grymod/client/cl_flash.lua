@@ -659,14 +659,29 @@ end
 
 local TEXT_MARGIN = 2 -- Flash keeps 2 pixels between a text field's border and its text
 
--- Where the text starts inside its field: returns x (from the field's left), the baseline (from its top)
--- and the text width, all in stage pixels. Characters the font does not have count for nothing.
-function Flash.LayoutText(font, field, text)
-	local scale = field.fh / font.em
-	local glyphs = font.g
+-- Where a line of this width starts, from the field's left (the alignment of the field).
+local function lineX(field, width)
+	if field.al == 2 then
+		return (field.w - width) / 2
+	elseif field.al == 1 then
+		return field.w - TEXT_MARGIN - width
+	end
+
+	return TEXT_MARGIN
+end
+
+local function lineAt(font, field, scale, text, width, index)
+	local x = lineX(field, width)
+	local lineHeight = (font.asc + font.desc) * scale + (field.ld or 0)
+
+	return {text = text, x = x, baseline = TEXT_MARGIN + font.asc * scale + (index - 1) * lineHeight, width = width}
+end
+
+-- The width of text[first .. last] in stage pixels (characters the font does not have count for nothing).
+local function spanWidth(glyphs, scale, text, first, last)
 	local width = 0
 
-	for i = 1, #text do
+	for i = first, last do
 		local glyph = glyphs[string.byte(text, i)]
 
 		if glyph then
@@ -674,16 +689,135 @@ function Flash.LayoutText(font, field, text)
 		end
 	end
 
-	local x
+	return width
+end
 
-	if field.al == 2 then
-		x = (field.w - width) / 2
-	elseif field.al == 1 then
-		x = field.w - TEXT_MARGIN - width
-	else
-		x = TEXT_MARGIN
+-- A paragraph (no line break inside) of a field with word wrap, broken into lines that fit `available` pixels: at
+-- the spaces (a break drops the spaces it replaces), and between two characters for a word that is wider than the
+-- field. Calls add(first, last) for the characters of each line.
+local function wrapParagraph(glyphs, scale, text, available, add)
+	local count = #text
+	local lineFirst, lineLast, lineWidth = 1, 0, 0
+	local position = 1
+
+	while position <= count do
+		local spaces = string.find(text, "[^ ]", position) or count + 1
+		local wordEnd = (string.find(text, " ", spaces, true) or count + 1) - 1
+
+		if spaces > count then
+			break
+		end
+
+		local gap = spanWidth(glyphs, scale, text, position, spaces - 1)
+		local word = spanWidth(glyphs, scale, text, spaces, wordEnd)
+
+		if lineLast >= lineFirst and lineWidth + gap + word > available + 1e-6 then
+			add(lineFirst, lineLast)
+			lineFirst, lineLast, lineWidth, gap = spaces, spaces - 1, 0, 0
+		elseif lineLast < lineFirst then
+			-- the first word of a line: the spaces before it are kept on the first line of the paragraph only
+			if lineFirst == 1 then
+				lineFirst, lineLast = 1, spaces - 1
+				lineWidth = gap
+			else
+				lineFirst, lineLast, lineWidth, gap = spaces, spaces - 1, 0, 0
+			end
+		end
+
+		if lineWidth + gap + word <= available + 1e-6 then
+			lineLast, lineWidth = wordEnd, lineWidth + gap + word
+		else
+			-- wider than a whole line: cut between two characters
+			for i = spaces, wordEnd do
+				local glyph = glyphs[string.byte(text, i)]
+				local advance = glyph and glyph.adv * scale or 0
+
+				if lineLast >= lineFirst and lineWidth + advance > available + 1e-6 then
+					add(lineFirst, lineLast)
+					lineFirst, lineLast, lineWidth = i, i - 1, 0
+				end
+
+				if lineLast < lineFirst then
+					lineFirst = i
+				end
+
+				lineLast, lineWidth = i, lineWidth + advance
+			end
+		end
+
+		position = wordEnd + 1
 	end
 
-	return x, TEXT_MARGIN + font.asc * scale, width
+	if lineLast >= lineFirst then
+		add(lineFirst, lineLast)
+	end
+end
+
+-- The lines of a text in its field: returns a list of {text, x, baseline, width} (x from the field's left,
+-- baseline from its top, width of the line, all in stage pixels) and whether the field clips its text to its
+-- rectangle. A multiline field (field.ml) breaks its lines at the line breaks of the text, and at spaces so that
+-- they fit the width minus the 2 pixel margins when it has word wrap (field.ww); the lines are one line height
+-- apart: ascent + descent of the font plus the leading of the field (field.ld). A field that is not multiline is
+-- one line, whatever its text. Every line is aligned on its own. Text fields of the original clip what does not fit
+-- their rectangle, except the ones that resize themselves (field.as). Characters the font does not have count for
+-- nothing.
+function Flash.LayoutLines(font, field, text)
+	local scale = field.fh / font.em
+	local glyphs = font.g
+	local lines = {}
+	local clips = not field.as
+
+	local function add(paragraph, first, last)
+		local part = string.sub(paragraph, first, last)
+
+		lines[#lines + 1] = lineAt(font, field, scale, part, spanWidth(glyphs, scale, part, 1, #part), #lines + 1)
+	end
+
+	if not field.ml then
+		text = string.gsub(text, "[\r\n]", "")
+		add(text, 1, #text)
+
+		return lines, clips
+	end
+
+	local available = field.w - 2 * TEXT_MARGIN
+	local start = 1
+
+	while true do
+		local stop = string.find(text, "\n", start, true)
+		local paragraph = string.gsub(string.sub(text, start, (stop or #text + 1) - 1), "\r", "")
+
+		if not field.ww or spanWidth(glyphs, scale, paragraph, 1, #paragraph) <= available + 1e-6 then
+			add(paragraph, 1, #paragraph)
+		else
+			wrapParagraph(glyphs, scale, paragraph, available, function(first, last)
+				add(paragraph, first, last)
+			end)
+		end
+
+		if not stop then
+			break
+		end
+
+		start = stop + 1
+	end
+
+	return lines, clips
+end
+
+-- Where the text starts inside its field: returns x (from the field's left), the baseline (from its top)
+-- and the text width, all in stage pixels, of its first line (see LayoutLines for the others).
+function Flash.LayoutText(font, field, text)
+	if field.ml then
+		local line = Flash.LayoutLines(font, field, text)[1]
+
+		return line.x, line.baseline, line.width
+	end
+
+	-- one line (what the drawing does for most fields, every frame): no table made
+	local scale = field.fh / font.em
+	local width = spanWidth(font.g, scale, text, 1, #text)
+
+	return lineX(field, width), TEXT_MARGIN + font.asc * scale, width
 end
 

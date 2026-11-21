@@ -314,7 +314,56 @@ local function drawShape(movie, shape, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 		a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
 end
 
--- A text field: one quad per glyph from the font atlas, tinted by the field's own colour.
+-- One glyph of a text field at (gx, gy) (local coordinates): the quad is cut to the field's rectangle
+-- (cx0, cy0)-(cx1, cy1) when the field clips its text, the part of the bitmap cut with it. clips = false: no cut.
+local function drawGlyph(movie, font, glyph, gx, gy, scale, clips, cx0, cy0, cx1, cy1, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	local x0, y0, x1, y1 = gx, gy, gx + glyph.w * scale, gy + glyph.h * scale
+	local sx, sy, sw, sh = glyph.x, glyph.y, glyph.w, glyph.h
+
+	if clips and (x0 < cx0 or y0 < cy0 or x1 > cx1 or y1 > cy1) then
+		if x1 <= cx0 or y1 <= cy0 or x0 >= cx1 or y0 >= cy1 then
+			return
+		end
+
+		local nx0, ny0, nx1, ny1 = math.max(x0, cx0), math.max(y0, cy0), math.min(x1, cx1), math.min(y1, cy1)
+		local kx, ky = glyph.w / (x1 - x0), glyph.h / (y1 - y0)
+		sx, sy, sw, sh = sx + (nx0 - x0) * kx, sy + (ny0 - y0) * ky, (nx1 - nx0) * kx, (ny1 - ny0) * ky
+		x0, y0, x1, y1 = nx0, ny0, nx1, ny1
+	end
+
+	drawQuad(movie, font.a, sx, sy, sw, sh, x0, y0, x1, y1, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+end
+
+-- The lines of the multiline fields, kept per field and text (a field definition does not change while the
+-- movie is drawn; the number of texts kept per field is bounded).
+local lineCache = setmetatable({}, {__mode = "k"})
+local LINE_CACHE_SIZE = 64
+
+local function cachedLines(font, field, text)
+	local perField = lineCache[field]
+
+	if not perField then
+		perField = {count = 0, texts = {}}
+		lineCache[field] = perField
+	end
+
+	local lines = perField.texts[text]
+
+	if not lines then
+		if perField.count >= LINE_CACHE_SIZE then
+			perField.count, perField.texts = 0, {}
+		end
+
+		lines = Flash.LayoutLines(font, field, text)
+		perField.texts[text] = lines
+		perField.count = perField.count + 1
+	end
+
+	return lines
+end
+
+-- A text field: one quad per glyph from the font atlas, tinted by the field's own colour. A multiline field is drawn
+-- line by line (Flash.LayoutLines); the glyphs are cut to the field's rectangle unless the field resizes itself.
 local function drawText(movie, field, text, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
 	local font = movie.fonts and movie.fonts[field.f]
 
@@ -322,27 +371,55 @@ local function drawText(movie, field, text, a, b, c, d, tx, ty, mr, mg, mb, ma, 
 		return
 	end
 
-	local x, baseline, _ = Flash.LayoutText(font, field, text)
-	x = field.ox + x
-	baseline = field.oy + baseline
-
 	local scale = field.fh / font.em
 	local color = field.col
 	mr, mg, mb, ma = mr * color[1] / 255, mg * color[2] / 255, mb * color[3] / 255, ma * color[4] / 255
 	local glyphs = font.g
+	local clips = not field.as
+	local cx0, cy0 = field.ox, field.oy
+	local cx1, cy1 = cx0 + field.w, cy0 + field.h
 
-	for i = 1, #text do
-		local glyph = glyphs[string.byte(text, i)]
+	if not field.ml then
+		local x, baseline = Flash.LayoutText(font, field, text)
+		x = field.ox + x
+		baseline = field.oy + baseline
 
-		if glyph then
-			if glyph.w > 0 then
-				local gx, gy = x + glyph.ox * scale, baseline + glyph.oy * scale
+		for i = 1, #text do
+			local glyph = glyphs[string.byte(text, i)]
 
-				drawQuad(movie, font.a, glyph.x, glyph.y, glyph.w, glyph.h, gx, gy, gx + glyph.w * scale, gy + glyph.h * scale,
-					a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+			if glyph then
+				if glyph.w > 0 then
+					drawGlyph(movie, font, glyph, x + glyph.ox * scale, baseline + glyph.oy * scale, scale, clips, cx0, cy0, cx1, cy1,
+						a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+				end
+
+				x = x + glyph.adv * scale
 			end
+		end
 
-			x = x + glyph.adv * scale
+		return
+	end
+
+	for _, line in ipairs(cachedLines(font, field, text)) do
+		local x = field.ox + line.x
+		local baseline = field.oy + line.baseline
+		local lineText = line.text
+
+		if clips and baseline - font.asc * scale >= cy1 then
+			break -- this line and the next ones are under the field
+		end
+
+		for i = 1, #lineText do
+			local glyph = glyphs[string.byte(lineText, i)]
+
+			if glyph then
+				if glyph.w > 0 then
+					drawGlyph(movie, font, glyph, x + glyph.ox * scale, baseline + glyph.oy * scale, scale, clips, cx0, cy0, cx1, cy1,
+						a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+				end
+
+				x = x + glyph.adv * scale
+			end
 		end
 	end
 end
