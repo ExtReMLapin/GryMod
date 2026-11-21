@@ -226,14 +226,50 @@ end
 
 -- setAmmo + updateTextColor of the player HUD. mag: rounds in the magazine (-1 = no ammo system),
 -- reserve: rounds left, size: magazine capacity, grenades: how many, grenadeType: a GrenadeMode label.
-function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launcher)
+-- weaponChanged: the values come from another weapon (its fire mode icon is not a switch of mode, so no blink).
+-- The icon of the fire mode and the grenade icon blink when they change (the original calls switchFireMode and
+-- switchGrenades when the player switches them), never at the first display.
+function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launcher, weaponChanged)
 	local ammo = self.ammo
+	local shown, previousMode, previousGrenade = ammo.shown, ammo.fireMode, ammo.grenadeType
 	ammo.launcher = launcher ~= nil and number(launcher, 0) or nil
 	ammo.mag, ammo.reserve, ammo.size = number(mag, 0), number(reserve, 0), number(size, 0)
 	ammo.grenades = number(grenades, 0)
 	ammo.grenadeType = grenadeType or ammo.grenadeType
 	ammo.fireMode = fireMode or ammo.fireMode
 	self:_applyAmmo()
+	ammo.shown = true
+
+	-- after the icons are in place: a new icon frame rebuilds its clips, which would stop an animation started before
+	if shown then
+		if ammo.fireMode ~= previousMode and not weaponChanged then
+			self:SwitchFireMode()
+		end
+
+		if ammo.grenadeType ~= previousGrenade then
+			self:SwitchGrenades()
+		end
+	end
+end
+
+-- switchFireMode: the "play" label of the Blink clip inside the fire mode icon (the hand grenade icon has none).
+function HUD:SwitchFireMode()
+	local slot = self.player and self.player:Child("AmmoMode")
+	local blink = slot and slot:Child("Blink")
+
+	if blink then
+		blink:GotoAndPlay("play")
+	end
+end
+
+-- switchGrenades: the "play" label of the Grenade clip inside the grenade icon (the 40 mm icon of a launcher has none).
+function HUD:SwitchGrenades()
+	local slot = self.player and self.player:Child("GrenadeMode")
+	local grenade = slot and slot:Child("Grenade")
+
+	if grenade then
+		grenade:GotoAndPlay("play")
+	end
 end
 
 -- The two icon sets of the movie: the hand grenades (GrenadeMode, one frame per kind) and the weapon slot
@@ -834,12 +870,15 @@ local function feed(ply)
 		hud:SetMode(mode)
 	end
 
-	local mag, reserve, size, grenades, fireMode = Module.AmmoFor(ply, ply:GetActiveWeapon())
-	local launcher = Module.LauncherFor(ply, ply:GetActiveWeapon())
+	local weapon = ply:GetActiveWeapon()
+	local mag, reserve, size, grenades, fireMode = Module.AmmoFor(ply, weapon)
+	local launcher = Module.LauncherFor(ply, weapon)
+	local weaponChanged = fed.weapon ~= weapon
+	fed.weapon = weapon
 
 	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher then
 		fed.mag, fed.reserve, fed.size, fed.grenades, fed.fireMode, fed.launcher = mag, reserve, size, grenades, fireMode, launcher
-		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher)
+		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher, weaponChanged)
 	end
 end
 

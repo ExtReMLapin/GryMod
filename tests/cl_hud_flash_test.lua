@@ -234,6 +234,92 @@ return {
 			end
 		},
 		{
+			name = "changing the fire mode of the weapon plays the blink of its icon (switchFireMode), the first display does not",
+			func = function(state)
+				local hud = newHud()
+				local function blink() return hud.player:Child("AmmoMode"):Child("Blink") end
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Single")
+				expect(blink().playing).to.beFalse()
+				expect(blink():CurrentFrame()).to.equal(1)
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Auto")
+				-- the movie's "play" label, and the icon is the new one
+				expect(blink():CurrentFrame()).to.equal(2)
+				expect(blink().playing).to.beTrue()
+				expect(hud.player:Child("AmmoMode"):CurrentLabel()).to.equal("Auto")
+				-- it runs to its end and stops, the icon still on the right frame
+				for _ = 1, 30 do hud:Update(1 / 30) end
+				expect(blink().playing).to.beFalse()
+				expect(blink():CurrentFrame()).to.equal(1)
+				expect(hud.player:Child("AmmoMode"):CurrentLabel()).to.equal("Auto")
+			end
+		},
+		{
+			name = "the blink is not played again while the fire mode stays, nor restarted by a change of the numbers",
+			func = function(state)
+				local hud = newHud()
+				local function blink() return hud.player:Child("AmmoMode"):Child("Blink") end
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Single")
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Burst")
+				hud:Update(1 / 30)
+				hud:Update(1 / 30)
+				local frame = blink():CurrentFrame()
+				expect(frame > 2).to.beTrue()
+				-- a shot: the magazine changes, the fire mode does not
+				hud:SetAmmo(29, 90, 30, 3, "explosivegrenade", "Burst")
+				expect(blink():CurrentFrame()).to.equal(frame)
+				expect(blink().playing).to.beTrue()
+				-- once it has ended, the same fire mode again does not play it
+				for _ = 1, 30 do hud:Update(1 / 30) end
+				hud:SetAmmo(28, 90, 30, 3, "explosivegrenade", "Burst")
+				expect(blink().playing).to.beFalse()
+			end
+		},
+		{
+			name = "a weapon change does not blink, even if its fire mode icon is another one",
+			func = function(state)
+				local hud = newHud()
+				local function blink() return hud.player:Child("AmmoMode"):Child("Blink") end
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Single")
+				hud:SetAmmo(6, 24, 6, 3, "explosivegrenade", "Shotgun", nil, true)
+				expect(blink().playing).to.beFalse()
+				expect(hud.player:Child("AmmoMode"):CurrentLabel()).to.equal("Shotgun")
+				-- the next change on that weapon blinks
+				hud:SetAmmo(6, 24, 6, 3, "explosivegrenade", "Auto")
+				expect(blink().playing).to.beTrue()
+			end
+		},
+		{
+			name = "the hand grenade icon in the weapon slot (it has no blink clip) is shown without an error, and the icons come back",
+			func = function(state)
+				local hud = newHud()
+				hud:SetAmmo(3, 0, 3, 3, "explosivegrenade", "Single")
+				hud:SetAmmo(3, 0, 3, 3, "explosivegrenade", "HandGrenade")
+				expect(hud.player:Child("AmmoMode"):CurrentLabel()).to.equal("explosivegrenade")
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Single")
+				expect(hud.player:Child("AmmoMode"):CurrentLabel()).to.equal("Single")
+				expect(hud.player:Child("GrenadeMode"):CurrentLabel()).to.equal("explosivegrenade")
+			end
+		},
+		{
+			name = "changing the type of grenade plays the grenade icon's animation (switchGrenades), not at the first display nor while it stays",
+			func = function(state)
+				local hud = newHud()
+				local function grenade() return hud.player:Child("GrenadeMode"):Child("Grenade") end
+				hud:SetAmmo(30, 90, 30, 3, "explosivegrenade", "Single")
+				expect(grenade().playing).to.beFalse()
+				hud:SetAmmo(29, 90, 30, 3, "explosivegrenade", "Single")
+				expect(grenade().playing).to.beFalse()
+				hud:SetAmmo(29, 90, 30, 3, "flashbang", "Single")
+				expect(grenade():CurrentFrame()).to.equal(2)
+				expect(grenade().playing).to.beTrue()
+				expect(hud.player:Child("GrenadeMode"):CurrentLabel()).to.equal("flashbang")
+				for _ = 1, 40 do hud:Update(1 / 30) end
+				expect(grenade().playing).to.beFalse()
+				hud:SetAmmo(28, 90, 30, 3, "flashbang", "Single")
+				expect(grenade().playing).to.beFalse()
+			end
+		},
+		{
 			name = "ammo from a weapon: magazine, reserve, capacity, grenades and fire mode",
 			func = function(state)
 				local M = GryMod.FlashHUD
