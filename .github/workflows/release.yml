@@ -47,7 +47,7 @@ jobs:
         run: |
           sed -i 's/^GryMod\.Workshop = false/GryMod.Workshop = true/' lua/autorun/grymod_shared.lua
           grep -q '^GryMod\.Workshop = true' lua/autorun/grymod_shared.lua
-      # addon.json "ignore" keeps tests, dev resources (psd, swf) and docs out of the .gma
+      # addon.json "ignore" keeps tests, tools and docs out of the .gma
       - uses: gmod-workshop/workshop-upload@v1
         with:
           id: ${{ secrets.WORKSHOP_ID }}
