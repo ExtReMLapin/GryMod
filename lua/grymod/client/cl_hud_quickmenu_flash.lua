@@ -176,6 +176,7 @@ function Menu.New(movie, theme)
 		active = {},
 		defect = {},
 		selected = "Center",
+		ring = RING_CENTER,
 		angle = 90
 	}, Instance)
 end
@@ -193,6 +194,7 @@ function Instance:Open()
 	self.shown = true
 	self.closing = false
 	self.selected = "Center"
+	self.ring = RING_CENTER
 	self.qm:GotoAndPlay("open")
 end
 
@@ -230,6 +232,31 @@ end
 
 local function iconName(selection)
 	return selection == "Defense" and "Armor" or selection
+end
+
+-- Switch: the ring follows the film's rules (an inactive mode does not touch it); off: the ring follows the choice alone.
+local RingFilm = CreateClientConVar("gry_menu_ring_film", "1", true, false, "The quick menu ring keeps its colour when the pointer goes from an active mode to an inactive one (the original); 0: it turns orange")
+
+local RING_CENTER = {green = false, orange = true, indicator = false}
+local RING_MODE = {green = true, orange = false, indicator = true}
+local RING_MODES = {Weapon = true, Speed = true, Strength = true, Armor = true, Cloak = true}
+
+-- The ring (the Indicator and the two circles) after the pointer goes to `selection`, from the state it was in: the film's
+-- setMovieClipFrame sets it for the centre (orange, no indicator) and for a mode that is active, not defective and with the suit
+-- working (green, indicator); for any other mode no branch matches, so the ring is left as it was. active and defect are keyed
+-- by mode name, malfunction is the HUD status (1: down). The states are shared tables: do not change them.
+function Menu.RingAfter(previous, selection, active, defect, malfunction)
+	if selection == "Center" then
+		return RING_CENTER
+	end
+
+	local name = iconName(selection)
+
+	if RING_MODES[name] and active and active[name] and not (defect and defect[name]) and malfunction ~= 1 then
+		return RING_MODE
+	end
+
+	return previous or RING_CENTER
 end
 
 -- The mode the player would get now: the selected one when it is active, not defective and the suit works.
@@ -285,7 +312,15 @@ function Instance:_applyStates()
 
 	local circle = qm:Child("Circle")
 	-- the ring keeps its last state while the menu fades out
-	choice = self:Choice()
+	local ring
+
+	if RingFilm:GetBool() then
+		self.ring = Menu.RingAfter(self.ring, self.selected, self.active, self.defect, self.malfunction)
+		ring = self.ring
+	else
+		choice = self:Choice()
+		ring = (choice ~= nil and choice ~= false) and RING_MODE or RING_CENTER
+	end
 
 	if self.malfunction == 1 then
 		if circle and circle:CurrentLabel() ~= "malfunction" then
@@ -298,9 +333,9 @@ function Instance:_applyStates()
 
 		local green, orange, indicator = circle:Child("Circle_green"), circle:Child("Circle_orange"), circle:Child("Indicator")
 
-		if green then green:SetVisible(choice ~= nil and choice ~= false) end
-		if orange then orange:SetVisible(not choice) end
-		if indicator then indicator:SetVisible(choice ~= nil and choice ~= false) end
+		if green then green:SetVisible(ring.green) end
+		if orange then orange:SetVisible(ring.orange) end
+		if indicator then indicator:SetVisible(ring.indicator) end
 	end
 
 	self:_applyIndicator()

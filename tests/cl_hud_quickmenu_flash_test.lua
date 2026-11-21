@@ -41,10 +41,13 @@ return {
 		GryMod.SoundMix.Emit = function() end
 		state.savedKeep = GetConVar("gry_menu_keep_highlight"):GetString()
 		GetConVar("gry_menu_keep_highlight"):SetString("1")
+		state.savedRing = GetConVar("gry_menu_ring_film"):GetString()
+		GetConVar("gry_menu_ring_film"):SetString("1")
 	end,
 	afterEach = function(state)
 		GryMod.SoundMix.Emit = state.realEmit
 		GetConVar("gry_menu_keep_highlight"):SetString(state.savedKeep)
+		GetConVar("gry_menu_ring_film"):SetString(state.savedRing)
 	end,
 	cases = {
 		{
@@ -209,6 +212,120 @@ return {
 				run(menu, 0.4)
 				menu:Update(1 / 30)
 				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(2) -- applied as soon as the movie can
+			end
+		},
+		{
+			name = "RingAfter: the ring changes with the film's rules, an inactive or defective mode touches nothing, the centre is orange",
+			func = function(state)
+				local ring = GryMod.FlashMenu.RingAfter
+				local active = {Speed = true, Strength = true, Cloak = true, Armor = true} -- Weapon is inactive
+				local defect = {Cloak = true}
+				local center = ring(nil, "Center", active, defect, 0)
+				expect(center.orange).to.beTrue()
+				expect(center.green).to.beFalse()
+				expect(center.indicator).to.beFalse()
+
+				-- an active mode: green with the indicator
+				local speed = ring(center, "Speed", active, defect, 0)
+				expect(speed.green).to.beTrue()
+				expect(speed.orange).to.beFalse()
+				expect(speed.indicator).to.beTrue()
+
+				-- from an active mode to an inactive one: nothing is touched, the ring stays green (the original)
+				local weapon = ring(speed, "Weapon", active, defect, 0)
+				expect(weapon.green).to.beTrue()
+				expect(weapon.orange).to.beFalse()
+				expect(weapon.indicator).to.beTrue()
+
+				-- from the centre to an inactive one: stays orange
+				weapon = ring(center, "Weapon", active, defect, 0)
+				expect(weapon.orange).to.beTrue()
+				expect(weapon.green).to.beFalse()
+
+				-- a defective mode is the same
+				expect(ring(speed, "Cloak", active, defect, 0).green).to.beTrue()
+				expect(ring(center, "Cloak", active, defect, 0).orange).to.beTrue()
+
+				-- the centre always puts it back to orange
+				local back = ring(speed, "Center", active, defect, 0)
+				expect(back.orange).to.beTrue()
+				expect(back.indicator).to.beFalse()
+
+				-- a malfunction: no mode counts, whatever it is; Defense is the Armor icon
+				expect(ring(center, "Speed", active, defect, 1).orange).to.beTrue()
+				expect(ring(center, "Defense", active, defect, 0).green).to.beTrue()
+				-- an unknown name touches nothing
+				expect(ring(speed, "Default", active, defect, 0).green).to.beTrue()
+			end
+		},
+		{
+			name = "moving the pointer from an active mode to an inactive one leaves the ring green; back to the centre it is orange",
+			func = function(state)
+				local menu = openMenu({Speed = true, Strength = true, Cloak = true, Armor = true})
+				local circle = menu.qm:Child("Circle")
+				menu:Select("Speed")
+				menu:Update(1 / 30)
+				expect(circle:Child("Circle_green").visible).to.beTrue()
+				menu:Select("Weapon")
+				menu:Update(1 / 30)
+				expect(modeClip(menu, "Weapon"):CurrentFrame()).to.equal(3) -- the icon says it is inactive
+				expect(circle:Child("Circle_green").visible).to.beTrue()
+				expect(circle:Child("Circle_orange").visible).to.beFalse()
+				expect(circle:Child("Indicator").visible).to.beTrue()
+				menu:Select("Center")
+				menu:Update(1 / 30)
+				expect(circle:Child("Circle_orange").visible).to.beTrue()
+				expect(circle:Child("Circle_green").visible).to.beFalse()
+				-- and it starts from the centre again at the next opening
+				menu:Select("Speed")
+				menu:Update(1 / 30)
+				menu:Close()
+				run(menu, 0.5)
+				menu:Open()
+				run(menu, 0.4)
+				expect(menu.qm:Child("Circle"):Child("Circle_orange").visible).to.beTrue()
+			end
+		},
+		{
+			name = "gry_menu_ring_film 0 brings back the ring that follows the choice alone; the switch is saved, on by default, with a check box",
+			func = function(state)
+				local convar = GetConVar("gry_menu_ring_film")
+				expect(convar:GetDefault()).to.equal("1")
+				convar:SetString("0")
+				local menu = openMenu({Speed = true, Strength = true, Cloak = true, Armor = true})
+				local circle = menu.qm:Child("Circle")
+				menu:Select("Speed")
+				menu:Update(1 / 30)
+				menu:Select("Weapon")
+				menu:Update(1 / 30)
+				expect(circle:Child("Circle_orange").visible).to.beTrue()
+				expect(circle:Child("Circle_green").visible).to.beFalse()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_menu_ring_film"]).to.beTrue()
 			end
 		},
 		{

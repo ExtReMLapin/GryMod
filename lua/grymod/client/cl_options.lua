@@ -92,6 +92,8 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("HUD malfunction also when the energy bar is empty (the original: only on an EMP, an electric attack or death)", "gry_malfunction_empty")
 	-- client setting: the quick menu icon that was chosen stays lit while the menu fades out
 	Panel:CheckBox("Quick menu: the icon you chose stays lit while the menu fades out (the original; off: it goes plain at the release)", "gry_menu_keep_highlight")
+	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one
+	Panel:CheckBox("Quick menu: the ring stays green going from an active mode to an inactive one (the original; off: it turns orange)", "gry_menu_ring_film")
 	-- client setting: the suit mode icon plays its reboot animation when the HUD comes back
 	Panel:CheckBox("Suit mode icon plays its reboot animation when the HUD comes back after a malfunction (the original)", "gry_icon_reboot")
 	-- client setting: the start-up log and its sounds belong to the start of the level in the original
