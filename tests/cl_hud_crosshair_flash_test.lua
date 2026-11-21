@@ -331,7 +331,7 @@ return {
 			end
 		},
 		{
-			name = "friendly: a player of the same team (when there are teams) and the rebels' NPC classes, never the player itself",
+			name = "friendly: a player of the same team (when there are teams), an NPC only when the server confirmed it likes the player (never by its class), never the player itself",
 			func = function(state)
 				local C = GryMod.FlashCrosshair
 				local me = {Team = function() return 1 end, IsPlayer = function() return true end}
@@ -346,10 +346,73 @@ return {
 				expect(C.IsFriendly(fake("player", true, 1), me)).to.beTrue()
 				expect(C.IsFriendly(fake("player", true, 2), me)).to.beFalse()
 				expect(C.IsFriendly(fake("player", true, 1001), {Team = function() return 1001 end})).to.beFalse() -- no teams: nobody is friendly
-				expect(C.IsFriendly(fake("npc_citizen"), me)).to.beTrue()
-				expect(C.IsFriendly(fake("npc_alyx"), me)).to.beTrue()
-				expect(C.IsFriendly(fake("npc_combine_s"), me)).to.beFalse()
-				expect(C.IsFriendly(nil, me)).to.beFalse()
+				expect(C.IsFriendly(fake("player", true, 1), me, false)).to.beTrue() -- a player is decided by its team, not by the server's answer
+				-- an NPC: the server's answer decides, the class does not
+				expect(C.IsFriendly(fake("npc_citizen"), me, true)).to.beTrue()
+				expect(C.IsFriendly(fake("npc_zombie"), me, true)).to.beTrue() -- made friendly by something else
+				expect(C.IsFriendly(fake("npc_citizen"), me, false)).to.beFalse() -- the Enemy Rebel of the NPC menu
+				expect(C.IsFriendly(fake("npc_citizen"), me, nil)).to.beFalse() -- not answered yet: no cross
+				expect(C.IsFriendly(fake("npc_citizen"), me)).to.beFalse()
+				expect(C.IsFriendly(fake("npc_alyx"), me)).to.beFalse()
+				expect(C.IsFriendly(fake("npc_combine_s"), me, false)).to.beFalse()
+				expect(C.IsFriendly(nil, me, true)).to.beFalse()
+			end
+		},
+		{
+			name = "the relation of an NPC is asked to the server once, kept for a second, asked again after, and an answer too old is not trusted",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local npc = {IsValid = function() return true end, EntIndex = function() return 77 end}
+				local realAsk, asked = C.AskServer, {}
+				C.AskServer = function(index) asked[#asked + 1] = index end
+				C.ForgetRelations()
+				local ok, err = pcall(function()
+					local r0 = C.Relation(npc, 10)
+					assert(r0 == nil, "unknown before the answer")
+					assert(#asked == 1 and asked[1] == 77, "asked once")
+					C.Relation(npc, 10.5)
+					assert(#asked == 1, "not asked again within a second")
+					C.OnAnswer(77, true, 10.6)
+					assert(C.Relation(npc, 10.7) == true, "answered friendly")
+					assert(#asked == 1, "an answer is kept")
+					-- after a second it is asked again, the old answer still holds until the new one comes
+					assert(C.Relation(npc, 11.7) == true, "the old answer holds while the new one is on its way")
+					assert(#asked == 2, "asked again after a second")
+					C.OnAnswer(77, false, 11.8)
+					assert(C.Relation(npc, 11.9) == false, "the NPC turned hostile")
+					-- no answer for more than two seconds: not trusted any more
+					C.OnAnswer(77, true, 12)
+					assert(C.Relation(npc, 14.5) == nil, "an answer older than two seconds is dropped")
+				end)
+				C.AskServer = realAsk
+				C.ForgetRelations()
+				expect(err).to.beNil()
+				expect(ok).to.beTrue()
+			end
+		},
+		{
+			name = "the questions to the server are spaced by a fifth of a second, whatever NPC the player sweeps over",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function npc(i)
+					return {IsValid = function() return true end, EntIndex = function() return i end}
+				end
+
+				local realAsk, asked = C.AskServer, {}
+				C.AskServer = function(index) asked[#asked + 1] = index end
+				C.ForgetRelations()
+				local ok, err = pcall(function()
+					for i = 1, 10 do
+						C.Relation(npc(i), 50 + i * 0.1) -- ten different NPCs in a second
+					end
+
+					assert(#asked <= 5, "at most 5 questions a second, asked " .. #asked)
+					assert(#asked >= 4, "but the sweep is served, asked " .. #asked)
+				end)
+				C.AskServer = realAsk
+				C.ForgetRelations()
+				expect(err).to.beNil()
+				expect(ok).to.beTrue()
 			end
 		},
 		{
@@ -441,7 +504,7 @@ return {
 			end
 		},
 		{
-			name = "aiming at an ally opens the friendly cross without an error, and the crosshair keeps being drawn",
+			name = "aiming at a rebel: no cross until the server says it is an ally, the cross while it does, none when it turns hostile; the crosshair keeps being drawn",
 			func = function(state)
 				local C = GryMod.FlashCrosshair
 				local ply = LocalPlayer()
@@ -450,30 +513,48 @@ return {
 					return
 				end
 
-				local ally = {
+				-- an npc_citizen: its class used to be enough to open the cross
+				local rebel = {
 					IsValid = function() return true end, GetClass = function() return "npc_citizen" end,
 					IsWeapon = function() return false end, IsPlayer = function() return false end,
-					IsNPC = function() return true end, Team = function() return 1001 end
+					IsNPC = function() return true end, Team = function() return 1001 end, EntIndex = function() return 4242 end
 				}
-				local realTrace, realDraw, drawn = util.TraceLine, GryMod.Flash.Draw, 0
+				local realTrace, realDraw, realAsk, realTime, drawn, asked = util.TraceLine, GryMod.Flash.Draw, C.AskServer, RealTime, 0, {}
+				local clock = 1000
 				GryMod.Flash.Draw = function() drawn = drawn + 1 end
-				util.TraceLine = function() return {Entity = ally} end
+				util.TraceLine = function() return {Entity = rebel} end
+				C.AskServer = function(index) asked[#asked + 1] = index end
+				RealTime = function() return clock end
 				GetConVar("gry_hud"):SetString("1")
 				GetConVar("gry_hud_crosshair"):SetString("1")
 				C.Reset()
+				C.ForgetRelations()
 				-- the stubs are put back whatever happens, so that a failing check cannot leave them in the game
-				local ok, shown = pcall(function()
-					assert(pcall(C.Paint))
-					assert(pcall(C.Paint))
+				local ok, err = pcall(function()
+					local function frame(advance)
+						clock = clock + advance
+						assert(pcall(C.Paint))
 
-					return C.FriendlyShown()
+						return C.FriendlyShown()
+					end
+
+					assert(frame(0.2) == false, "no cross before the answer")
+					assert(frame(0.2) == false, "still none while the server has not answered")
+					assert(asked[1] == 4242, "the server was asked about the NPC")
+					C.OnAnswer(4242, false, clock) -- an enemy rebel
+					assert(frame(0.2) == false, "no cross for an enemy rebel, class or not")
+					C.OnAnswer(4242, true, clock) -- a rebel of the resistance
+					assert(frame(0.2) == true, "the cross for an ally")
+					C.OnAnswer(4242, false, clock) -- it turned hostile
+					assert(frame(0.2) == false, "the cross closes when the NPC turns hostile")
 				end)
-				util.TraceLine, GryMod.Flash.Draw = realTrace, realDraw
+				util.TraceLine, GryMod.Flash.Draw, C.AskServer, RealTime = realTrace, realDraw, realAsk, realTime
 				C.Reset()
+				C.ForgetRelations()
 
+				expect(err).to.beNil()
 				expect(ok).to.beTrue()
-				expect(shown).to.beTrue()
-				expect(drawn >= 3).to.beTrue() -- the crosshair twice and the cross at least once
+				expect(drawn >= 5).to.beTrue() -- the crosshair on every frame, the cross on the ally's
 			end
 		},
 		{

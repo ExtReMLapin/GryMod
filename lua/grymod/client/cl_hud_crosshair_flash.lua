@@ -249,14 +249,12 @@ function Cross.UsableFor(ent, ply)
 	return 0
 end
 
-local FRIENDLY_NPCS = {
-	npc_citizen = true, npc_alyx = true, npc_barney = true, npc_eli = true, npc_kleiner = true, npc_mossman = true,
-	npc_monk = true, npc_odessa = true, npc_magnusson = true, npc_dog = true, npc_vortigaunt = true
-}
-
--- Whether what the player aims at is an ally: a player of the same team (when the game has teams), or one of the
--- Half-Life 2 rebels' NPCs. The original asks its game rules; Garry's Mod has no common answer.
-function Cross.IsFriendly(ent, ply)
+-- Whether what the player aims at is an ally: a player of the same team (when the game has teams), or an NPC that the
+-- SERVER says likes the player (D_LI, see sv_friendly.lua): the attitude of an NPC is what counts, not its class (the
+-- "Enemy Rebel" of the NPC menu is an npc_citizen that hates the player). `known` is the server's answer for an NPC
+-- (Cross.Relation): while it is not there (nil) or says no, the cross stays closed, so that no hostile NPC ever shows
+-- it. The original asks its game rules; Garry's Mod has no common answer.
+function Cross.IsFriendly(ent, ply, known)
 	if not ent or not IsValid(ent) then
 		return false
 	end
@@ -267,8 +265,65 @@ function Cross.IsFriendly(ent, ply)
 		return ent ~= ply and ply ~= nil and team == ply:Team() and team ~= 1001 and team ~= 1002
 	end
 
-	return ent:IsNPC() and FRIENDLY_NPCS[ent:GetClass()] == true
+	return ent:IsNPC() and known == true
 end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The attitude of an NPC towards the player, from the server (Disposition only exists there)
+-- ---------------------------------------------------------------------------------------------------------
+
+local ASK_EVERY = 1 -- an NPC that is still aimed at is asked again after this many seconds (it can turn hostile)
+local TRUST_FOR = 2 -- an answer older than this is dropped (the server limits the questions: no answer, no cross)
+local ASK_GAP = 0.2 -- two questions are at least this far apart, the server answers 5 a second to a player
+
+local relations = {} -- [entity index] = {friendly = bool, answered = time, asked = time}
+local lastAsk = -math.huge
+
+-- Asks the server whether the NPC of this index is an ally (replaceable by the tests).
+function Cross.AskServer(index)
+	net.Start("gry_friendly_ask")
+	net.WriteUInt(index, 13)
+	net.SendToServer()
+end
+
+-- What the server answered for the NPC at `now`: true (ally), false (not), nil (not known, or too old). Asks the server
+-- when the NPC is new or its answer is a second old.
+function Cross.Relation(ent, now)
+	local index = ent:EntIndex()
+	local entry = relations[index]
+
+	if (not entry or now - entry.asked >= ASK_EVERY) and now - lastAsk >= ASK_GAP then
+		entry = entry or {asked = now}
+		entry.asked = now
+		relations[index] = entry
+		lastAsk = now
+		Cross.AskServer(index)
+	end
+
+	if entry and entry.answered and now - entry.answered <= TRUST_FOR then
+		return entry.friendly
+	end
+
+	return nil
+end
+
+-- The server's answer.
+function Cross.OnAnswer(index, friendly, now)
+	local entry = relations[index] or {asked = now}
+	entry.friendly, entry.answered = friendly and true or false, now
+	relations[index] = entry
+end
+
+function Cross.ForgetRelations()
+	relations = {}
+	lastAsk = -math.huge
+end
+
+net.Receive("gry_friendly", function()
+	local index = net.ReadUInt(13)
+
+	Cross.OnAnswer(index, net.ReadBool(), RealTime())
+end)
 
 -- A crosshair from a converted movie (nil when the movie is missing).
 function Cross.New(movie, theme)
@@ -562,7 +617,15 @@ local function scan(ply)
 		endpos = ply:EyePos() + ply:GetAimVector() * 3000,
 		filter = ply
 	})
-	local isFriendly = far.Entity and Cross.IsFriendly(far.Entity, ply) or false
+	local aimed = far.Entity
+	local known = nil
+
+	-- an NPC's attitude comes from the server: asked only for what is aimed at
+	if aimed and IsValid(aimed) and aimed:IsNPC() then
+		known = Cross.Relation(aimed, now)
+	end
+
+	local isFriendly = aimed and Cross.IsFriendly(aimed, ply, known) or false
 
 	if isFriendly and not friendlyShown and friendly then
 		friendly.clip:GotoAndPlay("restart")
@@ -667,6 +730,7 @@ function Cross.Reset()
 	instance, friendly = nil, nil
 	lastTime, spread, kick, usableMode, friendlyShown = nil, 0, 0, 0, false
 	nextScan, failed = 0, false
+	Cross.ForgetRelations()
 end
 
 hook.Add("HUDPaint", "GRYFLASHCROSSHAIR", Cross.Paint)

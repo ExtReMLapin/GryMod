@@ -22,6 +22,7 @@ if SERVER then
 	AddCSLuaFile()
 	AddCSLuaFile("grymod/client/cl_hud.lua")
 	AddCSLuaFile("grymod/client/cl_sound_mix.lua")
+	AddCSLuaFile("grymod/client/cl_sprint_sound.lua")
 	AddCSLuaFile("grymod/client/cl_sounds.lua")
 	AddCSLuaFile("grymod/client/cl_underwater.lua")
 	AddCSLuaFile("grymod/client/cl_options.lua")
@@ -64,6 +65,7 @@ if SERVER then
 	include("grymod/sh_radar.lua")
 	include("grymod/server/sv_radar.lua")
 	include("grymod/server/sv_grenade.lua")
+	include("grymod/server/sv_friendly.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.vmt")
@@ -233,6 +235,7 @@ if CLIENT then
 	include("grymod/client/cl_flash_prewarm.lua")
 	include("grymod/client/cl_cloak_fx.lua")
 	include("grymod/client/cl_hud.lua")
+	include("grymod/client/cl_sprint_sound.lua")
 	include("grymod/client/cl_sounds.lua")
 	include("grymod/client/cl_underwater.lua")
 	include("grymod/client/cl_options.lua")
