@@ -35,8 +35,20 @@ local function ids(movie)
 	return hand, mode
 end
 
+-- a weapon of this class whose secondary ammo is the given type (the class is what the registry knows it by)
+local function classWeapon(class, ammoName)
+	return {
+		GetClass = function() return class end,
+		GetSecondaryAmmoType = function() return ammoName and game.GetAmmoID(ammoName) or -1 end
+	}
+end
+
 return {
 	groupName = "GryMod HUD grenade slot (Flash)",
+	afterEach = function(state)
+		GryMod.API.UnregisterWeapon("t_launcher")
+		GryMod.API.UnregisterWeapon("t_noicon")
+	end,
 	cases = {
 		{
 			name = "a weapon with a grenade launcher gives the number of grenades it holds, other secondary fires and no secondary give nothing",
@@ -48,6 +60,101 @@ return {
 				expect(M.LauncherFor(player(4), {GetSecondaryAmmoType = function() return -1 end})).to.beNil()
 				expect(M.LauncherFor(player(4), nil)).to.beNil()
 				expect(M.LauncherFor(player(4), NULL)).to.beNil()
+			end
+		},
+		{
+			-- The AR2's secondary is the energy ball: its ammo is what the grenade slot counts (the registry says so, the HUD does
+			-- not know the class). A weapon we have no class for keeps the old rule, so AR2AltFire without a class stays nothing.
+			name = "the AR2's secondary (the energy ball, AR2AltFire) is counted in the slot, the SMG's grenade too, the other stock weapons give nothing",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				expect(M.LauncherFor(player(4), classWeapon("weapon_ar2", "AR2AltFire"))).to.equal(4)
+				expect(M.LauncherFor(player(0), classWeapon("weapon_ar2", "AR2AltFire"))).to.equal(0)
+				expect(M.LauncherFor(player(4), classWeapon("weapon_smg1", "SMG1_Grenade"))).to.equal(4)
+
+				for _, class in ipairs({"weapon_shotgun", "weapon_crossbow", "weapon_pistol", "weapon_357", "weapon_rpg", "weapon_frag", "weapon_physcannon", "weapon_crowbar", "weapon_stunstick"}) do
+					expect(M.LauncherFor(player(4), classWeapon(class, nil))).to.beNil()
+				end
+			end
+		},
+		{
+			name = "what a registered weapon says about its secondary decides: a registered class that says none shows no launcher even with grenade ammo",
+			func = function(state)
+				GryMod.API.RegisterWeapon("t_noicon", {alt = "zoom"})
+				expect(GryMod.FlashHUD.LauncherFor(player(4), classWeapon("t_noicon", "SMG1_Grenade"))).to.beNil()
+			end
+		},
+		{
+			-- the icon and the label the registry gives to the secondary; nil when the weapon has no launcher
+			name = "LauncherLookFor gives the icon and the label of the secondary: the SMG's 40 mm grenade, the AR2's energy ball, nothing for the others",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local icon, label = M.LauncherLookFor(classWeapon("weapon_smg1", "SMG1_Grenade"))
+				expect(icon).to.equal(GryMod.API.WeaponValue("weapon_smg1", "altIcon"))
+				expect(label).to.equal("40mm")
+
+				icon, label = M.LauncherLookFor(classWeapon("weapon_ar2", "AR2AltFire"))
+				expect(icon).to.equal(GryMod.API.WeaponValue("weapon_ar2", "altIcon"))
+				expect(label).to.equal(GryMod.API.WeaponValue("weapon_ar2", "altLabel"))
+				expect(label ~= "40mm").to.beTrue()
+
+				expect(M.LauncherLookFor(classWeapon("weapon_crossbow", nil))).to.beNil()
+				expect(M.LauncherLookFor(nil)).to.beNil()
+				expect(M.LauncherLookFor(NULL)).to.beNil()
+
+				-- a launcher that says nothing about its icon gets the 40 mm grenade one
+				GryMod.API.RegisterWeapon("t_noicon", {alt = "grenade", altAmmo = "SMG1_Grenade"})
+				icon, label = M.LauncherLookFor(classWeapon("t_noicon", "SMG1_Grenade"))
+				expect(icon).to.equal("Grenade")
+				expect(label).to.beNil()
+			end
+		},
+		{
+			-- dogfooding: the SMG, the AR2 and the weapon of an addon go through the same path, from the registry to the slot
+			name = "a third-party weapon registered with RegisterWeapon is shown by the same path as the SMG and the AR2: count, icon in the slot, label",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local API = GryMod.API
+
+				expect(API.RegisterWeapon("t_launcher", {alt = "energy", altAmmo = "AR2AltFire", altIcon = "Gauss", altLabel = "PLASMA"})).to.beTrue()
+
+				for _, case in ipairs({{"weapon_smg1", "SMG1_Grenade"}, {"weapon_ar2", "AR2AltFire"}, {"t_launcher", "AR2AltFire"}}) do
+					local weapon = classWeapon(case[1], case[2])
+					local count = M.LauncherFor(player(7), weapon)
+					local icon, label = M.LauncherLookFor(weapon)
+					expect(count).to.equal(7)
+					expect(icon).to.equal(API.WeaponValue(case[1], "altIcon"))
+
+					local hud = newHud()
+					hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", count, false, icon, label)
+					expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal(icon)
+					expect(hud.root:Find("Root.Player.AmmoTexts.MagAmmo.Colorset"):Child("GrenadeAmmo").text).to.equal("7")
+					expect(hud:GetLauncherLabel()).to.equal(label)
+				end
+
+				expect(M.LauncherLookFor(classWeapon("t_launcher", "AR2AltFire"))).to.equal("Gauss")
+			end
+		},
+		{
+			name = "the launcher icon follows the weapon: another icon, then the default one, then the hand grenades again",
+			func = function(state)
+				local hud = newHud()
+				local hand, mode = ids(GryMod.Flash.Load("hud_ammohealthenergysuit"))
+
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5, false, "Gauss", "PLASMA")
+				expect(slot(hud, "GrenadeMode").id).to.equal(mode)
+				expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal("Gauss")
+				expect(slot(hud, "GrenadeMode").clip.list[1].blend).to.equal(8)
+				expect(hud:GetLauncherLabel()).to.equal("PLASMA")
+
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto", 5)
+				expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal("Grenade") -- no icon given: the 40 mm one, as before
+				expect(hud:GetLauncherLabel()).to.beNil()
+
+				hud:SetAmmo(30, 90, 45, 2, "explosivegrenade", "Auto")
+				expect(slot(hud, "GrenadeMode").id).to.equal(hand)
+				expect(slot(hud, "GrenadeMode").clip:CurrentLabel()).to.equal("explosivegrenade")
+				expect(hud:GetLauncherLabel()).to.beNil()
 			end
 		},
 		{

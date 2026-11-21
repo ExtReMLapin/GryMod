@@ -153,16 +153,31 @@ concommand.Add("-crysishud", GryMod.CryOpenClose)
 -- Switch: the right click also ends the camouflage when the weapon really fires with it.
 local CloakAltFire = CreateClientConVar("gry_cloak_altfire", "1", true, false, "The camouflage also ends on a right click that really fires: the shotgun's double barrel, the SMG grenade, the AR2 energy ball, the frag grenade's lob")
 
--- Does the right click of this Half-Life 2 weapon fire a shot right now? Pure: the class, the magazine (Clip1) and the
--- ammo reserve of the primary and of the secondary ammo type of the weapon. The crossbow's right click is a zoom, and
--- the weapons of other addons are unknown: neither counts.
+-- Does the right click of this weapon fire a shot right now? Pure: the class, the magazine (Clip1) and the ammo reserve of the
+-- primary and of the secondary ammo type of the weapon. What the secondary IS comes from the weapon registry (GryMod.API, the stock
+-- weapons are registered there as data): the shotgun's double barrel needs two shells in the magazine, a grenade, an energy ball
+-- or another shot needs its secondary ammo, the frag grenade's lob needs a grenade left. A zoom (the crossbow), a swing and the
+-- weapons the registry does not know never count.
 function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
-	if class == "weapon_shotgun" then
+	local read = GryMod.API and GryMod.API.ResolveWeapon
+	local def = isstring(class) and read and read(class)
+
+	if not def or def.altShoots ~= true then
+		return false
+	end
+
+	local alt = def.alt
+
+	if alt == "doublebarrel" then
 		return (clip1 or 0) >= 2 -- the double barrel fires both shells
-	elseif class == "weapon_smg1" or class == "weapon_ar2" then
-		return (secondaryReserve or 0) > 0 -- the grenade, the energy ball
-	elseif class == "weapon_frag" then
+	elseif alt == "throwlow" then
 		return (primaryReserve or 0) > 0 -- the lob, while there is a grenade
+	elseif alt == "grenade" or alt == "energy" or alt == "shoot" then
+		if alt == "shoot" and not def.altAmmo then
+			return true -- a shot that costs no ammo of its own
+		end
+
+		return (secondaryReserve or 0) > 0 -- the grenade, the energy ball, a shot with its own ammo
 	end
 
 	return false

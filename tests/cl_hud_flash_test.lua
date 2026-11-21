@@ -24,6 +24,9 @@ end
 
 return {
 	groupName = "GryMod Crysis HUD (Flash)",
+	afterEach = function(state)
+		GryMod.API.UnregisterWeapon("t_firemode")
+	end,
 	cases = {
 		{
 			name = "the HUD starts on the steady frames of the original (SkipSequence)",
@@ -461,6 +464,56 @@ return {
 				expect(M.FireModeFor(weapon(true))).to.equal("Auto")
 				expect(M.FireModeFor(weapon(false))).to.equal("Single")
 				expect(M.FireModeFor({GetClass = function() return "some_addon_gun" end})).to.equal("Single")
+			end
+		},
+		{
+			-- The icons are read from the weapon registry (nothing in the HUD knows a class): an addon's weapon registered with
+			-- RegisterWeapon, or declaring SWEP.GryHUD, picks its icon the same way the stock weapons do.
+			name = "a weapon registered through RegisterWeapon gets its icon from the registry: icon, else slotIcon, else the fire mode",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local API = GryMod.API
+				local function gun(automatic)
+					return {GetClass = function() return "t_firemode" end, Primary = {Automatic = automatic}}
+				end
+
+				API.RegisterWeapon("t_firemode", {icon = "Claymore", slotIcon = "Mine", fire = "burst"})
+				expect(M.FireModeFor(gun(true))).to.equal("Claymore")
+				API.RegisterWeapon("t_firemode", {slotIcon = "Mine", fire = "burst"})
+				expect(M.FireModeFor(gun(true))).to.equal("Mine")
+				API.RegisterWeapon("t_firemode", {fire = "burst"})
+				expect(M.FireModeFor(gun(true))).to.equal("Burst")
+				API.RegisterWeapon("t_firemode", {fire = "semi"})
+				expect(M.FireModeFor(gun(true))).to.equal("Single") -- the registry wins over Primary.Automatic
+				API.RegisterWeapon("t_firemode", {fire = "auto"})
+				expect(M.FireModeFor(gun(false))).to.equal("Auto")
+				API.RegisterWeapon("t_firemode", {fire = "none"})
+				expect(M.FireModeFor(gun(true))).to.equal("NoGun")
+			end
+		},
+		{
+			name = "the 12 Crysis icons nothing chose before are shown when a weapon picks them (registry or SWEP.GryHUD)",
+			func = function(state)
+				local M = GryMod.FlashHUD
+
+				for _, label in ipairs({"Incendiary", "Tranquilizer", "infinity", "Narrow", "Moac", "Moar", "TACCannon", "C4", "Gauss", "Gunner", "Mounted", "Claymore"}) do
+					GryMod.API.RegisterWeapon("t_firemode", {icon = label})
+					expect(M.FireModeFor({GetClass = function() return "t_firemode" end})).to.equal(label)
+					expect(M.FireModeFor({GetClass = function() return "t_other" end, GryHUD = {icon = label}})).to.equal(label)
+				end
+			end
+		},
+		{
+			name = "a declared fire mode wins over a base's resolver, which wins over Primary.Automatic",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local remove = M.AddFireModeResolver(function(weapon) return weapon.resolverSays end)
+				local gun = {GetClass = function() return "t_firemode" end, Primary = {Automatic = true}, resolverSays = "Burst"}
+
+				expect(M.FireModeFor(gun)).to.equal("Burst")
+				GryMod.API.RegisterWeapon("t_firemode", {fire = "semi"})
+				expect(M.FireModeFor(gun)).to.equal("Single")
+				remove()
 			end
 		},
 		{

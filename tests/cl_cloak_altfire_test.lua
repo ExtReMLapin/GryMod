@@ -79,6 +79,7 @@ return {
 		end
 	end,
 	afterEach = function(state)
+		pcall(function() GryMod.API.UnregisterWeapon("t_alt_gun") end)
 		pcall(restore)
 		pcall(function() GetConVar("gry_cloak_altfire"):SetString(savedConVar) end)
 	end,
@@ -113,6 +114,46 @@ return {
 				expect(shoots("weapon_frag", -1, 3, 0)).to.beTrue()
 				expect(shoots("weapon_frag", -1, 1, 0)).to.beTrue()
 				expect(shoots("weapon_frag", -1, 0, 0)).to.beFalse()
+			end
+		},
+		{
+			-- the table of the stock weapons is gone: the registry says what each secondary is, for an addon's weapon as well
+			name = "a weapon registered through RegisterWeapon counts like the stock ones, by what its secondary is",
+			func = function(state)
+				local shoots = GryMod.AltFireShoots
+				local API = GryMod.API
+
+				API.RegisterWeapon("t_alt_gun", {alt = "grenade", altAmmo = "SMG1_Grenade"})
+				expect(shoots("t_alt_gun", 30, 90, 2)).to.beTrue()
+				expect(shoots("t_alt_gun", 30, 90, 0)).to.beFalse()
+
+				API.RegisterWeapon("t_alt_gun", {alt = "energy", altAmmo = "AR2AltFire"})
+				expect(shoots("t_alt_gun", 30, 90, 1)).to.beTrue()
+				expect(shoots("t_alt_gun", 30, 90, 0)).to.beFalse()
+
+				API.RegisterWeapon("t_alt_gun", {alt = "doublebarrel"})
+				expect(shoots("t_alt_gun", 2, 0, 0)).to.beTrue()
+				expect(shoots("t_alt_gun", 1, 30, 0)).to.beFalse()
+
+				API.RegisterWeapon("t_alt_gun", {alt = "throwlow"})
+				expect(shoots("t_alt_gun", -1, 1, 0)).to.beTrue()
+				expect(shoots("t_alt_gun", -1, 0, 0)).to.beFalse()
+
+				-- a secondary that fires a shot with its own ammo, or with none
+				API.RegisterWeapon("t_alt_gun", {alt = "shoot", altAmmo = "Gauss"})
+				expect(shoots("t_alt_gun", 30, 90, 1)).to.beTrue()
+				expect(shoots("t_alt_gun", 30, 90, 0)).to.beFalse()
+				API.RegisterWeapon("t_alt_gun", {alt = "shoot"})
+				expect(shoots("t_alt_gun", 0, 0, 0)).to.beTrue()
+
+				-- a zoom, a swing, nothing: no shot; altShoots = false turns a shooting secondary off
+				for _, alt in ipairs({"zoom", "melee", "none"}) do
+					API.RegisterWeapon("t_alt_gun", {alt = alt})
+					expect(shoots("t_alt_gun", 30, 90, 90)).to.beFalse()
+				end
+
+				API.RegisterWeapon("t_alt_gun", {alt = "grenade", altAmmo = "SMG1_Grenade", altShoots = false})
+				expect(shoots("t_alt_gun", 30, 90, 3)).to.beFalse()
 			end
 		},
 		{

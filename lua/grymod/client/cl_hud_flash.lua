@@ -231,10 +231,15 @@ end
 -- weaponChanged: the values come from another weapon (its fire mode icon is not a switch of mode, so no blink).
 -- The icon of the fire mode and the grenade icon blink when they change (the original calls switchFireMode and
 -- switchGrenades when the player switches them), never at the first display.
-function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launcher, weaponChanged)
+-- launcher: the count of the weapon's secondary ammo shown in the grenade slot (nil: the hand grenades). launcherIcon: the label of the
+-- weapon slot icon shown there ("Grenade", the 40 mm grenade, when nil), launcherLabel: the short text the weapon gives its secondary
+-- (kept, see GetLauncherLabel: the movie has no text field for it).
+function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launcher, weaponChanged, launcherIcon, launcherLabel)
 	local ammo = self.ammo
 	local shown, previousMode, previousGrenade = ammo.shown, ammo.fireMode, ammo.grenadeType
 	ammo.launcher = launcher ~= nil and number(launcher, 0) or nil
+	ammo.launcherIcon = ammo.launcher ~= nil and launcherIcon or nil
+	ammo.launcherLabel = ammo.launcher ~= nil and launcherLabel or nil
 	ammo.mag, ammo.reserve, ammo.size = number(mag, 0), number(reserve, 0), number(size, 0)
 	ammo.grenades = number(grenades, 0)
 	ammo.grenadeType = grenadeType or ammo.grenadeType
@@ -252,6 +257,12 @@ function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launch
 			self:SwitchGrenades()
 		end
 	end
+end
+
+-- The short text the weapon in hand gives its secondary fire ("40mm"...), or nil. Not drawn yet: the movie has no text field
+-- for it, and the atlases are not touched.
+function HUD:GetLauncherLabel()
+	return self.ammo.launcherLabel
 end
 
 -- switchFireMode: the "play" label of the Blink clip inside the fire mode icon (the hand grenade icon has none).
@@ -394,10 +405,10 @@ function HUD:_applyAmmo()
 
 	local sets = iconSets(self.root.movie)
 
-	-- a launcher shows the 40 mm grenade where the hand grenades are, the hand grenade weapon its own icon in the
-	-- weapon slot
+	-- a launcher shows the icon its weapon chose (by default the 40 mm grenade) where the hand grenades are, the hand grenade
+	-- weapon its own icon in the weapon slot
 	if ammo.launcher ~= nil then
-		fillSlot(player, "GrenadeMode", sets.mode, "Grenade", true)
+		fillSlot(player, "GrenadeMode", sets.mode, ammo.launcherIcon or "Grenade", true)
 	else
 		fillSlot(player, "GrenadeMode", sets.hand, ammo.grenadeType)
 	end
@@ -568,24 +579,21 @@ function Module.EnergyValue(energy)
 	return math.floor(math.Clamp(energy, 0, MAX_NUMBER) + 1)
 end
 
--- The icons the movie has for the weapon above the grenade (the labels of its AmmoMode clip).
-local FIRE_MODE_ICONS = {}
+-- The icons the movie has for the weapon above the grenade (the labels of its AmmoMode clip): the registry's list of icons, which
+-- is also what a weapon definition may choose (icon, slotIcon, altIcon).
+local FIRE_MODE_ICONS = GryMod.API and GryMod.API.WeaponIcons or {}
 
-for _, label in ipairs({"Single", "Burst", "Auto", "Grenade", "Incendiary", "Tranquilizer", "infinity", "Shotgun",
-	"Narrow", "Mine", "Repairkit", "Moac", "Moar", "TACCannon", "C4", "Gauss", "Gunner", "Missle", "Mounted",
-	"NoGun", "Claymore", "HandGrenade"}) do
-	FIRE_MODE_ICONS[label] = true
+-- What a weapon says about itself comes from the weapon registry (GryMod.API, sh_api_weapons.lua): the stock weapons are registered
+-- there as data (sh_api_weapons_hl2.lua) like any addon's, and nothing in this file knows a class. Without the registry a weapon
+-- is a plain one.
+local function weaponValue(weapon, field, explicit)
+	local read = GryMod.API and GryMod.API.WeaponValue
+
+	return read and read(weapon, field, explicit) or nil
 end
 
--- The stock weapons are written in C++: no Primary table to read, so their icon is listed here.
-local STOCK_WEAPON_ICON = {
-	weapon_pistol = "Single", weapon_357 = "Single", weapon_crossbow = "Single",
-	weapon_smg1 = "Auto", weapon_ar2 = "Auto", weapon_flechettegun = "Auto",
-	weapon_shotgun = "Shotgun", weapon_rpg = "Missle", weapon_frag = "HandGrenade", weapon_slam = "Mine",
-	weapon_medkit = "Repairkit",
-	weapon_crowbar = "NoGun", weapon_stunstick = "NoGun", weapon_physcannon = "NoGun", weapon_physgun = "NoGun",
-	weapon_fists = "NoGun", gmod_tool = "NoGun", gmod_camera = "NoGun", weapon_bugbait = "NoGun"
-}
+-- The icon label of a declared fire mode.
+local FIRE_LABEL = {auto = "Auto", semi = "Single", burst = "Burst", none = "NoGun"}
 
 local resolvers = {}
 
@@ -700,8 +708,8 @@ Module.AddFireModeResolver(function(weapon)
 	return modeFromName(weapon.FireMode)
 end)
 
--- The icon for what the player holds: a stock weapon's own icon, else what a registered base says, else the
--- generic SWEP rule (Primary.Automatic: automatic, otherwise one shot at a time).
+-- The icon for what the player holds: what the weapon registry declares for it (icon, slotIcon or the fire mode), else what a
+-- registered base says, else the generic SWEP rule (Primary.Automatic: automatic, otherwise one shot at a time).
 -- Player:GetActiveWeapon() gives the NULL entity (not nil) when the player holds nothing.
 local function validWeapon(weapon)
 	if not weapon or (weapon.IsValid and not weapon:IsValid()) then
@@ -718,10 +726,10 @@ function Module.FireModeFor(weapon)
 		return "NoGun"
 	end
 
-	local class = weapon.GetClass and weapon:GetClass()
+	local declared = weaponValue(weapon, "icon", true) or weaponValue(weapon, "slotIcon", true) or FIRE_LABEL[weaponValue(weapon, "fire", true)]
 
-	if class and STOCK_WEAPON_ICON[class] then
-		return STOCK_WEAPON_ICON[class]
+	if declared then
+		return declared
 	end
 
 	for _, resolver in ipairs(resolvers) do
@@ -732,37 +740,55 @@ function Module.FireModeFor(weapon)
 		end
 	end
 
-	local primary = weapon.Primary
-
-	if istable(primary) and primary.Automatic then
-		return "Auto"
-	end
-
-	return "Single"
+	return FIRE_LABEL[weaponValue(weapon, "fire")] or "Single"
 end
 
--- The grenades a launcher weapon holds (the SMG's secondary fire), or nil when the weapon has none. The ammo
--- must be a grenade one that is not the hand grenade's: the AR2's secondary is an energy ball.
+-- The ammo the weapon's secondary fire counts in the grenade slot, or nil: a grenade launcher (the SMG's grenade) or the energy ball
+-- of the AR2 are counted, what the weapon registry says (alt = "grenade" or "energy" and its altAmmo). A weapon the registry does
+-- not know keeps the old rule: its secondary ammo is a grenade type that is not the hand grenade's.
+local function launcherAmmo(weapon)
+	local alt = weaponValue(weapon, "alt")
+
+	if alt ~= "grenade" and alt ~= "energy" then
+		return nil
+	end
+
+	local ammo = weaponValue(weapon, "altAmmo")
+
+	if not ammo or game.GetAmmoID(ammo) < 0 then
+		return nil
+	end
+
+	return ammo
+end
+
+-- The grenades (or energy balls) a launcher weapon holds, or nil when the weapon has none.
 function Module.LauncherFor(ply, weapon)
 	weapon = validWeapon(weapon)
 
-	if not weapon or not weapon.GetSecondaryAmmoType then
+	if not weapon then
 		return nil
 	end
 
-	local type = weapon:GetSecondaryAmmoType()
+	local ammo = launcherAmmo(weapon)
 
-	if not type or type < 0 then
+	if not ammo then
 		return nil
 	end
 
-	local name = string.lower(game.GetAmmoName(type) or "")
+	return ply:GetAmmoCount(ammo)
+end
 
-	if name == "grenade" or not string.find(name, "grenade", 1, true) then
+-- What the grenade slot shows for the weapon's secondary: the icon label (the 40 mm grenade when the weapon does not choose) and the
+-- short text; nil when the weapon has no launcher.
+function Module.LauncherLookFor(weapon)
+	weapon = validWeapon(weapon)
+
+	if not weapon or not launcherAmmo(weapon) then
 		return nil
 	end
 
-	return ply:GetAmmoCount(type)
+	return weaponValue(weapon, "altIcon") or "Grenade", weaponValue(weapon, "altLabel")
 end
 
 -- magazine, reserve, magazine size, grenades and fire mode icon of what the player holds. -1 = no ammo system.
@@ -940,12 +966,20 @@ local function feed(ply)
 	local weapon = ply:GetActiveWeapon()
 	local mag, reserve, size, grenades, fireMode = Module.AmmoFor(ply, weapon)
 	local launcher = Module.LauncherFor(ply, weapon)
+	local launcherIcon, launcherLabel
+
+	if launcher ~= nil then
+		launcherIcon, launcherLabel = Module.LauncherLookFor(weapon)
+	end
+
 	local weaponChanged = fed.weapon ~= weapon
 	fed.weapon = weapon
 
-	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher then
+	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher
+		or fed.launcherIcon ~= launcherIcon or fed.launcherLabel ~= launcherLabel then
 		fed.mag, fed.reserve, fed.size, fed.grenades, fed.fireMode, fed.launcher = mag, reserve, size, grenades, fireMode, launcher
-		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher, weaponChanged)
+		fed.launcherIcon, fed.launcherLabel = launcherIcon, launcherLabel
+		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher, weaponChanged, launcherIcon, launcherLabel)
 	end
 end
 
