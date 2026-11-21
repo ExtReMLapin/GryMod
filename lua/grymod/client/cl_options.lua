@@ -116,6 +116,8 @@ function GryMod.GryOptionschute(Panel)
 	Panel:CheckBox("Repair sound when the health comes back", "gry_sound_regen")
 	Panel:CheckBox("Underwater sounds: dive in and out, breathing, gasps, ambience", "gry_underwater_fx")
 	Panel:CheckBox("Drowning: 60 s of breath, then the suit energy, then health (server; off: the engine's drowning)", "gry_drown_rules")
+	Panel:CheckBox("Energy bar moves at every frame (predicted between the server's updates)", "gry_hud_energy_smooth")
+	Panel:CheckBox("Send the suit energy at every tick (server; off: the slower networked value)", "gry_energy_net")
 	-- the rules of the suit (server setting, for the host or an admin): the original game's numbers, or GryMod's earlier ones
 	Panel:AddControl("ComboBox", {
 		Label = "Suit rules (server)",

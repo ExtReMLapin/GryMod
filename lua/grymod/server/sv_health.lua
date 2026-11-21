@@ -210,3 +210,76 @@ hook.Add("Think", "GryMod health think", function()
 		end
 	end
 end)
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The energy to the client. The networked float (SetNWFloat) is only flushed to the client about every 0.1 s
+-- (measured: 9.4 distinct values a second, whatever the tick rate), so a sprint reached the bar in steps of 4 to
+-- 5 points. The original game gives its HUD the energy at every frame. Here the value goes in a small unreliable
+-- message (gry_energy) at every tick it changes, with the rate of change in units a second: the client
+-- predicts between two ticks (cl_energy_smooth.lua). gry_energy_net 0 leaves the networked float alone.
+-- ---------------------------------------------------------------------------------------------------------
+
+util.AddNetworkString("gry_energy")
+
+local energyNet = CreateConVar("gry_energy_net", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
+	"Send the suit energy to the player at every tick (smooth HUD bar) instead of only through the networked float")
+
+-- Energy per second that the Think hooks give or take at this moment, as they will apply it (0 when the bar does not
+-- move, or when the next tick may change the rule: the cloak or the speed sprint about to give out).
+function GryMod.EnergyRate(ply)
+	if not ply:Alive() or GryMod.Config.InfiniteArmor then
+		return 0
+	end
+
+	local energy = ply:GetNWFloat("GryEnergy")
+	local Mech = GryMod.Mech
+
+	-- GryCloakThink (sv_system.lua)
+	if ply.Nanosuit_mode == GryMod.Modes.CLOAK then
+		local drain = Mech.CloakDrain(ply:GetVelocity():Length())
+
+		if drain * FrameTime() > energy or Mech.CloakFailsAt(energy) then
+			return 0
+		end
+
+		return -drain
+	end
+
+	-- GrySpeedThink (sv_system.lua)
+	if GryMod.IsSpeedSprinting(ply) then
+		local drain = Mech.SpeedDrain(energy)
+
+		if energy > 0 and drain * FrameTime() <= energy then
+			return -drain
+		end
+	end
+
+	-- the recharge above
+	if energy < 100 and ply.next_energy_regen and ply.next_energy_regen < CurTime() and not (GryMod.Malfunction and GryMod.Malfunction.IsActive(ply)) then
+		return Mech.EnergyRechargeRate(ply.Nanosuit_mode, Mech.IsCrysis() and Mech.IsMoving(ply))
+	end
+
+	return 0
+end
+
+hook.Add("Think", "GryMod energy net", function()
+	if not energyNet:GetBool() then
+		return
+	end
+
+	for _, ply in ipairs(player.GetHumans()) do
+		local energy = ply:GetNWFloat("GryEnergy")
+		local rate = GryMod.EnergyRate(ply)
+		local sent = ply.gryEnergySent
+
+		if not sent or sent[1] ~= energy or sent[2] ~= rate then
+			sent = sent or {}
+			sent[1], sent[2] = energy, rate
+			ply.gryEnergySent = sent
+			net.Start("gry_energy", true)
+			net.WriteFloat(energy)
+			net.WriteFloat(rate)
+			net.Send(ply)
+		end
+	end
+end)

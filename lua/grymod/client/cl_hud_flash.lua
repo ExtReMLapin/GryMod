@@ -857,6 +857,18 @@ local fed = {}
 -- what the damage effects look at each frame (one table, filled in again)
 local fxSample = {}
 
+-- The energy the server last told (cl_energy_smooth.lua: at every tick, where the networked float only comes about
+-- every 0.1 s), for what looks at thresholds and drops; the bar and the digits get the predicted one.
+local function serverEnergy(ply)
+	local smooth = GryMod.EnergySmooth
+
+	if smooth then
+		return (smooth.Raw(ply, CurTime()))
+	end
+
+	return ply:GetNWFloat("GryEnergy")
+end
+
 local function feed(ply)
 	local maxHealth = ply:GetMaxHealth()
 	local health = Module.HealthValue(ply:Health(), maxHealth)
@@ -866,7 +878,10 @@ local function feed(ply)
 		hud:SetHealth(health)
 	end
 
-	local energy = Module.EnergyValue(ply:GetNWFloat("GryEnergy"))
+	-- the original gives its HUD the energy as a float at every frame (setEnergy); here it is predicted between
+	-- the server's updates (cl_energy_smooth.lua)
+	local smooth = GryMod.EnergySmooth
+	local energy = Module.EnergyValue(smooth and smooth.Shown(ply, CurTime()) or ply:GetNWFloat("GryEnergy"))
 
 	if fed.energy ~= energy then
 		fed.energy = energy
@@ -875,7 +890,7 @@ local function feed(ply)
 
 	-- the server says when the suit is down (an EMP, an electric hit) and when a light shock flickers the HUD
 	local down = ply:GetNWBool("GryMalfunction", false)
-	local rawEnergy = ply:GetNWFloat("GryEnergy")
+	local rawEnergy = serverEnergy(ply)
 	fed.restartHold = Module.RestartHold(fed.restartHold or false, down, rawEnergy)
 	local status = Module.StatusFor(rawEnergy, hud.status, down, fed.restartHold and not down, ply:GetNWFloat("GryFlicker", 0) > CurTime(), emptyRuleConVar:GetBool())
 
@@ -995,7 +1010,7 @@ function Module.Paint()
 	if damageFx then
 		fxSample.health = ply:Health()
 		fxSample.max = ply:GetMaxHealth()
-		fxSample.energy = ply:GetNWFloat("GryEnergy")
+		fxSample.energy = serverEnergy(ply)
 		fxSample.armor = Module.ModeName(ply.NanosuitMode) == "Armor"
 		damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
 
@@ -1039,6 +1054,11 @@ function Module.Reset()
 	end
 
 	hud, panel = nil, nil
+
+	-- the energy bar starts on the real value (a respawn)
+	if GryMod.EnergySmooth then
+		GryMod.EnergySmooth.view:Reset()
+	end
 
 	-- a respawn starts with no damage effect and a fresh reference health
 	if GryMod.DamageFx then
