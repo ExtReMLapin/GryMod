@@ -101,6 +101,7 @@ function meta:SetNanosuitMode(mode, networked)
 	end
 
 	self.Nanosuit_mode = mode
+	hook.Run("GryNanosuitMode", self, mode) -- sv_cloak_ai.lua: the NPCs forget a camouflaged player
 
 	if not networked then
 		return

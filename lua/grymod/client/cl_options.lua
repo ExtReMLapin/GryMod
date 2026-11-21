@@ -110,6 +110,7 @@ function GryMod.GryOptionschute(Panel)
 			["Classic GryMod"] = {gry_mechanics = "classic"}
 		}
 	})
+	Panel:CheckBox("Camouflage: striders, hunters and manhacks forget you (server)", "gry_cloak_ai")
 
 	-- the key of the quick menu (a `bind <key> +crysishud` in the console works too)
 	if GryMod.MenuKey then
