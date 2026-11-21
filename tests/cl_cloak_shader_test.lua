@@ -37,6 +37,31 @@ local function fakeEntity(index)
 end
 
 local originalOption
+local realLocalPlayer = LocalPlayer
+
+-- The probe's wait: a Think hook that exists only until the test draw is made (or the option is off), and a callback on the option that puts it back.
+local PROBE = "GryCloakShaderProbe"
+
+local function probeHook()
+	return hook.GetTable().Think and hook.GetTable().Think[PROBE]
+end
+
+-- The file loaded again, as a hot reload does it (and a new map: the client's Lua state starts over).
+local function reloadFile()
+	include("grymod/client/cl_cloak_shader.lua")
+end
+
+local function countCallbacks()
+	local count = 0
+
+	for _, entry in ipairs(cvars.GetConVarCallbacks(OPTION, false) or {}) do
+		if entry[2] == PROBE then
+			count = count + 1
+		end
+	end
+
+	return count
+end
 
 return {
 	groupName = "GryMod camouflage pixel shader (client)",
@@ -48,6 +73,11 @@ return {
 
 		if GetConVar(OPTION) and originalOption then
 			GetConVar(OPTION):SetString(originalOption)
+		end
+
+		-- the game's own state: a shader whose test is made waits for nothing (whatever a case did while the test was pending)
+		if GryMod.CloakFX.Shader.works ~= nil then
+			hook.Remove("Think", PROBE)
 		end
 	end,
 	cases = {
@@ -235,6 +265,136 @@ return {
 				GetConVar(OPTION):SetString("1")
 				stub(S, "works", false)
 				expect(S.Active()).to.beFalse()
+			end
+		},
+		{
+			name = "the test draw is made on its own, once, 3 s after the map is up, and the Think hook that waits for it is gone the moment it is made (it ran every frame of the game for nothing; fails if the hook stays and only returns early)",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local now = 100
+				local probes = 0
+				stub(_G, "CurTime", function() return now end)
+				stub(S, "works", nil)
+				GetConVar(OPTION):SetString("1")
+
+				-- the file loaded as it is on a new map: the test not made yet, so the hook waits
+				reloadFile()
+				stub(S, "Probe", function() probes = probes + 1 S.works = true return true, 1 end)
+				local fn = probeHook()
+				expect(fn).to.exist()
+
+				-- the time starts at the first frame with a player; before 3 s nothing is drawn
+				fn()
+				now = 102.9
+				fn()
+				expect(probes).to.equal(0)
+				expect(probeHook()).to.equal(fn)
+
+				-- a map where the player is not there yet: the time does not start
+				now = 500
+				stub(_G, "LocalPlayer", function() return NULL end)
+				fn()
+				now = 504
+				fn()
+				expect(probes).to.equal(0)
+				expect(probeHook()).to.equal(fn)
+				stub(_G, "LocalPlayer", realLocalPlayer)
+
+				-- the player is there: 3 s later the test draw is made, once, and the hook is gone
+				now = 600
+				fn()
+				now = 603
+				fn()
+				expect(probes).to.equal(1)
+				expect(probeHook() == nil).to.beTrue()
+
+				-- an old reference to the hook (a frame already under way) draws nothing more
+				now = 700
+				fn()
+				expect(probes).to.equal(1)
+			end
+		},
+		{
+			name = "a file loaded again (a hot reload) puts back no hook when the test is made, and one hook with the time started again when it is not; one callback on the option whatever the number of loads (fails if the hook is put back whatever the state, or a callback is added at each load)",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local now = 100
+				local probes = 0
+				stub(_G, "CurTime", function() return now end)
+				GetConVar(OPTION):SetString("1")
+
+				local function countProbe()
+					stub(S, "Probe", function() probes = probes + 1 S.works = true return true, 1 end)
+				end
+
+				-- already made: no hook is put back
+				stub(S, "works", true)
+				reloadFile()
+				expect(probeHook() == nil).to.beTrue()
+
+				-- not made: a hook, and a reload in the middle of the wait starts the 3 s again
+				S.works = nil
+				reloadFile()
+				countProbe()
+				probeHook()()
+				now = 102
+				reloadFile()
+				countProbe()
+				local fn = probeHook()
+				fn()
+				now = 104.9
+				fn()
+				expect(probes).to.equal(0)
+				now = 105
+				fn()
+				expect(probes).to.equal(1)
+				expect(probeHook() == nil).to.beTrue()
+
+				expect(countCallbacks()).to.equal(1)
+			end
+		},
+		{
+			name = "the option off takes the hook away, and on again puts it back when the test is not made (a callback on the option); when the test is made nothing comes back (fails without that callback: the test would never be made for a player who switched it on later)",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local now = 100
+				local probes = 0
+				stub(_G, "CurTime", function() return now end)
+				stub(S, "works", nil)
+				GetConVar(OPTION):SetString("1")
+				reloadFile()
+				stub(S, "Probe", function() probes = probes + 1 S.works = true return true, 1 end)
+				expect(probeHook()).to.exist()
+
+				-- wanted off: the hook leaves at once (or at the latest at its next frame), and nothing is drawn
+				GetConVar(OPTION):SetString("0")
+				local fn = probeHook()
+
+				if fn then
+					now = 101
+					fn()
+				end
+
+				expect(probeHook() == nil).to.beTrue()
+				now = 200
+				expect(probes).to.equal(0)
+
+				-- wanted again, test not made: the hook is back and the test draw is made after its delay
+				GetConVar(OPTION):SetString("1")
+				fn = probeHook()
+				expect(fn).to.exist()
+				now = 300
+				fn()
+				now = 303
+				fn()
+				expect(probes).to.equal(1)
+				expect(probeHook() == nil).to.beTrue()
+
+				-- test made: switching the option does not bring the hook back
+				GetConVar(OPTION):SetString("0")
+				GetConVar(OPTION):SetString("1")
+				expect(probeHook() == nil).to.beTrue()
+				expect(probes).to.equal(1)
 			end
 		},
 		{

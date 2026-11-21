@@ -300,16 +300,36 @@ function R.Draw(ent, bump, alpha, draw)
 end
 
 -- The test draw is made once, a little after the map is up (a render target is needed, and the shaders and textures have to be there), and only
--- when the player wants the layer. A little after the sparks' own (cl_cloak_shader.lua).
+-- when the player wants the layer. A little after the sparks' own (cl_cloak_shader.lua). It is made from a Think of the game, so a
+-- Think hook waits for the time, and it does not stay: it takes itself away when the test is made or when the option is off, and a
+-- callback on the option puts it back if the test is still to be made (the file is loaded again on every map, and the state of the test
+-- starts over with it).
 local PROBE_DELAY = 3.5
+local PROBE_HOOK = "GryCloakRefractProbe"
 local readyAt
 
-hook.Add("Think", "GryCloakRefractProbe", function()
-	if R.works ~= nil or not R.Enabled() or not IsValid(LocalPlayer()) then return end
+local function stopWaiting()
+	hook.Remove("Think", PROBE_HOOK)
+end
+
+local function wait()
+	if R.works ~= nil or not R.Enabled() then return stopWaiting() end
+	if not IsValid(LocalPlayer()) then return end
 
 	readyAt = readyAt or CurTime() + PROBE_DELAY
 
 	if CurTime() >= readyAt then
+		stopWaiting()
 		R.Probe()
 	end
-end)
+end
+
+local function startWaiting()
+	if R.works ~= nil or not R.Enabled() then return stopWaiting() end
+
+	hook.Add("Think", PROBE_HOOK, wait)
+end
+
+-- Same identifier at every load: the callback is replaced, not added.
+cvars.AddChangeCallback("gry_cloak_refract", startWaiting, PROBE_HOOK)
+startWaiting()
