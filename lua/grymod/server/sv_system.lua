@@ -216,6 +216,9 @@ local function mayConfigure(ply)
 	return not IsValid(ply) or ply:IsAdmin()
 end
 
+-- also the rule of the administrators' settings of the options panel (sv_server_options.lua)
+GryMod.MayConfigure = mayConfigure
+
 local function tell(ply, text)
 	print("[GryMod] " .. text)
 

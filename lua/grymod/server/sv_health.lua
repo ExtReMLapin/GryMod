@@ -224,7 +224,7 @@ end)
 
 util.AddNetworkString("gry_energy")
 
-local energyNet = CreateConVar("gry_energy_net", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
+local energyNet = CreateConVar("gry_energy_net", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY), -- replicated: the options panel of an admin shows its real value
 	"Send the suit energy to the player at every tick (smooth HUD bar) instead of only through the networked float")
 
 -- Energy per second that the Think hooks give or take at this moment, as they will apply it (0 when the bar does not
