@@ -196,6 +196,34 @@ return {
 			end
 		},
 		{
+			name = "the Half-Life 2 zoom overlay (CHudZoom) is hidden while our binoculars are wanted, and only then",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local enabled, wanted = M.Enabled, M.Wanted
+
+				local ok, err = pcall(function()
+					M.Enabled = function() return true end
+					M.Wanted = function() return true end
+					expect(hook.Run("HUDShouldDraw", "CHudZoom") == false).to.beTrue()
+					-- the other elements are not ours to hide
+					expect(hook.Run("HUDShouldDraw", "CHudCloseCaption") == false).to.beFalse()
+
+					M.Wanted = function() return false end
+					expect(hook.Run("HUDShouldDraw", "CHudZoom") == false).to.beFalse()
+
+					M.Wanted = function() return true end
+					M.Enabled = function() return false end
+					expect(hook.Run("HUDShouldDraw", "CHudZoom") == false).to.beFalse()
+				end)
+
+				M.Enabled, M.Wanted = enabled, wanted
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

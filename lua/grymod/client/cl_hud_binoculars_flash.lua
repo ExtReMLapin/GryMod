@@ -280,6 +280,8 @@ end
 local binoculars
 local lastTime
 local fed = {}
+-- the movie could not be loaded: the Half-Life 2 zoom overlay must stay then
+local missing = false
 
 -- The HUD is on and so are the binoculars (gry_hud_binoculars).
 function Bino.Enabled()
@@ -335,8 +337,12 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 		binoculars = Bino.New(Flash.Load(Bino.MOVIE))
 
 		if not binoculars then
+			missing = true
+
 			return
 		end
+
+		missing = false
 
 		fed, lastTime = {}, nil
 	end
@@ -365,10 +371,19 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	binoculars:Draw((ScrW() - 1366 * scale) / 2, 0, scale)
 end)
 
+-- The Half-Life 2 suit zoom has its own overlay (CHudZoom, the black ring); our binoculars replace it while they
+-- are on. Hiding the element does not stop the zoom itself (see the HUD element list of the wiki).
+hook.Add("HUDShouldDraw", "GRYBINOCULARSHIDEZOOM", function(name)
+	if name == "CHudZoom" and not missing and Bino.Enabled() and Bino.Wanted(LocalPlayer()) then
+		return false
+	end
+end)
+
 function Bino.Reset()
 	if binoculars then
 		Flash.ReleaseClip(binoculars.root)
 	end
 
 	binoculars = nil
+	missing = false
 end
