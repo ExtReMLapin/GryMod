@@ -69,6 +69,29 @@ class FilmAuditTest(unittest.TestCase):
 
             self.assertEqual(film_audit.script_gaps(folder), [("DefineSprite_128/frame_26", '_root.Root.Alpha.gotoAndPlay("close");')])
 
+    def test_every_do_action_tag_of_a_frame_is_read(self):
+        with tempfile.TemporaryDirectory() as folder:
+            frame = os.path.join(folder, "DefineSprite_227", "frame_1")
+            os.makedirs(frame)
+
+            with open(os.path.join(frame, "DoAction.as"), "w") as handle:
+                handle.write("stop();\n")
+
+            with open(os.path.join(frame, "DoAction_2.as"), "w") as handle:
+                handle.write("_root.setAmmo(1);\nplay();\n")
+
+            with open(os.path.join(frame, "DoAction_3.as"), "w") as handle:
+                handle.write('fscommand("x");\n')
+
+            self.assertEqual(
+                film_audit.script_gaps(folder),
+                [("DefineSprite_227/frame_1", "_root.setAmmo(1);"), ("DefineSprite_227/frame_1", 'fscommand("x");')],
+            )
+
+    def test_the_gaps_can_be_written_as_records(self):
+        records = film_audit.gaps_as_records([("DefineSprite_156/frame_2", "_root.setRecoil(_root.m_recoil);")])
+        self.assertEqual(records, [{"sprite": "DefineSprite_156", "frame": "frame_2", "statement": "_root.setRecoil(_root.m_recoil);"}])
+
 
 if __name__ == "__main__":
     unittest.main()

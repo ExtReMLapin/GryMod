@@ -17,6 +17,7 @@ No game code is copied: the output is a list of what to look at.
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -133,17 +134,33 @@ def script_gaps(scripts_dir):
             continue
 
         for frame in sorted(os.listdir(os.path.join(scripts_dir, entry))):
-            path = os.path.join(scripts_dir, entry, frame, "DoAction.as")
+            folder = os.path.join(scripts_dir, entry, frame)
 
-            if not os.path.exists(path):
+            if not os.path.isdir(folder):
                 continue
 
-            with open(path, encoding="utf8", errors="replace") as handle:
-                for statement in handle.read().split("\n"):
-                    if unconvertible(statement):
-                        gaps.append(("%s/%s" % (entry, frame), statement.strip()))
+            # a frame can hold several DoAction tags: FFDec writes DoAction.as, DoAction_2.as, DoAction_3.as...
+            for name in sorted(os.listdir(folder)):
+                if not (name.startswith("DoAction") and name.endswith(".as")):
+                    continue
+
+                with open(os.path.join(folder, name), encoding="utf8", errors="replace") as handle:
+                    for statement in handle.read().split("\n"):
+                        if unconvertible(statement):
+                            gaps.append(("%s/%s" % (entry, frame), statement.strip()))
 
     return gaps
+
+
+def gaps_as_records(gaps):
+    """[(where, statement)] as [{sprite, frame, statement}], where `where` is 'DefineSprite_N/frame_K'."""
+    records = []
+
+    for where, statement in gaps:
+        sprite, frame = where.split("/", 1)
+        records.append({"sprite": sprite, "frame": frame, "statement": statement})
+
+    return records
 
 
 def main(argv=None):
@@ -153,21 +170,27 @@ def main(argv=None):
     parser.add_argument("--stage", nargs=2, type=float, default=[1366, 768])
     parser.add_argument("--min-share", type=float, default=0.35)
     parser.add_argument("--cross-only", action="store_true", help="only the statements that reach another clip or the game")
+    parser.add_argument("--json", action="store_true", help="the gaps as a JSON list of {sprite, frame, statement} (to sort them elsewhere)")
     args = parser.parse_args(argv)
 
     with open(args.film, encoding="utf8") as handle:
         film = parse_film(handle.read())
+
+    gaps = script_gaps(args.scripts)
+
+    if args.cross_only:
+        gaps = [gap for gap in gaps if reaches_outside(gap[1])]
+
+    if args.json:
+        print(json.dumps(gaps_as_records(gaps), indent=1))
+
+        return 0
 
     big, chains = fullscreen_chains(film, args.stage, args.min_share)
     print("Full-screen shapes (>= %d%% of the stage): %s" % (args.min_share * 100, ", ".join(map(str, sorted(big))) or "none"))
 
     for chain in chains:
         print("  root > " + " > ".join(chain))
-
-    gaps = script_gaps(args.scripts)
-
-    if args.cross_only:
-        gaps = [gap for gap in gaps if reaches_outside(gap[1])]
 
     print("Script statements the film cannot carry: %d" % len(gaps))
 
