@@ -6,14 +6,18 @@
 --   * the server only says who is camouflaged (the network switch "GryCloak" of the player, sv_system.lua);
 --   * every client turns that into a level that glides from 0 to 1 and back (Step), per player;
 --   * the level and the speed give three numbers (Visibility): how much the picture is bent, how much of the plain
---     model stays (almost nothing when still), and how strong the sparks are;
+--     model stays (almost nothing when still), and how strong the sparks are. They follow the original's layer: the
+--     opacity of the plain model goes down linearly with the level (the layer's alpha is 0.8 x level), the bend is
+--     11 times stronger at the start than at the end, and the sparks flash in the first tenth of the change
+--     (the curve of its texture cloak_transition.dds) then die down;
 --   * the draw hooks put the layers on the player, on the weapon in the hand, and on the view model and the hands
 --     of the local player. The refraction is drawn first and the plain model over it, half transparent, so that the
---     fade is a real one;
+--     fade is a real one (in first person too: the view model's own draw is the one that is made part transparent);
 --   * the player who switches the camouflage on gets a short screen effect (grey and colour fringes, 1.7 s, the
 --     graph "suit_cloakmode" of the original game).
 --
--- Switch: gry_cloak_fx (client). 0 gives the previous look back: the material "cloak/organic" on the model.
+-- Switches (client): gry_cloak_fx, 0 gives the previous look back (the material "cloak/organic" on the model);
+-- gry_cloak_transition, 0 makes the change instant (no fade, no sparks flash).
 
 GryMod = GryMod or {}
 
@@ -25,6 +29,13 @@ local convar = GetConVar("gry_cloak_fx") or CreateClientConVar("gry_cloak_fx", "
 
 function F.Enabled()
 	return convar:GetBool()
+end
+
+local transition = GetConVar("gry_cloak_transition") or CreateClientConVar("gry_cloak_transition", "1", true, false,
+	"1: the camouflage fades in and out progressively, in first and third person; 0: it switches at once", 0, 1)
+
+function F.TransitionEnabled()
+	return transition:GetBool()
 end
 
 --------------------------------------------------------------------------------------------------------------------
@@ -45,8 +56,9 @@ F.FullSpeed = 300
 F.BaseStill = 0.03
 F.BaseMoving = 0.28
 
--- How much the picture behind is bent (the value of $refractamount): still, moving, and the extra of the change,
--- the original bends 11 times more in the middle of the change than once done (2.75 against 0.25).
+-- How much the picture behind is bent (the value of $refractamount): still, moving, and the extra at the start of the
+-- change, which goes down to nothing as the level goes up (the original bends 11 times more at the start than once
+-- done: 2.75 against 0.25).
 F.RefractStill = 0.035
 F.RefractMoving = 0.09
 F.RefractChange = 0.2
@@ -61,8 +73,13 @@ local function clamp01(x)
 	return x
 end
 
--- The level goes towards the switch at the pace of the transition. Linear: the shape is given by Ease.
+-- The level goes towards the switch at the pace of the transition. Linear: like the original's blend, which the
+-- layer's alpha follows directly. With gry_cloak_transition 0 it goes at once.
 function F.Step(amount, cloaked, dt)
+	if not F.TransitionEnabled() then
+		return cloaked and 1 or 0
+	end
+
 	if cloaked then
 		return math.min(1, amount + dt / F.ActivateTime)
 	end
@@ -70,29 +87,46 @@ function F.Step(amount, cloaked, dt)
 	return math.max(0, amount - dt / F.DeactivateTime)
 end
 
--- Smoothstep: slow start, slow end
-function F.Ease(x)
-	x = clamp01(x)
-
-	return x * x * (3 - 2 * x)
-end
-
 function F.SmoothSpeed(previous, speed, dt)
 	return speed + (previous - speed) * math.exp(-dt / F.SpeedDelay)
 end
 
+-- The alpha of the original's texture cloak_transition.dds (256 samples, here every 8th and the last one): the sparks'
+-- strength is this value squared, as a function of the level. 0 at the start, full from 24/255 to 40/255, then down
+-- to 55/255 when the change is done.
+local TRANSITION = {0, 79, 191, 255, 255, 255, 254, 253, 251, 248, 245, 241, 236, 232, 228, 222, 217, 211, 205, 200,
+	193, 186, 180, 172, 164, 146, 129, 112, 97, 83, 70, 61, 55}
+
+function F.TransitionCurve(level)
+	level = clamp01(level) * 255
+
+	-- the 32 first knots are 8 samples apart, the last one is 7 after the previous
+	local i = math.min(math.floor(level / 8), 31)
+	local from, to = i * 8, (i == 31) and 255 or (i + 1) * 8
+	local t = (level - from) / (to - from)
+
+	return (TRANSITION[i + 1] + (TRANSITION[i + 2] - TRANSITION[i + 1]) * t) / 255
+end
+
+-- what the sparks still show when everything is done and still: not drawn (the original's pattern there is faint)
+local restSpark = F.TransitionCurve(1) ^ 2
+
 -- level (0 plain, 1 camouflaged) and speed (units per second) -> refraction amount, opacity of the plain model drawn
 -- over it, strength of the sparks (0 to 1). No table: this runs for every camouflaged player at every frame.
 function F.Visibility(amount, speed)
-	local k = F.Ease(amount)
+	if amount <= 0 then
+		return 0, 1, 0
+	end
+
+	local b = clamp01(amount)
 	local s = clamp01(speed / F.FullSpeed)
-	local change = 4 * k * (1 - k) -- 0 at both ends, 1 in the middle
 
-	local refract = k * (F.RefractStill + (F.RefractMoving - F.RefractStill) * s) + F.RefractChange * change
-	local base = 1 - k * (1 - (F.BaseStill + (F.BaseMoving - F.BaseStill) * s))
-	local spark = clamp01(k * s + change)
+	-- the original's bump scale is 0.25 + 2.5 x (1 - level): eleven times more at the start than at the end
+	local refract = b * (F.RefractStill + (F.RefractMoving - F.RefractStill) * s) + F.RefractChange * (1 - b)
+	local base = 1 - b * (1 - (F.BaseStill + (F.BaseMoving - F.BaseStill) * s))
+	local spark = math.max(b * s, F.TransitionCurve(b) ^ 2 - restSpark)
 
-	return refract, base, spark
+	return refract, base, clamp01(spark)
 end
 
 -- The screen effect of the activation, read from the original's graph (seconds -> grey level, fringes, condensation):
@@ -225,6 +259,12 @@ function F.Update(ply)
 			ply:DrawShadow(true)
 		end
 
+		-- the view model was being drawn when the player went away (death, disconnect): nothing is left on
+		if s.firstPerson then
+			render.MaterialOverride(nil)
+			render.SetBlend(1)
+		end
+
 		States[ply] = nil
 
 		if not next(States) then
@@ -234,6 +274,10 @@ function F.Update(ply)
 
 	return s
 end
+
+-- The players that are not followed yet are looked at this often (seconds): a short delay, so that the change of another
+-- player starts when the server hides his weapon (nothing is run while nobody is camouflaged but this look).
+F.ScanInterval = 0.1
 
 local lastScan = 0
 
@@ -251,7 +295,7 @@ hook.Add("Think", "GryCloakFX", function()
 		end
 	end
 
-	-- the new ones: the local player at every frame, the others twice a second
+	-- the new ones: the local player at every frame, the others every ScanInterval
 	local me = LocalPlayer()
 
 	if IsValid(me) and not States[me] and me:GetNWBool("GryCloak", false) then
@@ -260,7 +304,7 @@ hook.Add("Think", "GryCloakFX", function()
 
 	local now = RealTime()
 
-	if now - lastScan > 0.5 then
+	if now - lastScan > F.ScanInterval then
 		lastScan = now
 
 		for _, ply in ipairs(player.GetAll()) do
@@ -396,26 +440,31 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 
 				drawLayers(ply, refract, base, spark)
 
-				-- the weapon in the hand gets the refraction (its world model is hidden by the server, see sv_system.lua)
+				-- the weapon in the hand follows the body (its world model is hidden by the server, see sv_system.lua, so
+				-- it is drawn from here): the refraction, then the plain model at the same opacity, without sparks
 				local weapon = ply:GetActiveWeapon()
 
 				if IsValid(weapon) and distance <= F.DetailDistance then
-					drawLayers(weapon, refract, 0, 0)
+					drawLayers(weapon, refract, base, 0)
 				end
 			end
 		end
 	end
 end
 
--- The local player's view model and hands: the engine draws them through the refraction (override), and the blue
--- outline comes over it afterwards. The plain model is not drawn over them: a view model cannot be drawn half
--- transparent, so the arms and the gun are only seen as a bent picture and a faint outline (as in the original).
+-- The local player's view model and hands. The refraction is drawn by hand first, then the engine's own draw of the
+-- model goes on over it, part transparent (render.SetBlend before the model is drawn works on it; a second draw
+-- from the Post hook comes out opaque), or not at all when the opacity is under F.Invisible (a blend of 0). The blue
+-- outline is added in the Post hook. So the arms and the gun fade away like the third person body does.
 F.FirstPersonEdge = 0.45
 
-local function firstPersonLayers(s)
-	local refract, _, spark = F.Visibility(s.amount, s.speed)
+-- how bent the picture is in first person (the arms are close to the camera, the bend is seen larger)
+F.FirstPersonBend = 1.5
 
-	return refract * 1.5, math.max(spark, F.FirstPersonEdge * F.Ease(s.amount))
+local function firstPersonLayers(s)
+	local refract, base, spark = F.Visibility(s.amount, s.speed)
+
+	return refract * F.FirstPersonBend, base, math.max(spark, F.FirstPersonEdge * clamp01(s.amount))
 end
 
 local function startFirstPerson(ent, ply)
@@ -425,17 +474,30 @@ local function startFirstPerson(ent, ply)
 
 	if not s or s.amount <= 0 then return end
 
-	local refract = firstPersonLayers(s)
+	local refract, base = firstPersonLayers(s)
 	local refractMat = materials()
 
-	-- one copy of the screen per frame, for the view model (the hands come right after it)
-	if ent:IsValid() and ent == ply:GetViewModel() then
-		render.UpdateRefractTexture()
+	s.firstPerson = true
+
+	-- the refraction first, unless the plain model is still all there (the very start of the change)
+	if base < 0.99 and ent:IsValid() then
+		-- one copy of the screen per frame, for the view model (the hands come right after it)
+		if ent == ply:GetViewModel() then
+			render.UpdateRefractTexture()
+		end
+
+		drawing = true
+		pcall(function()
+			refractMat:SetFloat("$refractamount", refract)
+			render.MaterialOverride(refractMat)
+			ent:DrawModel()
+		end)
+		render.MaterialOverride(nil)
+		drawing = false
 	end
 
-	refractMat:SetFloat("$refractamount", refract)
-	render.MaterialOverride(refractMat)
-	s.firstPerson = true
+	-- the engine's draw comes next: part transparent, or switched off
+	render.SetBlend(base >= F.Invisible and base or 0)
 end
 
 local function endFirstPerson(ent, ply)
@@ -445,8 +507,9 @@ local function endFirstPerson(ent, ply)
 
 	s.firstPerson = false
 	render.MaterialOverride(nil)
+	render.SetBlend(1)
 
-	local _, edge = firstPersonLayers(s)
+	local _, _, edge = firstPersonLayers(s)
 
 	if edge >= F.Invisible and IsValid(ent) then
 		local _, edgeMat = materials()

@@ -19,6 +19,9 @@ local function restore()
 	saved = {}
 end
 
+-- the log of the render calls being recorded (recordRender), read by the fake entities' DrawModel
+local renderLog
+
 -- a fake player: only what the hooks ask for
 local function fakePlayer(speed)
 	local ply = {draws = 0, center = Vector(300, 0, 0)}
@@ -34,7 +37,13 @@ local function fakePlayer(speed)
 	function ply:GetNWBool() return false end
 	function ply:EntIndex() return 99 end
 	function ply:GetVelocity() return Vector(speed or 0, 0, 0) end
-	function ply:DrawModel() self.draws = self.draws + 1 end
+	function ply:DrawModel()
+		self.draws = self.draws + 1
+
+		if renderLog then
+			renderLog.drawn[#renderLog.drawn + 1] = {ent = self, material = renderLog.material, blend = renderLog.blendNow}
+		end
+	end
 	function ply:GetActiveWeapon() return NULL end
 
 	return ply
@@ -42,12 +51,19 @@ end
 
 -- the render state the hooks touch, as a log
 local function recordRender()
-	local log = {override = {}, blend = {}, color = {}, refreshed = 0}
+	local log = {override = {}, blend = {}, color = {}, refreshed = 0, drawn = {}, blendNow = 1}
+	renderLog = log
 
 	stub(render, "UpdateRefractTexture", function() log.refreshed = log.refreshed + 1 end)
 
-	stub(render, "MaterialOverride", function(mat) log.override[#log.override + 1] = mat or false end)
-	stub(render, "SetBlend", function(value) log.blend[#log.blend + 1] = value end)
+	stub(render, "MaterialOverride", function(mat)
+		log.override[#log.override + 1] = mat or false
+		log.material = mat
+	end)
+	stub(render, "SetBlend", function(value)
+		log.blend[#log.blend + 1] = value
+		log.blendNow = value
+	end)
 	stub(render, "SetColorModulation", function(r, g, b) log.color[#log.color + 1] = {r, g, b} end)
 	stub(render, "GetBlend", function() return 1 end)
 	stub(render, "GetColorModulation", function() return 1, 1, 1 end)
@@ -84,6 +100,7 @@ return {
 	end,
 	afterEach = function(state)
 		restore()
+		renderLog = nil
 
 		-- emptied in place: the module keeps its own reference to the table
 		if GryMod.CloakFX then
@@ -100,6 +117,10 @@ return {
 				local convar = GetConVar("gry_cloak_fx")
 				expect(convar ~= nil).to.beTrue()
 				expect(convar:GetDefault()).to.equal("1")
+				local transition = GetConVar("gry_cloak_transition")
+				expect(transition ~= nil).to.beTrue()
+				expect(transition:GetDefault()).to.equal("1")
+				expect(GryMod.CloakFX.TransitionEnabled()).to.beTrue()
 			end
 		},
 		{
@@ -123,24 +144,34 @@ return {
 			end
 		},
 		{
-			name = "Ease is 0 and 1 at the ends, smooth in between, and never goes backwards",
+			name = "with gry_cloak_transition 0 the level goes to the switch at once, in both directions",
 			func = function(state)
 				local F = GryMod.CloakFX
-				expect(F.Ease(0)).to.equal(0)
-				expect(F.Ease(1)).to.equal(1)
-				expect(F.Ease(0.5)).to.aboutEqual(0.5, 0.001)
-				expect(F.Ease(0.1)).to.beLessThan(0.1) -- slow start
-
-				local last = 0
-
-				for i = 1, 20 do
-					local v = F.Ease(i / 20)
-					expect(v >= last).to.beTrue()
-					last = v
-				end
-
-				expect(F.Ease(-1)).to.equal(0)
-				expect(F.Ease(2)).to.equal(1)
+				local convar = GetConVar("gry_cloak_transition")
+				local before = convar:GetString()
+				convar:SetString("0")
+				local ok, err = pcall(function()
+					expect(F.TransitionEnabled()).to.beFalse()
+					expect(F.Step(0, true, 0.016)).to.equal(1)
+					expect(F.Step(1, false, 0.016)).to.equal(0)
+					expect(F.Step(0.4, true, 0.016)).to.equal(1)
+				end)
+				convar:SetString(before)
+				assert(ok, err)
+			end
+		},
+		{
+			name = "the sparks curve is the original's transition texture: 0 at the start, full at about a tenth, then slowly down",
+			func = function(state)
+				local F = GryMod.CloakFX
+				-- read in textures/defaults/palette/cloak_transition.dds (alpha, 256 samples): 0, 79 at 8, 191 at 16, 255 from 24 to 40, 55 at the end
+				expect(F.TransitionCurve(0)).to.equal(0)
+				expect(F.TransitionCurve(8 / 255)).to.aboutEqual(79 / 255, 0.01)
+				expect(F.TransitionCurve(16 / 255)).to.aboutEqual(191 / 255, 0.01)
+				expect(F.TransitionCurve(0.11)).to.aboutEqual(1, 0.01)
+				expect(F.TransitionCurve(1)).to.aboutEqual(55 / 255, 0.01)
+				expect(F.TransitionCurve(-1)).to.equal(0)
+				expect(F.TransitionCurve(7)).to.aboutEqual(55 / 255, 0.01)
 			end
 		},
 		{
@@ -189,6 +220,52 @@ return {
 				local refractMid, _, sparkMid = F.Visibility(0.5, 0)
 				expect(refractMid > refractFull).to.beTrue()
 				expect(sparkMid).to.beGreaterThan(0.3)
+			end
+		},
+		{
+			name = "the surface is bent most at the start of the change and less and less after it (the original's bump scale 2.75 down to 0.25)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local last = math.huge
+
+				for i = 1, 20 do
+					local refract = F.Visibility(i / 20, 0)
+					expect(refract <= last).to.beTrue()
+					last = refract
+				end
+
+				expect(F.Visibility(0.05, 0) > 3 * F.Visibility(1, 0)).to.beTrue()
+			end
+		},
+		{
+			name = "the sparks flash at the beginning of the change then die down: full at a tenth, nothing once done and still",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local _, _, early = F.Visibility(0.1, 0)
+				local _, _, late = F.Visibility(0.8, 0)
+				local _, _, done = F.Visibility(1, 0)
+				expect(early).to.beGreaterThan(0.9)
+				expect(late < early).to.beTrue()
+				expect(done).to.equal(0)
+
+				local last = 2
+
+				for i = 3, 20 do
+					local _, _, spark = F.Visibility(i / 20, 0)
+					expect(spark <= last).to.beTrue()
+					last = spark
+				end
+			end
+		},
+		{
+			name = "the plain model fades out linearly with the level, as the original's layer alpha (0.8 x level)",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local _, quarter = F.Visibility(0.25, 0)
+				local _, half = F.Visibility(0.5, 0)
+				local _, full = F.Visibility(1, 0)
+				expect(half).to.aboutEqual(1 - 0.5 * (1 - full), 0.001)
+				expect(quarter).to.aboutEqual(1 - 0.25 * (1 - full), 0.001)
 			end
 		},
 		{
@@ -404,7 +481,7 @@ return {
 			end
 		},
 		{
-			name = "PlayerDraw: the weapon in the hand gets the refraction only",
+			name = "PlayerDraw: the weapon in the hand follows the body: the refraction and the plain model at the same opacity, no sparks",
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
@@ -414,8 +491,14 @@ return {
 				setState(ply, 1, 400) -- running: sparks and the plain model on the body
 				translucent()
 				expect(ply.draws).to.equal(3)
-				expect(weapon.draws).to.equal(1)
+				expect(weapon.draws).to.equal(2) -- refraction, plain model (no sparks)
 				expect(leftClean(log)).to.beTrue()
+
+				-- when still and done, only the refraction (the plain model is not worth drawing)
+				weapon.draws = 0
+				setState(ply, 1, 0)
+				translucent()
+				expect(weapon.draws).to.equal(1)
 			end
 		},
 		{
@@ -502,7 +585,32 @@ return {
 			end
 		},
 		{
-			name = "the view model and the hands: material for the local player's camouflage only, and put back",
+			name = "the view model and the hands: nothing for a player who is not camouflaged, nor for another player",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
+				expect(#log.override).to.equal(0)
+				expect(#log.blend).to.equal(0)
+				expect(vm.draws).to.equal(0)
+
+				-- somebody else is camouflaged: not the local view model
+				local other = fakePlayer(0)
+				setState(other, 1, 0)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, other, NULL)
+				expect(#log.blend).to.equal(0)
+				expect(vm.draws).to.equal(0)
+			end
+		},
+		{
+			name = "first person, half way through the change: the refraction is drawn by hand, then the engine's own draw is made part transparent over it",
 			func = function(state)
 				local log = recordRender()
 				local F = GryMod.CloakFX
@@ -510,28 +618,147 @@ return {
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm = fakePlayer(0)
 				function me:GetViewModel() return vm end
+				setState(me, 0.4, 0)
 
-				-- not camouflaged: nothing
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
-				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
-				hook.GetTable().PreDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
-				hook.GetTable().PostDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
-				expect(#log.override).to.equal(0)
+				expect(vm.draws).to.equal(1) -- the refraction
+				expect(log.drawn[1].material).to.exist()
+				expect(log.refreshed).to.equal(1) -- the screen is copied for it
+				expect(log.override[#log.override]).to.equal(false) -- the engine's draw has no override
+				local _, base = F.Visibility(0.4, 0)
+				expect(log.blend[#log.blend]).to.aboutEqual(base, 0.001) -- and is part transparent
+				expect(base).to.beBetween(0.1, 0.99)
 
-				-- camouflaged: the material, then nil
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(vm.draws).to.equal(2) -- the outline (sparks are strong in the change)
+				expect(leftClean(log)).to.beTrue()
+				expect(log.blendNow).to.equal(1)
+			end
+		},
+		{
+			name = "first person, at the very start of the change: the arms are still almost opaque (no jump to the refraction)",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				setState(me, 0.06, 0)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(log.blend[#log.blend]).to.beGreaterThan(0.9)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			name = "first person, camouflaged and still: only the refraction shows, the engine's draw is switched off, the state comes back at the end",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
 				setState(me, 1, 0)
+
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
-				expect(log.override[#log.override]).to.exist()
-				expect(log.refreshed).to.equal(1) -- the screen is copied for the refraction
+				expect(vm.draws).to.equal(1)
+				expect(log.blend[#log.blend]).to.equal(0)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(leftClean(log)).to.beTrue()
+				expect(log.blendNow).to.equal(1)
+			end
+		},
+		{
+			name = "first person: the hands get the same treatment as the view model, and the screen is copied once for both",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				function me:GetViewModel() return vm end
+				setState(me, 0.5, 0)
 
-				log.override = {}
-				hook.GetTable().PreDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
-				expect(log.override[#log.override]).to.exist()
-				hook.GetTable().PostDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+				expect(hands.draws).to.equal(1)
+				expect(log.blend[#log.blend] < 1).to.beTrue()
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
 				expect(leftClean(log)).to.beTrue()
+				expect(log.blendNow).to.equal(1)
+				expect(log.refreshed).to.equal(1)
+			end
+		},
+		{
+			name = "first person: a drawing that fails does not leave the material or the opacity on",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function vm:DrawModel() error("boom") end
+				function me:GetViewModel() return vm end
+				setState(me, 0.5, 0)
+				pcall(hook.GetTable().PreDrawViewModel.GryCloakFX, vm, me, NULL)
+				pcall(hook.GetTable().PostDrawViewModel.GryCloakFX, vm, me, NULL)
+				expect(leftClean(log)).to.beTrue()
+				expect(log.blendNow).to.equal(1)
+			end
+		},
+		{
+			name = "first person: with the transition off the arms go to the refraction at once, as before",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local convar = GetConVar("gry_cloak_transition")
+				local before = convar:GetString()
+				local me = fakePlayer(0)
+				local flag = true
+				function me:GetNWBool() return flag end
+				stub(_G, "FrameTime", function() return 0.016 end)
+				convar:SetString("0")
+				local ok, err = pcall(function()
+					F.Update(me)
+					expect(F.States[me].amount).to.equal(1)
+				end)
+				convar:SetString(before)
+				assert(ok, err)
+			end
+		},
+		{
+			name = "Update: a player who dies in the middle of the change is forgotten once it is over, the hooks go, and the render state is put back",
+			func = function(state)
+				local log = recordRender()
+				local F = GryMod.CloakFX
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				local alive = true
+				function me:GetNWBool() return true end
+				function me:Alive() return alive end
+				stub(_G, "FrameTime", function() return 0.1 end)
+				stub(F, "DrawScreenFx", function() end) -- the local player's screen effect is not the point here
+				F.Update(me)
+				hook.Remove("RenderScreenspaceEffects", "GryCloakFXScreen")
+				F.Update(me)
 				expect(F.States[me]).to.exist()
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL) -- the view model is drawn once, then the player dies
+				alive = false
+
+				for i = 1, 30 do
+					F.Update(me)
+				end
+
+				expect(F.States[me]).to.beNil()
+				expect(log.blendNow).to.equal(1)
+				expect(log.override[#log.override]).to.equal(false)
+				expect(hook.GetTable().PreDrawViewModel == nil or hook.GetTable().PreDrawViewModel.GryCloakFX == nil).to.beTrue()
+			end
+		},
+		{
+			name = "the players are looked at often enough for the change of another player to start without a visible delay",
+			func = function(state)
+				expect(GryMod.CloakFX.ScanInterval).to.beBetween(0.02, 0.25)
 			end
 		},
 		{
