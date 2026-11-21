@@ -14,9 +14,253 @@ local function movie()
 	}
 end
 
+-- Draws `root` with the mesh and material calls replaced by recorders (the drawing needs no render context for
+-- that) and returns the triangles it emitted, as {x1, y1, x2, y2, x3, y3}. The real functions are put back
+-- whatever happens.
+local function drawnTriangles(root, x, y, scale)
+	local originals = {mesh = {}, render = {}}
+	local names = {mesh = {"Begin", "Position", "TexCoord", "Color", "AdvanceVertex", "End"}, render = {"SetMaterial", "OverrideBlend"}}
+	local triangles, corner, current = {}, 0, nil
+	local fakes = {
+		mesh = {
+			Begin = function() end,
+			Position = function(position) current = {position.x, position.y} end,
+			TexCoord = function() end,
+			Color = function() end,
+			AdvanceVertex = function()
+				corner = corner + 1
+				triangles[#triangles + 1] = current
+
+				if corner == 3 then
+					corner = 0
+				end
+			end,
+			End = function() end
+		},
+		render = {SetMaterial = function() end, OverrideBlend = function() end}
+	}
+
+	for library, list in pairs(names) do
+		for _, name in ipairs(list) do
+			originals[library][name] = _G[library][name]
+			_G[library][name] = fakes[library][name]
+		end
+	end
+
+	local ignored = GryMod.Flash.IgnoreBlendModes
+	GryMod.Flash.IgnoreBlendModes = true
+	local ok, err = pcall(GryMod.Flash.Draw, root, x or 0, y or 0, scale or 1)
+	GryMod.Flash.IgnoreBlendModes = ignored
+
+	for library, list in pairs(names) do
+		for _, name in ipairs(list) do
+			_G[library][name] = originals[library][name]
+		end
+	end
+
+	assert(ok and err ~= false, "the drawing failed")
+	local grouped = {}
+
+	for i = 1, #triangles, 3 do
+		local a, b, c = triangles[i], triangles[i + 1], triangles[i + 2]
+		grouped[#grouped + 1] = {a[1], a[2], b[1], b[2], c[1], c[2]}
+	end
+
+	return grouped
+end
+
+local function area(triangles)
+	local total = 0
+
+	for _, t in ipairs(triangles) do
+		total = total + math.abs((t[3] - t[1]) * (t[6] - t[2]) - (t[5] - t[1]) * (t[4] - t[2])) / 2
+	end
+
+	return total
+end
+
+-- The area of a polygon given as {x1, y1, x2, y2, ...}
+local function polygonArea(p)
+	local total, n = 0, #p / 2
+
+	for i = 1, n do
+		local j = i % n + 1
+		total = total + p[i * 2 - 1] * p[j * 2] - p[j * 2 - 1] * p[i * 2]
+	end
+
+	return math.abs(total) / 2
+end
+
+local function distanceToSegment(px, py, ax, ay, bx, by)
+	local dx, dy = bx - ax, by - ay
+	local t = math.Clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy), 0, 1)
+
+	return math.sqrt((px - ax - t * dx) ^ 2 + (py - ay - t * dy) ^ 2)
+end
+
+-- Whether a point is inside the polygon {x1, y1, ...} or within `tolerance` of its outline (even-odd rule).
+local function insideOrOn(px, py, p, tolerance)
+	local n, inside = #p / 2, false
+
+	for i = 1, n do
+		local j = i % n + 1
+		local ax, ay, bx, by = p[i * 2 - 1], p[i * 2], p[j * 2 - 1], p[j * 2]
+
+		if distanceToSegment(px, py, ax, ay, bx, by) <= tolerance then
+			return true
+		end
+
+		if (ay > py) ~= (by > py) and px < (bx - ax) * (py - ay) / (by - ay) + ax then
+			inside = not inside
+		end
+	end
+
+	return inside
+end
+
+-- every corner and the centre of every triangle lies in the polygon
+local function allInside(triangles, polygon)
+	for _, t in ipairs(triangles) do
+		for corner = 1, 3 do
+			if not insideOrOn(t[corner * 2 - 1], t[corner * 2], polygon, 0.01) then
+				return false, t
+			end
+		end
+
+		if not insideOrOn((t[1] + t[3] + t[5]) / 3, (t[2] + t[4] + t[6]) / 3, polygon, 0.01) then
+			return false, t
+		end
+	end
+
+	return true
+end
+
+-- A square of 100 x 100 stage pixels (atlas rect 4 x 4) masked by the shape `outline` placed at (ox, oy)
+local function maskedMovie(outline)
+	return {
+		w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+		chars = {
+			[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 100, dh = 100},
+			[2] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 100, dh = 100, p = outline}
+		},
+		root = {{{d = 1, c = 2, cd = 2, m = {1, 0, 0, 1, 10, 20}}, {d = 2, c = 1, m = {1, 0, 0, 1, 10, 20}}}}
+	}
+end
+
+local function moved(outline, dx, dy)
+	local moved = {}
+
+	for i = 1, #outline, 2 do
+		moved[i], moved[i + 1] = outline[i] + dx, outline[i + 1] + dy
+	end
+
+	return moved
+end
+
+local L_SHAPE = {0, 0, 100, 0, 100, 40, 40, 40, 40, 100, 0, 100}
+
 return {
 	groupName = "GryMod Flash drawing (no render context)",
 	cases = {
+		{
+			name = "an outline is cut into few convex pieces, a convex one stays whole, a bow tie (no simple polygon) is refused",
+			func = function(state)
+				local F = GryMod.Flash
+				expect(#F.MaskPieces({0, 0, 10, 0, 10, 10, 0, 10})).to.equal(1)
+				expect(#F.MaskPieces(L_SHAPE)).to.equal(2)
+				-- the outline of the radar's noise mask: one reflex corner
+				local radar = F.Load("hud_radarcompassstealth").chars[84].p
+				expect(#F.MaskPieces(radar)).to.beLessThan(4)
+				expect(F.MaskPieces({0, 0, 10, 10, 10, 0, 0, 10})).to.beNil()
+			end
+		},
+		{
+			name = "a mask shaped like an L lets through the L and nothing of its notch",
+			func = function(state)
+				local root = GryMod.Flash.NewRoot(maskedMovie(L_SHAPE))
+				local triangles = drawnTriangles(root)
+				expect(#triangles).to.beGreaterThan(0)
+				expect(area(triangles)).to.aboutEqual(polygonArea(L_SHAPE), 0.5)
+				expect(allInside(triangles, moved(L_SHAPE, 10, 20))).to.beTrue()
+				local _, _, masks = GryMod.Flash.DrawState()
+				expect(masks).to.equal(0)
+			end
+		},
+		{
+			name = "a mask that is concave the other way (a U), wound either way, lets through the U only",
+			func = function(state)
+				local u = {0, 0, 30, 0, 30, 60, 70, 60, 70, 0, 100, 0, 100, 100, 0, 100}
+				local reversed = {}
+
+				for i = #u / 2, 1, -1 do
+					reversed[#reversed + 1], reversed[#reversed + 2] = u[i * 2 - 1], u[i * 2]
+				end
+
+				for _, outline in ipairs({u, reversed}) do
+					local triangles = drawnTriangles(GryMod.Flash.NewRoot(maskedMovie(outline)))
+					expect(area(triangles)).to.aboutEqual(polygonArea(u), 0.5)
+					expect(allInside(triangles, moved(u, 10, 20))).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "a quad that lies in the notch of a concave mask draws nothing",
+			func = function(state)
+				local m = maskedMovie(L_SHAPE)
+				-- the quad is 20 x 20 at (60, 60) from the mask's origin: in the notch of the L
+				m.chars[1].dw, m.chars[1].dh = 20, 20
+				m.root[1][2].m = {1, 0, 0, 1, 70, 80}
+				expect(#drawnTriangles(GryMod.Flash.NewRoot(m))).to.equal(0)
+			end
+		},
+		{
+			name = "a convex mask still clips to exactly its polygon",
+			func = function(state)
+				local diamond = {50, 0, 100, 50, 50, 100, 0, 50}
+				local triangles = drawnTriangles(GryMod.Flash.NewRoot(maskedMovie(diamond)))
+				expect(area(triangles)).to.aboutEqual(polygonArea(diamond), 0.5)
+				expect(allInside(triangles, moved(diamond, 10, 20))).to.beTrue()
+			end
+		},
+		{
+			name = "the noise of a malfunctioning radar stays inside the outline of the radar",
+			func = function(state)
+				local movie = GryMod.Flash.Load("hud_radarcompassstealth")
+				local outline = movie.chars[84].p -- the shape of the NoiseMask clip
+				expect(outline).toNot.beNil()
+				local panel = GryMod.FlashRadar.New(movie)
+				panel:Destroy(1)
+
+				for _ = 1, 5 do panel:Update(1 / 30) end
+
+				local noise = panel.main:Child("Noise")
+				expect(noise.visible).to.beTrue()
+
+				-- only the noise is drawn: the rest of the panel is hidden
+				for _, entry in ipairs(panel.main:Entries()) do
+					if entry.clip and entry.clip ~= noise then
+						entry.clip.visible = false
+					end
+				end
+
+				local triangles = drawnTriangles(panel.root, 0, 0, 1)
+				expect(#triangles).to.beGreaterThan(0)
+				-- the outline on the stage: the NoiseMask entry's matrix, then the one of the panel's main clip
+				local mask = panel.main.names.NoiseMask.m
+				local main = panel.main.entry.m
+				local onStage = {}
+
+				for i = 1, #outline, 2 do
+					local x, y = outline[i] * mask[1] + outline[i + 1] * mask[3] + mask[5], outline[i] * mask[2] + outline[i + 1] * mask[4] + mask[6]
+					onStage[i] = x * main[1] + y * main[3] + main[5]
+					onStage[i + 1] = x * main[2] + y * main[4] + main[6]
+				end
+
+				expect(allInside(triangles, onStage)).to.beTrue()
+				-- the noise picture is bigger than the outline: all of the outline is covered
+				expect(area(triangles)).to.aboutEqual(polygonArea(onStage), polygonArea(onStage) * 0.01)
+			end
+		},
 		{
 			name = "releasing a group that never had an image (empty or too big) does not error",
 			func = function(state)

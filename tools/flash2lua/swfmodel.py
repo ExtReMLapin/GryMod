@@ -4,6 +4,7 @@ Only what the GryMod HUD player needs is kept: character dictionary (shapes, spr
 bitmaps, morph shapes, fonts) and the sprite timelines (display-list operations per frame,
 frame labels, the few frame actions the HUD uses). Lengths are converted from twips to pixels.
 """
+import math
 import os
 import re
 import subprocess
@@ -157,35 +158,86 @@ def decode_actions(hexstr):
     return out
 
 
-def _polygon(records_parent):
+# A contour smaller than this (square pixels) is a speck left by the drawing tool, not part of the outline.
+SPECK_AREA = 1.0
+
+
+def _contour_area(points):
+    """Absolute area of a closed contour (twips squared)."""
+    area = 0
+    for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):
+        area += x1 * y2 - x2 * y1
+    return abs(area) / 2
+
+
+# Features of a mask outline smaller than this (pixels) are dropped: a jog of a twip or two in a long edge would
+# only cost the game extra pieces to clip against.
+SIMPLIFY_TOLERANCE = 0.25
+
+
+def _distance_to_segment(p, a, b):
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    t = 0 if length2 == 0 else max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / length2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def _chain(points, tolerance):
+    """Douglas-Peucker on an open chain: the first point, the ones that stay, the last point."""
+    if len(points) < 3:
+        return list(points)
+    far, index = max((_distance_to_segment(p, points[0], points[-1]), i) for i, p in enumerate(points[1:-1], 1))
+    if far <= tolerance:
+        return [points[0], points[-1]]
+    return _chain(points[:index + 1], tolerance)[:-1] + _chain(points[index:], tolerance)
+
+
+def simplify_polygon(points, tolerance=SIMPLIFY_TOLERANCE):
+    """A closed polygon [(x, y)] without the features smaller than `tolerance` (Douglas-Peucker from the point
+    farthest from the first one). A polygon that would collapse under 3 points is returned as it is."""
+    if len(points) <= 3:
+        return list(points)
+    first = max(range(len(points)), key=lambda i: math.hypot(points[i][0] - points[0][0], points[i][1] - points[0][1]))
+    a = _chain(points[:first + 1], tolerance)
+    b = _chain(points[first:] + points[:1], tolerance)
+    result = a[:-1] + b[:-1]
+    return result if len(result) >= 3 else list(points)
+
+
+def _polygon(records_parent, simplify=False):
     """The outline of a one-contour shape made of straight edges as [(x, y)] in pixels (not closed
-    twice), or None for anything else (curves, several contours, an open path)."""
+    twice), or None for anything else (curves, several contours, an open path). Contours that are
+    specks (under a square pixel) do not count: a shape can carry a stray one next to its real outline."""
     if records_parent is None:
         return None
     records = records_parent.find("shapeRecords")
     if records is None:
         return None
     x = y = 0
-    points = []
-    moves = 0
+    contours = []
     for rec in records:
         kind = rec.get("type")
         if kind == "StyleChangeRecord":
             if rec.get("stateMoveTo") == "true":
-                moves += 1
-                if moves > 1:
-                    return None
                 x, y = int(rec.get("moveDeltaX")), int(rec.get("moveDeltaY"))
-                points.append((x, y))
+                contours.append([(x, y)])
         elif kind == "StraightEdgeRecord":
+            if not contours:
+                return None
             x += int(rec.get("deltaX", 0))
             y += int(rec.get("deltaY", 0))
-            points.append((x, y))
+            contours[-1].append((x, y))
         elif kind == "CurvedEdgeRecord":
             return None
+    real = [c for c in contours if len(c) < 4 or c[0] != c[-1] or _contour_area(c[:-1]) >= SPECK_AREA * TWIPS * TWIPS]
+    if len(real) != 1:
+        return None
+    points = real[0]
     if len(points) < 4 or points[0] != points[-1]:
         return None
-    return [(px / TWIPS, py / TWIPS) for px, py in points[:-1]]
+    polygon = [(px / TWIPS, py / TWIPS) for px, py in points[:-1]]
+    return simplify_polygon(polygon) if simplify else polygon
 
 
 def _place_op(item):
@@ -268,7 +320,7 @@ def _read_character(item, movie, scripts_dir=None):
     if kind in SHAPE_TAGS:
         cid = int(item.get("shapeId"))
         movie.characters[cid] = Character(cid, "shape", bounds=_rect(item.find("shapeBounds")),
-                                          polygon=_polygon(item.find("shapes")))
+                                          polygon=_polygon(item.find("shapes"), simplify=True))
     elif kind == "DefineSpriteTag":
         cid = int(item.get("spriteId"))
         movie.characters[cid] = Character(cid, "sprite", timeline=_timeline(item.find("subTags"), scripts_dir, cid))

@@ -3,8 +3,8 @@
 -- Shapes are textured quads whose corners go through the accumulated 2D matrix of the clips above them
 -- (Flash matrices: x' = a*x + c*y + tx, y' = b*x + d*y + ty), so rotation, skew and scale are exact. Quads
 -- sharing a material are batched into one mesh. Colour transforms become the vertex colour (exact for the white
--- shapes the colour-set clips tint). Clip layers (masks) clip each quad against the mask polygon (no stencil: it
--- does not exist in every render target). A clip with a blend mode
+-- shapes the colour-set clips tint). Clip layers (masks) clip each quad against the mask polygon, cut into convex pieces
+-- when it is concave (no stencil: it does not exist in every render target). A clip with a blend mode
 -- (the HUD uses "add") is drawn as a group, as Flash does: its content is composed normally in a render
 -- target, then that image is added to what is below.
 
@@ -155,21 +155,25 @@ end
 local measuring = false
 local minX, minY, maxX, maxY = 0, 0, 0, 0
 
--- The active clip layer (mask): a convex polygon in screen coordinates, as x, y pairs.
-local maskPoints = {}
-local maskCount = 0 -- vertices, 0 = no mask
-local maskSign = 1
-local polyA, polyB = {}, {}
+-- The active clip layer (mask): an outline cut into convex pieces (a mask may be concave), in screen coordinates.
+-- maskPieces[maskFirst] to maskPieces[maskFirst + maskCount - 1] are the pieces of the active mask, each one
+-- {n = vertices, sign = winding, x1, y1, x2, y2, ...}; the slots below maskFirst hold the mask of the group
+-- being drawn from, whose content has masks of its own.
+local maskPieces = {}
+local maskFirst = 1
+local maskCount = 0 -- convex pieces, 0 = no mask
+local polyA, polyB, polySrc = {}, {}, {}
 
--- Clips the polygon in polyA (n vertices of x, y, u, v) against the mask. Returns the clipped polygon (polyA or
--- polyB, as x, y, u, v groups) and its vertex count.
-local function clipToMask(n)
+-- Clips the polygon in polyA (n vertices of x, y, u, v) against a convex piece of the mask. Returns the clipped
+-- polygon (polyA or polyB, as x, y, u, v groups) and its vertex count.
+local function clipToPiece(piece, n)
 	local from, to = polyA, polyB
+	local pieceCount, maskSign = piece.n, piece.sign
 
-	for edge = 1, maskCount do
-		local ax, ay = maskPoints[edge * 2 - 1], maskPoints[edge * 2]
-		local nextEdge = edge % maskCount + 1
-		local bx, by = maskPoints[nextEdge * 2 - 1], maskPoints[nextEdge * 2]
+	for edge = 1, pieceCount do
+		local ax, ay = piece[edge * 2 - 1], piece[edge * 2]
+		local nextEdge = edge % pieceCount + 1
+		local bx, by = piece[nextEdge * 2 - 1], piece[nextEdge * 2]
 		local ex, ey = bx - ax, by - ay
 		local count = 0
 
@@ -212,13 +216,28 @@ end
 
 -- Appends the clipped polygon of polyA to the batch as triangles.
 local function emitClipped(n, r, g, b, a)
-	local from
-	from, n = clipToMask(n)
+	local last = maskFirst + maskCount - 1
 
-	for i = 2, n - 1 do
-		vertex(from[1], from[2], from[3], from[4], r, g, b, a)
-		vertex(from[i * 4 - 3], from[i * 4 - 2], from[i * 4 - 1], from[i * 4], r, g, b, a)
-		vertex(from[i * 4 + 1], from[i * 4 + 2], from[i * 4 + 3], from[i * 4 + 4], r, g, b, a)
+	if maskCount > 1 then
+		for i = 1, n * 4 do
+			polySrc[i] = polyA[i]
+		end
+	end
+
+	for index = maskFirst, last do
+		if index > maskFirst then
+			for i = 1, n * 4 do
+				polyA[i] = polySrc[i]
+			end
+		end
+
+		local from, count = clipToPiece(maskPieces[index], n)
+
+		for i = 2, count - 1 do
+			vertex(from[1], from[2], from[3], from[4], r, g, b, a)
+			vertex(from[i * 4 - 3], from[i * 4 - 2], from[i * 4 - 1], from[i * 4], r, g, b, a)
+			vertex(from[i * 4 + 1], from[i * 4 + 2], from[i * 4 + 3], from[i * 4 + 4], r, g, b, a)
+		end
 	end
 end
 
@@ -359,10 +378,205 @@ local function maskOutline(movie, entry)
 	return definition.p
 end
 
+-- Cutting an outline into convex pieces. The pieces are lists of vertex numbers of the outline (they do not change
+-- with the matrix: an affine map keeps convexity), found once per outline: ear clipping into triangles, then
+-- neighbouring triangles are joined while the result stays convex (Hertel-Mehlhorn), so an outline with one
+-- reflex corner gives two or three pieces. nil when the outline is no simple polygon.
+local pieceCache = setmetatable({}, {__mode = "k"})
+local EPSILON = 1e-6
+
+local function turn(outline, a, b, c)
+	return (outline[b * 2 - 1] - outline[a * 2 - 1]) * (outline[c * 2] - outline[a * 2]) - (outline[b * 2] - outline[a * 2]) * (outline[c * 2 - 1] - outline[a * 2 - 1])
+end
+
+local function isConvexRing(outline, ring, sign)
+	local n = #ring
+
+	for k = 1, n do
+		if sign * turn(outline, ring[k], ring[k % n + 1], ring[(k + 1) % n + 1]) < -EPSILON then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function samePoint(outline, a, b)
+	return outline[a * 2 - 1] == outline[b * 2 - 1] and outline[a * 2] == outline[b * 2]
+end
+
+local function joinedPiece(outline, p, q, sign)
+	local np, nq = #p, #q
+
+	for a = 1, np do
+		local u, v = p[a], p[a % np + 1]
+
+		for b = 1, nq do
+			if q[b] == v and q[b % nq + 1] == u then
+				local joined = {}
+
+				for k = 1, np do
+					joined[k] = p[(a + k - 1) % np + 1] -- v ... u
+				end
+
+				for k = 2, nq - 1 do
+					joined[#joined + 1] = q[(b + k - 1) % nq + 1] -- the vertices of q that are not u, v
+				end
+
+				if isConvexRing(outline, joined, sign) then
+					return joined
+				end
+
+				return nil
+			end
+		end
+	end
+
+	return nil
+end
+
+local function decompose(outline)
+	local ring = {}
+
+	for i = 1, #outline / 2 do
+		if #ring == 0 or not samePoint(outline, ring[#ring], i) then
+			ring[#ring + 1] = i
+		end
+	end
+
+	if #ring > 1 and samePoint(outline, ring[1], ring[#ring]) then
+		ring[#ring] = nil
+	end
+
+	local n = #ring
+
+	if n < 3 then
+		return nil
+	end
+
+	local area = 0
+
+	for k = 1, n do
+		local i, j = ring[k], ring[k % n + 1]
+		area = area + outline[i * 2 - 1] * outline[j * 2] - outline[j * 2 - 1] * outline[i * 2]
+	end
+
+	if area == 0 then
+		return nil
+	end
+
+	local sign = area > 0 and 1 or -1
+
+	if isConvexRing(outline, ring, sign) then
+		return {ring}
+	end
+
+	-- ear clipping
+	local pieces = {}
+
+	while #ring > 3 do
+		local m = #ring
+		local found = false
+
+		for k = 1, m do
+			local ia, ib, ic = ring[(k - 2) % m + 1], ring[k], ring[k % m + 1]
+			local cross = sign * turn(outline, ia, ib, ic)
+
+			if cross <= EPSILON and cross >= -EPSILON then
+				-- a straight run or a spike: no area to give to a piece
+				table.remove(ring, k)
+				found = true
+				break
+			end
+
+			if cross > EPSILON then
+				local ear = true
+
+				for other = 1, m do
+					local io = ring[other]
+
+					if io ~= ia and io ~= ib and io ~= ic and not samePoint(outline, io, ia) and not samePoint(outline, io, ib) and not samePoint(outline, io, ic)
+						and sign * turn(outline, ia, ib, io) >= -EPSILON and sign * turn(outline, ib, ic, io) >= -EPSILON and sign * turn(outline, ic, ia, io) >= -EPSILON then
+						ear = false
+						break
+					end
+				end
+
+				if ear then
+					pieces[#pieces + 1] = {ia, ib, ic}
+					table.remove(ring, k)
+					found = true
+					break
+				end
+			end
+		end
+
+		if not found then
+			return nil
+		end
+	end
+
+	if #ring == 3 and math.abs(turn(outline, ring[1], ring[2], ring[3])) > EPSILON then
+		pieces[#pieces + 1] = {ring[1], ring[2], ring[3]}
+	end
+
+	-- join neighbours while the result is convex
+	local merged = true
+
+	while merged do
+		merged = false
+
+		for i = 1, #pieces do
+			for j = i + 1, #pieces do
+				local joined = joinedPiece(outline, pieces[i], pieces[j], sign)
+
+				if joined then
+					pieces[i] = joined
+					table.remove(pieces, j)
+					merged = true
+					break
+				end
+			end
+
+			if merged then
+				break
+			end
+		end
+	end
+
+	if #pieces == 0 then
+		return nil
+	end
+
+	return pieces
+end
+
+local function convexPieces(outline)
+	local pieces = pieceCache[outline]
+
+	if pieces == nil then
+		pieces = decompose(outline) or false
+		pieceCache[outline] = pieces
+	end
+
+	return pieces
+end
+
+-- The pieces a mask outline is cut into (vertex numbers of the outline), or nil: tests.
+function Flash.MaskPieces(outline)
+	return convexPieces(outline) or nil
+end
+
 local function beginMask(movie, entry, a, b, c, d, tx, ty)
 	local outline, inner = maskOutline(movie, entry)
 
 	if not outline then
+		return false
+	end
+
+	local pieces = convexPieces(outline)
+
+	if not pieces then
 		return false
 	end
 
@@ -383,22 +597,35 @@ local function beginMask(movie, entry, a, b, c, d, tx, ty)
 			ea * inner[5] + ec * inner[6] + etx, eb * inner[5] + ed * inner[6] + ety
 	end
 
-	local points = #outline / 2
-	local area = 0
+	for k = 1, #pieces do
+		local piece = pieces[k]
+		local target = maskPieces[maskFirst + k - 1]
 
-	for i = 1, points do
-		local x, y = outline[i * 2 - 1], outline[i * 2]
-		maskPoints[i * 2 - 1] = ea * x + ec * y + etx
-		maskPoints[i * 2] = eb * x + ed * y + ety
+		if not target then
+			target = {}
+			maskPieces[maskFirst + k - 1] = target
+		end
+
+		local points = #piece
+		local area = 0
+
+		for i = 1, points do
+			local o = piece[i]
+			local x, y = outline[o * 2 - 1], outline[o * 2]
+			target[i * 2 - 1] = ea * x + ec * y + etx
+			target[i * 2] = eb * x + ed * y + ety
+		end
+
+		for i = 1, points do
+			local j = i % points + 1
+			area = area + target[i * 2 - 1] * target[j * 2] - target[j * 2 - 1] * target[i * 2]
+		end
+
+		target.n = points
+		target.sign = area >= 0 and 1 or -1
 	end
 
-	for i = 1, points do
-		local j = i % points + 1
-		area = area + maskPoints[i * 2 - 1] * maskPoints[j * 2] - maskPoints[j * 2 - 1] * maskPoints[i * 2]
-	end
-
-	maskSign = area >= 0 and 1 or -1
-	maskCount = points
+	maskCount = #pieces
 
 	return true
 end
@@ -536,27 +763,43 @@ local function compositeGroup(cache, blend)
 	polyA[9], polyA[10], polyA[11], polyA[12] = x0 + width, y0 + height, u1, v1
 	polyA[13], polyA[14], polyA[15], polyA[16] = x0, y0 + height, 0, v1
 
-	local polygon, count = polyA, 4
+	local pieces = maskCount > 0 and maskCount or 1
 
-	if maskCount > 0 then
-		polygon, count = clipToMask(4)
+	if pieces > 1 then
+		for i = 1, 16 do
+			polySrc[i] = polyA[i]
+		end
 	end
 
-	if count >= 3 then
-		mesh.Begin(MATERIAL_TRIANGLES, count - 2)
+	for piece = 1, pieces do
+		local polygon, count = polyA, 4
 
-		for i = 2, count - 1 do
-			for corner = 0, 2 do
-				local k = corner == 0 and 1 or i + corner - 1
-				position:SetUnpacked(polygon[k * 4 - 3], polygon[k * 4 - 2], 0)
-				mesh.Position(position)
-				mesh.TexCoord(0, polygon[k * 4 - 1], polygon[k * 4])
-				mesh.Color(255, 255, 255, 255)
-				mesh.AdvanceVertex()
+		if maskCount > 0 then
+			if piece > 1 then
+				for i = 1, 16 do
+					polyA[i] = polySrc[i]
+				end
 			end
+
+			polygon, count = clipToPiece(maskPieces[maskFirst + piece - 1], 4)
 		end
 
-		mesh.End()
+		if count >= 3 then
+			mesh.Begin(MATERIAL_TRIANGLES, count - 2)
+
+			for i = 2, count - 1 do
+				for corner = 0, 2 do
+					local k = corner == 0 and 1 or i + corner - 1
+					position:SetUnpacked(polygon[k * 4 - 3], polygon[k * 4 - 2], 0)
+					mesh.Position(position)
+					mesh.TexCoord(0, polygon[k * 4 - 1], polygon[k * 4])
+					mesh.Color(255, 255, 255, 255)
+					mesh.AdvanceVertex()
+				end
+			end
+
+			mesh.End()
+		end
 	end
 
 	blendOverridden = false
@@ -628,7 +871,9 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	flush()
 	Flash.Stats.groupRenders = Flash.Stats.groupRenders + 1
 
-	local outerMask = maskCount
+	-- the content has masks of its own: they go in the slots after the ones of this group's mask
+	local outerMask, outerFirst = maskCount, maskFirst
+	maskFirst = maskFirst + maskCount
 	maskCount = 0
 
 	render.PushRenderTarget(cache.target)
@@ -640,7 +885,7 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	groupDepth = groupDepth - 1
 	cam.End2D()
 	render.PopRenderTarget()
-	maskCount = outerMask
+	maskCount, maskFirst = outerMask, outerFirst
 
 	compositeGroup(cache, blend)
 end
@@ -737,7 +982,7 @@ local function recover()
 	end
 
 	measuring = false
-	maskCount = 0
+	maskCount, maskFirst = 0, 1
 	batchCount = 0
 	batchMaterial, batchBlend = nil, nil
 end

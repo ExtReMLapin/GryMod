@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from tools.flash2lua import swfmodel
 
@@ -148,6 +149,65 @@ class SwfModelTest(unittest.TestCase):
         self.assertEqual(text.font_height, 360 / 20)
         self.assertEqual(text.initial_text, "0")
         self.assertEqual(text.color, (255, 255, 255, 255))
+
+
+RADAR_SWF = os.path.join(SWF_DIR, "HUD_RadarCompassStealth.swf")
+
+
+@unittest.skipUnless(os.path.exists(FFDEC) and os.path.exists(RADAR_SWF), "FFDec / demo SWF not available")
+class SwfModelRadarTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        xml = os.path.join(cls.tmp, "radar.xml")
+        swfmodel.swf_to_xml(FFDEC, RADAR_SWF, xml)
+        scripts = os.path.join(cls.tmp, "scripts")
+        swfmodel.export_scripts(FFDEC, RADAR_SWF, scripts)
+        cls.movie = swfmodel.parse_swf_xml(xml, scripts)
+
+    def test_a_shape_with_a_stray_speck_still_has_the_polygon_of_its_real_contour(self):
+        """Shape 84 (the radar's noise mask, a concave outline) has a second contour of three tiny edges (a speck
+        of 0.002 square pixels): it must not hide the outline, or the mask is dropped and the noise covers the stage.
+        The jogs of a fraction of a pixel along its top edge are simplified away."""
+        shape = self.movie.characters[84]
+        self.assertEqual(shape.polygon, [(178.75, 0.2), (24.65, 0.15), (24.65, 67.7), (55.25, 87.15), (55.25, 111.4),
+                                         (178.65, 112.45), (198.05, 96.3), (198.05, 0.2)])
+
+
+class PolygonContoursTest(unittest.TestCase):
+    """_polygon on hand-written shape records (no FFDec needed)."""
+
+    @staticmethod
+    def shape(*contours):
+        """contours: lists of (dx, dy) twip steps; each one starts with a move to its first point."""
+        records = ""
+        for start, steps in contours:
+            records += '<item type="StyleChangeRecord" stateMoveTo="true" moveDeltaX="%d" moveDeltaY="%d"/>' % start
+            for dx, dy in steps:
+                records += '<item type="StraightEdgeRecord" deltaX="%d" deltaY="%d"/>' % (dx, dy)
+        return ET.fromstring("<shapes><shapeRecords>%s</shapeRecords></shapes>" % records)
+
+    SQUARE = ((0, 0), [(400, 0), (0, 400), (-400, 0), (0, -400)])
+
+    def test_one_contour_is_its_polygon(self):
+        self.assertEqual(swfmodel._polygon(self.shape(self.SQUARE)), [(0, 0), (20, 0), (20, 20), (0, 20)])
+
+    def test_a_tiny_second_contour_is_ignored(self):
+        speck = ((1000, 1000), [(0, -1), (-7, 3), (7, -2)])
+        self.assertEqual(swfmodel._polygon(self.shape(self.SQUARE, speck)), [(0, 0), (20, 0), (20, 20), (0, 20)])
+
+    def test_simplify_drops_jogs_under_the_tolerance_and_keeps_corners(self):
+        jogged = [(0, 0), (10, 0.1), (20, 0), (20, 20), (0, 20)]
+        self.assertEqual(swfmodel.simplify_polygon(jogged, 0.25), [(0, 0), (20, 0), (20, 20), (0, 20)])
+        self.assertEqual(swfmodel.simplify_polygon(jogged, 0.01), jogged)
+
+    def test_simplify_keeps_a_concave_corner(self):
+        ell = [(0, 0), (20, 0), (20, 10), (10, 10), (10, 20), (0, 20)]
+        self.assertEqual(swfmodel.simplify_polygon(ell), ell)
+
+    def test_a_second_contour_of_real_size_means_no_polygon(self):
+        island = ((1000, 1000), [(400, 0), (0, 400), (-400, 0), (0, -400)])
+        self.assertIsNone(swfmodel._polygon(self.shape(self.SQUARE, island)))
 
 
 if __name__ == "__main__":
