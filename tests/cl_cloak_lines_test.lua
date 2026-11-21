@@ -411,7 +411,7 @@ return {
 			end
 		},
 		{
-			name = "first person: the view model and the hands get the scan lines (whole screen) in the electric flash of the start of the change, and nothing once it is done",
+			name = "first person: the view model and the hands get the scan lines (whole screen) while the change lasts, at the faint rest intensity, and nothing once it is done",
 			func = function()
 				local F = GryMod.CloakFX
 				local L = F.Lines
@@ -442,38 +442,38 @@ return {
 					t.PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
 				end
 
-				F.States[me] = {amount = 0.12, speed = 0, cloaked = true}
+				F.States[me] = {amount = 0.12, cloaked = true}
 				frame()
 
 				expect(#calls).to.equal(2)
 				expect(calls[1].ent).to.equal(vm)
 				expect(calls[2].ent).to.equal(hands)
 				expect(calls[1].screen).to.beTrue()
-				expect(calls[1].strength > 0.5).to.beTrue()
+				expect(calls[1].strength).to.equal(F.SparkRest)
 
 				-- done, and moving: no flash, no lines
 				calls = {}
-				F.States[me] = {amount = 1, speed = 300, cloaked = true}
+				F.States[me] = {amount = 1, cloaked = true}
 				frame()
 
 				expect(#calls).to.equal(0)
 			end
 		},
 		{
-			name = "TransitionSpark: the flash of the start of the change only (0 at the start, strong at a tenth, 0 once done), whatever the speed",
+			name = "TransitionSpark: the faint rest intensity all along the change (the same as a camouflaged player who stands still), 0 when plain and once done",
 			func = function()
 				local F = GryMod.CloakFX
 
 				expect(F.TransitionSpark(0)).to.equal(0)
-				expect(F.TransitionSpark(0.12) > 0.5).to.beTrue()
-				expect(F.TransitionSpark(0.12) <= 1).to.beTrue()
+				expect(F.TransitionSpark(0.12)).to.equal(F.SparkRest)
+				expect(F.TransitionSpark(0.7)).to.equal(F.SparkRest)
 				expect(F.TransitionSpark(1)).to.equal(0)
 				expect(F.TransitionSpark(-1)).to.equal(0)
 				expect(F.TransitionSpark(2)).to.equal(0)
 			end
 		},
 		{
-			name = "the camouflage's draw hook adds the lines only for a player in range at the start of the change (the electric flash), hands them a draw that the player's own hook lets through, and not for a far one or one that is done, moving or not",
+			name = "the camouflage's draw hook adds the lines only for a player in range while the change lasts, hands them a draw that the player's own hook lets through, and not for a far one or one that is done, moving or not",
 			func = function()
 				local F = GryMod.CloakFX
 				local L = F.Lines
@@ -497,16 +497,16 @@ return {
 				local starting, movingDone, stillDone, farStarting = fakePlayer(0), fakePlayer(300), fakePlayer(0), fakePlayer(0)
 				farStarting.center = Vector(F.DetailDistance + 500, 0, 0)
 
-				F.States[starting] = {amount = 0.12, speed = 0, cloaked = true}
-				F.States[movingDone] = {amount = 1, speed = 300, cloaked = true}
-				F.States[stillDone] = {amount = 1, speed = 0, cloaked = true}
-				F.States[farStarting] = {amount = 0.12, speed = 0, cloaked = true}
+				F.States[starting] = {amount = 0.12, cloaked = true}
+				F.States[movingDone] = {amount = 1, cloaked = true}
+				F.States[stillDone] = {amount = 1, cloaked = true}
+				F.States[farStarting] = {amount = 0.12, cloaked = true}
 
 				hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, false, false)
 
 				expect(#calls).to.equal(1)
 				expect(calls[1].ent).to.equal(starting)
-				expect(calls[1].strength > 0.5).to.beTrue()
+				expect(calls[1].strength).to.equal(F.SparkRest)
 				-- the model was drawn by the lines' draw (the player's draws: 3 layers + the lines)
 				expect(starting.draws).to.equal(4)
 			end

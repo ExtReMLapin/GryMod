@@ -5,11 +5,11 @@
 --
 --   * the server only says who is camouflaged (the network switch "GryCloak" of the player, sv_system.lua);
 --   * every client turns that into a level that glides from 0 to 1 and back (Step), per player;
---   * the level and the speed give three numbers (Visibility): how much the picture is bent, how much of the plain
---     model stays (almost nothing when still), and how strong the sparks are. They follow the original's layer: the
---     opacity of the plain model goes down linearly with the level (the layer's alpha is 0.8 x level), the bend is
---     11 times stronger at the start than at the end, and the sparks flash in the first tenth of the change
---     (the curve of its texture cloak_transition.dds) then die down;
+--   * the level gives three numbers (Visibility): how much the picture is bent, how much of the plain model stays
+--     (almost nothing), and how strong the sparks are. The speed of the player counts for nothing: a player who moves
+--     looks as one who stands. They follow the original's layer: the opacity of the plain model goes down linearly
+--     with the level (the layer's alpha is 0.8 x level), the bend is 11 times stronger at the start than at the end,
+--     and the sparks are there only while the change lasts, at a faint constant intensity;
 --   * the draw hooks put the layers on the player, on the weapon in the hand, and on the view model and the hands
 --     of the local player. The refraction is drawn first and the plain model over it, half transparent, so that the
 --     fade is a real one (in first person too: the view model's own draw is the one that is made part transparent);
@@ -48,23 +48,17 @@ end
 F.ActivateTime = 0.8
 F.DeactivateTime = 0.6
 
--- The speed at which the effect is complete: a run (400 units per second) is above it, a walk (200) a little under.
-F.FullSpeed = 300
-
--- What the plain model still shows once fully camouflaged: a trace when still, more when moving (the original
--- layer keeps 20 % of the suit at rest, 0.8 being its largest blend).
+-- Moving changes nothing: the reference is a player who stands still, and the opacity, the bend and the sparks are the same whatever his speed
+-- (the original's videos show no change in the player's opacity when he moves, nor sparks).
+--
+-- What the plain model still shows once fully camouflaged (the original layer keeps 20 % of the suit at rest, 0.8 being its largest blend).
 F.BaseStill = 0.03
-F.BaseMoving = 0.28
 
--- How much the picture behind is bent (the value of $refractamount): still, moving, and the extra at the start of the
+-- How much the picture behind is bent (the value of $refractamount) once done, and the extra at the start of the
 -- change, which goes down to nothing as the level goes up (the original bends 11 times more at the start than once
 -- done: 2.75 against 0.25).
 F.RefractStill = 0.035
-F.RefractMoving = 0.09
 F.RefractChange = 0.2
-
--- The speed shown by the sparks follows the real one with this delay (seconds)
-F.SpeedDelay = 0.15
 
 local function clamp01(x)
 	if x < 0 then return 0 end
@@ -87,10 +81,6 @@ function F.Step(amount, cloaked, dt)
 	return math.max(0, amount - dt / F.DeactivateTime)
 end
 
-function F.SmoothSpeed(previous, speed, dt)
-	return speed + (previous - speed) * math.exp(-dt / F.SpeedDelay)
-end
-
 -- The alpha of the original's texture cloak_transition.dds (256 samples, here every 8th and the last one): the sparks'
 -- strength is this value squared, as a function of the level. 0 at the start, full from 24/255 to 40/255, then down
 -- to 55/255 when the change is done.
@@ -108,113 +98,38 @@ function F.TransitionCurve(level)
 	return (TRANSITION[i + 1] + (TRANSITION[i + 2] - TRANSITION[i + 1]) * t) / 255
 end
 
--- what the sparks still show when everything is done and still: not drawn (the original's pattern there is faint)
-local restSpark = F.TransitionCurve(1) ^ 2
+-- The sparks: only while the cloak goes in or out, always at the intensity a camouflaged player who stands still shows (the transition texture's
+-- last value squared, about 5 %), the same from the first frame to the last: not the flash of the start, nor the motion on the screen. Nothing
+-- when plain, nothing once the change is done, whether he moves or not.
+F.SparkRest = F.TransitionCurve(1) ^ 2
 
--- level (0 plain, 1 camouflaged) and speed (units per second) -> refraction amount, opacity of the plain model drawn
--- over it, strength of the sparks (0 to 1). No table: this runs for every camouflaged player at every frame.
-function F.Visibility(amount, speed)
+-- level (0 plain, 1 camouflaged) -> refraction amount, opacity of the plain model drawn over it, strength of the sparks (0 to 1). No table: this
+-- runs for every camouflaged player at every frame.
+function F.Visibility(amount)
 	if amount <= 0 then
 		return 0, 1, 0
 	end
 
 	local b = clamp01(amount)
-	local s = clamp01(speed / F.FullSpeed)
 
 	-- the original's bump scale is 0.25 + 2.5 x (1 - level): eleven times more at the start than at the end
-	local refract = b * (F.RefractStill + (F.RefractMoving - F.RefractStill) * s) + F.RefractChange * (1 - b)
-	local base = 1 - b * (1 - (F.BaseStill + (F.BaseMoving - F.BaseStill) * s))
-	local spark = math.max(b * s, F.TransitionCurve(b) ^ 2 - restSpark)
+	local refract = b * F.RefractStill + F.RefractChange * (1 - b)
+	local base = 1 - b * (1 - F.BaseStill)
 
-	return refract, base, clamp01(spark)
+	return refract, base, F.SparkStrength(b)
 end
 
--- The electric flash of the start of the change alone (what Visibility's sparks are made of, without the part that follows the
--- speed): 0 at the start, full at a tenth of the change, 0 once it is done. The scan lines (cl_cloak_lines.lua) follow this.
-function F.TransitionSpark(amount)
+-- The strength of the sparks (the pixel shader's, cl_cloak_shader.lua, and the older layer's alpha): F.SparkRest during the change, else 0.
+function F.SparkStrength(amount)
 	if amount <= 0 or amount >= 1 then
 		return 0
 	end
 
-	return clamp01(F.TransitionCurve(amount) ^ 2 - restSpark)
+	return F.SparkRest
 end
 
--- The strength of the sparks drawn by the pixel shader (cl_cloak_shader.lua): the original's own, max(speed on the screen, transition ^ 2). The
--- transition term is the transition texture squared as a function of the level: the flash at the start of the change, then down to (55 / 255) ^ 2,
--- about 5 %, once done. Nothing else raises it: standing still the sparks are faint, they come back when the model moves on the screen.
-function F.SparkStrength(amount, motion)
-	if amount <= 0 then
-		return 0
-	end
-
-	return math.max(clamp01(motion), F.TransitionCurve(amount) ^ 2)
-end
-
--- The original's speed scale (fSpeedScale): how far the model moved on the screen since the last frame, as the distance in screen units
--- (the width and the height are 1) times 100, at most 1: a hundredth of the screen in a frame is the full scale. `prev` and `now` are the
--- model's position in the camera's space (x ahead, y left, z up), the field of view is the usual 4:3 one in degrees. Nothing behind the camera.
-F.MotionGain = 100
-
-function F.ScreenMotion(prev, now, fov, aspect)
-	if prev.x < 1 or now.x < 1 then return 0 end
-
-	local tanV = math.tan(math.rad(fov) / 2) * 0.75
-	local tanH = tanV * aspect
-	local dy = (now.y / now.x - prev.y / prev.x) / tanH * 0.5
-	local dz = (now.z / now.x - prev.z / prev.x) / tanV * 0.5
-
-	return clamp01(math.sqrt(dy * dy + dz * dz) * F.MotionGain)
-end
-
-function F.FieldOfView()
-	local ply = LocalPlayer()
-
-	return ply and ply.GetFOV and ply:GetFOV() or 90
-end
-
--- The motion of `ent` (at world position `pos`) on the screen, once per frame whatever the number of views drawn (a mirror draws the player
--- again in the same frame). 0 the first time it is seen, and after a gap too long for the last position to mean anything. The tracks are kept in
--- the player's state, one for each entity drawn for him (the body, the weapon, the view model).
---
--- What counts is the entity's own move, not the camera's: somebody standing still who slides across the screen because the OBSERVER moves is not
--- moving, and gets no sparks. So the last position is kept in the WORLD and both positions are seen from the camera as it is now. The view model
--- is the other way round: it is drawn relative to the camera, so what it does on the screen (swaying, being raised to the eye to aim) is its
--- position in the camera's space, and `relative` keeps that one.
-F.MotionGap = 0.25
-
-function F.Motion(s, ent, pos, relative)
-	local tracks = s.tracks
-
-	if not tracks then
-		tracks = {}
-		s.tracks = tracks
-	end
-
-	local frame, time = FrameNumber(), CurTime()
-	local eye, angles = EyePos(), EyeAngles()
-	local view = WorldToLocal(pos, angle_zero, eye, angles)
-	local track = tracks[ent]
-
-	if not track then
-		tracks[ent] = {view = view, world = pos, frame = frame, time = time, value = 0}
-
-		return 0
-	end
-
-	if track.frame == frame then return track.value end
-
-	local value = 0
-
-	if time - track.time < F.MotionGap then
-		local before = relative and track.view or WorldToLocal(track.world, angle_zero, eye, angles)
-
-		value = F.ScreenMotion(before, view, F.FieldOfView(), ScrW() / ScrH())
-	end
-
-	track.view, track.world, track.frame, track.time, track.value = view, pos, frame, time, value
-
-	return value
-end
+-- The sparks of the change alone, for the scan lines (cl_cloak_lines.lua): the same number.
+F.TransitionSpark = F.SparkStrength
 
 -- The screen effect of the activation, read from the original's graph (seconds -> grey level, fringes, condensation):
 -- the saturation goes 1 -> 0.5 in 0.7 s then back in 1 s, the colour fringes 0 -> 0.4 in 0.7 s then back in 1 s, and
@@ -255,7 +170,7 @@ end
 -- State of each camouflaged player
 --------------------------------------------------------------------------------------------------------------------
 
--- player -> {amount, speed, cloaked}; a player who is plain again is forgotten, so that nothing is done (and nothing
+-- player -> {amount, cloaked}; a player who is plain again is forgotten, so that nothing is done (and nothing
 -- is looked at) while nobody is camouflaged.
 F.States = F.States or {}
 local States = F.States
@@ -312,7 +227,7 @@ function F.Update(ply)
 			return nil
 		end
 
-		s = {amount = 0, speed = 0, cloaked = false, legacy = false}
+		s = {amount = 0, cloaked = false, legacy = false}
 		States[ply] = s
 		F.SetDrawHooks(true)
 
@@ -324,7 +239,6 @@ function F.Update(ply)
 	local dt = FrameTime()
 	s.cloaked = cloaked
 	s.amount = F.Step(s.amount, cloaked, dt)
-	s.speed = F.SmoothSpeed(s.speed, ply:GetVelocity():Length2D(), dt)
 
 	local legacy = F.Enabled() == false and (cloaked or s.amount > 0)
 
@@ -563,7 +477,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 					end
 				end
 
-				local refract, base, spark = F.Visibility(s.amount, s.speed)
+				local refract, base, spark = F.Visibility(s.amount)
 				local strength = 0
 
 				if distance > F.DetailDistance then
@@ -571,10 +485,10 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				end
 
 				if shader then
-					-- the shader's sparks are added over the plain model, with the original's strength: the flash of the change, the motion on
-					-- the screen (nothing far away, where the sparks are not worth the cost)
+					-- the shader's sparks are added over the plain model while the change lasts, at the faint intensity of a player who stands
+					-- still (nothing far away, where the sparks are not worth the cost)
 					drawLayers(ply, refract, base, 0, s.amount)
-					strength = distance <= F.DetailDistance and F.SparkStrength(s.amount, F.Motion(s, ply, ply:WorldSpaceCenter())) or 0
+					strength = distance <= F.DetailDistance and F.SparkStrength(s.amount) or 0
 
 					if strength > 0 then
 						shader.Draw(ply, strength, s.amount, drawPlain)
@@ -619,7 +533,7 @@ F.NearlyPlain = 0.99
 F.FirstPersonBend = 1.5
 
 local function firstPersonLayers(s)
-	local refract, base, spark = F.Visibility(s.amount, s.speed)
+	local refract, base, spark = F.Visibility(s.amount)
 
 	return refract * F.FirstPersonBend, base, math.max(spark, F.FirstPersonEdge * clamp01(s.amount))
 end
@@ -691,8 +605,8 @@ local function endFirstPerson(ent, ply)
 	-- the sparks of the original's pixel shader instead of the outline and of the scan lines (which are in the shader)
 	if F.Shader and F.Shader.Active() then
 		if IsValid(ent) then
-			-- the original's strength: no floor of our own (the outline's is only for the older layer below)
-			local strength = F.SparkStrength(s.amount, F.Motion(s, ent, ent:GetPos(), true))
+			-- the same faint strength as the body's, while the change lasts (the outline's floor is only for the older layer below)
+			local strength = F.SparkStrength(s.amount)
 
 			if strength > 0 then
 				F.Shader.Draw(ent, strength, s.amount, drawPlain)

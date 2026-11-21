@@ -1,5 +1,5 @@
 -- Tests of the camouflage rendering (cl_cloak_fx.lua), GLuaTest format, client realm: the curve of the transition,
--- how visible a camouflaged player is (a function of the speed), the transition's screen effect, and the draw hooks
+-- how visible a camouflaged player is (a function of the level), the transition's screen effect, and the draw hooks
 -- (which players get the material, and that the render state is always put back). Nothing is drawn: the render
 -- calls are replaced by recorders (and put back after each case).
 
@@ -73,9 +73,9 @@ local function recordRender()
 	return log
 end
 
-local function setState(ply, amount, speed)
+local function setState(ply, amount)
 	local F = GryMod.CloakFX
-	F.States[ply] = {amount = amount, speed = speed or 0, cloaked = amount > 0}
+	F.States[ply] = {amount = amount, cloaked = amount > 0}
 end
 
 -- what the engine calls after the translucent things
@@ -206,33 +206,37 @@ return {
 			end
 		},
 		{
-			name = "the faster a camouflaged player moves, the more visible, up to a ceiling",
+			name = "moving changes nothing: the plain model's opacity and the bend are those of standing still, whatever the speed of the player (the original's references are the ones of a player who stands)",
 			func = function(state)
 				local F = GryMod.CloakFX
-				local _, still, sparkStill = F.Visibility(1, 0)
-				local refractStill = F.Visibility(1, 0)
-				local refractWalk, walk, sparkWalk = F.Visibility(1, 200)
-				local refractRun, run, sparkRun = F.Visibility(1, 400)
-				local _, fast = F.Visibility(1, 4000)
 
-				expect(walk > still).to.beTrue()
-				expect(run > walk).to.beTrue()
-				expect(refractWalk > refractStill).to.beTrue()
-				expect(refractRun >= refractWalk).to.beTrue()
-				expect(sparkWalk > sparkStill).to.beTrue()
-				expect(sparkRun >= sparkWalk).to.beTrue()
-				expect(fast).to.aboutEqual(select(2, F.Visibility(1, 800)), 0.0001) -- the effect saturates
-				expect(fast).to.beLessThan(0.5) -- still hard to see when moving
+				local logStill = recordRender()
+				local still = fakePlayer(0)
+				setState(still, 0.5)
+				translucent()
+				F.States[still] = nil
+
+				local logRun = recordRender()
+				local running = fakePlayer(400)
+				setState(running, 0.5)
+				translucent()
+
+				expect(running.draws).to.equal(still.draws)
+				expect(#logRun.blend).to.equal(#logStill.blend)
+
+				for i, value in ipairs(logStill.blend) do
+					expect(logRun.blend[i]).to.aboutEqual(value, 0.000001)
+				end
 			end
 		},
 		{
-			name = "in the middle of a transition the surface is distorted more than when fully camouflaged, and sparks fly",
+			name = "in the middle of a transition the surface is distorted more than when fully camouflaged, and the faint sparks are there",
 			func = function(state)
 				local F = GryMod.CloakFX
-				local refractFull = F.Visibility(1, 0)
-				local refractMid, _, sparkMid = F.Visibility(0.5, 0)
+				local refractFull = F.Visibility(1)
+				local refractMid, _, sparkMid = F.Visibility(0.5)
 				expect(refractMid > refractFull).to.beTrue()
-				expect(sparkMid).to.beGreaterThan(0.3)
+				expect(sparkMid).to.equal(F.SparkRest)
 			end
 		},
 		{
@@ -242,41 +246,43 @@ return {
 				local last = math.huge
 
 				for i = 1, 20 do
-					local refract = F.Visibility(i / 20, 0)
+					local refract = F.Visibility(i / 20)
 					expect(refract <= last).to.beTrue()
 					last = refract
 				end
 
-				expect(F.Visibility(0.05, 0) > 3 * F.Visibility(1, 0)).to.beTrue()
+				expect(F.Visibility(0.05) > 3 * F.Visibility(1)).to.beTrue()
 			end
 		},
 		{
-			name = "the sparks flash at the beginning of the change then die down: full at a tenth, nothing once done and still",
+			name = "the sparks: only while the cloak goes in or out, always at the faint intensity a camouflaged player who stands still shows (the transition texture's last value squared, about 5 %); nothing when plain, nothing once done, moving or not",
 			func = function(state)
 				local F = GryMod.CloakFX
-				local _, _, early = F.Visibility(0.1, 0)
-				local _, _, late = F.Visibility(0.8, 0)
-				local _, _, done = F.Visibility(1, 0)
-				expect(early).to.beGreaterThan(0.9)
-				expect(late < early).to.beTrue()
-				expect(done).to.equal(0)
+				expect(F.SparkRest).to.aboutEqual((55 / 255) ^ 2, 0.002)
+				expect(F.SparkStrength(0)).to.equal(0)
+				expect(F.SparkStrength(1)).to.equal(0)
+				expect(F.SparkStrength(-1)).to.equal(0)
+				expect(F.SparkStrength(2)).to.equal(0)
 
-				local last = 2
-
-				for i = 3, 20 do
-					local _, _, spark = F.Visibility(i / 20, 0)
-					expect(spark <= last).to.beTrue()
-					last = spark
+				-- the same intensity at every level of the change: not the flash of its start, nor of its end
+				for _, level in ipairs({0.001, 0.05, 0.1, 0.3, 0.5, 0.8, 0.95, 0.999}) do
+					expect(F.SparkStrength(level)).to.equal(F.SparkRest)
 				end
+
+				-- what the layers' rules hand out is the same number
+				local _, _, spark = F.Visibility(0.5)
+				expect(spark).to.equal(F.SparkRest)
+				_, _, spark = F.Visibility(1)
+				expect(spark).to.equal(0)
 			end
 		},
 		{
 			name = "the plain model fades out linearly with the level, as the original's layer alpha (0.8 x level)",
 			func = function(state)
 				local F = GryMod.CloakFX
-				local _, quarter = F.Visibility(0.25, 0)
-				local _, half = F.Visibility(0.5, 0)
-				local _, full = F.Visibility(1, 0)
+				local _, quarter = F.Visibility(0.25)
+				local _, half = F.Visibility(0.5)
+				local _, full = F.Visibility(1)
 				expect(half).to.aboutEqual(1 - 0.5 * (1 - full), 0.001)
 				expect(quarter).to.aboutEqual(1 - 0.25 * (1 - full), 0.001)
 			end
@@ -288,7 +294,7 @@ return {
 
 				for _, amount in ipairs({-3, 0, 0.01, 0.25, 0.5, 0.75, 0.99, 1, 4}) do
 					for _, speed in ipairs({-50, 0, 100, 250, 600, 99999}) do
-						local refract, base, spark = F.Visibility(amount, speed)
+						local refract, base, spark = F.Visibility(amount)
 						expect(refract >= 0).to.beTrue()
 						expect(base >= 0 and base <= 1).to.beTrue()
 						expect(spark >= 0 and spark <= 1).to.beTrue()
@@ -303,20 +309,10 @@ return {
 				local last = 2
 
 				for i = 0, 20 do
-					local _, base = F.Visibility(i / 20, 300)
+					local _, base = F.Visibility(i / 20)
 					expect(base <= last).to.beTrue()
 					last = base
 				end
-			end
-		},
-		{
-			name = "SmoothSpeed follows the real speed with a delay, so the sparks do not flicker at every step",
-			func = function(state)
-				local F = GryMod.CloakFX
-				local v = F.SmoothSpeed(0, 400, 0.016)
-				expect(v > 0 and v < 400).to.beTrue()
-				expect(F.SmoothSpeed(0, 400, 10)).to.aboutEqual(400, 1)
-				expect(F.SmoothSpeed(400, 0, 0)).to.equal(400)
 			end
 		},
 		{
@@ -356,7 +352,7 @@ return {
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				expect(hook.GetTable().PrePlayerDraw.GryCloakFX(ply)).to.beTrue()
 				translucent()
 				expect(ply.draws).to.beGreaterThan(0)
@@ -369,7 +365,7 @@ return {
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				translucent()
 				expect(ply.draws).to.equal(1)
 				expect(leftClean(log)).to.beTrue()
@@ -380,7 +376,7 @@ return {
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 0.4, 0)
+				setState(ply, 0.4)
 				translucent()
 				expect(ply.draws).to.equal(3) -- refraction, sparks (the change has them), plain model
 				local lowest = 1
@@ -389,19 +385,34 @@ return {
 					lowest = math.min(lowest, v)
 				end
 
-				expect(lowest).to.beBetween(0.1, 0.99)
+				-- the plain model's own blend is somewhere between all and nothing (the older sparks layer's is the faint rest)
+				local found = false
+
+				for _, v in ipairs(log.blend) do
+					if v > 0.1 and v < 0.99 then found = true end
+				end
+
+				expect(found).to.beTrue()
+				expect(lowest <= GryMod.CloakFX.SparkRest).to.beTrue() -- the older sparks layer is never stronger than the faint rest
 				expect(leftClean(log)).to.beTrue()
 			end
 		},
 		{
-			name = "PlayerDraw: moving fast, the sparks are drawn too",
+			name = "PlayerDraw: in the change the sparks are drawn (the older outline layer), once the change is done they are not, still or moving",
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 1, 400)
+				setState(ply, 0.5)
 				translucent()
-				expect(ply.draws).to.equal(3) -- refraction, sparks, plain model
+				expect(ply.draws).to.equal(3) -- refraction, outline, plain model
 				expect(#log.color).to.beGreaterThan(0)
+				expect(leftClean(log)).to.beTrue()
+
+				local running = fakePlayer(400)
+				GryMod.CloakFX.States[ply] = nil
+				setState(running, 1)
+				translucent()
+				expect(running.draws).to.equal(1) -- the refraction only: done, even moving, no sparks and the plain model nearly gone
 				expect(leftClean(log)).to.beTrue()
 			end
 		},
@@ -410,8 +421,8 @@ return {
 			func = function(state)
 				local log = recordRender()
 				local a, b = fakePlayer(0), fakePlayer(0)
-				setState(a, 1, 0)
-				setState(b, 1, 0)
+				setState(a, 1)
+				setState(b, 1)
 				translucent()
 				expect(a.draws + b.draws).to.equal(2)
 				expect(log.refreshed).to.equal(1)
@@ -422,7 +433,7 @@ return {
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(true, false, false)
 				hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, true, false)
 				hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, false, true)
@@ -435,7 +446,7 @@ return {
 			func = function(state)
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				stub(render, "GetRenderTarget", function() return {} end)
 				-- the engine's own draw is still switched off (PrePlayerDraw), so the reflection would show nothing
 				-- if the layers were not drawn from here
@@ -452,10 +463,10 @@ return {
 				local F = GryMod.CloakFX
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 0.4, 0)
+				setState(ply, 0.4)
 				stub(render, "GetRenderTarget", function() return {} end)
 				translucent()
-				local _, base = F.Visibility(0.4, 0)
+				local _, base = F.Visibility(0.4)
 				expect(ply.draws).to.equal(3) -- refraction, sparks, plain model: as in the main view
 				expect(log.blend[#log.blend - 1]).to.aboutEqual(base, 0.001) -- the plain model's opacity, then the reset
 				expect(leftClean(log)).to.beTrue()
@@ -467,7 +478,7 @@ return {
 				local log = recordRender()
 				local ply = fakePlayer(0)
 				function ply:DrawModel() error("boom") end
-				setState(ply, 0.5, 0)
+				setState(ply, 0.5)
 				stub(render, "GetRenderTarget", function() return {} end)
 				pcall(translucent)
 				expect(leftClean(log)).to.beTrue()
@@ -480,7 +491,7 @@ return {
 				local log = recordRender()
 				local me = fakePlayer(0)
 				stub(_G, "LocalPlayer", function() return me end)
-				setState(me, 1, 0)
+				setState(me, 1)
 				local third = false
 				function me:ShouldDrawLocalPlayer() return third end
 				translucent()
@@ -499,9 +510,9 @@ return {
 				behind.center = Vector(-300, 0, 0)
 				far.center = Vector(F.MaxDistance + 100, 0, 0)
 				near.center = Vector(50, 0, 0)
-				setState(behind, 1, 0)
-				setState(far, 1, 0)
-				setState(near, 1, 0)
+				setState(behind, 1)
+				setState(far, 1)
+				setState(near, 1)
 				translucent()
 				expect(behind.draws).to.equal(0)
 				expect(far.draws).to.equal(0)
@@ -517,8 +528,8 @@ return {
 				local weapon = fakePlayer(0)
 				function far:GetActiveWeapon() return weapon end
 				far.center = Vector(F.DetailDistance + 100, 0, 0)
-				setState(near, 1, 400) -- running: refraction, sparks, plain model
-				setState(far, 1, 400)
+				setState(near, 0.5) -- in the change: refraction, sparks, plain model
+				setState(far, 0.5)
 				translucent()
 				expect(near.draws).to.equal(3)
 				expect(far.draws).to.equal(2)
@@ -533,15 +544,15 @@ return {
 				local weapon = fakePlayer(0)
 				weapon.center = Vector(300, 0, 0)
 				function ply:GetActiveWeapon() return weapon end
-				setState(ply, 1, 400) -- running: sparks and the plain model on the body
+				setState(ply, 0.5) -- in the change: sparks and the plain model on the body
 				translucent()
 				expect(ply.draws).to.equal(3)
 				expect(weapon.draws).to.equal(2) -- refraction, plain model (no sparks)
 				expect(leftClean(log)).to.beTrue()
 
-				-- when still and done, only the refraction (the plain model is not worth drawing)
+				-- once done, only the refraction (the plain model is not worth drawing)
 				weapon.draws = 0
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				translucent()
 				expect(weapon.draws).to.equal(1)
 			end
@@ -553,7 +564,7 @@ return {
 				local before = convar:GetString()
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				convar:SetString("0")
 				local ok, err = pcall(function()
 					expect(hook.GetTable().PrePlayerDraw.GryCloakFX(ply)).to.beNil()
@@ -571,7 +582,7 @@ return {
 				local log = recordRender()
 				local ply = fakePlayer(0)
 				function ply:DrawModel() error("boom") end
-				setState(ply, 0.5, 0)
+				setState(ply, 0.5)
 				pcall(translucent)
 				expect(leftClean(log)).to.beTrue()
 			end
@@ -648,7 +659,7 @@ return {
 
 				-- somebody else is camouflaged: not the local view model
 				local other = fakePlayer(0)
-				setState(other, 1, 0)
+				setState(other, 1)
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, other, NULL)
 				expect(#log.blend).to.equal(0)
 				expect(vm.draws).to.equal(0)
@@ -663,14 +674,14 @@ return {
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm = fakePlayer(0)
 				function me:GetViewModel() return vm end
-				setState(me, 0.4, 0)
+				setState(me, 0.4)
 
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(vm.draws).to.equal(1) -- the refraction
 				expect(log.drawn[1].material).to.exist()
 				expect(log.refreshed).to.equal(1) -- the screen is copied for it
 				expect(log.override[#log.override]).to.equal(false) -- the engine's draw has no override
-				local _, base = F.Visibility(0.4, 0)
+				local _, base = F.Visibility(0.4)
 				expect(log.blend[#log.blend]).to.aboutEqual(base, 0.001) -- and is part transparent
 				expect(base).to.beBetween(0.1, 0.99)
 
@@ -688,7 +699,7 @@ return {
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm = fakePlayer(0)
 				function me:GetViewModel() return vm end
-				setState(me, 0.06, 0)
+				setState(me, 0.06)
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(log.blend[#log.blend]).to.beGreaterThan(0.9)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
@@ -706,8 +717,8 @@ return {
 				function me:GetViewModel() return vm end
 
 				-- a level whose plain opacity is above the threshold: no refraction, and no translucent draw
-				setState(me, 0.003, 0)
-				local _, base = F.Visibility(0.003, 0)
+				setState(me, 0.003)
+				local _, base = F.Visibility(0.003)
 				expect(base >= F.NearlyPlain).to.beTrue()
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(vm.draws).to.equal(0)
@@ -718,8 +729,8 @@ return {
 				expect(leftClean(log)).to.beTrue()
 
 				-- just under the threshold it is still the old way: the refraction, then the model part transparent
-				setState(me, 0.03, 0)
-				_, base = F.Visibility(0.03, 0)
+				setState(me, 0.03)
+				_, base = F.Visibility(0.03)
 				expect(base < F.NearlyPlain).to.beTrue()
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(vm.draws).to.equal(1)
@@ -736,7 +747,7 @@ return {
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm = fakePlayer(0)
 				function me:GetViewModel() return vm end
-				setState(me, 1, 0)
+				setState(me, 1)
 
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(vm.draws).to.equal(1)
@@ -754,7 +765,7 @@ return {
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm, hands = fakePlayer(0), fakePlayer(0)
 				function me:GetViewModel() return vm end
-				setState(me, 0.5, 0)
+				setState(me, 0.5)
 
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
@@ -776,7 +787,7 @@ return {
 				local vm = fakePlayer(0)
 				function vm:DrawModel() error("boom") end
 				function me:GetViewModel() return vm end
-				setState(me, 0.5, 0)
+				setState(me, 0.5)
 				pcall(hook.GetTable().PreDrawViewModel.GryCloakFX, vm, me, NULL)
 				pcall(hook.GetTable().PostDrawViewModel.GryCloakFX, vm, me, NULL)
 				expect(leftClean(log)).to.beTrue()
@@ -866,220 +877,77 @@ return {
 			end
 		},
 		{
-			name = "SparkStrength: the original's max(speed on the screen, transition squared): the flash at the start, a faint 5 % once done and still, the motion when it is larger",
-			func = function(state)
-				local F = GryMod.CloakFX
-				expect(F.SparkStrength(0, 0)).to.equal(0)
-				expect(F.SparkStrength(0.1, 0)).to.beGreaterThan(0.9)
-				-- done and still: the transition texture's last value squared, (55 / 255) ^ 2: faint
-				expect(F.SparkStrength(1, 0)).to.aboutEqual((55 / 255) ^ 2, 0.002)
-				expect(F.SparkStrength(1, 0.6)).to.aboutEqual(0.6, 0.0001)
-				expect(F.SparkStrength(0.1, 0.2)).to.aboutEqual(F.SparkStrength(0.1, 0), 0.0001)
-				expect(F.SparkStrength(1, 5)).to.equal(1)
-			end
-		},
-		{
-			name = "ScreenMotion: the original's speed scale, the model's move on the screen between two frames (a hundredth of the screen's width is a full scale), 0 behind the camera",
-			func = function(state)
-				local F = GryMod.CloakFX
-				-- 90 degrees across 4:3, on a 16:9 screen: tan(v/2) = 0.75, tan(h/2) = 1.3333
-				local aspect = 16 / 9
-
-				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 0, 0), 90, aspect)).to.equal(0)
-				-- sideways: 3 units at 300 is 0.01 of the tangent, /1.3333 x 0.5 of the width x 100
-				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 3, 0), 90, aspect)).to.aboutEqual(0.375, 0.002)
-				-- up: the same move is larger against the height
-				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 0, 3), 90, aspect)).to.aboutEqual(0.6667, 0.002)
-				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 60, 0), 90, aspect)).to.equal(1)
-				-- a narrower field of view magnifies the same move
-				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(300, 3, 0), 45, aspect)).to.beGreaterThan(0.375)
-				-- behind the camera, or on it
-				expect(F.ScreenMotion(Vector(-300, 0, 0), Vector(-300, 30, 0), 90, aspect)).to.equal(0)
-				expect(F.ScreenMotion(Vector(300, 0, 0), Vector(0.5, 30, 0), 90, aspect)).to.equal(0)
-			end
-		},
-		{
-			name = "Motion: the first sight of an entity is 0, then the move since the last frame, once per frame whatever the number of views, and 0 again after a long gap",
-			func = function(state)
-				local F = GryMod.CloakFX
-				local frame, now = 10, 100
-				stub(_G, "FrameNumber", function() return frame end)
-				stub(_G, "CurTime", function() return now end)
-				stub(_G, "EyePos", function() return Vector(0, 0, 0) end)
-				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
-				stub(_G, "ScrW", function() return 1920 end)
-				stub(_G, "ScrH", function() return 1080 end)
-				stub(F, "FieldOfView", function() return 90 end)
-
-				local s = {}
-				local ent = {}
-				expect(F.Motion(s, ent, Vector(300, 0, 0))).to.equal(0)
-
-				frame, now = 11, 100.016
-				local moved = F.Motion(s, ent, Vector(300, 3, 0))
-				expect(moved).to.aboutEqual(0.375, 0.002)
-
-				-- another view of the same frame (a mirror): the same value, not a second move
-				expect(F.Motion(s, ent, Vector(300, 6, 0))).to.equal(moved)
-
-				-- still, the next frame
-				frame, now = 12, 100.032
-				expect(F.Motion(s, ent, Vector(300, 3, 0))).to.equal(0)
-
-				-- not seen for a while: the move since is not a speed
-				frame, now = 13, 101.5
-				expect(F.Motion(s, ent, Vector(300, 80, 0))).to.equal(0)
-
-				-- each entity has its own track
-				frame, now = 14, 101.516
-				expect(F.Motion(s, {}, Vector(300, 0, 0))).to.equal(0)
-			end
-		},
-		{
-			name = "Motion: another player's own move counts, not the camera's: an entity standing still in the world has no motion while the camera moves (the view model, which is drawn relative to the camera, is the other way round)",
-			func = function(state)
-				local F = GryMod.CloakFX
-				local frame, now = 20, 200
-				local eye = Vector(0, 0, 0)
-				stub(_G, "FrameNumber", function() return frame end)
-				stub(_G, "CurTime", function() return now end)
-				stub(_G, "EyePos", function() return eye end)
-				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
-				stub(_G, "ScrW", function() return 1920 end)
-				stub(_G, "ScrH", function() return 1080 end)
-				stub(F, "FieldOfView", function() return 90 end)
-
-				local s = {}
-				local still, relative = {}, {}
-				local world = Vector(300, 0, 0)
-
-				expect(F.Motion(s, still, world)).to.equal(0)
-				expect(F.Motion(s, relative, world, true)).to.equal(0)
-
-				-- the camera steps sideways 5 units, nobody else moves
-				frame, now, eye = 21, 200.016, Vector(0, 5, 0)
-				expect(F.Motion(s, still, world)).to.equal(0)
-				expect(F.Motion(s, relative, world, true)).to.beGreaterThan(0.1)
-
-				-- the player himself steps sideways 3 units, the camera stays: that is his motion
-				frame, now = 22, 200.032
-				expect(F.Motion(s, still, Vector(300, 3, 0))).to.aboutEqual(F.ScreenMotion(Vector(300, 0, 0) - eye, Vector(300, 3, 0) - eye, 90, 1920 / 1080), 0.002)
-
-				-- both move at once: only his own move is counted
-				frame, now, eye = 23, 200.048, Vector(0, 25, 0)
-				local both = F.Motion(s, still, Vector(300, 6, 0))
-				frame, now = 24, 200.064
-				expect(both).to.aboutEqual(F.ScreenMotion(Vector(300, 3, 0) - eye, Vector(300, 6, 0) - eye, 90, 1920 / 1080), 0.002)
-			end
-		},
-		{
-			name = "pixel shader, third person: a player standing still gets no sparks when it is the camera that moves",
+			name = "pixel shader, third person: a camouflaged player whose change is done gets no sparks, whoever moves (him, or the camera)",
 			func = function(state)
 				local F = GryMod.CloakFX
 				recordRender()
 				local ply = fakePlayer(0)
-				local frame, now = 30, 300
-				local eye = Vector(0, 0, 0)
-				stub(_G, "FrameNumber", function() return frame end)
-				stub(_G, "CurTime", function() return now end)
-				stub(_G, "EyePos", function() return eye end)
-				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
-				stub(_G, "ScrW", function() return 1920 end)
-				stub(_G, "ScrH", function() return 1080 end)
-				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local strengths = {}
 				stub(F.Shader, "Draw", function(ent, strength) strengths[#strengths + 1] = strength return true end)
 
+				setState(ply, 1)
+				stub(_G, "EyePos", function() return Vector(0, 0, 0) end)
 				stub(_G, "EyeVector", function() return Vector(1, 0, 0) end)
 
-				local function drawFrame()
+				for i = 1, 5 do
+					ply.center = Vector(300, 4 * i, 0) -- he runs across the view
 					hook.GetTable().PostDrawTranslucentRenderables.GryCloakFX(false, false, false)
 				end
 
-				setState(ply, 1, 0)
-				ply.center = Vector(300, 0, 0)
-				drawFrame()
-
-				for i = 1, 5 do
-					frame, now, eye = frame + 1, now + 0.016, Vector(0, 6 * i, 0) -- the camera runs sideways, he stands still
-					drawFrame()
-				end
-
-				expect(#strengths).to.equal(6)
-
-				for _, strength in ipairs(strengths) do
-					expect(strength).to.aboutEqual(F.SparkStrength(1, 0), 0.0001) -- only the faint 5 %
-				end
+				expect(#strengths).to.equal(0)
 			end
 		},
 		{
-			name = "pixel shader, third person: refraction and plain model, then the shader added with the original's strength: faint when still, the motion on the screen when moving",
+			name = "pixel shader, third person: refraction and plain model, then the shader added at the faint intensity while the change lasts, whoever moves",
 			func = function(state)
 				local F = GryMod.CloakFX
 				local log = recordRender()
 				local ply = fakePlayer(0)
-				local frame = 1
-				stub(_G, "FrameNumber", function() return frame end)
-				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
-				stub(_G, "ScrW", function() return 1920 end)
-				stub(_G, "ScrH", function() return 1080 end)
-				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local calls = {}
 				stub(F.Shader, "Draw", function(ent, strength, amount, draw) calls[#calls + 1] = {ent = ent, strength = strength, amount = amount, draw = draw} return true end)
 
-				setState(ply, 1, 400) -- the speed in the world does not matter: the screen decides
-				ply.center = Vector(300, 0, 0)
+				setState(ply, 0.5)
 				translucent()
 
 				expect(ply.draws).to.equal(2) -- refraction, plain model: no edge layer
 				expect(#calls).to.equal(1)
 				expect(calls[1].ent).to.equal(ply)
-				expect(calls[1].strength).to.aboutEqual(F.SparkStrength(1, 0), 0.0001) -- still: the faint 5 %
-				expect(calls[1].amount).to.equal(1)
+				expect(calls[1].strength).to.equal(F.SparkRest)
+				expect(calls[1].amount).to.equal(0.5)
 				expect(leftClean(log)).to.beTrue()
 
-				-- moving across the view: the motion takes over
-				frame = 2
-				ply.center = Vector(300, 3, 0)
-				calls = {}
-				translucent()
-				expect(#calls).to.equal(1)
-				expect(calls[1].strength).to.aboutEqual(0.375, 0.002)
-
 				-- the function it is given draws the entity through the player's own draw hook
-				local before = ply.draws
 				calls[1].draw(ply)
-				expect(ply.draws).to.equal(before + 1)
+				expect(ply.draws).to.equal(3)
 			end
 		},
 		{
-			name = "pixel shader, third person: in the flash of the start of the change the strength is the flash, and the scan lines are not drawn on the screen (the shader has them)",
+			name = "pixel shader, third person: the scan lines are not drawn on the screen (the shader has them), the strength is the same all the change long",
 			func = function(state)
 				local F = GryMod.CloakFX
 				recordRender()
 				local ply = fakePlayer(0)
-				stub(_G, "FrameNumber", function() return 1 end)
-				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
-				stub(_G, "ScrW", function() return 1920 end)
-				stub(_G, "ScrH", function() return 1080 end)
-				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
-				local strength
-				stub(F.Shader, "Draw", function(ent, s) strength = s return true end)
+				local strengths = {}
+				stub(F.Shader, "Draw", function(ent, s) strengths[#strengths + 1] = s return true end)
 
 				local linesDrawn = 0
 				stub(F.Lines, "Draw", function() linesDrawn = linesDrawn + 1 return true end)
 
-				setState(ply, 0.12, 0)
-				translucent()
+				for _, level in ipairs({0.05, 0.12, 0.6, 0.95}) do
+					setState(ply, level)
+					translucent()
+				end
 
-				expect(strength).to.aboutEqual(F.SparkStrength(0.12, 0), 0.0001)
-				expect(strength > 0.5).to.beTrue()
+				expect(#strengths).to.equal(4)
+				for _, strength in ipairs(strengths) do
+					expect(strength).to.equal(F.SparkRest)
+				end
 				expect(linesDrawn).to.equal(0)
 			end
 		},
@@ -1101,7 +969,7 @@ return {
 				local drawn = {}
 				stub(F.Shader, "Draw", function(ent, s) drawn[#drawn + 1] = {ent = ent, s = s} return true end)
 
-				setState(ply, 1, 400)
+				setState(ply, 0.5)
 				translucent()
 				expect(#drawn).to.equal(2)
 				expect(drawn[1].ent).to.equal(ply)
@@ -1126,7 +994,7 @@ return {
 				local shaderDrawn = 0
 				stub(F.Shader, "Draw", function() shaderDrawn = shaderDrawn + 1 return true end)
 
-				setState(ply, 1, 400)
+				setState(ply, 0.5)
 				translucent()
 
 				expect(shaderDrawn).to.equal(0)
@@ -1134,22 +1002,14 @@ return {
 			end
 		},
 		{
-			name = "pixel shader, first person: the arms and the gun get the shader instead of the outline, with the original's strength (no floor of its own: faint when still, the flash at the start)",
+			name = "pixel shader, first person: the arms and the gun get the shader instead of the outline at the faint intensity while the change lasts, and nothing once it is done",
 			func = function(state)
 				local F = GryMod.CloakFX
 				local log = recordRender()
 				local me = fakePlayer(0)
 				stub(_G, "LocalPlayer", function() return me end)
 				local vm = fakePlayer(0)
-				function vm:GetPos() return Vector(20, 0, -10) end
 				function me:GetViewModel() return vm end
-				local frame = 1
-				stub(_G, "FrameNumber", function() return frame end)
-				stub(_G, "EyePos", function() return Vector(0, 0, 0) end)
-				stub(_G, "EyeAngles", function() return Angle(0, 0, 0) end)
-				stub(_G, "ScrW", function() return 1920 end)
-				stub(_G, "ScrH", function() return 1080 end)
-				stub(F, "FieldOfView", function() return 90 end)
 				stub(F.Shader, "Active", function() return true end)
 
 				local calls = {}
@@ -1158,7 +1018,7 @@ return {
 				local linesDrawn = 0
 				stub(F.Lines, "Draw", function() linesDrawn = linesDrawn + 1 return true end)
 
-				setState(me, 0.4, 0)
+				setState(me, 0.4)
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
 
@@ -1166,27 +1026,16 @@ return {
 				expect(#calls).to.equal(1)
 				expect(calls[1].ent).to.equal(vm)
 				expect(calls[1].amount).to.equal(0.4)
-				expect(calls[1].strength).to.aboutEqual(F.SparkStrength(0.4, 0), 0.0001)
+				expect(calls[1].strength).to.equal(F.SparkRest)
 				expect(linesDrawn).to.equal(0)
 				expect(leftClean(log)).to.beTrue()
 
-				-- done and still: the faint 5 %, not the old outline's floor of 0.45
-				frame = 2
+				-- done: no sparks
 				calls = {}
-				setState(me, 1, 0)
+				setState(me, 1)
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
-				expect(#calls).to.equal(1)
-				expect(calls[1].strength).to.aboutEqual(F.SparkStrength(1, 0), 0.0001)
-				expect(calls[1].strength < 0.1).to.beTrue()
-
-				-- the gun moving on the screen (raised to the eye): the motion
-				frame = 3
-				calls = {}
-				function vm:GetPos() return Vector(20, 2, -10) end
-				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
-				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
-				expect(calls[1].strength > 0.2).to.beTrue()
+				expect(#calls).to.equal(0)
 			end
 		},
 		{
@@ -1200,10 +1049,10 @@ return {
 				local calls = {}
 				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) calls[#calls + 1] = {ent = ent, bump = bump, alpha = alpha} draw(ent) return true end)
 
-				setState(ply, 0.5, 0)
+				setState(ply, 0.5)
 				translucent()
 
-				local _, base = F.Visibility(0.5, 0)
+				local _, base = F.Visibility(0.5)
 				expect(#calls).to.equal(1)
 				expect(calls[1].ent).to.equal(ply)
 				expect(calls[1].bump).to.aboutEqual(F.Refract.BumpScale(0.5), 0.0001)
@@ -1229,7 +1078,7 @@ return {
 				local drawn = 0
 				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) drawn = drawn + 1 draw(ent) return true end)
 
-				setState(ply, 1, 0)
+				setState(ply, 1)
 				translucent()
 				expect(drawn).to.equal(1)
 				expect(ply.draws).to.equal(1) -- only the layer's own draw: the model is not worth a draw under it
@@ -1253,7 +1102,7 @@ return {
 				local drawn = {}
 				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) drawn[#drawn + 1] = ent draw(ent) return true end)
 
-				setState(ply, 0.5, 0)
+				setState(ply, 0.5)
 				translucent()
 				expect(#drawn).to.equal(2)
 				expect(drawn[1]).to.equal(ply)
@@ -1280,8 +1129,8 @@ return {
 				local calls = {}
 				stub(F.Refract, "Draw", function(ent, bump, alpha, draw) calls[#calls + 1] = {ent = ent, bump = bump, alpha = alpha} return true end)
 
-				setState(me, 0.4, 0)
-				local _, base = F.Visibility(0.4, 0)
+				setState(me, 0.4)
+				local _, base = F.Visibility(0.4)
 
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(vm.draws).to.equal(0)
@@ -1315,7 +1164,7 @@ return {
 				local drawn = 0
 				stub(F.Refract, "Draw", function() drawn = drawn + 1 return true end)
 
-				setState(me, 0.003, 0)
+				setState(me, 0.003)
 				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
 				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
 				expect(drawn).to.equal(0)
