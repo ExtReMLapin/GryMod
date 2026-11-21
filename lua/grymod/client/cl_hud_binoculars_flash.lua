@@ -42,7 +42,11 @@ local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, fals
 local VisionConVar = CreateClientConVar("gry_binoculars_vision", "0", true, false, "The renderer's full-screen binoculars vision: a cool tint (0.7, 0.8, 1.0), fine scan lines (period of 4 pixels) and a darkening towards the edges (1 - 0.6 * distance from the centre). The original shows it in the High quality only and the film already has its own vignette: the edges get darker twice. Off by default")
 local SwayConVar = CreateClientConVar("gry_binoculars_sway", "0", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view; off by default")
 
-function Bino.StagesEnabled() return StagesConVar:GetBool() end
+-- The stages are on with their own switch, and always with the suit zoom's own key (gry_zoom_own): the wheel is its interface.
+function Bino.StagesEnabled()
+	return StagesConVar:GetBool() or (GryMod.SuitZoom ~= nil and GryMod.SuitZoom.Owns())
+end
+
 function Bino.SwayEnabled() return SwayConVar:GetBool() end
 function Bino.VisionEnabled() return VisionConVar:GetBool() end
 function Bino.SilhouetteEnabled() return SilhouetteConVar:GetBool() end
@@ -244,6 +248,13 @@ function Instance:Close()
 	if vignette and Bino.VignetteFade() then
 		vignette:GotoAndPlay("close")
 	end
+end
+
+-- The picture is gone at once, with no closing animation (a death, a menu, a vehicle): the next Show plays the intro again.
+function Instance:Hide()
+	self.shown = false
+	self.closing = false
+	self.lastFrame = nil
 end
 
 function Instance:SetZoomMode(mode)
@@ -967,9 +978,25 @@ end
 
 local enabled = Bino.Enabled
 
--- Whether the player is zooming: the suit zoom key held, alive, not in a menu.
+-- Whether the player is zooming: alive and, with the own zoom key (gry_zoom_own, see cl_suit_zoom.lua) that module says so, else
+-- the Half-Life 2 suit zoom key (IN_ZOOM) held.
 function Bino.Wanted(ply)
-	return IsValid(ply) and ply:Alive() and ply:KeyDown(IN_ZOOM)
+	if not IsValid(ply) or not ply:Alive() then
+		return false
+	end
+
+	local suit = GryMod.SuitZoom
+
+	if suit and suit.Owns() then
+		return suit.IsActive()
+	end
+
+	return ply:KeyDown(IN_ZOOM)
+end
+
+-- Whether the movie could not be loaded (the own zoom is then not offered).
+function Bino.IsMissing()
+	return missing
 end
 
 -- An entity whose own position reads as a distance: the living (NPCs, players) and vehicles. A prop's origin can be
@@ -1599,7 +1626,26 @@ end
 -- CalcView: the view with the stage's field of view and / or the sway's angles, or nothing (the stage state is dropped as soon as
 -- the stages are not wanted, the sway's as soon as the binoculars are down).
 function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
+	local suit = GryMod.SuitZoom
+	local own = suit ~= nil and suit.Owns()
+
+	-- with the own zoom key never a view in a vehicle: the game's CalcView would not run (our table ends the hook chain) and the
+	-- vehicle's camera would be lost (the zoom itself ends in the next Think, see SuitZoom.Reason)
+	if own and ply:InVehicle() then
+		if zoom.active then
+			Bino.ZoomReset(zoom)
+		end
+
+		return nil
+	end
+
 	local wanted = Bino.Wanted(ply)
+
+	-- a view of ours this frame: the suit zoom knows that no other addon's CalcView took it
+	if own and wanted then
+		suit.Stamp()
+	end
+
 	local stageFov
 
 	if not stagesOn() then
@@ -1630,19 +1676,30 @@ function Bino.PlayZoomSound(cue)
 	end
 end
 
+-- A notch of the wheel while the zoom is up: invprev (wheel up) goes to the next stage, invnext (wheel down) to the previous, with
+-- the stage's sound. Returns nothing.
+function Bino.StepWheel(bind)
+	local _, cue = Bino.ZoomWheel(zoom, bind)
+
+	if cue then
+		Bino.PlayZoomSound(cue)
+	end
+end
+
 -- PlayerBindPress: the wheel (invprev / invnext) steps the stage while the binoculars are up; the press and the release are
--- taken (the weapon is not changed), the other keys go on to the game.
+-- taken (the weapon is not changed), the other keys go on to the game. With the own zoom key the suit zoom module is the wheel's
+-- owner (it also knows the wheel by its button, whatever the bind), and this does nothing.
 function Bino.BindPress(ply, bind, pressed)
 	if (bind ~= "invprev" and bind ~= "invnext") or zoom.stage == 0 or not stagesOn() or not Bino.Wanted(ply) then
 		return nil
 	end
 
-	if pressed then
-		local _, cue = Bino.ZoomWheel(zoom, bind)
+	if GryMod.SuitZoom and GryMod.SuitZoom.Owns() then
+		return nil
+	end
 
-		if cue then
-			Bino.PlayZoomSound(cue)
-		end
+	if pressed then
+		Bino.StepWheel(bind)
 	end
 
 	return true
@@ -1676,6 +1733,28 @@ hook.Add("HUDShouldDraw", "GRYBINOCULARSHIDEZOOM", function(name)
 		return false
 	end
 end)
+
+-- Whether the picture is on screen (opening, up or closing).
+function Bino.IsUp()
+	return binoculars ~= nil and binoculars:IsShown()
+end
+
+-- The binoculars put away at once, with no closing animation and no sound (a death, a menu, a vehicle, a map change: the hard reasons
+-- of cl_suit_zoom.lua): the picture is hidden, the stages, the sway, the scan, the outlines, the loop, the mood and the vision go.
+function Bino.Drop()
+	if binoculars then
+		binoculars:Hide()
+	end
+
+	Bino.StopLoop()
+	Bino.AudioReset()
+	Bino.MoodStep(false)
+	Bino.ScanReset(scan)
+	Bino.SilhouetteClear(Bino.Silhouettes)
+	Bino.ZoomReset(zoom)
+	Bino.SwayReset(Bino.SwayState)
+	Bino.VisionStep(false)
+end
 
 function Bino.Reset()
 	if binoculars then

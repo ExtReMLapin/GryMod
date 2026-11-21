@@ -556,6 +556,378 @@ return {
 					error(err, 0)
 				end
 			end
+		},
+		{
+			name = "with the option off, the Half-Life 2 zoom is left alone: +zoom goes on to the game, IN_ZOOM stays in the command, and the wheel is nobody's",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local ply = LocalPlayer()
+				local removed = {}
+				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function() removed.wheel = true end}
+
+				setting(OWN):SetString("0")
+				expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beNil()
+				expect(Z.BindPress(ply, "invprev", true, MOUSE_WHEEL_UP)).to.beNil()
+				Z.StartCommand(ply, cmd)
+				expect(#removed).to.equal(0)
+				expect(removed.wheel).to.beNil()
+			end
+		},
+		{
+			name = "with the option on, +zoom is taken (also through an alias, even one that runs several commands) so the Half-Life 2 zoom never starts; -zoom and other binds go on",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local ply = LocalPlayer()
+				local translate = input.TranslateAlias
+				input.TranslateAlias = function(command)
+					if command == "myzoom" then return "+zoom" end
+					if command == "both" then return "+jump; +zoom" end
+					if command == "harmless" then return "+attack" end
+
+					return nil
+				end
+
+				local ok, err = pcall(function()
+					expect(Z.BindPress(ply, "+zoom", true, KEY_F7)).to.beTrue()
+					expect(Z.BindPress(ply, "myzoom", true, KEY_F7)).to.beTrue()
+					expect(Z.BindPress(ply, "both", true, KEY_F7)).to.beTrue()
+					expect(Z.BindPress(ply, "-zoom", true, KEY_F7)).to.beNil()
+					expect(Z.BindPress(ply, "harmless", true, KEY_F7)).to.beNil()
+					expect(Z.BindPress(ply, "+attack", true, MOUSE_LEFT)).to.beNil()
+					expect(Z.BindPress(ply, "+gry_zoom", true, KEY_F7)).to.beNil()
+				end)
+
+				input.TranslateAlias = translate
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "with the option on, StartCommand removes IN_ZOOM from the player's own command (the keys PlayerBindPress cannot see: F1 to F12, aliases), and does not touch other buttons or other players' commands",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local removed = {}
+				local cmd = {RemoveKey = function(_, key) removed[#removed + 1] = key end, SetMouseWheel = function() end}
+
+				Z.StartCommand(LocalPlayer(), cmd)
+				expect(#removed).to.equal(1)
+				expect(removed[1]).to.equal(IN_ZOOM)
+
+				Z.StartCommand({}, cmd)
+				expect(#removed).to.equal(1)
+
+				local registered = hook.GetTable().StartCommand and hook.GetTable().StartCommand["GRYSUITZOOM"]
+				expect(registered).toNot.beNil()
+			end
+		},
+		{
+			name = "the wheel while the zoom is up: the notch is taken whatever the bind says when the button is the wheel's (113 / 112), and so are invprev / invnext; one notch steps the stage once (up zooms in), at an end it is still taken and plays nothing",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local ply = LocalPlayer()
+				local played = {}
+				local playSound, sounds = GryMod.PlaySound, M.SoundsEnabled
+				GryMod.PlaySound = function(path) played[#played + 1] = path return true end
+				M.SoundsEnabled = function() return true end
+
+				local ok, err = pcall(function()
+					M.ZoomReset(M.ZoomState)
+					M.ZoomState.stage, M.ZoomState.active = 1, true
+					Z.Press("key", true)
+					expect(Z.IsActive()).to.beTrue()
+
+					expect(Z.BindPress(ply, "invprev", true, MOUSE_WHEEL_UP)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(2)
+					expect(played[1]).to.equal(M.Sounds.zoom_in)
+
+					-- the wheel re-bound to something else: still the wheel
+					expect(Z.BindPress(ply, "+jump", true, MOUSE_WHEEL_UP)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(3)
+
+					-- the end: taken, no step, no sound
+					expect(Z.BindPress(ply, "invprev", true, MOUSE_WHEEL_UP)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(3)
+					expect(#played).to.equal(2)
+
+					expect(Z.BindPress(ply, "invnext", true, MOUSE_WHEEL_DOWN)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(2)
+					expect(played[3]).to.equal(M.Sounds.zoom_out)
+					expect(Z.BindPress(ply, "+jump", true, MOUSE_WHEEL_DOWN)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(1)
+
+					-- a bind name alone (no button: a key bound to invprev)
+					expect(Z.BindPress(ply, "invprev", true, KEY_F7)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(2)
+
+					-- the release of a wheel bind is taken and steps nothing
+					expect(Z.BindPress(ply, "invprev", false, MOUSE_WHEEL_UP)).to.beTrue()
+					expect(M.ZoomState.stage).to.equal(2)
+
+					-- the zoom is still up: the wheel did not close it
+					expect(Z.IsActive()).to.beTrue()
+				end)
+
+				GryMod.PlaySound, M.SoundsEnabled = playSound, sounds
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the wheel with no zoom up (nothing opened, or an Exit just happened) is the game's: weapon switching works, and nothing steps",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local ply = LocalPlayer()
+
+				M.ZoomReset(M.ZoomState)
+				expect(Z.BindPress(ply, "invprev", true, MOUSE_WHEEL_UP)).to.beNil()
+				expect(Z.BindPress(ply, "invnext", true, MOUSE_WHEEL_DOWN)).to.beNil()
+				expect(Z.BindPress(ply, "+jump", true, MOUSE_WHEEL_UP)).to.beNil()
+
+				Z.Press("key", true)
+				Z.Exit("death")
+				expect(Z.BindPress(ply, "invprev", true, MOUSE_WHEEL_UP)).to.beNil()
+				expect(M.ZoomState.stage).to.equal(0)
+			end
+		},
+		{
+			name = "the weapon keys (slotN, lastinv, use <weapon>) are not taken while the zoom is up: they end it (and the weapon changes); other binds do not",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local ply = LocalPlayer()
+
+				for _, bind in ipairs({"slot1", "slot6", "lastinv", "use weapon_pistol"}) do
+					Z.Reset()
+					Z.Press("key", true)
+					expect(Z.IsActive()).to.beTrue()
+					expect(Z.BindPress(ply, bind, true, KEY_1)).to.beNil()
+					expect(Z.IsActive()).to.beFalse()
+					expect(Z.State.reason).to.equal("weaponkey")
+				end
+
+				-- a bind that has nothing to do with the weapon leaves it open
+				Z.Reset()
+				Z.Press("key", true)
+				expect(Z.BindPress(ply, "+jump", true, KEY_SPACE)).to.beNil()
+				expect(Z.BindPress(ply, "+attack", true, MOUSE_LEFT)).to.beNil()
+				expect(Z.IsActive()).to.beTrue()
+
+				-- with nothing up they are the game's and change nothing here
+				Z.Reset()
+				local before = #state.events
+				expect(Z.BindPress(ply, "slot2", true, KEY_2)).to.beNil()
+				expect(#state.events).to.equal(before)
+			end
+		},
+		{
+			name = "the wheel's delta in the command is zeroed only while the zoom is up (a weapon that reads it, the physgun, would scroll under the zoom)",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local wheel = 0
+				local sets = 0
+				local cmd = {
+					RemoveKey = function() end,
+					GetMouseWheel = function() return wheel end,
+					SetMouseWheel = function(_, n) sets = sets + 1 wheel = n end
+				}
+
+				wheel = 1
+				Z.StartCommand(LocalPlayer(), cmd)
+				expect(wheel).to.equal(1)
+				expect(sets).to.equal(0)
+
+				Z.Press("key", true)
+				Z.StartCommand(LocalPlayer(), cmd)
+				expect(wheel).to.equal(0)
+			end
+		},
+		{
+			name = "the binoculars follow the own zoom when it is on (IN_ZOOM is no longer read) and the Half-Life 2 key when it is off; a dead player never zooms; the crosshair does the same",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local cross = GryMod.FlashCrosshair
+				local zooming, alive = false, true
+				local enabled = M.Enabled
+				local ply = {
+					IsValid = function() return true end,
+					Alive = function() return alive end,
+					KeyDown = function(_, key) return key == IN_ZOOM and zooming end
+				}
+
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					-- off: the Half-Life 2 key
+					setting(OWN):SetString("0")
+					Z.State.active = true -- (nothing to do with it)
+					expect(M.Wanted(ply)).to.beFalse()
+					zooming = true
+					expect(M.Wanted(ply)).to.beTrue()
+					expect(cross == nil or cross.Zooming(ply)).to.beTrue()
+					alive = false
+					expect(M.Wanted(ply)).to.beFalse()
+					alive = true
+					Z.Reset()
+
+					-- on: only the own zoom
+					setting(OWN):SetString("1")
+					zooming = true
+					expect(M.Wanted(ply)).to.beFalse()
+					expect(cross == nil or cross.Zooming(ply)).to.beFalse()
+					zooming = false
+					Z.State.active = true
+					expect(M.Wanted(ply)).to.beTrue()
+					expect(cross == nil or cross.Zooming(ply)).to.beTrue()
+					alive = false
+					expect(M.Wanted(ply)).to.beFalse()
+					alive = true
+					Z.State.active = false
+					expect(M.Wanted(ply)).to.beFalse()
+				end)
+
+				M.Enabled = enabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "with the own zoom on the stages are on whatever gry_binoculars_stages says (the wheel is the zoom's interface); with it off they follow their own setting as before",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local stages = setting("gry_binoculars_stages")
+				local saved = stages:GetString()
+
+				local ok, err = pcall(function()
+					stages:SetString("0")
+					setting(OWN):SetString("0")
+					expect(M.StagesEnabled()).to.beFalse()
+					stages:SetString("1")
+					expect(M.StagesEnabled()).to.beTrue()
+					stages:SetString("0")
+					setting(OWN):SetString("1")
+					expect(M.StagesEnabled()).to.beTrue()
+				end)
+
+				stages:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the view: with the own zoom up CalcView gives the stage's field of view (the origin and angles are the game's), nothing when it is down, and nothing in a vehicle even if it is forced up; it stamps the frame so that a view taken by another addon is noticed; the sensitivity follows and is never -1",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local clock, enabled = M.Now, M.Enabled
+				local now, inVehicle = 0, false
+				local ply = {
+					IsValid = function() return true end,
+					Alive = function() return true end,
+					KeyDown = function() return false end,
+					InVehicle = function() return inVehicle end,
+					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
+				}
+				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
+
+				M.Now = function() return now end
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					M.ZoomReset(M.ZoomState)
+
+					-- down: nothing
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000)).to.beNil()
+					expect(M.AdjustSensitivity(ply)).to.beNil()
+
+					-- up
+					Z.State.active = true
+					Z.State.frame = -100
+					local view = M.CalcView(ply, origin, angles, 100, 3, 8000)
+					expect(view).toNot.beNil()
+					expect(view.origin).to.equal(origin)
+					expect(view.angles).to.equal(angles)
+					expect(Z.State.frame).to.equal(FrameNumber())
+					now = 0.2
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000).fov).to.aboutEqual(M.StageFov(100, 2), 1e-6)
+					expect(M.AdjustSensitivity(ply)).to.aboutEqual(M.StageFov(100, 2) / 100, 1e-6)
+
+					-- a vehicle: the game's own view, and the stages' state is gone
+					inVehicle = true
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000)).to.beNil()
+					expect(M.ZoomState.active).to.beFalse()
+					expect(M.AdjustSensitivity(ply)).to.beNil()
+					inVehicle = false
+
+					-- the zoom down again: nothing, once the stages are back at the base
+					Z.State.active = false
+					now = 5
+					M.CalcView(ply, origin, angles, 100, 3, 8000)
+					now = 6
+					expect(M.CalcView(ply, origin, angles, 100, 3, 8000)).to.beNil()
+				end)
+
+				M.Now, M.Enabled = clock, enabled
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the Half-Life 2 zoom overlay (CHudZoom) is hidden while the own zoom is up, and only then",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local M = GryMod.FlashBinoculars
+				local enabled = M.Enabled
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					expect(hook.Run("HUDShouldDraw", "CHudZoom") == false).to.beFalse()
+					Z.State.active = true
+					expect(hook.Run("HUDShouldDraw", "CHudZoom") == false).to.beTrue()
+					expect(hook.Run("HUDShouldDraw", "CHudCloseCaption") == false).to.beFalse()
+				end)
+
+				M.Enabled = enabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "a hard Exit puts the binoculars away at once: the stages, the sway, the scan, the outlines and the sound loop are all back at their start, and the picture is hidden with no closing animation",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local drop = state.saved.drop
+
+				state.drops = 0
+				M.Drop = drop
+
+				M.ZoomState.stage, M.ZoomState.active, M.ZoomState.fov = 2, true, 40
+				M.SwayState.t, M.SwayState.last = 1, 2
+				M.ScanState.timer = 0.3
+				M.Silhouettes[1] = {}
+				M.Drop()
+				expect(M.ZoomState.stage).to.equal(0)
+				expect(M.ZoomState.active).to.beFalse()
+				expect(M.SwayState.last).to.beNil()
+				expect(M.ScanState.timer).to.equal(0)
+				expect(#M.Silhouettes).to.equal(0)
+				expect(M.IsUp()).to.beFalse()
+			end
 		}
 	}
 }

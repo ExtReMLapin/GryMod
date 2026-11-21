@@ -160,6 +160,29 @@ return {
 			end
 		},
 		{
+			name = "hiding takes the picture away at once, with no close animation (a death, a menu, a vehicle), also in the middle of a close; the next showing plays the intro again",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				run(b, 1.5)
+				b:Hide()
+				expect(b:IsShown()).to.beFalse()
+				expect(b.closing).to.beFalse()
+
+				b:Show()
+				run(b, 1.5)
+				b:Close()
+				run(b, 0.1)
+				b:Hide()
+				expect(b:IsShown()).to.beFalse()
+				expect(b.closing).to.beFalse()
+
+				b:Show()
+				expect(b:IsShown()).to.beTrue()
+				expect(b.bino:CurrentFrame()).to.equal(1)
+			end
+		},
+		{
 			name = "the zoom factor of a field of view gives the mode: 1 under 4x, 2 under 6x, 3 under 8x, 4 above",
 			func = function(state)
 				local M = GryMod.FlashBinoculars

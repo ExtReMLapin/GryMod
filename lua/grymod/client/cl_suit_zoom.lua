@@ -380,6 +380,109 @@ hook.Add("Think", "GRYSUITZOOM", function()
 	Zoom.Guard()
 end)
 
+-- ---------------------------------------------------------------------------------------------------------
+-- The Half-Life 2 zoom stays out of it, and the wheel is the zoom's while it is up (only with the own zoom key on)
+-- ---------------------------------------------------------------------------------------------------------
+
+-- Whether a bind runs the Half-Life 2 suit zoom: +zoom itself, or an alias of the player's that runs it.
+local function isZoomBind(bind)
+	if bind == "+zoom" then
+		return true
+	end
+
+	local target = input.TranslateAlias(bind)
+
+	if not target then
+		return false
+	end
+
+	for command in string.gmatch(target, "[^;]+") do
+		if string.Trim(command) == "+zoom" then
+			return true
+		end
+	end
+
+	return false
+end
+
+-- The keys that change the weapon (slot1 to slot6, last weapon, `use <weapon>`); the wheel's invprev / invnext are the zoom's.
+local function isWeaponBind(bind)
+	return string.find(bind, "^slot%d+$") ~= nil or bind == "lastinv" or string.sub(bind, 1, 4) == "use "
+end
+
+-- PlayerBindPress. +zoom is taken, so the Half-Life 2 zoom never starts (-zoom goes on: it is harmless and stops a zoom that was up when
+-- the option was switched on). While the zoom is up the wheel is ours, known by its button (112 / 113: still the wheel when the player
+-- has bound it to something else) and by the binds invprev / invnext, and every notch is taken, even at the end of the stages; the weapon
+-- keys are not taken: they change the weapon and end the zoom. With no zoom up nothing is taken: the wheel changes the weapon.
+function Zoom.BindPress(ply, bind, pressed, code)
+	if not Zoom.Owns() then
+		return nil
+	end
+
+	if isZoomBind(bind) then
+		return true
+	end
+
+	if not S.active then
+		return nil
+	end
+
+	-- (a death or a menu of this very frame: Think has not seen it yet, the wheel must go back to the game)
+	Zoom.Guard()
+
+	if not S.active then
+		return nil
+	end
+
+	local direction
+
+	if code == MOUSE_WHEEL_UP then
+		direction = "invprev"
+	elseif code == MOUSE_WHEEL_DOWN then
+		direction = "invnext"
+	elseif bind == "invprev" or bind == "invnext" then
+		direction = bind
+	end
+
+	if direction then
+		local Bino = GryMod.FlashBinoculars
+
+		if pressed and Bino then
+			Bino.StepWheel(direction)
+		end
+
+		return true
+	end
+
+	if isWeaponBind(bind) then
+		Zoom.Exit("weaponkey")
+	end
+
+	return nil
+end
+
+-- StartCommand, the player's own command: IN_ZOOM is removed (the keys PlayerBindPress cannot see: F1 to F12 and aliases), and while the
+-- zoom is up the wheel's delta too (a weapon that reads it, the physgun, would scroll under the zoom).
+function Zoom.StartCommand(ply, cmd)
+	if not Zoom.Owns() or ply ~= LocalPlayer() then
+		return
+	end
+
+	cmd:RemoveKey(IN_ZOOM)
+
+	if S.active then
+		cmd:SetMouseWheel(0)
+	end
+end
+
+hook.Add("PlayerBindPress", "GRYSUITZOOM", function(ply, bind, pressed, code)
+	return Zoom.BindPress(ply, bind, pressed, code)
+end)
+
+hook.Add("StartCommand", "GRYSUITZOOM", function(ply, cmd)
+	Zoom.StartCommand(ply, cmd)
+end)
+
 -- The events that end the zoom at once. None returns anything: the chat, the menus and the rest must go on as they would.
 hook.Add("StartChat", "GRYSUITZOOM", function() Zoom.Exit("chat") end)
 hook.Add("OnSpawnMenuOpen", "GRYSUITZOOM", function() Zoom.Exit("spawnmenu") end)
