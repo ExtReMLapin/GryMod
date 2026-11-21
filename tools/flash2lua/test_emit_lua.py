@@ -153,12 +153,12 @@ class EmitMaskPolygonTest(unittest.TestCase):
     def movie(self):
         movie = swfmodel.Movie(width_px=100, height_px=100, frame_rate=30)
         chars = movie.characters
-        chars[1] = swfmodel.Character(1, "shape", mask_polygon=self.DISC)  # a mask
-        chars[2] = swfmodel.Character(2, "shape", mask_polygon=self.DISC)  # not a mask
-        chars[3] = swfmodel.Character(3, "shape", mask_polygon=self.DISC)  # inside a clip that is a mask
+        chars[1] = swfmodel.Character(1, "shape", mask_polygons=[self.DISC])  # a mask
+        chars[2] = swfmodel.Character(2, "shape", mask_polygons=[self.DISC])  # not a mask
+        chars[3] = swfmodel.Character(3, "shape", mask_polygons=[self.DISC])  # inside a clip that is a mask
         chars[4] = swfmodel.Character(4, "sprite", timeline=swfmodel.Timeline([swfmodel.Frame(ops=[self.place(1, 3)])]))
         chars[5] = swfmodel.Character(5, "morph", bounds=(0, 0, 1, 1), end_bounds=(0, 0, 1, 1),
-                                      mask_polygon=self.DISC, end_mask_polygon=self.DISC)  # a morph used as a mask
+                                      mask_polygons=[self.DISC], end_mask_polygons=[self.DISC])  # a morph used as a mask
         movie.root = swfmodel.Timeline([swfmodel.Frame(ops=[self.place(1, 1, 5), self.place(2, 2), self.place(3, 4, 9),
                                                             self.place(10, 5, 12)])])
         return movie
@@ -180,6 +180,70 @@ class EmitMaskPolygonTest(unittest.TestCase):
     def test_a_morph_used_as_a_mask_gets_both_ends(self):
         morph = self.data()["chars"][5]
         self.assertEqual((len(morph["p"]), len(morph["pe"])), (8, 8))
+
+
+class EmitSeveralContoursTest(unittest.TestCase):
+    """A mask shape made of several separate contours is written as `ps` (a list of outlines), and `pes` for a
+    morph's end; one contour stays `p`/`pe` (no FFDec needed)."""
+    LEFT = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    RIGHT = [(30.0, 0.0), (40.0, 0.0), (40.0, 10.0), (30.0, 10.0)]
+    LEFT_END = [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)]
+    RIGHT_END = [(35.0, 0.0), (40.0, 0.0), (40.0, 10.0), (35.0, 10.0)]
+    RECT = EmitMaskPolygonTest.RECT
+
+    def data(self, **morph_fields):
+        movie = swfmodel.Movie(width_px=100, height_px=100, frame_rate=30)
+        chars = movie.characters
+        place = EmitMaskPolygonTest.place
+        chars[1] = swfmodel.Character(1, "shape", mask_polygons=[self.LEFT, self.RIGHT])  # a mask of two bars
+        chars[2] = swfmodel.Character(2, "shape", mask_polygons=[self.LEFT, self.RIGHT])  # not a mask
+        chars[3] = swfmodel.Character(3, "morph", bounds=(0, 0, 1, 1), end_bounds=(0, 0, 1, 1), **morph_fields)
+        chars[4] = swfmodel.Character(4, "shape", mask_polygons=[self.LEFT])  # a mask of one contour
+        movie.root = swfmodel.Timeline([swfmodel.Frame(ops=[place(1, 1, 5), place(2, 2), place(10, 3, 12),
+                                                            place(13, 4, 14)])])
+        rects = {cid: dict(self.RECT) for cid in (1, 2, 4)}
+        return lua_literal.parse(emit_lua.emit_lua(movie, rects, "grymod/flash"))["chars"]
+
+    @staticmethod
+    def flat(outline):
+        return [v for point in outline for v in point]
+
+    def test_a_mask_of_several_contours_gets_ps_and_no_p(self):
+        shape = self.data(mask_polygons=[self.LEFT, self.RIGHT], end_mask_polygons=[self.LEFT_END, self.RIGHT_END])[1]
+        self.assertNotIn("p", shape)
+        self.assertEqual(len(shape["ps"]), 2)
+        self.assertEqual([shape["ps"][1][i] for i in range(1, 9)], self.flat(self.LEFT))
+        self.assertEqual([shape["ps"][2][i] for i in range(1, 9)], self.flat(self.RIGHT))
+
+    def test_a_mask_of_one_contour_keeps_p(self):
+        shape = self.data()[4]
+        self.assertEqual(len(shape["p"]), 8)
+        self.assertNotIn("ps", shape)
+
+    def test_a_shape_that_is_no_mask_gets_neither(self):
+        shape = self.data()[2]
+        self.assertNotIn("p", shape)
+        self.assertNotIn("ps", shape)
+
+    def test_a_morph_mask_of_several_contours_gets_both_ends(self):
+        morph = self.data(mask_polygons=[self.LEFT, self.RIGHT], end_mask_polygons=[self.LEFT_END, self.RIGHT_END])[3]
+        self.assertNotIn("p", morph)
+        self.assertEqual(len(morph["ps"]), 2)
+        self.assertEqual(len(morph["pes"]), 2)
+        self.assertEqual([morph["pes"][2][i] for i in range(1, 9)], self.flat(self.RIGHT_END))
+
+    def test_a_morph_whose_ends_do_not_match_gets_nothing(self):
+        for start, end in (([self.LEFT, self.RIGHT], [self.LEFT_END]),
+                           ([self.LEFT, self.RIGHT], [self.LEFT_END, self.RIGHT_END[:3]])):
+            morph = self.data(mask_polygons=start, end_mask_polygons=end)[3]
+            for key in ("p", "pe", "ps", "pes"):
+                self.assertNotIn(key, morph)
+
+    def test_a_morph_mask_of_one_contour_keeps_p_and_pe(self):
+        morph = self.data(mask_polygons=[self.LEFT], end_mask_polygons=[self.LEFT_END])[3]
+        self.assertEqual((len(morph["p"]), len(morph["pe"])), (8, 8))
+        self.assertNotIn("ps", morph)
+        self.assertNotIn("pes", morph)
 
 
 if __name__ == "__main__":

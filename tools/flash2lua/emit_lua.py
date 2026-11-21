@@ -13,7 +13,9 @@ Format (`return {...}`):
                      stext  {k="stext", ox,oy,w,h}   (static text, not drawn yet)
                      morph  {k="morph", ox,oy,w,h, ex,ey,ew,eh, p, pe = start / end outline}
                      (shape and morph `p` = outline polygon {x1,y1,x2,y2,...} in stage px, only for one-contour
-                      shapes: straight edges, or curves cut into pieces when the shape serves as a clip layer (mask))
+                      shapes: straight edges, or curves cut into pieces when the shape serves as a clip layer (mask);
+                      a clip layer made of several separate contours has `ps` = { outline, outline, ... } instead and
+                      a morph one `pes` for the end, the same number of outlines with the same point counts)
   root               list of frames of the main timeline
   frame              { op, op, ..., l = "label", a = { action, ... } }
   op                 place  {d=depth, c=char, mv=true, n=name, m={a,b,c,d,tx,ty}, cx={rm,gm,bm,am,ra,ga,ba,aa},
@@ -40,6 +42,17 @@ def _str(value):
 
 def _list(values):
     return "{" + ",".join(_num(v) for v in values) + "}"
+
+
+def _outlines(single, several, polygons):
+    """The outline fields of a shape: `single` = {x1,y1,...} for one contour, `several` = a list of them for more
+    (nothing for none)."""
+    flat = [[v for point in polygon for v in point] for polygon in polygons]
+    if len(flat) == 1:
+        return ",%s=%s" % (single, _list(flat[0]))
+    if flat:
+        return ",%s={%s}" % (several, ",".join(_list(f) for f in flat))
+    return ""
 
 
 def _op(op):
@@ -137,9 +150,8 @@ def emit_lua(movie, rects, material_dir, fonts=None):
             body = ('k="shape",a=%d,x=%d,y=%d,w=%d,h=%d,ox=%s,oy=%s,dw=%s,dh=%s'
                     % (atlas_index[r["atlas"]], r["x"], r["y"], r["w"], r["h"],
                        _num(r["ox"]), _num(r["oy"]), _num(r["dw"]), _num(r["dh"])))
-            polygon = c.polygon or (c.mask_polygon if cid in masks else None)
-            if polygon:
-                body += ",p=" + _list([v for point in polygon for v in point])
+            polygons = [c.polygon] if c.polygon else (c.mask_polygons or [] if cid in masks else [])
+            body += _outlines("p", "ps", polygons)
         elif c.kind == "sprite":
             labels = {}
             for i, f in enumerate(c.timeline.frames):
@@ -160,12 +172,14 @@ def emit_lua(movie, rects, material_dir, fonts=None):
             ex0, ey0, ex1, ey1 = c.end_bounds
             body = 'k="morph",%s,ex=%s,ey=%s,ew=%s,eh=%s' % (
                 _rect(c.bounds), _num(ex0), _num(ey0), _num(ex1 - ex0), _num(ey1 - ey0))
-            start, end = c.polygon, c.end_polygon
-            if not (start and end) and cid in masks:
-                start, end = c.mask_polygon, c.end_mask_polygon
-            if start and end and len(start) == len(end):
-                body += ",p=%s,pe=%s" % (_list([v for pt in start for v in pt]),
-                                         _list([v for pt in end for v in pt]))
+            if c.polygon and c.end_polygon:
+                starts, ends = [c.polygon], [c.end_polygon]
+            elif cid in masks:
+                starts, ends = c.mask_polygons or [], c.end_mask_polygons or []
+            else:
+                starts, ends = [], []
+            if len(starts) == len(ends) and all(len(a) == len(b) for a, b in zip(starts, ends)):
+                body += _outlines("p", "ps", starts) + _outlines("pe", "pes", ends)
         else:
             continue
         chars.append("\t[%d]={%s}" % (cid, body))

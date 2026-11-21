@@ -270,5 +270,120 @@ class MaskPolygonTest(unittest.TestCase):
         self.assertEqual(len(swfmodel._mask_polygons(shape)), 2)
 
 
+class SeveralContoursReadTest(unittest.TestCase):
+    """_read_character keeps every contour of a shape or a morph (no FFDec needed)."""
+
+    @staticmethod
+    def records(*contours):
+        return PolygonContoursTest.shape(*contours).find("shapeRecords")
+
+    BAR = ((0, 0), [(200, 0), (0, 400), (-200, 0), (0, -400)])
+    BAR2 = ((600, 0), [(200, 0), (0, 400), (-200, 0), (0, -400)])
+    BAR_END = ((0, 0), [(100, 0), (0, 400), (-100, 0), (0, -400)])
+    BAR2_END = ((700, 0), [(100, 0), (0, 400), (-100, 0), (0, -400)])
+    BOUNDS = '<%s Xmin="0" Ymin="0" Xmax="800" Ymax="400"/>'
+
+    def shape(self, *contours):
+        xml = ('<item type="DefineShapeTag" shapeId="7">' + self.BOUNDS % "shapeBounds" + "<shapes>%s</shapes></item>"
+               % ET.tostring(self.records(*contours), encoding="unicode"))
+        movie = swfmodel.Movie()
+        swfmodel._read_character(ET.fromstring(xml), movie)
+        return movie.characters[7]
+
+    def morph(self, start, end):
+        edges = lambda tag, contours: "<%s>%s</%s>" % (tag, ET.tostring(self.records(*contours), encoding="unicode"), tag)
+        xml = ('<item type="DefineMorphShapeTag" characterId="8">' + self.BOUNDS % "startBounds" + self.BOUNDS % "endBounds"
+               + edges("startEdges", start) + edges("endEdges", end) + "</item>")
+        movie = swfmodel.Movie()
+        swfmodel._read_character(ET.fromstring(xml), movie)
+        return movie.characters[8]
+
+    def test_a_shape_of_two_contours_has_both_as_mask_polygons_and_no_strict_polygon(self):
+        shape = self.shape(self.BAR, self.BAR2)
+        self.assertIsNone(shape.polygon)
+        self.assertEqual(len(shape.mask_polygons), 2)
+        self.assertEqual(shape.mask_polygons[1], [(30, 0), (40, 0), (40, 20), (30, 20)])
+
+    def test_a_shape_of_one_contour_has_one_mask_polygon(self):
+        self.assertEqual(self.shape(self.BAR).mask_polygons, [[(0, 0), (10, 0), (10, 20), (0, 20)]])
+
+    def test_a_morph_of_two_contours_has_both_ends_with_the_same_point_counts(self):
+        morph = self.morph([self.BAR, self.BAR2], [self.BAR_END, self.BAR2_END])
+        self.assertEqual((len(morph.mask_polygons), len(morph.end_mask_polygons)), (2, 2))
+        self.assertEqual([len(p) for p in morph.mask_polygons], [len(p) for p in morph.end_mask_polygons])
+        self.assertEqual(morph.end_mask_polygons[1][0], (35, 0))
+
+
+class MorphMaskPolygonsTest(unittest.TestCase):
+    """_morph_mask_polygons: the two ends of a morph clip layer, cut so that their contours and points match one by
+    one, even where an edge is straight at one end and curved at the other (no FFDec needed)."""
+
+    @staticmethod
+    def records(*contours):
+        """contours: (start, [edge...]); an edge is (dx, dy) straight, or (cdx, cdy, adx, ady) curved."""
+        out = ""
+        for start, edges in contours:
+            out += '<item type="StyleChangeRecord" stateMoveTo="true" moveDeltaX="%d" moveDeltaY="%d"/>' % start
+            for edge in edges:
+                if len(edge) == 2:
+                    out += '<item type="StraightEdgeRecord" deltaX="%d" deltaY="%d"/>' % edge
+                else:
+                    out += ('<item type="CurvedEdgeRecord" controlDeltaX="%d" controlDeltaY="%d" anchorDeltaX="%d" '
+                            'anchorDeltaY="%d"/>' % edge)
+        return ET.fromstring("<edges><shapeRecords>%s</shapeRecords></edges>" % out)
+
+    SQUARE = ((0, 0), [(400, 0), (0, 400), (-400, 0), (0, -400)])
+    # the same square whose bottom edge (from (400, 400) to (0, 400)) is a curve bulging down
+    BULGE = ((0, 0), [(400, 0), (0, 400), (-200, 100, -200, -100), (0, -400)])
+
+    def test_matching_edges_give_matching_polygons(self):
+        starts, ends = swfmodel._morph_mask_polygons(self.records(self.SQUARE), self.records(self.SQUARE))
+        self.assertEqual(starts, [[(0, 0), (20, 0), (20, 20), (0, 20)]])
+        self.assertEqual(ends, starts)
+
+    def test_an_edge_straight_at_one_end_and_curved_at_the_other_is_cut_at_both(self):
+        starts, ends = swfmodel._morph_mask_polygons(self.records(self.SQUARE), self.records(self.BULGE))
+        self.assertEqual(len(starts), 1)
+        self.assertEqual(len(starts[0]), len(ends[0]))
+        self.assertGreater(len(starts[0]), 4)
+        # the straight edge from (20, 20) to (0, 20) is cut into equal steps along itself
+        along = [p for p in starts[0] if p[1] == 20 and 0 < p[0] < 20]
+        self.assertEqual(len(along), swfmodel.CURVE_STEPS - 1)
+        self.assertEqual(sorted(p[0] for p in along), [20 - 20 * i / swfmodel.CURVE_STEPS for i in range(1, swfmodel.CURVE_STEPS)][::-1])
+        # the other end bulges below the square
+        self.assertTrue(any(p[1] > 20 for p in ends[0]))
+
+    def test_the_contours_keep_their_order_at_both_ends(self):
+        other = ((1000, 0), [(400, 0), (0, 400), (-400, 0), (0, -400)])
+        starts, ends = swfmodel._morph_mask_polygons(self.records(self.SQUARE, other), self.records(self.BULGE, other))
+        self.assertEqual([len(p) for p in starts], [len(p) for p in ends])
+        self.assertEqual(starts[1][0], (50, 0))
+        self.assertEqual(ends[1][0], (50, 0))
+
+    def test_a_speck_is_dropped_at_both_ends(self):
+        speck = ((2000, 2000), [(0, -1), (-7, 3), (7, -2)])
+        starts, ends = swfmodel._morph_mask_polygons(self.records(self.SQUARE, speck), self.records(self.BULGE, speck))
+        self.assertEqual((len(starts), len(ends)), (1, 1))
+
+    def test_ends_that_do_not_pair_up_give_nothing(self):
+        other = ((1000, 0), [(400, 0), (0, 400), (-400, 0), (0, -400)])
+        self.assertEqual(swfmodel._morph_mask_polygons(self.records(self.SQUARE, other), self.records(self.SQUARE)), ([], []))
+        triangle = ((0, 0), [(400, 0), (0, 400), (-400, -400)])
+        self.assertEqual(swfmodel._morph_mask_polygons(self.records(self.SQUARE), self.records(triangle)), ([], []))
+
+    def test_a_morph_character_is_read_through_it(self):
+        bounds = '<%s Xmin="0" Ymin="0" Xmax="800" Ymax="400"/>'
+        xml = ('<item type="DefineMorphShapeTag" characterId="8">' + bounds % "startBounds" + bounds % "endBounds"
+               + "<startEdges>%s</startEdges><endEdges>%s</endEdges></item>"
+               % (ET.tostring(self.records(self.SQUARE).find("shapeRecords"), encoding="unicode"),
+                  ET.tostring(self.records(self.BULGE).find("shapeRecords"), encoding="unicode")))
+        movie = swfmodel.Movie()
+        swfmodel._read_character(ET.fromstring(xml), movie)
+        morph = movie.characters[8]
+        self.assertEqual(len(morph.mask_polygons), 1)
+        self.assertEqual(len(morph.mask_polygons[0]), len(morph.end_mask_polygons[0]))
+        self.assertGreater(len(morph.mask_polygons[0]), 4)
+
+
 if __name__ == "__main__":
     unittest.main()
