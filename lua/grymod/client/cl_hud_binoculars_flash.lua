@@ -106,12 +106,16 @@ function Bino.HorizonY(forwardZ)
 	return math.Clamp(forwardZ, -1, 1) * 360 + 336
 end
 
--- The four rays that look for what is aimed at start at the corners of a square 0.3 m each way around the eye, in this
--- order: right and up, right and down, left and down, left and up; they all run along the view.
+-- The rays that look for what is aimed at run along the view from the corners of a square 0.3 m each way around the eye,
+-- in the original's order: right and up, right and down, left and down, left and up. The original casts only these four
+-- (its characters have capsules wider than 0.3 m, so one standing in the middle is hit by all four); in this game the
+-- hitboxes are narrower and a character exactly in the middle would be missed by the four of them (measured: citizen 15 m
+-- ahead, 16 units from each ray, found by none), so the ray along the eye's own line is cast too, and comes LAST: the
+-- number read when no entity is found is the last ray's hit, as in the original, and so is the centre's here.
 function Bino.RayOrigins(eye, right, up, width)
 	local r, u = right * width, up * width
 
-	return {eye + r + u, eye + r - u, eye - r - u, eye - r + u}
+	return {eye + r + u, eye + r - u, eye - r - u, eye - r + u, eye}
 end
 
 -- What the four rays say: rays is a list of {hit, distance, entity} (hit: found something that is not the sky; entity:
@@ -136,9 +140,10 @@ function Bino.AimedDistance(rays, centre)
 	return nil, nil
 end
 
--- How many rays are cast and how far: the original's four of 300 m, or the port's earlier single one of 1000 m.
+-- How many rays are cast and how far: the original's four of 300 m (and the centre one, see RayOrigins), or the port's earlier
+-- single one of 1000 m.
 function Bino.TraceCount()
-	return Bino.AimRules() and 4 or 1
+	return Bino.AimRules() and 5 or 1
 end
 
 function Bino.TraceLength()
@@ -605,7 +610,7 @@ end
 
 local trace = {}
 local traced = {}
-local rays = {{}, {}, {}, {}}
+local rays = {{}, {}, {}, {}, {}}
 local aimer
 
 local function centreOf(entity)
@@ -632,7 +637,7 @@ local function aim(ply)
 	local origins = Bino.RayOrigins(eye, angles:Right(), angles:Up(), Bino.RAY_OFFSET)
 	local along = forward * length
 
-	for i = 1, 4 do
+	for i = 1, #origins do
 		trace.start, trace.endpos = origins[i], origins[i] + along
 		util.TraceLine(trace)
 

@@ -232,16 +232,18 @@ return {
 			end
 		},
 		{
-			name = "the four scan rays start at the corners of a square, in the original's order, and run along the view",
+			name = "the scan rays start at the corners of a square, in the original's order, then at the eye itself (the last one), and run along the view",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local o = M.RayOrigins(Vector(100, 0, 0), Vector(0, -1, 0), Vector(0, 0, 1), 10)
-				expect(#o).to.equal(4)
+				expect(#o).to.equal(5)
 				-- right and up, right and down, left and down, left and up
 				expect(o[1]).to.equal(Vector(100, -10, 10))
 				expect(o[2]).to.equal(Vector(100, -10, -10))
 				expect(o[3]).to.equal(Vector(100, 10, -10))
 				expect(o[4]).to.equal(Vector(100, 10, 10))
+				-- the original's characters are caught by all four corners; a narrower hitbox in the middle would not be: the centre ray last
+				expect(o[5]).to.equal(Vector(100, 0, 0))
 				-- 0.3 m each way, 300 m long, in world units
 				expect(math.abs(M.RAY_OFFSET - 0.3 * M.UNITS_PER_METRE) < 1e-9).to.beTrue()
 				expect(math.abs(M.RANGE - 300 * M.UNITS_PER_METRE) < 1e-9).to.beTrue()
@@ -277,7 +279,7 @@ return {
 			end
 		},
 		{
-			name = "the original's aim rules are a choice: with them off the distance is the eye's to the single ray's hit, up to 1000 m",
+			name = "the original's aim rules are a choice: with them off the distance is the eye's to the single ray's hit, up to 1000 m; with them on five rays of 300 m",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local rules = M.AimRules
@@ -286,7 +288,7 @@ return {
 					expect(M.TraceCount()).to.equal(1)
 					expect(M.TraceLength()).to.equal(1000 * M.UNITS_PER_METRE)
 					M.AimRules = function() return true end
-					expect(M.TraceCount()).to.equal(4)
+					expect(M.TraceCount()).to.equal(5)
 					expect(M.TraceLength()).to.equal(M.RANGE)
 				end)
 
