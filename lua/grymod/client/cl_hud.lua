@@ -36,7 +36,7 @@ end
 ]]
 
 net.Receive("gry_jump", function()
-	GryMod.PlaySound("suit/strengthjump.mp3")
+	GryMod.PlaySound("grymod/suit/suit_sound_137.wav")
 end)
 
 -- The voice ("maximum armor"...) comes half a second after the sound of the mode, as in the original game (the two
@@ -61,18 +61,18 @@ function meta:SetNanosuitMode(mode, networked)
 	end
 
 	if mode == GryMod.Modes.ARMOR then
-		GryMod.PlaySound(Sound("suit/suit_armor_108.mp3"))
-		playModeVoice("suit/suit_maximum_armor.mp3")
+		GryMod.PlaySound(Sound("grymod/suit/suit_armor_108.wav"))
+		playModeVoice("grymod/suit/suit_maximum_armor.wav")
 	end
 
 	if mode == GryMod.Modes.SPEED then
-		GryMod.PlaySound(Sound("suit/suit_speed_activate_07_good.wa.mp3"))
-		playModeVoice("suit/suit_maximum_speed.mp3")
+		GryMod.PlaySound(Sound("grymod/suit/suit_speed_activate_07_good.wav"))
+		playModeVoice("grymod/suit/suit_maximum_speed.wav")
 	end
 
 	if mode == GryMod.Modes.STRENGTH then
-		GryMod.PlaySound(Sound("suit/strengthmode.mp3"))
-		playModeVoice("suit/suit_maximum_strength.mp3")
+		GryMod.PlaySound(Sound("grymod/suit/suit_strength_101_r.wav"))
+		playModeVoice("grymod/suit/suit_maximum_strength.wav")
 	end
 
 	if mode == GryMod.Modes.CLOAK then
@@ -87,8 +87,8 @@ function meta:SetNanosuitMode(mode, networked)
 				end
 			end
 
-			GryMod.PlaySound(Sound("suit/suit_cloak_chameleon_101_r.mp3"))
-			playModeVoice("suit/suit_modification_engaged.mp3")
+			GryMod.PlaySound(Sound("grymod/suit/suit_cloak_chameleon_101_r.wav"))
+			playModeVoice("grymod/suit/suit_modification_engaged.wav")
 		end
 	elseif IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel()) then
 		LocalPlayer():GetViewModel():SetMaterial("")

@@ -109,13 +109,13 @@ return {
 				Boot.Spawned()
 				expect(Boot.Current()).to.equal("initialize")
 				expect(#played).to.equal(1)
-				expect(lastSound()).to.equal(Sound("cry_hud_reboot.wav"))
+				expect(lastSound()).to.equal(Sound("grymod/hud/hud_reboot.wav"))
 				run(2)
 				expect(Boot.Current()).to.equal("initialize")
 				run(1.2)
 				expect(Boot.Current()).to.beNil()
 				expect(#played).to.equal(2)
-				expect(lastSound()).to.equal(Sound("cry_hud_activate.wav"))
+				expect(lastSound()).to.equal(Sound("grymod/hud/hud_activate_01.wav"))
 			end
 		},
 		{
@@ -125,7 +125,7 @@ return {
 				expect(Boot.Current()).to.equal("lost")
 				expect(Boot.IsLost()).to.beTrue()
 				expect(#played).to.equal(1)
-				expect(lastSound()).to.equal(Sound("cry_hud_malfunction.wav"))
+				expect(lastSound()).to.equal(Sound("grymod/hud/hud_malfunction_hit.wav"))
 				Boot.OnStatus(1)
 				expect(#played).to.equal(1)
 				run(10)
@@ -140,10 +140,10 @@ return {
 				Boot.OnStatus(0)
 				expect(Boot.IsLost()).to.beFalse()
 				expect(Boot.Current()).to.equal("reboot")
-				expect(lastSound()).to.equal(Sound("cry_hud_reboot.wav"))
+				expect(lastSound()).to.equal(Sound("grymod/hud/hud_reboot.wav"))
 				run(5.2)
 				expect(Boot.Current()).to.beNil()
-				expect(lastSound()).to.equal(Sound("cry_hud_activate.wav"))
+				expect(lastSound()).to.equal(Sound("grymod/hud/hud_activate_01.wav"))
 			end
 		},
 		{

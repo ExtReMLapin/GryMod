@@ -87,6 +87,63 @@ return {
 			end
 		},
 		{
+			name = "the quick menu's sounds are the game's: modification_menu_appear / disappear, preset_navigation_beep, temperature_beep, suit_usage_error",
+			func = function(state)
+				local s = Menu.Sounds
+				expect(s.open).to.equal(Sound("grymod/menu/modification_menu_appear.wav"))
+				expect(s.close).to.equal(Sound("grymod/menu/modification_menu_dissapear.wav"))
+				expect(s.hover).to.equal(Sound("grymod/menu/preset_navigation_beep_02.wav"))
+				expect(s.same).to.equal(Sound("grymod/menu/temperature_beep.wav"))
+				expect(s.error).to.equal(Sound("grymod/suit/suit_usage_error.wav"))
+				expect(s.select).to.beNil()
+			end
+		},
+		{
+			name = "the menu opens with the appear sound; a release on the current mode plays the disappear sound then the temperature beep (mode already active)",
+			func = function(state)
+				local ply = LocalPlayer()
+				local before = ply.NanosuitMode
+				ply.NanosuitMode = GryMod.Modes.SPEED
+				local ok, err = pcall(function()
+					expect(Menu.Begin()).to.beTrue()
+					expect(played[#played]).to.equal(Sound("grymod/menu/modification_menu_appear.wav"))
+					played = {}
+					Menu.Finish()
+					expect(#played).to.equal(2)
+					expect(played[1]).to.equal(Sound("grymod/menu/modification_menu_dissapear.wav"))
+					expect(played[2]).to.equal(Sound("grymod/menu/temperature_beep.wav"))
+				end)
+				ply.NanosuitMode = before
+				Menu.Cancel()
+				assert(ok, err)
+			end
+		},
+		{
+			name = "choosing another mode plays the disappear sound (no select sound) and asks for the mode",
+			func = function(state)
+				local ply = LocalPlayer()
+				local before = ply.NanosuitMode
+				local meta = FindMetaTable("Player")
+				local realSet = meta.SetNanosuitMode
+				local asked = {}
+				meta.SetNanosuitMode = function(self, mode, networked) asked[#asked + 1] = mode end
+				ply.NanosuitMode = GryMod.Modes.SPEED
+				local ok, err = pcall(function()
+					expect(Menu.Begin()).to.beTrue()
+					ply.NanosuitMode = GryMod.Modes.ARMOR -- the pointer stays on Speed: the choice differs from the mode
+					played = {}
+					Menu.Finish()
+					expect(#played).to.equal(1)
+					expect(played[1]).to.equal(Sound("grymod/menu/modification_menu_dissapear.wav"))
+					expect(asked[1]).to.equal(GryMod.Modes.SPEED)
+				end)
+				meta.SetNanosuitMode = realSet
+				ply.NanosuitMode = before
+				Menu.Cancel()
+				assert(ok, err)
+			end
+		},
+		{
 			name = "the quick menu beeps instead of choosing while the suit is down",
 			func = function(state)
 				local ply = LocalPlayer()
@@ -97,7 +154,7 @@ return {
 				local ok, err = pcall(function()
 					expect(Menu.Begin()).to.beTrue()
 					Menu.Finish()
-					expect(played[#played]).to.equal(Sound("cry_error.wav"))
+					expect(played[#played]).to.equal(Sound("grymod/suit/suit_usage_error.wav"))
 					expect(ply.NanosuitMode).to.equal(GryMod.Modes.SPEED)
 				end)
 				ply.NanosuitMode = before

@@ -50,30 +50,35 @@ end
 
 -- every file the addon plays, with its volume at +6 dB (nil: no data, the voices, full volume)
 local played = {
-	["suit/servo_speed_stop_fp_2.mp3"] = 0.04,
-	["suit/servo_speed_stop_01_underwater.mp3"] = 0.09,
-	["suit/servo_speed_loop_01c.mp3"] = 0.09,
-	["suit/servo_speed_loop_01_underwater.mp3"] = 0.28,
-	["suit/suit_speed_activate_07_good.wa.mp3"] = 0.14,
-	["suit/strengthmode.mp3"] = 0.25,
-	["suit/suit_strength_101_r.mp3"] = 0.25,
-	["suit/suit_armor_108.mp3"] = 0.40,
-	["suit/suit_cloak_chameleon_101_r.mp3"] = 0.32,
-	["suit/strengthjump.mp3"] = 0.22,
-	["suit/suit_medical_use_new.mp3"] = 0.25,
-	["cry_hud_activate.wav"] = 0.25,
-	["cry_hud_reboot.wav"] = 0.50,
-	["cry_hud_malfunction.wav"] = 0.40,
-	["cry_error.wav"] = 0.10,
-	["cry_open.wav"] = 0.32,
-	["cry_close.wav"] = 0.45,
-	["cry_select.wav"] = 0.50,
-	["cry_hover.wav"] = 0.32
+	["grymod/suit/servo_speed_stop_fp_2.wav"] = 0.04,
+	["grymod/suit/servo_speed_stop_01_underwater.wav"] = 0.09,
+	["grymod/suit/servo_speed_loop_01c.wav"] = 0.09,
+	["grymod/suit/servo_speed_loop_01_underwater.wav"] = 0.28,
+	["grymod/suit/suit_speed_activate_07_good.wav"] = 0.14,
+	["grymod/suit/suit_strength_101_r.wav"] = 0.25,
+	["grymod/suit/suit_armor_108.wav"] = 0.40,
+	["grymod/suit/suit_cloak_chameleon_101_r.wav"] = 0.32,
+	["grymod/suit/suit_sound_137.wav"] = 0.22,
+	["grymod/suit/suit_medical_use_new.wav"] = 0.25,
+	["grymod/suit/suit_usage_error.wav"] = 0.35,
+	["grymod/hud/hud_activate_01.wav"] = 0.25,
+	["grymod/hud/hud_reboot.wav"] = 0.56, -- the stored file is 1 dB under the sum of the event's two layers: -11 dB, not -12
+	["grymod/hud/hud_malfunction_hit.wav"] = 0.40,
+	["grymod/menu/modification_menu_appear.wav"] = 0.32,
+	["grymod/menu/modification_menu_dissapear.wav"] = 0.45,
+	["grymod/menu/preset_navigation_beep_02.wav"] = 0.35,
+	["grymod/menu/temperature_beep.wav"] = 0.50,
+	["grymod/binoculars/binocular_select.wav"] = 0.32,
+	["grymod/binoculars/binocular_deselect.wav"] = 0.32,
+	["grymod/binoculars/binocular_ambience.wav"] = 0.056,
+	["grymod/binoculars/binocular_zoom_in.wav"] = 0.22,
+	["grymod/binoculars/binocular_zoom_out.wav"] = 0.28,
+	["grymod/binoculars/binocular_tagged.wav"] = 0.10
 }
 
 local voices = {
-	"suit/suit_maximum_armor.mp3", "suit/suit_maximum_speed.mp3", "suit/suit_maximum_strength.mp3",
-	"suit/suit_energy_critical.mp3", "suit/suit_modification_engaged.mp3"
+	"grymod/suit/suit_maximum_armor.wav", "grymod/suit/suit_maximum_speed.wav", "grymod/suit/suit_maximum_strength.wav",
+	"grymod/suit/suit_energy_critical.wav", "grymod/suit/suit_modification_engaged.wav"
 }
 
 local savedMode, savedLocalPlayer
@@ -127,11 +132,11 @@ return {
 			end
 		},
 		{
-			name = "the volumes at +6 dB are the original game's levels (the armor hits -9 dB, the servo stop -34 dB...)",
+			name = "the volumes at +6 dB are the original game's levels (the armor hits -10 dB, the servo stop -34 dB...)",
 			func = function(state)
-				-- the 13 armor hits
+				-- the 13 armor hits (the physics event mat_armor_fp, -10 dB)
 				for _, path in ipairs(GryMod.ArmorHitSounds) do
-					expectVolume(path, 0.71)
+					expectVolume(path, 0.63)
 				end
 
 				for path, volume in pairs(played) do
@@ -142,13 +147,13 @@ return {
 		{
 			name = "the volume is min(1, 10^((original dB + gain) / 20)), the gain being an argument",
 			func = function(state)
-				local path = "suit/suit_bullet_impact_01.mp3" -- -9 dB
-				expect(GryMod.SoundMix.Volume(path, 0)).to.aboutEqual(10 ^ (-9 / 20), 0.001)
-				expect(GryMod.SoundMix.Volume(path, -20)).to.aboutEqual(10 ^ (-29 / 20), 0.001)
-				expect(GryMod.SoundMix.Volume(path, 9)).to.equal(1) -- 0 dB
-				expect(GryMod.SoundMix.Volume(path, 12)).to.equal(1) -- +3 dB: capped
+				local path = "grymod/suit/suit_bullet_impact_fp_02.wav" -- -10 dB
+				expect(GryMod.SoundMix.Volume(path, 0)).to.aboutEqual(10 ^ (-10 / 20), 0.001)
+				expect(GryMod.SoundMix.Volume(path, -20)).to.aboutEqual(10 ^ (-30 / 20), 0.001)
+				expect(GryMod.SoundMix.Volume(path, 10)).to.equal(1) -- 0 dB
+				expect(GryMod.SoundMix.Volume(path, 12)).to.equal(1) -- +2 dB: capped
 				-- a quieter one: the servo stop, -34 dB
-				expect(GryMod.SoundMix.Volume("suit/servo_speed_stop_fp_2.mp3", 12)).to.aboutEqual(10 ^ (-22 / 20), 0.001)
+				expect(GryMod.SoundMix.Volume("grymod/suit/servo_speed_stop_fp_2.wav", 12)).to.aboutEqual(10 ^ (-22 / 20), 0.001)
 			end
 		},
 		{
@@ -177,21 +182,21 @@ return {
 		{
 			name = "the path may come with sound/, in capitals or with backslashes",
 			func = function(state)
-				local volume = GryMod.SoundMix.Volume("suit/servo_speed_stop_fp_2.mp3", 6)
-				expect(GryMod.SoundMix.Volume("sound/suit/servo_speed_stop_fp_2.mp3", 6)).to.equal(volume)
-				expect(GryMod.SoundMix.Volume("SUIT\\Servo_Speed_Stop_FP_2.MP3", 6)).to.equal(volume)
+				local volume = GryMod.SoundMix.Volume("grymod/suit/servo_speed_stop_fp_2.wav", 6)
+				expect(GryMod.SoundMix.Volume("sound/grymod/suit/servo_speed_stop_fp_2.wav", 6)).to.equal(volume)
+				expect(GryMod.SoundMix.Volume("GRYMOD\\Suit\\Servo_Speed_Stop_FP_2.WAV", 6)).to.equal(volume)
 				expect(volume < 1).to.beTrue()
 			end
 		},
 		{
 			name = "without a gain argument the volume follows gry_sound_volume, which is kept between -20 and +12",
 			func = function(state)
-				local path = "suit/suit_bullet_impact_01.mp3"
+				local path = "grymod/suit/suit_bullet_impact_fp_02.wav"
 				setConVar("gry_sound_volume", "0")
 				expect(GryMod.SoundMix.Gain()).to.equal(0)
-				expect(GryMod.SoundMix.Volume(path)).to.aboutEqual(10 ^ (-9 / 20), 0.001)
+				expect(GryMod.SoundMix.Volume(path)).to.aboutEqual(10 ^ (-10 / 20), 0.001)
 				setConVar("gry_sound_volume", "-20")
-				expect(GryMod.SoundMix.Volume(path)).to.aboutEqual(10 ^ (-29 / 20), 0.001)
+				expect(GryMod.SoundMix.Volume(path)).to.aboutEqual(10 ^ (-30 / 20), 0.001)
 				setConVar("gry_sound_volume", "12")
 				expect(GryMod.SoundMix.Volume(path)).to.equal(1)
 				-- a value out of the bounds written by hand in the config is brought back
@@ -206,17 +211,17 @@ return {
 			func = function(state)
 				local calls = {}
 				stub(GryMod.SoundMix, "Emit", function(path, volume) calls[#calls + 1] = {path, volume} end)
-				expect(GryMod.PlaySound("suit/servo_speed_stop_fp_2.mp3")).to.beTrue()
+				expect(GryMod.PlaySound("grymod/suit/servo_speed_stop_fp_2.wav")).to.beTrue()
 				expect(#calls).to.equal(1)
-				expect(calls[1][1]).to.equal("suit/servo_speed_stop_fp_2.mp3")
+				expect(calls[1][1]).to.equal("grymod/suit/servo_speed_stop_fp_2.wav")
 				expect(calls[1][2]).to.aboutEqual(0.04, 0.01)
 
 				setConVar("gry_sound_volume", "-6")
-				GryMod.PlaySound("suit/servo_speed_stop_fp_2.mp3")
+				GryMod.PlaySound("grymod/suit/servo_speed_stop_fp_2.wav")
 				expect(calls[2][2] < calls[1][2]).to.beTrue()
 
 				-- a voice: full volume
-				GryMod.PlaySound("suit/suit_maximum_speed.mp3")
+				GryMod.PlaySound("grymod/suit/suit_maximum_speed.wav")
 				expect(calls[3][2]).to.equal(1)
 			end
 		},
@@ -226,7 +231,7 @@ return {
 				local calls = 0
 				stub(GryMod.SoundMix, "Emit", function() calls = calls + 1 end)
 				setConVar("gry_sounds", "0")
-				expect(GryMod.PlaySound("suit/strengthjump.mp3")).to.beFalse()
+				expect(GryMod.PlaySound("grymod/suit/suit_sound_137.wav")).to.beFalse()
 				expect(calls).to.equal(0)
 			end
 		},
@@ -239,10 +244,10 @@ return {
 					if self == LocalPlayer() then emitted[#emitted + 1] = {...} end
 				end)
 				stub(surface, "PlaySound", function() surfaced = surfaced + 1 end)
-				GryMod.SoundMix.Emit("suit/strengthjump.mp3", 0.22)
+				GryMod.SoundMix.Emit("grymod/suit/suit_sound_137.wav", 0.22)
 				expect(surfaced).to.equal(0)
 				expect(#emitted).to.equal(1)
-				expect(emitted[1][1]).to.equal("suit/strengthjump.mp3")
+				expect(emitted[1][1]).to.equal("grymod/suit/suit_sound_137.wav")
 				expect(emitted[1][2]).to.equal(0) -- SNDLVL_NONE: heard everywhere at the same level
 				expect(emitted[1][3]).to.equal(100)
 				expect(emitted[1][4]).to.equal(0.22)
@@ -255,9 +260,9 @@ return {
 				local surfaced = {}
 				stub(surface, "PlaySound", function(path) surfaced[#surfaced + 1] = path end)
 				LocalPlayer = function() return NULL end
-				GryMod.SoundMix.Emit("suit/suit_maximum_speed.mp3", 1)
+				GryMod.SoundMix.Emit("grymod/suit/suit_maximum_speed.wav", 1)
 				expect(#surfaced).to.equal(1)
-				GryMod.SoundMix.Emit("suit/strengthjump.mp3", 0.22)
+				GryMod.SoundMix.Emit("grymod/suit/suit_sound_137.wav", 0.22)
 				expect(#surfaced).to.equal(1)
 			end
 		},
@@ -278,26 +283,29 @@ return {
 			end
 		},
 		{
-			name = "armor hits: 2 at the most at a time, 60 ms apart at the least (the game's maxpb 2)",
+			name = "armor hits: 8 at the most at a time (the physics event mat_armor_fp has maxpb 8), 60 ms apart at the least",
 			func = function(state)
 				local limit = GryMod.SoundMix.Limits.armor_hit
-				expect(limit.max).to.equal(2)
+				expect(limit.max).to.equal(8)
 				expect(limit.gap).to.equal(0.06)
-				-- the longest of the 13 files is 0.79 s
-				expect(limit.length >= 0.79).to.beTrue()
+				-- the longest of the 13 files is 0.68 s
+				expect(limit.length >= 0.68).to.beTrue()
 
 				expect(GryMod.SoundMix.MayPlay("armor_hit", 10)).to.beTrue()
 				-- too close
 				expect(GryMod.SoundMix.MayPlay("armor_hit", 10.03)).to.beFalse()
 				expect(GryMod.SoundMix.MayPlay("armor_hit", 10.059)).to.beFalse()
-				-- far enough: the second one
-				expect(GryMod.SoundMix.MayPlay("armor_hit", 10.07)).to.beTrue()
-				-- two are playing
-				expect(GryMod.SoundMix.MayPlay("armor_hit", 10.2)).to.beFalse()
-				expect(GryMod.SoundMix.MayPlay("armor_hit", 10.5)).to.beFalse()
+				-- far enough: the second one, then up to eight (a 0.07 s rhythm: the eighth comes at 10.49)
+				for i = 1, 7 do
+					expect(GryMod.SoundMix.MayPlay("armor_hit", 10 + i * 0.07)).to.beTrue()
+				end
+
+				-- eight are playing
+				expect(GryMod.SoundMix.MayPlay("armor_hit", 10.56)).to.beFalse()
+				expect(GryMod.SoundMix.MayPlay("armor_hit", 10 + limit.length - 0.001)).to.beFalse()
 				-- the first one is over: a new one may start (and the next must wait for the gap, then for a free place)
 				expect(GryMod.SoundMix.MayPlay("armor_hit", 10 + limit.length + 0.001)).to.beTrue()
-				expect(GryMod.SoundMix.MayPlay("armor_hit", 10 + limit.length + 0.03)).to.beFalse()
+				expect(GryMod.SoundMix.MayPlay("armor_hit", 10 + limit.length + 0.01)).to.beFalse()
 			end
 		},
 		{
@@ -333,23 +341,28 @@ return {
 				receive("gry_armor_hit_sound") -- plays
 				now = 100.01
 				receive("gry_armor_hit_sound") -- too close
-				now = 100.07
-				receive("gry_armor_hit_sound") -- plays
-				now = 100.14
-				receive("gry_armor_hit_sound") -- two are playing
-				now = 100.3
-				receive("gry_armor_hit_sound") -- two are playing
-				expect(plays).to.equal(2)
-				expect(files).to.equal(2)
+				expect(plays).to.equal(1)
+
+				for i = 1, 7 do
+					now = 100 + i * 0.07
+					receive("gry_armor_hit_sound") -- plays
+				end
+
+				now = 100.56
+				receive("gry_armor_hit_sound") -- eight are playing
+				now = 100.6
+				receive("gry_armor_hit_sound") -- eight are playing
+				expect(plays).to.equal(8)
+				expect(files).to.equal(8)
 				now = 101
 				receive("gry_armor_hit_sound") -- they are over
-				expect(plays).to.equal(3)
+				expect(plays).to.equal(9)
 			end
 		},
 		{
 			name = "the ground loop volume is the mix's volume times the height above the ground, never above the mix's volume",
 			func = function(state)
-				local base = GryMod.SoundMix.Volume("suit/servo_speed_loop_01c.mp3")
+				local base = GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav")
 				expect(base).to.aboutEqual(0.09, 0.01)
 				expect(GryMod.GroundLoopVolume(0)).to.aboutEqual(base, 0.0001)
 				expect(GryMod.GroundLoopVolume(150)).to.aboutEqual(base / 2, 0.0001)
@@ -376,11 +389,11 @@ return {
 				expect(GryMod.SoundMix.FadeIn(10)).to.equal(1)
 				expect(GryMod.SoundMix.FadeIn(-1)).to.equal(0)
 
-				local base = GryMod.SoundMix.Volume("suit/servo_speed_loop_01_underwater.mp3")
+				local base = GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01_underwater.wav")
 				expect(GryMod.UnderwaterLoopVolume(0)).to.equal(0)
 				expect(GryMod.UnderwaterLoopVolume(fade)).to.aboutEqual(base, 0.0001)
 				expect(GryMod.GroundLoopVolume(0, 0)).to.equal(0)
-				expect(GryMod.GroundLoopVolume(0, 1)).to.aboutEqual(GryMod.SoundMix.Volume("suit/servo_speed_loop_01c.mp3"), 0.0001)
+				expect(GryMod.GroundLoopVolume(0, 1)).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav"), 0.0001)
 			end
 		},
 		{
@@ -405,7 +418,7 @@ return {
 					GryMod.UpdateSpeedLoops(GryMod.SoundMix.Now() + 5, 0)
 					local last = ground.calls[#ground.calls]
 					expect(last[1]).to.equal("SetVolume")
-					expect(last[2]).to.aboutEqual(GryMod.SoundMix.Volume("suit/servo_speed_loop_01c.mp3"), 0.0001)
+					expect(last[2]).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/servo_speed_loop_01c.wav"), 0.0001)
 				end)
 
 				GryMod.SpeedLoops.Set(previous1, previous2)
@@ -422,9 +435,9 @@ return {
 				stub(timer, "Remove", function() end)
 
 				local cases = {
-					{GryMod.Modes.ARMOR, "suit/suit_armor_108.mp3", "suit/suit_maximum_armor.mp3"},
-					{GryMod.Modes.SPEED, "suit/suit_speed_activate_07_good.wa.mp3", "suit/suit_maximum_speed.mp3"},
-					{GryMod.Modes.STRENGTH, "suit/strengthmode.mp3", "suit/suit_maximum_strength.mp3"}
+					{GryMod.Modes.ARMOR, "grymod/suit/suit_armor_108.wav", "grymod/suit/suit_maximum_armor.wav"},
+					{GryMod.Modes.SPEED, "grymod/suit/suit_speed_activate_07_good.wav", "grymod/suit/suit_maximum_speed.wav"},
+					{GryMod.Modes.STRENGTH, "grymod/suit/suit_strength_101_r.wav", "grymod/suit/suit_maximum_strength.wav"}
 				}
 
 				for _, entry in ipairs(cases) do
@@ -458,11 +471,11 @@ return {
 				LocalPlayer().NanosuitMode = nil
 				LocalPlayer():SetNanosuitMode(GryMod.Modes.CLOAK, false)
 				expect(#plays).to.equal(1)
-				expect(plays[1]).to.equal(Sound("suit/suit_cloak_chameleon_101_r.mp3"))
+				expect(plays[1]).to.equal(Sound("grymod/suit/suit_cloak_chameleon_101_r.wav"))
 				expect(#timers).to.equal(1)
 				expect(timers[1].delay).to.equal(0.5)
 				timers[1].func()
-				expect(plays[2]).to.equal(Sound("suit/suit_modification_engaged.mp3"))
+				expect(plays[2]).to.equal(Sound("grymod/suit/suit_modification_engaged.wav"))
 			end
 		},
 		{
@@ -498,8 +511,78 @@ return {
 				end
 
 				expect(#volumes >= 1).to.beTrue()
-				expect(volumes[#volumes]).to.aboutEqual(GryMod.SoundMix.Volume("suit/suit_medical_use_new.mp3"), 0.0001)
+				expect(volumes[#volumes]).to.aboutEqual(GryMod.SoundMix.Volume("grymod/suit/suit_medical_use_new.wav"), 0.0001)
 				expect(volumes[#volumes]).to.aboutEqual(0.25, 0.01)
+			end
+		},
+		{
+			name = "the pitch of a file is its event's pitch (octaves) as a percent: the quick menu +0.3 octave, the binocular lock +0.52, the others 100",
+			func = function(state)
+				expect(GryMod.SoundMix.Pitch("grymod/menu/modification_menu_appear.wav")).to.equal(123)
+				expect(GryMod.SoundMix.Pitch("grymod/menu/modification_menu_dissapear.wav")).to.equal(123)
+				expect(GryMod.SoundMix.Pitch("grymod/binoculars/binocular_tagged.wav")).to.equal(143)
+				expect(GryMod.SoundMix.Pitch("grymod/suit/suit_armor_108.wav")).to.equal(100)
+				expect(GryMod.SoundMix.Pitch("nothing/here.wav")).to.equal(100)
+				expect(GryMod.SoundMix.Pitch("sound/GRYMOD/menu/modification_menu_appear.wav")).to.equal(123)
+
+				-- the emit carries it
+				local emitted = {}
+				stub(FindMetaTable("Entity"), "EmitSound", function(self, ...)
+					if self == LocalPlayer() then emitted[#emitted + 1] = {...} end
+				end)
+				GryMod.PlaySound("grymod/menu/modification_menu_appear.wav")
+				expect(emitted[1][3]).to.equal(123)
+				GryMod.PlaySound("grymod/suit/suit_armor_108.wav")
+				expect(emitted[2][3]).to.equal(100)
+			end
+		},
+		{
+			name = "every sound file the Lua names exists; every file under sound/grymod is shipped (resource.AddFile); the first MP3 sounds are gone",
+			func = function(state)
+				local shared = file.Read("autorun/grymod_shared.lua", "LUA")
+				expect(shared ~= nil).to.beTrue()
+				local listed = {}
+
+				for path in shared:gmatch('resource%.AddFile%(%s*"([^"]+)"%s*%)') do
+					if path:sub(1, 6) == "sound/" then
+						listed[path] = true
+						expect(file.Exists(path, "GAME")).to.beTrue()
+					end
+				end
+
+				local missing = {}
+
+				local function walk(dir)
+					local files, dirs = file.Find(dir .. "/*", "GAME")
+
+					for _, name in ipairs(files) do
+						if not listed[dir .. "/" .. name] then missing[#missing + 1] = dir .. "/" .. name end
+					end
+
+					for _, sub in ipairs(dirs) do walk(dir .. "/" .. sub) end
+				end
+
+				walk("sound/grymod")
+				expect(table.concat(missing, ", ")).to.equal("")
+
+				-- the mix's table and every path written in the client files
+				for path in pairs(GryMod.SoundMix.Original) do
+					expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+				end
+
+				for _, name in ipairs(file.Find("grymod/client/*.lua", "LUA")) do
+					local text = file.Read("grymod/client/" .. name, "LUA") or ""
+
+					for path, ext in text:gmatch('"(grymod/[%w_/]+%.(%a+))"') do
+						if ext == "wav" or ext == "mp3" or ext == "ogg" then
+							expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+						end
+					end
+				end
+
+				expect(file.Exists("sound/suit/suit_armor_108.mp3", "GAME")).to.beFalse()
+				expect(file.Exists("sound/cry_open.wav", "GAME")).to.beFalse()
+				expect(file.Exists("sound/cry_hud_reboot.wav", "GAME")).to.beFalse()
 			end
 		},
 		{

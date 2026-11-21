@@ -329,8 +329,20 @@ end
 -- In the game: the key, the mouse, the sounds and the mode change
 -- ---------------------------------------------------------------------------------------------------------
 
-local snd_open, snd_close, snd_select, snd_hover, snd_error =
-	Sound("cry_open.wav"), Sound("cry_close.wav"), Sound("cry_select.wav"), Sound("cry_hover.wav"), Sound("cry_error.wav")
+-- The game's own sounds (HUD sound ids): 4 modification_menu_appear when the key goes down, 5 modification_menu_disappear when
+-- it goes up (whatever is chosen), 3 temperature_beep when the mode chosen is the active one. The game has no sound for the
+-- pointer moving: preset_navigation_beep (id 2, the menu of the weapon's presets) stands in for it, and suit_usage_error
+-- for the refusal while the suit is down.
+Menu.Sounds = {
+	open = Sound("grymod/menu/modification_menu_appear.wav"),
+	close = Sound("grymod/menu/modification_menu_dissapear.wav"),
+	hover = Sound("grymod/menu/preset_navigation_beep_02.wav"),
+	same = Sound("grymod/menu/temperature_beep.wav"),
+	error = Sound("grymod/suit/suit_usage_error.wav")
+}
+
+local snd_open, snd_close, snd_hover, snd_same, snd_error =
+	Menu.Sounds.open, Menu.Sounds.close, Menu.Sounds.hover, Menu.Sounds.same, Menu.Sounds.error
 
 local menu, pointer, locked
 local opened = false
@@ -426,10 +438,12 @@ function Menu.Finish()
 		return
 	end
 
+	-- the key's release always plays the menu's disappear sound; the active mode chosen again beeps (the original)
+	play(snd_close)
+
 	if mode == ply.NanosuitMode then
-		play(snd_error) -- already in that mode: the original beeps
+		play(snd_same)
 	else
-		play(snd_select)
 		ply:SetNanosuitMode(mode, true)
 	end
 end

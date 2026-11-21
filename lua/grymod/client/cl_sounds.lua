@@ -1,21 +1,23 @@
 
--- The armor hit: the game's suit_armor_use event plays these 13 files as a shuffle (every one once before any plays
--- again), whatever the water. (The earlier GryMod split them in two lists, one for the water; the game's event has no
--- such split.) The server decides when (sv_health.lua, Mech.ArmorHitSoundDue).
+-- The armor hit: in the single-player game Client:OnHit plays the physics event mat_armor_fp, whose sound definition
+-- suit_bullet_impact_fp shuffles these 13 files (every one once before any plays again), whatever the water. (The
+-- interface bank's suit_armor_use, with its own 13 files, is only reached by the network code; the earlier GryMod split
+-- its list in two for the water, which no game event does.) The server decides when (sv_health.lua,
+-- Mech.ArmorHitSoundDue).
 GryMod.ArmorHitSounds = {
-	"suit/suit_bullet_impact_01.mp3",
-	"suit/suit_bullet_impact_02.mp3",
-	"suit/suit_bullet_impact_03.mp3",
-	"suit/suit_bullet_impact_05.mp3",
-	"suit/suit_bullet_impact_06.mp3",
-	"suit/suit_bullet_impact_07.mp3",
-	"suit/suit_bullet_impact_09.mp3",
-	"suit/suit_bullet_impact_10.mp3",
-	"suit/suit_bullet_impact_11.mp3",
-	"suit/suit_bullet_impact_13.mp3",
-	"suit/suit_bullet_impact_14.mp3",
-	"suit/suit_bullet_impact_15.mp3",
-	"suit/suit_bullet_impact_16.mp3"
+	"grymod/suit/suit_bullet_impact_fp_02.wav",
+	"grymod/suit/suit_bullet_impact_fp_03.wav",
+	"grymod/suit/suit_bullet_impact_fp_04.wav",
+	"grymod/suit/suit_bullet_impact_fp_05.wav",
+	"grymod/suit/suit_bullet_impact_fp_06.wav",
+	"grymod/suit/suit_bullet_impact_fp_07.wav",
+	"grymod/suit/suit_bullet_impact_fp_09.wav",
+	"grymod/suit/suit_bullet_impact_fp_10.wav",
+	"grymod/suit/suit_bullet_impact_fp_11.wav",
+	"grymod/suit/suit_bullet_impact_fp_13.wav",
+	"grymod/suit/suit_bullet_impact_fp_14.wav",
+	"grymod/suit/suit_bullet_impact_fp_15.wav",
+	"grymod/suit/suit_bullet_impact_fp_16.wav"
 }
 
 local armorHitBag = {}
@@ -50,7 +52,7 @@ function GryMod.ResetArmorHitSounds()
 	armorHitLast = nil
 end
 
--- the game plays at most 2 armor hits at a time (maxpb 2), and the mix leaves 60 ms between two: a shotgun's pellets or a
+-- the game plays at most 8 armor hits at a time (maxpb 8), and the mix leaves 60 ms between two: a shotgun's pellets or a
 -- burst would stack into one loud noise (see GryMod.SoundMix.MayPlay). A hit that is refused uses up no file of the shuffle.
 net.Receive("gry_armor_hit_sound",function()
 	if not GryMod.SoundMix.MayPlay("armor_hit", GryMod.SoundMix.Now()) then return end
@@ -65,7 +67,7 @@ end)
 
 -- The repair sound (suit_medical_use_new, 5.95 s). The server starts it (sv_health.lua); gry_sound_regen switches it off.
 local RegenEnabled = CreateClientConVar("gry_sound_regen", "1", true, false, "Play the suit repair sound when the health comes back")
-local REGEN_PATH = "suit/suit_medical_use_new.mp3"
+local REGEN_PATH = "grymod/suit/suit_medical_use_new.wav"
 local healingSound
 
 -- hackysound system
@@ -118,8 +120,8 @@ end)
 local speedLoopGround;
 local speedLoopUnderwater;
 
-local GROUND_LOOP = "suit/servo_speed_loop_01c.mp3"
-local UNDERWATER_LOOP = "suit/servo_speed_loop_01_underwater.mp3"
+local GROUND_LOOP = "grymod/suit/servo_speed_loop_01c.wav"
+local UNDERWATER_LOOP = "grymod/suit/servo_speed_loop_01_underwater.wav"
 
 -- when the loop that plays now started (it fades in, see GryMod.SoundMix.FadeIn)
 local loopStart = 0
@@ -202,7 +204,7 @@ hook.Add("GryModEndSprinting", "sound", function()
 	if LocalPlayer():WaterLevel() < 3  then
 		if (CurTime() - speedStopLastPlay > 0.7 ) then
 			speedStopLastPlay = CurTime()
-			GryMod.PlaySound(Sound("suit/servo_speed_stop_fp_2.mp3"))
+			GryMod.PlaySound(Sound("grymod/suit/servo_speed_stop_fp_2.wav"))
 		end
 		if IsValid(speedLoopGround) then
 			speedLoopGround:Pause()
@@ -211,7 +213,7 @@ hook.Add("GryModEndSprinting", "sound", function()
 	else
 		if (CurTime() - speedStopLastPlay > 0.7 ) then
 			speedStopLastPlay = CurTime()
-			GryMod.PlaySound(Sound("suit/servo_speed_stop_01_underwater.mp3"))
+			GryMod.PlaySound(Sound("grymod/suit/servo_speed_stop_01_underwater.wav"))
 		end
 		if IsValid(speedLoopUnderwater) then
 			speedLoopUnderwater:Pause()
@@ -272,7 +274,7 @@ hook.Add("Think", "GryModSounds", function()
 
 	if GryMod.EnergyCriticalDue(lastenergy, energy, lastCriticalAt, now) then
 		lastCriticalAt = now
-		GryMod.PlaySound(Sound("suit/suit_energy_critical.mp3"))
+		GryMod.PlaySound(Sound("grymod/suit/suit_energy_critical.wav"))
 	end
 	lastenergy = energy
 	if LocalPlayer():IsSprinting() and LocalPlayer():GetVelocity():LengthSqr() > 170000 and LocalPlayer().NanosuitMode == GryMod.Modes.SPEED and energy > GryMod.SprintLoopMinimum() then

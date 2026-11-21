@@ -135,7 +135,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 
 local snd_reboot, snd_activate, snd_malfunction =
-	Sound("cry_hud_reboot.wav"), Sound("cry_hud_activate.wav"), Sound("cry_hud_malfunction.wav")
+	Sound("grymod/hud/hud_reboot.wav"), Sound("grymod/hud/hud_activate_01.wav"), Sound("grymod/hud/hud_malfunction_hit.wav")
 
 local sequences = {}
 local current -- the kind that is on, or nil

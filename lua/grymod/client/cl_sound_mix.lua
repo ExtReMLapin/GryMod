@@ -16,42 +16,52 @@ local GainConVar = CreateClientConVar("gry_sound_volume", "6", true, false,
 Mix.MinGain = -20
 Mix.MaxGain = 12
 
--- the level of each file in the original game's sound bank (dB, first-person events). The cry_* ones are GryMod's own
--- interface sounds: the levels are those of the game's equivalent events (the menu appearing -16, disappearing -13, the
--- weapon modification beep -12; cry_error between the key error -30 and the usage error -15, as it is harsh).
+-- the level of each file in the original game's sound banks (dB, first-person events), the files being the game's own
+-- samples at their own level (tools/extract_sounds.py; sound/grymod/{suit,hud,menu,binoculars}). The armor hits are the
+-- physics event mat_armor_fp (-10 dB) that Client:OnHit plays in the single-player game, the quick menu sounds the HUD's
+-- own events (modification_menu_appear -16, disappear -13, preset_navigation_beep -15, temperature_beep -12) and the
+-- error beep suit_usage_error (-15). hud_reboot.wav is the sum of the event's two layers stored 1 dB lower (its peak
+-- would pass full scale): -11 dB instead of the event's -12.
 Mix.Original = {
-	["suit/suit_bullet_impact_01.mp3"] = -9,
-	["suit/suit_bullet_impact_02.mp3"] = -9,
-	["suit/suit_bullet_impact_03.mp3"] = -9,
-	["suit/suit_bullet_impact_05.mp3"] = -9,
-	["suit/suit_bullet_impact_06.mp3"] = -9,
-	["suit/suit_bullet_impact_07.mp3"] = -9,
-	["suit/suit_bullet_impact_09.mp3"] = -9,
-	["suit/suit_bullet_impact_10.mp3"] = -9,
-	["suit/suit_bullet_impact_11.mp3"] = -9,
-	["suit/suit_bullet_impact_13.mp3"] = -9,
-	["suit/suit_bullet_impact_14.mp3"] = -9,
-	["suit/suit_bullet_impact_15.mp3"] = -9,
-	["suit/suit_bullet_impact_16.mp3"] = -9,
-	["suit/servo_speed_stop_fp_2.mp3"] = -34,
-	["suit/servo_speed_stop_01_underwater.mp3"] = -27,
-	["suit/servo_speed_loop_01c.mp3"] = -27,
-	["suit/servo_speed_loop_01_underwater.mp3"] = -17,
-	["suit/suit_speed_activate_07_good.wa.mp3"] = -23,
-	["suit/suit_armor_108.mp3"] = -14,
-	["suit/strengthmode.mp3"] = -18,
-	["suit/suit_strength_101_r.mp3"] = -18,
-	["suit/suit_cloak_chameleon_101_r.mp3"] = -16,
-	["suit/strengthjump.mp3"] = -19,
-	["suit/suit_medical_use_new.mp3"] = -18,
-	["cry_hud_activate.wav"] = -18,
-	["cry_hud_reboot.wav"] = -12,
-	["cry_hud_malfunction.wav"] = -14,
-	["cry_error.wav"] = -26,
-	["cry_open.wav"] = -16,
-	["cry_close.wav"] = -13,
-	["cry_select.wav"] = -12,
-	["cry_hover.wav"] = -16,
+	["grymod/suit/suit_bullet_impact_fp_02.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_03.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_04.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_05.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_06.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_07.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_09.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_10.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_11.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_13.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_14.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_15.wav"] = -10,
+	["grymod/suit/suit_bullet_impact_fp_16.wav"] = -10,
+	["grymod/suit/servo_speed_stop_fp_2.wav"] = -34,
+	["grymod/suit/servo_speed_stop_01_underwater.wav"] = -27,
+	["grymod/suit/servo_speed_loop_01c.wav"] = -27,
+	["grymod/suit/servo_speed_loop_01_underwater.wav"] = -17,
+	["grymod/suit/suit_speed_activate_07_good.wav"] = -23,
+	["grymod/suit/suit_armor_108.wav"] = -14,
+	["grymod/suit/suit_strength_101_r.wav"] = -18,
+	["grymod/suit/suit_cloak_chameleon_101_r.wav"] = -16,
+	["grymod/suit/suit_sound_137.wav"] = -19,
+	["grymod/suit/suit_medical_use_new.wav"] = -18,
+	["grymod/suit/suit_usage_error.wav"] = -15,
+	["grymod/hud/hud_activate_01.wav"] = -18,
+	["grymod/hud/hud_reboot.wav"] = -11,
+	["grymod/hud/hud_malfunction_hit.wav"] = -14,
+	["grymod/menu/modification_menu_appear.wav"] = -16,
+	["grymod/menu/modification_menu_dissapear.wav"] = -13,
+	["grymod/menu/preset_navigation_beep_02.wav"] = -15,
+	["grymod/menu/temperature_beep.wav"] = -12,
+	-- the binoculars (not played yet): binocular_select / deselect -16, ambience (loop) -31, zoom in -19, zoom out -17,
+	-- binocular_target_locked (the tagged file) -26
+	["grymod/binoculars/binocular_select.wav"] = -16,
+	["grymod/binoculars/binocular_deselect.wav"] = -16,
+	["grymod/binoculars/binocular_ambience.wav"] = -31,
+	["grymod/binoculars/binocular_zoom_in.wav"] = -19,
+	["grymod/binoculars/binocular_zoom_out.wav"] = -17,
+	["grymod/binoculars/binocular_tagged.wav"] = -26,
 	-- the underwater sounds (cl_underwater.lua): the level of each event of the game's player foley bank, and for the dive
 	-- sounds the level of the layer that plays (the slow dive in and the dive out sit at half their layer's level, -6 dB)
 	["grymod/uw_underwater_feedback_01.mp3"] = -29,
@@ -74,10 +84,18 @@ Mix.Original = {
 	["grymod/uw_ambience_loop.wav"] = -16
 }
 
--- how many plays of a kind may be heard together (max, as the game's maxpb), how soon after the last one (gap, s), and how
--- long a play is counted as playing (length, s: the longest file of the kind)
+-- the pitch of the events that are not at the sample's own pitch, in octaves (the game's event property): the quick menu's
+-- appear and disappear +0.3, the binocular lock +0.52. EmitSound takes it as a percent (2^octaves).
+Mix.PitchOctaves = {
+	["grymod/menu/modification_menu_appear.wav"] = 0.3,
+	["grymod/menu/modification_menu_dissapear.wav"] = 0.3,
+	["grymod/binoculars/binocular_tagged.wav"] = 0.52
+}
+
+-- how many plays of a kind may be heard together (max, as the game's maxpb: mat_armor_fp has 8), how soon after the last
+-- one (gap, s), and how long a play is counted as playing (length, s: the longest file of the kind, 0.68 s)
 Mix.Limits = {
-	armor_hit = {max = 2, gap = 0.06, length = 0.8}
+	armor_hit = {max = 8, gap = 0.06, length = 0.7}
 }
 
 local history = {}
@@ -112,6 +130,17 @@ function Mix.Volume(path, gain)
 	end
 
 	return math.min(1, 10 ^ ((level + (gain or Mix.Gain())) / 20))
+end
+
+-- the pitch of a file as EmitSound takes it (percent, 100 = the sample's own)
+function Mix.Pitch(path)
+	local octaves = Mix.PitchOctaves[Mix.Normalize(path)]
+
+	if octaves == nil then
+		return 100
+	end
+
+	return math.Round(100 * 2 ^ octaves)
 end
 
 -- the clock of the limits (replaced by the tests)
@@ -175,7 +204,7 @@ function Mix.Emit(path, volume)
 	local ply = LocalPlayer()
 
 	if IsValid(ply) then
-		ply:EmitSound(path, 0, 100, volume, CHAN_STATIC)
+		ply:EmitSound(path, 0, Mix.Pitch(path), volume, CHAN_STATIC)
 
 		return true
 	end

@@ -142,10 +142,10 @@ return {
 				local played = 0
 				GryMod.SoundMix.Emit = function() played = played + 1 end
 				GetConVar("gry_sounds"):SetInt(1)
-				GryMod.PlaySound("suit/suit_maximum_armor.mp3")
+				GryMod.PlaySound("grymod/suit/suit_maximum_armor.wav")
 				expect(played).to.equal(1)
 				GetConVar("gry_sounds"):SetInt(0)
-				GryMod.PlaySound("suit/suit_maximum_armor.mp3")
+				GryMod.PlaySound("grymod/suit/suit_maximum_armor.wav")
 				expect(played).to.equal(1)
 			end
 		},

@@ -57,7 +57,7 @@ return {
 	end,
 	cases = {
 		{
-			name = "the armor hit uses the 13 suit_bullet_impact files of the game, all of them, each one shipped",
+			name = "the armor hit uses the 13 suit_bullet_impact_fp files of the game (mat_armor_fp), all of them, each one shipped",
 			func = function(state)
 				local list = GryMod.ArmorHitSounds
 				expect(#list).to.equal(13)
@@ -67,11 +67,12 @@ return {
 					expect(seen[path]).to.beNil()
 					seen[path] = true
 					expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+					expect(path:find("^grymod/suit/suit_bullet_impact_fp_%d%d%.wav$") ~= nil).to.beTrue()
 				end
 
 				-- every suit_bullet_impact file that is shipped is in the list (none is left unused)
-				for _, name in ipairs(file.Find("sound/suit/suit_bullet_impact_*", "GAME")) do
-					expect(seen["suit/" .. name]).to.beTrue()
+				for _, name in ipairs(file.Find("sound/grymod/suit/suit_bullet_impact_*", "GAME")) do
+					expect(seen["grymod/suit/" .. name]).to.beTrue()
 				end
 			end
 		},
@@ -161,7 +162,7 @@ return {
 					end
 					hookFunc()
 					expect(#plays).to.equal(1)
-					expect(plays[1]).to.equal(Sound("suit/suit_energy_critical.mp3"))
+					expect(plays[1]).to.equal(Sound("grymod/suit/suit_energy_critical.wav"))
 					expect(calls[1][4]).to.equal(1000)
 					now = 1010
 					hookFunc()
