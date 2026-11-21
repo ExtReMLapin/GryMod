@@ -1,7 +1,8 @@
 # GryMod extension API
 
 One table, `GryMod.API`, for the addons that plug into the nanosuit and the HUD. Everything below exists in version 1 of the
-interface unless it says otherwise. Design notes: `docs/superpowers/specs/2026-11-21-extension-api-design.md`.
+interface unless it says otherwise. Guides with examples: [entities.md](entities.md) (tracked entities, relation), [weapons.md](weapons.md)
+(weapon registry); the index is [README.md](README.md).
 
 Conventions:
 
@@ -94,8 +95,9 @@ the suit's safe state (a malfunction, an empty bar and a respawn must always rea
 
 ## Relation: ally, neutral or hostile (server)
 
-`GryMod.API.Relation(ply, ent)` returns `"ally"`, `"neutral"` or `"hostile"`. It is the only place that decides it: the crosshair's
-friendly cross and the radar both ask it (`GryMod.Friendly.Relation` is the same function). The order:
+`GryMod.API.Relation(ply, ent)` returns `"ally"`, `"neutral"` or `"hostile"`. It is the only place that decides it for the radar and for
+an NPC under the crosshair's friendly cross (`GryMod.Friendly.Relation` is the same function). Known gap: for another player the cross
+applies the team rule on the client without asking the server, so a provider cannot change it for players. The order:
 
 1. the providers you add, the higher priority first;
 2. the `relation` field of the entry of the registry of tracked entities that matches the entity (see below), when it is not `"auto"`;
@@ -116,9 +118,10 @@ provider. A provider is never asked about an invalid player or entity.
 
 ## HUD events
 
-A HUD event is a named effect the HUD plays. Built in: `"boot"` (the start-up log), `"lost"` (the emergency shutdown animation, until a
-`"reboot"`), `"reboot"` (the reboot sequence), `"malfunction"` (`data.seconds`, 5 by default: shutdown, then reboot). They follow the
-player's own choice: with the HUD boot sequences option off they play nothing.
+A HUD event is a named effect the HUD plays, picture and sound together; GryMod's own triggers call the same events. The full list
+(`boot`, `lost`, `reboot`, `malfunction`, `armor_hit`, `decloak`, `low_health`, `jam`, `mode`, `energy_critical`, `regen_start`,
+`regen_stop`, `dive_in`, `dive_out`, `drown`, `reset`, `disabled`, `enabled`), their data, what each plays and the options they follow are
+in [events.md](events.md), with examples and the effects test window.
 
 From the server, to one player or a list of players:
 
@@ -131,7 +134,8 @@ The data is `nil` or a small table: at most 8 fields, names of letters, digits a
 are finite numbers, strings (128 characters at most) or booleans. The event name has 32 characters at most. A call that breaks
 these limits returns `false` and a reason, and sends nothing (`GryMod.API.HUDEventLimits` tells the limits).
 
-On the client, to play one here or to declare your own:
+On the client, to play one here or to declare your own (the optional third argument describes it for tools: `label`, `variants`,
+`follows`, see events.md):
 
 ```lua
 GryMod.API.RegisterHUDEvent("my_flash", function(data)
@@ -140,6 +144,8 @@ end)
 
 GryMod.API.HUDEvent("my_flash", {power = 3})     -- plays it on this client, returns true when the handler ran
 GryMod.API.UnregisterHUDEvent("my_flash")
+GryMod.API.ListHUDEvents()                       -- sorted names
+GryMod.API.GetHUDEventInfo("my_flash")           -- a copy of {label, variants, follows}, or nil
 
 hook.Add("GryMod_HUDEvent", "my_addon", function(name, data) end)   -- after a handler ran without error
 ```
@@ -223,9 +229,10 @@ entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
 
 | Field | Used by | What for |
 | --- | --- | --- |
-| `fire`, `burst` | client | the fire-mode icon of the weapon slot |
-| `ammo`, `counter` | client | the ammo counter |
-| `alt`, `altAmmo`, `altLabel`, `altIcon` | client | the grenade slot (which ammo it counts, its icon) |
+| `fire` | client | the fire-mode icon of the weapon slot |
+| `burst`, `ammo`, `counter` | resolved, not read yet | accepted and returned by `ResolveWeapon`; the HUD does not read them today (its counter is the engine's own ammo: `Clip1`, `GetMaxClip1`) |
+| `alt`, `altAmmo`, `altIcon` | client | the grenade slot (which ammo it counts, its icon) |
+| `altLabel` | sent, not drawn | the movie has no text field for it |
 | `altShoots` | client | the camouflage: a right click that shoots ends it (the HUD tells the server) |
 | `icon`, `slotIcon` | client | the icon of the weapon slot |
 
@@ -245,7 +252,9 @@ For each field, the first of these that says something wins:
 
 `GryMod.API.AddWeaponAdapter(id, fn)` adds a function `fn(wep)` that returns a partial definition (or nothing), asked through `SafeCall`
 in the order the adapters were added; `RemoveWeaponAdapter(id)` removes it. There is none today. Adapters for ArcCW, TFA, M9K and CW2
-weapons: later (the HUD already reads their fire mode through its own resolvers).
+weapons: later (the HUD already reads their fire mode, for the icon only, through its own resolvers, `GryMod.FlashHUD.AddFireModeResolver`,
+which is not part of the versioned API). An adapter is asked for a weapon **entity** only: the camouflage rule `AltFireShoots`
+asks by class name, so an adapter cannot answer `alt` or `altShoots`.
 
 ## Tracked entities
 
@@ -300,7 +309,7 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `type` | `"human"`, `"flying"`, `"machine"`, `"device"` or 1, 2, 3, 4 | the icon of the radar: a soldier, a flying unit, a machine or a vehicle (a rectangle with a square), a device (a rectangle with a disc: GryMod's Combine mine); nothing: the class decides (unknown classes are `"human"`) |
 | `size` | `"normal"`, `"big"` | `"big"` draws the icon twice the size (the Strider's); nothing: the class decides |
 | `label` | text, or `function(ent)` | a name for the entity. Stored; no part of the HUD shows it yet |
-| `shape` | `"unit"` (default), `"dot"`, `"rect"`, `"triangle"` | how it is drawn on the radar. Only `"unit"` (the radar's soldier, machine and flying icons) is drawn today; the other shapes are accepted and stored, never an error (`"rect"` is for vehicles, `"triangle"` for dangers) |
+| `shape` | `"unit"` (default), `"dot"`, `"rect"`, `"triangle"` | how it will be drawn on the radar. Accepted and stored, never an error, but nothing reads it yet: the radar draws the icon of `type` (a vehicle is already a rectangle through `type = "machine"`) |
 | `danger` | a table (below) | the entity is a projectile or a trap the player must be warned about (the grenade warning) |
 | `indicator` | `"warning"`, `"marker"`, `"none"` | how a danger shows on the screen. `"warning"` (the default for an entry with `danger`) is the grenade-detect warning: an icon with the label and the distance. `"marker"` and `"none"` are accepted and stored: the warning does not draw them, and no marker is drawn yet |
 | `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
@@ -345,8 +354,8 @@ and the built-in rule answers. The crosshair's friendly cross follows it too.
 
 The registry is read for **NPCs and nextbots**. A nextbot is not on the radar unless an entry matches it (the radar then describes it with
 no NPC state and no enemy: it is calm, and `radar = "always"` or a scan lists it; the engine gives it no attitude, so give it a
-`relation`). Other entities, vehicles included, are accepted by the registry but ignored by the radar: their drawing comes with their own
-part (`shape = "rect"`). The `label` does not travel to the client either: the radar's message has no room for text and the movies have
+`relation`). Vehicles and devices (the Combine mine) are listed too, as contacts with a `radar` rule, see above; other entities are
+accepted by the registry and ignored by the radar. The `label` does not travel to the client: the radar's message has no room for text and the movies have
 no field for a name; it is there for a later part.
 
 ### Dangers: the grenade warning
@@ -396,7 +405,7 @@ is armed and what the binoculars may tag; the client draws.
 | `relation` | yes | | the relation chain (the client asks the server: the crosshair's friendly cross) |
 | `type`, `size` | yes | | the icon of the radar contact in the message |
 | `label` | stored | stored | the entry's name; it is also the fallback label of a danger. No part of the HUD shows it |
-| `shape` | stored | stored | only `"unit"` is drawn, by the radar; the other shapes are for later |
+| `shape` | stored | stored | nothing reads it yet; the radar draws the icon of `type` |
 | `priority` | yes | yes | the order of the entries |
 | `danger.armed` | yes | | the server reads the state and networks it (`GryArmed`) |
 | `danger.ownerOf` | yes | | who threw it (`GryThrower`) |

@@ -1,0 +1,30 @@
+# GryMod documentation for developers
+
+GryMod is a Crysis-style nanosuit and HUD for Garry's Mod. These guides are for the addons that plug into it.
+
+| Guide | What it covers |
+| --- | --- |
+| [api.md](api.md) | The reference of the extension API: the presence and version test, safe calls, the suit's commands and events, the relation chain, the HUD events, and the field tables of the weapon and entity registries. |
+| [entities.md](entities.md) | The tracked entities: how to make your NPCs, nextbots, vehicles, mines and projectiles show properly on the binoculars, the radar and the grenade warning, how the ally, neutral and hostile relation is extended, and the limits that exist today. |
+| [weapons.md](weapons.md) | The weapon registry: how to describe a weapon (from the SWEP or from the registry), what the HUD shows for it, the stock Half-Life 2 weapons, and what exists for third-party weapon bases. |
+| [events.md](events.md) | The HUD events: every effect of the interface (animation and sound together), how to play one, how to add your own, the effects test window and the real commands it can run. |
+
+## Is GryMod there, and which version?
+
+Test it before you call anything, and do it from the `Initialize` hook: the autorun files of all addons run in alphabetical order,
+so a file that sorts before `grymod_shared.lua` would run before GryMod is loaded.
+
+```lua
+-- lua/autorun/my_addon.lua (shared)
+hook.Add("Initialize", "my_addon_gry_check", function()
+	if GRYMOD_INSTALLED and GryMod.API and GryMod.API.Version >= 1 then
+		print("GryMod is here, interface version " .. GryMod.API.Version .. ", addon version " .. tostring(GryMod.Version))
+	else
+		print("GryMod is not installed")
+	end
+end)
+```
+
+`GryMod.API.Version` is an integer that goes up only when something breaks. Optional parts are tested by name with
+`GryMod.API.Has("weapons")`, `Has("tracked")`, `Has("suit")`... and never change the version number. `GryMod.Version` is the addon
+version as text (`"dev"` in a checkout): use it for display only.
