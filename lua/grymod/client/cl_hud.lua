@@ -200,6 +200,128 @@ function GryMod.ShotSince(nextBefore, clipBefore, nextNow, clipNow)
 	return (clipBefore or -1) >= 0 and (clipNow or -1) < clipBefore
 end
 
+-- The weapon selector of Half-Life 2 (the wheel, the weapon keys). Measured on a test client with real wheel and click events: it
+-- eats the click that confirms a selection (no KeyPress, the weapon changes), but it closes BY ITSELF 1.2 s after the last notch
+-- (between 1.20 and 1.25 s on 48 clicks), and a click after that fires the weapon in hand for real (magazine down, next fire time
+-- moved on): the player who scrolled, looked at the fading selector and clicked a moment too late lost the camouflage by a shot
+-- he never meant. The state below follows the selector from the binds: a pure table, the times are given by the caller.
+GryMod.SelectorState = {
+	TIMEOUT = 1.2, -- the engine's own timeout, from the last notch
+	GRACE = 0.5, -- a click this long after the close is still taken for the confirmation the player meant
+}
+
+local Sel = GryMod.SelectorState
+
+function Sel.New()
+	return {notchAt = nil, steps = 0, known = true}
+end
+
+function Sel.Reset(s)
+	s.notchAt, s.steps, s.known = nil, 0, true
+end
+
+-- "open" (the selector is up: the engine takes the click), "late" (it closed on its own a moment ago), or "none".
+function Sel.Phase(s, now)
+	if not s.notchAt or now < s.notchAt then
+		return "none"
+	end
+
+	local age = now - s.notchAt
+
+	if age < Sel.TIMEOUT then
+		return "open"
+	elseif age < Sel.TIMEOUT + Sel.GRACE then
+		return "late"
+	end
+
+	return "none"
+end
+
+-- The kind of a bind: "next" and "prev" (the wheel), "slot" (a weapon key), "close" (the last weapon: a direct switch), "attack"
+-- (the left click press), nothing for the others. A release or the right click are not the selector's.
+function Sel.BindKind(bind)
+	if bind == "invnext" then
+		return "next"
+	elseif bind == "invprev" then
+		return "prev"
+	elseif bind == "lastinv" then
+		return "close"
+	elseif bind == "+attack" then
+		return "attack"
+	elseif type(bind) == "string" and string.find(bind, "^slot%d+$") then
+		return "slot"
+	end
+
+	return nil
+end
+
+-- A notch (kind "next", "prev" or "slot") at this time. A notch while the selector is up goes on from its selection, a notch
+-- after it closed starts a new selection from the weapon in hand. A weapon key makes the target unknown.
+function Sel.Notch(s, now, kind)
+	if Sel.Phase(s, now) ~= "open" then
+		s.steps, s.known = 0, true
+	end
+
+	s.notchAt = now
+
+	if kind == "next" then
+		s.steps = s.steps + 1
+	elseif kind == "prev" then
+		s.steps = s.steps - 1
+	else
+		s.known = false
+	end
+end
+
+-- The attack key pressed at this time: "confirm" (the engine takes it), "late" (the selector closed a moment ago) or "shot" (a
+-- plain click), then the steps of the selection (nil when unknown). The selector is closed after it.
+function Sel.Attack(s, now)
+	local phase, steps, known = Sel.Phase(s, now), s.steps, s.known
+
+	Sel.Reset(s)
+
+	if phase == "open" then
+		return "confirm", known and steps or nil
+	elseif phase == "late" then
+		return "late", known and steps or nil
+	end
+
+	return "shot", nil
+end
+
+-- The weapon the selection ends on. entries: {id, slot, pos, selectable} of the weapons of the player; the engine walks them by
+-- slot then position, wrapping round, and skips the ones it cannot select (no ammo): the weapon in hand always counts. nil when
+-- the steps are unknown or the weapon in hand is not in the list.
+function Sel.Target(entries, activeId, steps)
+	if steps == nil then
+		return nil
+	end
+
+	local list = {}
+
+	for _, entry in ipairs(entries) do
+		if entry.selectable or entry.id == activeId then
+			list[#list + 1] = entry
+		end
+	end
+
+	table.sort(list, function(a, b)
+		if a.slot ~= b.slot then
+			return a.slot < b.slot
+		end
+
+		return a.pos < b.pos
+	end)
+
+	for index, entry in ipairs(list) do
+		if entry.id == activeId then
+			return list[(index - 1 + steps) % #list + 1].id
+		end
+	end
+
+	return nil
+end
+
 -- The numbers of the weapon in hand at the last command of the player that pressed no attack key. The KeyPress hook comes
 -- AFTER the weapon ran the press, a few commands later (measured: at the KeyPress and at the start of the command before it the
 -- next fire time had already moved on by the shot and the magazine had dropped), so what the weapon could do is read from here.
@@ -336,6 +458,84 @@ function GryMod.CloackAttack(ply, key)
 		endCloak(ply)
 	end
 end
+
+-- Switch: in the camouflage, the click that comes a moment after the weapon selector closed on its own is taken for the click that
+-- confirms the selection (it selects the weapon the wheel was on, and fires nothing) instead of a shot that ends the camouflage.
+local SelectorGuard = CreateClientConVar("gry_cloak_selector_guard", "1", true, false, "In the camouflage, a click a moment after the weapon selector closed by itself (1.2 s after the last notch of the wheel) confirms the selection instead of firing the weapon in hand and ending the camouflage")
+
+local selectorState = Sel.New()
+GryMod.CloakSelectorState = selectorState
+
+-- The wheel is the zoom's while the suit zoom or the binoculars' stages are up (cl_suit_zoom.lua, cl_hud_binoculars_flash.lua): no
+-- notch of the selector then.
+local function wheelTaken()
+	local zoom = GryMod.SuitZoom
+
+	if zoom and zoom.IsActive and zoom.IsActive() then
+		return true
+	end
+
+	local bino = GryMod.FlashBinoculars
+
+	return bino ~= nil and bino.IsUp ~= nil and bino.StagesEnabled ~= nil and bino.IsUp() and bino.StagesEnabled()
+end
+
+-- Selects the weapon the wheel was on when the selector closed (steps notches from the weapon in hand); nothing when unknown.
+local function selectOnTheWheel(ply, steps)
+	local active = ply:GetActiveWeapon()
+
+	if steps == nil or not IsValid(active) then
+		return
+	end
+
+	local entries = {}
+
+	for _, weapon in ipairs(ply:GetWeapons()) do
+		entries[#entries + 1] = {id = weapon, slot = weapon:GetSlot(), pos = weapon:GetSlotPos(), selectable = weapon:HasAmmo()}
+	end
+
+	local target = Sel.Target(entries, active, steps)
+
+	if IsValid(target) and target ~= active then
+		input.SelectWeapon(target)
+	end
+end
+
+-- PlayerBindPress, which comes before the engine and works in single player (the predicted hooks do not): follows the selector from
+-- the binds. Returns true (the bind is taken, the weapon does not fire) for the late click in the camouflage.
+function GryMod.CloakSelectorBind(ply, bind, pressed, code)
+	if not pressed then
+		return nil
+	end
+
+	local kind = Sel.BindKind(bind)
+
+	if kind == nil then
+		return nil
+	end
+
+	local now = CurTime()
+
+	if kind == "attack" then
+		local verdict, steps = Sel.Attack(selectorState, now)
+
+		if verdict ~= "late" or not SelectorGuard:GetBool() or ply.NanosuitMode ~= GryMod.Modes.CLOAK then
+			return nil
+		end
+
+		selectOnTheWheel(ply, steps)
+
+		return true
+	elseif kind == "close" then
+		Sel.Reset(selectorState)
+	elseif not wheelTaken() then
+		Sel.Notch(selectorState, now, kind)
+	end
+
+	return nil
+end
+
+hook.Add("PlayerBindPress", "GryCloakSelector", GryMod.CloakSelectorBind)
 
 -- (The stealth bar of the compass panel used to count every NPC within 1280 units here, friends included. It now shows the
 -- awareness of the hostile NPCs the server sends as radar contacts: cl_hud_radar_units.lua, Radar.StealthTarget.)
