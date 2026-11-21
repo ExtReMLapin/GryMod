@@ -53,6 +53,12 @@ class FilmAuditTest(unittest.TestCase):
         # the colour copy of every Colorset clip is the film's "color" action
         self.assertFalse(film_audit.unconvertible("color2.setRGB(color1.getRGB());"))
 
+    def test_a_statement_that_reaches_outside_the_clip_is_told_from_a_local_one(self):
+        self.assertTrue(film_audit.reaches_outside('_root.Root.Alpha.gotoAndPlay("close");'))
+        self.assertTrue(film_audit.reaches_outside('fscommand("closeBinoculars");'))
+        self.assertTrue(film_audit.reaches_outside("_parent.Friendly._visible = false;"))
+        self.assertFalse(film_audit.reaches_outside("this.Indicator._visible = false;"))
+
     def test_the_gaps_come_with_their_sprite_and_frame(self):
         with tempfile.TemporaryDirectory() as folder:
             frame = os.path.join(folder, "DefineSprite_128", "frame_26")

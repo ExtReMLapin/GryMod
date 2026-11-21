@@ -114,6 +114,15 @@ def unconvertible(statement):
     return not any(pattern.match(statement) for pattern in CONVERTIBLE)
 
 
+CROSS = re.compile(r"_root\.|_parent\.|fscommand|\.\w+\.gotoAnd|_level|getURL")
+
+
+def reaches_outside(statement):
+    """A statement that touches another clip or the game (what a clip-local conversion cannot carry), as opposed to the
+    body of a function the movie defines for the game's code."""
+    return bool(CROSS.search(statement))
+
+
 def script_gaps(scripts_dir):
     """[(where, statement)] for every sprite frame script statement the film cannot carry (the root's script, the movie's own API,
     is ported by hand and is not listed)."""
@@ -143,6 +152,7 @@ def main(argv=None):
     parser.add_argument("--film", required=True)
     parser.add_argument("--stage", nargs=2, type=float, default=[1366, 768])
     parser.add_argument("--min-share", type=float, default=0.35)
+    parser.add_argument("--cross-only", action="store_true", help="only the statements that reach another clip or the game")
     args = parser.parse_args(argv)
 
     with open(args.film, encoding="utf8") as handle:
@@ -155,6 +165,10 @@ def main(argv=None):
         print("  root > " + " > ".join(chain))
 
     gaps = script_gaps(args.scripts)
+
+    if args.cross_only:
+        gaps = [gap for gap in gaps if reaches_outside(gap[1])]
+
     print("Script statements the film cannot carry: %d" % len(gaps))
 
     for where, statement in gaps:
