@@ -893,7 +893,43 @@ local function xOffsets()
 end
 
 -- The paint hook: nothing while dead or spectating, a fresh HUD after every respawn.
+-- When the engine frees and rebuilds its graphics (another Garry's Mod starting: Facepunch garrysmod-issues #7137; an
+-- alt-tab; a video change) the render targets lose what was drawn in them, but the interface keeps reusing its cached
+-- picture of them: the panels would stay empty. The rebuild blocks the main thread for seconds, so a long gap between two
+-- paints is how it is noticed: the interface is then rebuilt, and draws itself again.
+Module.RESTORE_GAP = 2
+local lastPaintAt
+
+function Module.IsRestoreGap(gap)
+	return isnumber(gap) and gap == gap and gap >= Module.RESTORE_GAP
+end
+
+-- The next paint is a first one again (a new level, the HUD off): the time since the last paint means nothing.
+function Module.ForgetPaintTime()
+	lastPaintAt = nil
+end
+
+-- Called by each paint with the real time; rebuilds the interface after a restore. Returns whether it did.
+function Module.CheckRestore(now)
+	local gap = lastPaintAt and now - lastPaintAt
+	lastPaintAt = now
+
+	if Module.IsRestoreGap(gap) then
+		Module.ResetAll()
+
+		return true
+	end
+
+	return false
+end
+
+hook.Add("InitPostEntity", "GRYFLASHHUDRESTORE", function()
+	Module.ForgetPaintTime()
+end)
+
 function Module.Paint()
+	Module.CheckRestore(RealTime())
+
 	local ply = LocalPlayer()
 
 	if not IsValid(ply) or not ply:Alive() then
@@ -993,6 +1029,7 @@ function Module.Apply(enabled)
 		hook.Add("HUDPaint", "GRYFLASHHUD", Module.Paint)
 	else
 		hook.Remove("HUDPaint", "GRYFLASHHUD")
+		Module.ForgetPaintTime()
 		Module.Reset()
 	end
 
