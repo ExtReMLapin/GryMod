@@ -1898,6 +1898,356 @@ return {
 			end
 		},
 		{
+			name = "vision (recipe 8.1): the interlacing is a triangle wave of the pixel row, period 4, times 1.5: rows 0 and 3 of each group at 1.3125, rows 1 and 2 at 0.9375",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local expected = {1.3125, 0.9375, 0.9375, 1.3125}
+
+				for row = 0, 11 do
+					expect(M.InterlaceGain(row)).to.aboutEqual(expected[row % 4 + 1], 1e-9)
+				end
+
+				-- the tint (0.7, 0.8, 1.0) times it, per row of the pattern
+				local r, g, b = M.VisionRowGains(0)
+				expect(r).to.aboutEqual(0.91875, 1e-9)
+				expect(g).to.aboutEqual(1.05, 1e-9)
+				expect(b).to.aboutEqual(1.3125, 1e-9)
+				r, g, b = M.VisionRowGains(1)
+				expect(r).to.aboutEqual(0.65625, 1e-9)
+				expect(g).to.aboutEqual(0.75, 1e-9)
+				expect(b).to.aboutEqual(0.9375, 1e-9)
+				-- a row is its place in the group of four
+				r, g, b = M.VisionRowGains(7)
+				expect(r).to.aboutEqual(0.91875, 1e-9)
+
+				-- the mean of the four rows is 1.125 (two bright, two dim)
+				local sum = 0
+				for row = 0, 3 do sum = sum + M.InterlaceGain(row) end
+				expect(sum / 4).to.aboutEqual(1.125, 1e-9)
+			end
+		},
+		{
+			name = "vision: the tint texel holds half the gain of the bright rows in gamma mode ((117, 134, 167)) and, in linear mode (the framebuffer blends in linear light and a 2D draw is attenuated, measured), the level worked back through the sRGB curves and the attenuation ((184, 209, 255): the blue falls 2 % short, 255 is the limit); the dim rows' grey texel holds the ratio of the two gains (0.714: 91 in gamma mode, 145 in linear mode)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local r, g, b = M.VisionTintTexel("gamma")
+				expect(r).to.equal(117)
+				expect(g).to.equal(134)
+				expect(b).to.equal(167)
+				r, g, b = M.VisionTintTexel("linear")
+				expect(r).to.equal(184)
+				expect(g).to.equal(209)
+				expect(b).to.equal(255)
+
+				expect(M.VisionDimRatio()).to.aboutEqual(0.9375 / 1.3125, 1e-9)
+				expect(M.VisionDimTexel("gamma")).to.equal(91)
+				expect(M.VisionDimTexel("linear")).to.equal(145)
+
+				-- in gamma space every gain of the shader is reachable
+				expect(M.VisionLevel(1.3125, "gamma") <= 1).to.beTrue()
+				-- in linear light the largest (1.3125) is just out of reach and the byte stops at 255
+				expect(M.VisionLevel(1.3125, "linear") > 1).to.beTrue()
+
+				-- the dim rows are rows 1 and 2 of each four
+				for row = 0, 11 do
+					expect(M.VisionIsDim(row)).to.equal(row % 4 == 1 or row % 4 == 2)
+				end
+			end
+		},
+		{
+			name = "vision: the sRGB curves are each other's inverse, and the blend's space is told from one measured ratio: a pixel at the middle times the tint texel gives the green gain in linear light (about 1.05) and twice the texel in gamma space",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+
+				for _, v in ipairs({0, 0.001, 0.02, 0.1, 0.3, 0.5, 0.8, 1}) do
+					expect(M.SrgbEncode(M.SrgbDecode(v))).to.aboutEqual(v, 1e-9)
+				end
+
+				expect(M.SrgbDecode(0.5)).to.aboutEqual(0.21404, 1e-4)
+
+				-- the texel built for linear light, drawn over pixels from 0.3 to 0.7: the ratio is the green gain 1.05, give or take a percent
+				local _, texel = M.VisionTintTexel("linear")
+				for _, dest in ipairs({0.3, 0.5, 0.7}) do
+					local ratio = M.VisionPredict(texel / 255, dest, "linear")
+					expect(ratio).to.aboutEqual(1.05, 0.05)
+					expect(M.VisionClassify(ratio, texel / 255, dest)).to.equal("linear")
+					-- a gamma-space framebuffer would have doubled the texel
+					expect(M.VisionClassify(2 * texel / 255, texel / 255, dest)).to.equal("gamma")
+				end
+
+				-- the texel built for gamma space, measured in either
+				_, texel = M.VisionTintTexel("gamma")
+				expect(M.VisionPredict(texel / 255, 0.5, "gamma")).to.aboutEqual(1.05, 0.01)
+				expect(M.VisionClassify(M.VisionPredict(texel / 255, 0.5, "gamma"), texel / 255, 0.5)).to.equal("gamma")
+				expect(M.VisionClassify(M.VisionPredict(texel / 255, 0.5, "linear"), texel / 255, 0.5)).to.equal("linear")
+			end
+		},
+		{
+			name = "vision: the blend's space is measured on the first channel of a probe pixel that has a value from 60 to 150 (a dark or a bright channel is no use), none when there is none",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.VisionProbeChannel(100, 100, 100)).to.equal(1)
+				expect(M.VisionProbeChannel(10, 100, 200)).to.equal(2)
+				expect(M.VisionProbeChannel(10, 200, 150)).to.equal(3)
+				expect(M.VisionProbeChannel(60, 200, 200)).to.equal(1)
+				expect(M.VisionProbeChannel(59, 151, 255)).to.beNil()
+				expect(M.VisionProbeChannel(0, 0, 0)).to.beNil()
+				expect(M.VisionProbeChannel(255, 255, 255)).to.beNil()
+			end
+		},
+		{
+			name = "vision: the vignette is saturate(1 - 0.6 * distance from the centre in texture units): 1 at the centre, 0.70 at the middle of any edge, 0.576 in the corners, an ellipse on a wide screen, and its texel in 8 bits follows the blend's space",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.VignetteGain(0.5, 0.5)).to.aboutEqual(1, 1e-9)
+				expect(M.VignetteGain(0, 0.5)).to.aboutEqual(0.7, 1e-9)
+				expect(M.VignetteGain(1, 0.5)).to.aboutEqual(0.7, 1e-9)
+				expect(M.VignetteGain(0.5, 0)).to.aboutEqual(0.7, 1e-9)
+				expect(M.VignetteGain(0.5, 1)).to.aboutEqual(0.7, 1e-9)
+				expect(M.VignetteGain(0, 0)).to.aboutEqual(0.5757359, 1e-6)
+				expect(M.VignetteGain(1, 1)).to.aboutEqual(0.5757359, 1e-6)
+				-- beyond the screen it stays between 0 and 1
+				expect(M.VignetteGain(10, 10) >= 0).to.beTrue()
+				expect(M.VignetteGain(0.5, 0.5) <= 1).to.beTrue()
+				-- the grey of the texture: half the gain in gamma mode, worked back through the sRGB curves and the attenuation in linear mode
+				expect(M.VignetteTexel(0.5, 0.5, "gamma")).to.equal(128)
+				expect(M.VignetteTexel(0, 0.5, "gamma")).to.equal(89)
+				expect(M.VignetteTexel(0, 0, "gamma")).to.equal(73)
+				expect(M.VignetteTexel(0.5, 0.5, "linear")).to.equal(200)
+				expect(M.VignetteTexel(0, 0.5, "linear")).to.equal(142)
+				expect(M.VignetteTexel(0, 0, "linear")).to.equal(118)
+			end
+		},
+		{
+			name = "vision hook: it is on RenderScreenspaceEffects only while the binoculars are up and the option and the HUD element are on; down (or off) there is no hook at all",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local vision, enabled = M.VisionEnabled, M.Enabled
+				local on, hud = true, true
+
+				local function hooked()
+					local list = hook.GetTable().RenderScreenspaceEffects
+					return list ~= nil and list["GRYBINOCULARSVISION"] ~= nil
+				end
+
+				local ok, err = pcall(function()
+					M.VisionEnabled = function() return on end
+					M.Enabled = function() return hud end
+
+					M.VisionStep(false)
+					expect(hooked()).to.beFalse()
+					M.VisionStep(true)
+					expect(hooked()).to.beTrue()
+					-- asked again every frame: still one hook
+					M.VisionStep(true)
+					expect(hooked()).to.beTrue()
+					M.VisionStep(false)
+					expect(hooked()).to.beFalse()
+
+					on = false
+					M.VisionStep(true)
+					expect(hooked()).to.beFalse()
+					on = true
+					M.VisionStep(true)
+					expect(hooked()).to.beTrue()
+					-- the option switched off while up
+					on = false
+					M.VisionStep(true)
+					expect(hooked()).to.beFalse()
+					on = true
+
+					-- the HUD element off
+					M.VisionStep(true)
+					hud = false
+					M.VisionStep(true)
+					expect(hooked()).to.beFalse()
+					hud = true
+
+					-- Reset takes it away
+					M.VisionStep(true)
+					expect(hooked()).to.beTrue()
+					M.Reset()
+					expect(hooked()).to.beFalse()
+				end)
+
+				M.VisionStep(false)
+				M.VisionEnabled, M.Enabled = vision, enabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "vision, drawing: three passes in 2D, all with the doubling blend (the tint over the whole screen, the dim rows as strips of two rows from row 1 every four, the vignette), the blend put back and the 2D ended even if a draw fails; nothing at all when the binoculars are down, in third person or the option is off",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local saved = {M.VisionEnabled, M.Enabled, M.Wanted, M.VisionBuild, render.OverrideBlend, cam.Start2D, cam.End2D, surface.SetMaterial,
+					surface.SetDrawColor, surface.DrawTexturedRect, LocalPlayer}
+				local state2 = M.VisionState
+				local savedMaterials = {state2.tint, state2.dim, state2.vignette, state2.mode}
+				local log = {}
+				local want, thirdPerson, failing = true, false, false
+				local builds = 0
+
+				local ok, err = pcall(function()
+					M.VisionEnabled = function() return true end
+					M.Enabled = function() return true end
+					M.Wanted = function() return want end
+					M.VisionBuild = function() builds = builds + 1 return true end
+					state2.tint, state2.dim, state2.vignette, state2.mode = "tint", "dim", "vignette", "linear"
+					render.OverrideBlend = function(enable, src, dst, func) log[#log + 1] = {"blend", enable, src, dst, func} end
+					cam.Start2D = function() log[#log + 1] = {"start2d"} end
+					cam.End2D = function() log[#log + 1] = {"end2d"} end
+					surface.SetMaterial = function(m) log[#log + 1] = {"material", m} end
+					surface.SetDrawColor = function() end
+					surface.DrawTexturedRect = function(x, y, w, h)
+						if failing then error("draw failed") end
+						log[#log + 1] = {"rect", x, y, w, h}
+					end
+					LocalPlayer = function() return {ShouldDrawLocalPlayer = function() return thirdPerson end} end
+
+					M.DrawVision()
+
+					local height, width = ScrH(), ScrW()
+					local strips = math.ceil((height - 1) / 4)
+					local names = {}
+					for i, entry in ipairs(log) do names[i] = entry[1] end
+					local expectedNames = {"start2d", "blend", "material", "rect", "material"}
+					for _ = 1, strips do expectedNames[#expectedNames + 1] = "rect" end
+					expectedNames[#expectedNames + 1] = "material"
+					expectedNames[#expectedNames + 1] = "rect"
+					expectedNames[#expectedNames + 1] = "blend"
+					expectedNames[#expectedNames + 1] = "end2d"
+					expect(table.concat(names, ",")).to.equal(table.concat(expectedNames, ","))
+
+					-- the tint: 2 * source * destination, the whole screen
+					expect(log[2][2]).to.beTrue()
+					expect(log[2][3]).to.equal(BLEND_DST_COLOR)
+					expect(log[2][4]).to.equal(BLEND_SRC_COLOR)
+					expect(log[3][2]).to.equal("tint")
+					expect(log[4][2]).to.equal(0)
+					expect(log[4][3]).to.equal(0)
+					expect(log[4][4]).to.equal(width)
+					expect(log[4][5]).to.equal(height)
+
+					-- the dim rows: the same blend, a strip of two rows at rows 1, 5, 9, ... and each as wide as the screen
+					expect(log[5][2]).to.equal("dim")
+
+					for k = 1, strips do
+						local rect = log[5 + k]
+						expect(rect[3]).to.equal(1 + (k - 1) * 4)
+						expect(rect[4]).to.equal(width)
+						expect(rect[5]).to.equal(math.min(2, height - rect[3]))
+						-- every pixel row of a strip is a dim row, and no dim row is left out
+						for row = rect[3], rect[3] + rect[5] - 1 do expect(M.VisionIsDim(row)).to.beTrue() end
+					end
+
+					local covered = 0
+					for k = 1, strips do covered = covered + log[5 + k][5] end
+					local dimRows = 0
+					for row = 0, height - 1 do if M.VisionIsDim(row) then dimRows = dimRows + 1 end end
+					expect(covered).to.equal(dimRows)
+
+					-- the vignette: the same blend, the whole screen, last
+					expect(log[6 + strips][2]).to.equal("vignette")
+					expect(log[7 + strips][4]).to.equal(width)
+					expect(log[7 + strips][5]).to.equal(height)
+					expect(log[#log - 1][2]).to.beFalse()
+
+					-- a draw that fails: the blend is back to normal and the 2D is ended
+					log = {}
+					failing = true
+					M.DrawVision()
+					failing = false
+					expect(log[#log][1]).to.equal("end2d")
+					expect(log[#log - 1][1]).to.equal("blend")
+					expect(log[#log - 1][2]).to.beFalse()
+
+					-- nothing drawn: binoculars down, third person, option off, HUD element off
+					local function silent()
+						log = {}
+						M.DrawVision()
+						expect(#log).to.equal(0)
+					end
+
+					want = false
+					silent()
+					want = true
+					thirdPerson = true
+					silent()
+					thirdPerson = false
+					M.VisionEnabled = function() return false end
+					silent()
+					M.VisionEnabled = function() return true end
+					M.Enabled = function() return false end
+					silent()
+
+					-- the materials are asked for once the drawing is certain
+					expect(builds).to.equal(2)
+				end)
+
+				M.VisionEnabled, M.Enabled, M.Wanted, M.VisionBuild, render.OverrideBlend, cam.Start2D, cam.End2D, surface.SetMaterial,
+					surface.SetDrawColor, surface.DrawTexturedRect, LocalPlayer = unpack(saved, 1, 11)
+				state2.tint, state2.dim, state2.vignette, state2.mode = savedMaterials[1], savedMaterials[2], savedMaterials[3], savedMaterials[4]
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "vision: the textures and materials are built once (two 'build' calls give the same materials), and the vision has its own switch (gry_binoculars_vision, saved, OFF by default) with an honest check box",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.VisionBuild()).to.beTrue()
+				local tint, dim, vignette, builds = M.VisionState.tint, M.VisionState.dim, M.VisionState.vignette, M.VisionState.builds
+				expect(tint).toNot.beNil()
+				expect(dim).toNot.beNil()
+				expect(vignette).toNot.beNil()
+				expect(M.VisionBuild()).to.beTrue()
+				expect(M.VisionState.tint).to.equal(tint)
+				expect(M.VisionState.dim).to.equal(dim)
+				expect(M.VisionState.vignette).to.equal(vignette)
+				expect(M.VisionState.builds).to.equal(builds)
+
+				local convar = GetConVar("gry_binoculars_vision")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0")
+				expect(isfunction(M.VisionEnabled)).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = child:GetText()
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				local text = found["gry_binoculars_vision"]
+				expect(text).toNot.beNil()
+				-- honest: the original has it on High quality only, and it doubles the film's vignette
+				expect(string.find(text, "High", 1, true)).toNot.beNil()
+				expect(string.find(text, "vignette", 1, true)).toNot.beNil()
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

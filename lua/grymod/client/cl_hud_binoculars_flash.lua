@@ -39,10 +39,12 @@ local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "
 local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC scanned through the binoculars is outlined in pale blue from the last 0.3 s of its scan until the binoculars come down (at most 8 at once; needs the tag switch: the scan is the tag's)")
 local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s to open and close and 0.055 s between two stages (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
 
+local VisionConVar = CreateClientConVar("gry_binoculars_vision", "0", true, false, "The renderer's full-screen binoculars vision: a cool tint (0.7, 0.8, 1.0), fine scan lines (period of 4 pixels) and a darkening towards the edges (1 - 0.6 * distance from the centre). The original shows it in the High quality only and the film already has its own vignette: the edges get darker twice. Off by default")
 local SwayConVar = CreateClientConVar("gry_binoculars_sway", "0", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view; off by default")
 
 function Bino.StagesEnabled() return StagesConVar:GetBool() end
 function Bino.SwayEnabled() return SwayConVar:GetBool() end
+function Bino.VisionEnabled() return VisionConVar:GetBool() end
 function Bino.SilhouetteEnabled() return SilhouetteConVar:GetBool() end
 function Bino.MoodEnabled() return MoodConVar:GetBool() end
 function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
@@ -1079,6 +1081,8 @@ local function feed(ply, dt)
 end
 
 hook.Add("HUDPaint", "GRYBINOCULARS", function()
+	Bino.VisionStep(Bino.Wanted(LocalPlayer()))
+
 	if not enabled() then
 		Bino.AudioStep(false)
 		Bino.MoodStep(false)
@@ -1191,6 +1195,386 @@ end
 
 local function stagesOn()
 	return Bino.StagesEnabled() and Bino.Enabled() and not missing
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The full-screen vision (option gry_binoculars_vision, off by default; research note 8.1): the renderer's post effect CryVision
+-- runs on the whole screen while the binoculars are up, but only with HDR rendering, i.e. in the High and Very High qualities. In
+-- the shader's own terms (PostEffectsGame.cfx, BinocularViewFinal, no silhouettes): the picture times the tint (0.7, 0.8, 1.0),
+-- times an interlacing (a triangle wave of the pixel row, period 4 pixels, times 1.5: rows 0 and 3 of each four at 1.3125, rows
+-- 1 and 2 at 0.9375), times a vignette saturate(1 - 0.6 * distance from the centre in texture units). Reproduced in
+-- RenderScreenspaceEffects (before the HUD, so the film is not tinted) with three multiplicative passes, all with the blend source *
+-- destination + destination * source (2 * s * d, so that a gain above 1 is reachable): the tint at the gain of the bright rows over
+-- the whole screen, then the dim rows (1 and 2 of each four) darkened by the ratio of the two gains with strips of two pixel rows, then
+-- a small vignette texture stretched over the screen. The strips are drawn as rectangles: a 4-row texture tiled over the screen was
+-- tried first and MEASURED to be sampled with a 5 to 6 rows period (the engine repeats a texel at each wrap). MEASURED on the test
+-- client (hdr level 2): the framebuffer blends in LINEAR light (the doubling is worth only 2 ^ (1 / 2.2) = 1.37 on the pixel values
+-- that are seen) and a 2D draw is also attenuated, by about 0.87 in linear light (0.80 on a pixel at a quarter of the range, 0.88 at
+-- three quarters; even a white texel multiplies by 0.93, not 1), so the levels of the small textures are computed through the sRGB curves
+-- and that attenuation ("linear" mode); where the blend is in gamma space and not attenuated the levels are simply half the gain
+-- ("gamma" mode). The first frames of the vision probe the framebuffer once (a pixel) and choose the mode.
+-- The masked blur of the original is NOT done: the direction of its mask is not verified. VERIFIED: the numbers; limits: 8-bit
+-- banding, the gains above 1 clip at 255.
+-- ---------------------------------------------------------------------------------------------------------
+
+Bino.VISION_TINT = {0.7, 0.8, 1.0}
+Bino.VISION_SCAN_GAIN = 1.5
+Bino.VISION_PERIOD = 4
+Bino.VISION_VIGNETTE = 0.6
+Bino.VISION_VIGNETTE_SIZE = 64
+
+-- The gain of the interlacing on a pixel row (sampled at the centre of the row).
+function Bino.InterlaceGain(row)
+	local frac = ((row + 0.5) / Bino.VISION_PERIOD) % 1
+
+	return (0.5 + 0.5 * math.abs(2 * frac - 1)) * Bino.VISION_SCAN_GAIN
+end
+
+-- The three gains (red, green, blue) of a pixel row: the tint times the interlacing.
+function Bino.VisionRowGains(row)
+	local scan = Bino.InterlaceGain(row)
+	local tint = Bino.VISION_TINT
+
+	return tint[1] * scan, tint[2] * scan, tint[3] * scan
+end
+
+local function toByte(gain)
+	return math.Clamp(math.floor(gain * 255 + 0.5), 0, 255)
+end
+
+-- The sRGB transfer curves (a value 0 to 1 in, a value 0 to 1 out).
+function Bino.SrgbDecode(v)
+	if v <= 0.04045 then
+		return v / 12.92
+	end
+
+	return ((v + 0.055) / 1.055) ^ 2.4
+end
+
+function Bino.SrgbEncode(v)
+	if v <= 0.0031308 then
+		return v * 12.92
+	end
+
+	return 1.055 * v ^ (1 / 2.4) - 0.055
+end
+
+-- The level (0 to 1) of a texel that makes a pixel's value go up by `gain` when drawn with the blend 2 * source * destination.
+-- "gamma": blending in the space of the pixel values, gain / 2. "linear": blending in linear light with the 2D attenuation
+-- (VISION_ATTENUATION, measured), so the texel is worked back through the sRGB curves for a destination at the middle of the range
+-- (VISION_REF; the gain then holds within 2 % from 0.4 to 0.8 and within 8 % at 0.25). It cannot exceed 1: the largest gain
+-- reachable is about 1.29, so the blue of the bright rows (1.3125) falls 2 % short.
+Bino.VISION_REF = 0.5
+Bino.VISION_ATTENUATION = 0.87
+
+function Bino.VisionLevel(gain, mode)
+	if mode == "gamma" then
+		return gain / 2
+	end
+
+	local ref = Bino.VISION_REF
+
+	return Bino.SrgbEncode(Bino.SrgbDecode(math.min(gain * ref, 1)) / (2 * Bino.VISION_ATTENUATION * Bino.SrgbDecode(ref)))
+end
+
+-- The three bytes of the tint texel (the gain of the bright rows, rows 0 and 3 of each four).
+function Bino.VisionTintTexel(mode)
+	local r, g, b = Bino.VisionRowGains(0)
+
+	return toByte(Bino.VisionLevel(r, mode)), toByte(Bino.VisionLevel(g, mode)), toByte(Bino.VisionLevel(b, mode))
+end
+
+-- The ratio of the gain of the dim rows to that of the bright ones (the same for the three channels), and the byte of the grey
+-- texel that gives it.
+function Bino.VisionDimRatio()
+	return Bino.InterlaceGain(1) / Bino.InterlaceGain(0)
+end
+
+function Bino.VisionDimTexel(mode)
+	return toByte(Bino.VisionLevel(Bino.VisionDimRatio(), mode))
+end
+
+-- Whether a pixel row is one of the dim rows (1 and 2 of each four): the strips start at VisionFirstDim and are two rows tall.
+Bino.VISION_DIM_FIRST = 1
+Bino.VISION_DIM_ROWS = 2
+
+function Bino.VisionIsDim(row)
+	local gain = Bino.InterlaceGain(row)
+
+	return gain < Bino.InterlaceGain(0) - 1e-9
+end
+
+-- What a pixel of value `dest` (0 to 1) becomes, as a ratio, under the blend 2 * source * destination with a texel of level `texel`.
+function Bino.VisionPredict(texel, dest, mode)
+	if mode == "gamma" then
+		return 2 * texel
+	end
+
+	return Bino.SrgbEncode(2 * Bino.VISION_ATTENUATION * Bino.SrgbDecode(texel) * Bino.SrgbDecode(dest)) / dest
+end
+
+-- The mode whose prediction is nearest to the ratio that was measured.
+function Bino.VisionClassify(ratio, texel, dest)
+	if math.abs(ratio - Bino.VisionPredict(texel, dest, "linear")) <= math.abs(ratio - Bino.VisionPredict(texel, dest, "gamma")) then
+		return "linear"
+	end
+
+	return "gamma"
+end
+
+-- The gain of the vignette at a point of the screen in texture units (0 to 1 each way).
+function Bino.VignetteGain(u, v)
+	local du, dv = u - 0.5, v - 0.5
+
+	return math.Clamp(1 - Bino.VISION_VIGNETTE * math.sqrt(du * du + dv * dv), 0, 1)
+end
+
+function Bino.VignetteTexel(u, v, mode)
+	return toByte(Bino.VisionLevel(Bino.VignetteGain(u, v), mode))
+end
+
+-- The three materials, built once (a render target each, drawn at the first need, then kept): the tint, the dim rows' grey and the
+-- vignette. mode is the blend's space they were painted for.
+local vision = {tint = nil, dim = nil, vignette = nil, tintTarget = nil, dimTarget = nil, vignetteTarget = nil, builds = 0, hooked = false, mode = nil, paintedFor = "linear", probes = 0}
+Bino.VisionState = vision
+
+local function drawTexture(name, width, height, paint)
+	local target = GetRenderTargetEx(name, width, height, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_NONE, 0, 0, IMAGE_FORMAT_RGBA8888)
+
+	render.PushRenderTarget(target)
+	render.Clear(0, 0, 0, 255, false, false)
+	cam.Start2D()
+	local ok, err = pcall(paint)
+	cam.End2D()
+	render.PopRenderTarget()
+
+	if not ok then
+		error(err, 0)
+	end
+
+	return target
+end
+
+local function paintTint()
+	local r, g, b = Bino.VisionTintTexel(vision.paintedFor)
+	surface.SetDrawColor(r, g, b, 255)
+	surface.DrawRect(0, 0, Bino.VISION_PERIOD, Bino.VISION_PERIOD)
+end
+
+local function paintDim()
+	local level = Bino.VisionDimTexel(vision.paintedFor)
+	surface.SetDrawColor(level, level, level, 255)
+	surface.DrawRect(0, 0, Bino.VISION_PERIOD, Bino.VISION_PERIOD)
+end
+
+local function paintVignette()
+	local size = Bino.VISION_VIGNETTE_SIZE
+
+	for y = 0, size - 1 do
+		for x = 0, size - 1 do
+			local level = Bino.VignetteTexel((x + 0.5) / size, (y + 0.5) / size, vision.paintedFor)
+			surface.SetDrawColor(level, level, level, 255)
+			surface.DrawRect(x, y, 1, 1)
+		end
+	end
+end
+
+local function materialFor(name, target)
+	return CreateMaterial(name, "UnlitGeneric", {
+		["$basetexture"] = target:GetName(),
+		["$ignorez"] = 1,
+		["$vertexcolor"] = 0,
+		["$vertexalpha"] = 0,
+		["$nocull"] = 1
+	})
+end
+
+-- Paints the two small textures again for a mode (the blend's space).
+local function repaint(mode)
+	vision.paintedFor = mode
+
+	for _, entry in ipairs({{vision.tintTarget, paintTint}, {vision.dimTarget, paintDim}, {vision.vignetteTarget, paintVignette}}) do
+		render.PushRenderTarget(entry[1])
+		cam.Start2D()
+		pcall(entry[2])
+		cam.End2D()
+		render.PopRenderTarget()
+	end
+end
+
+-- Builds the textures and materials the first time, nothing after; true when they are there.
+function Bino.VisionBuild()
+	if vision.tint and vision.dim and vision.vignette then
+		return true
+	end
+
+	local ok, err = pcall(function()
+		vision.tintTarget = drawTexture("gry_bino_tint_rt", Bino.VISION_PERIOD, Bino.VISION_PERIOD, paintTint)
+		vision.dimTarget = drawTexture("gry_bino_dim_rt", Bino.VISION_PERIOD, Bino.VISION_PERIOD, paintDim)
+		vision.vignetteTarget = drawTexture("gry_bino_vignette_rt", Bino.VISION_VIGNETTE_SIZE, Bino.VISION_VIGNETTE_SIZE, paintVignette)
+
+		vision.tint = materialFor("gry_bino_tint_mat", vision.tintTarget)
+		vision.dim = materialFor("gry_bino_dim_mat", vision.dimTarget)
+		vision.vignette = materialFor("gry_bino_vignette_mat", vision.vignetteTarget)
+		vision.builds = vision.builds + 1
+	end)
+
+	if not ok then
+		vision.tint, vision.dim, vision.vignette = nil, nil, nil
+		ErrorNoHalt("GryMod binoculars vision: " .. tostring(err) .. "\n")
+
+		return false
+	end
+
+	return true
+end
+
+local function visionPasses()
+	local width, height = ScrW(), ScrH()
+
+	-- the three passes are all 2 * source * destination (the texels' levels allow for the blend's space), the tint at the gain of
+	-- the bright rows over the whole screen first
+	render.OverrideBlend(true, BLEND_DST_COLOR, BLEND_SRC_COLOR, BLENDFUNC_ADD)
+	surface.SetDrawColor(255, 255, 255, 255)
+	surface.SetMaterial(vision.tint)
+	surface.DrawTexturedRect(0, 0, width, height)
+
+	-- the dim rows (1 and 2 of each four), two pixel rows a strip, by the ratio of the two gains
+	surface.SetMaterial(vision.dim)
+
+	for y = Bino.VISION_DIM_FIRST, height - 1, Bino.VISION_PERIOD do
+		surface.DrawTexturedRect(0, y, width, math.min(Bino.VISION_DIM_ROWS, height - y))
+	end
+
+	-- the vignette
+	surface.SetMaterial(vision.vignette)
+	surface.DrawTexturedRect(0, 0, width, height)
+end
+
+-- The blend's space, found once: a pixel near the middle of the screen is multiplied by the tint texel and read back; the ratio
+-- says whether the framebuffer blends in linear light or in gamma space, and the two textures are painted again for that mode if
+-- it is not the one they were painted for. A scene too dark or too bright at that pixel waits for a later frame; after
+-- VISION_PROBES tries the guess ("linear", the measured one) stays.
+Bino.VISION_PROBES = 60
+
+local function drawProbe(x, y)
+	render.OverrideBlend(true, BLEND_DST_COLOR, BLEND_SRC_COLOR, BLENDFUNC_ADD)
+	surface.SetDrawColor(255, 255, 255, 255)
+	surface.SetMaterial(vision.tint)
+	surface.DrawTexturedRect(x, y, 1, 1)
+end
+
+-- Which channel (1 to 3) of a pixel can tell the blend's space: a value from 60 to 150 (a dark one gives nothing to measure, a bright
+-- one reaches 255 with the gain), the first such channel, or nil.
+function Bino.VisionProbeChannel(r, g, b)
+	local values = {r, g, b}
+
+	for i = 1, 3 do
+		if values[i] >= 60 and values[i] <= 150 then
+			return i
+		end
+	end
+
+	return nil
+end
+
+local probeSpots = {{0.5, 0.5}, {0.25, 0.5}, {0.75, 0.5}, {0.5, 0.25}, {0.5, 0.75}}
+
+local function probeBlend()
+	vision.probes = vision.probes + 1
+
+	if vision.probes > Bino.VISION_PROBES then
+		vision.mode = vision.paintedFor
+
+		return
+	end
+
+	local width, height = ScrW(), ScrH()
+	local x, y, channel, before
+
+	render.CapturePixels()
+
+	for i = 1, #probeSpots do
+		local px, py = math.floor(width * probeSpots[i][1]), math.floor(height * probeSpots[i][2])
+		local r, g, b = render.ReadPixel(px, py)
+		local c = Bino.VisionProbeChannel(r, g, b)
+
+		if c then
+			x, y, channel, before = px, py, c, c == 1 and r or (c == 2 and g or b)
+
+			break
+		end
+	end
+
+	if not x then
+		return
+	end
+
+	cam.Start2D()
+	local ok = pcall(drawProbe, x, y)
+	render.OverrideBlend(false)
+	cam.End2D()
+
+	if not ok then
+		return
+	end
+
+	render.CapturePixels()
+
+	local r, g, b = render.ReadPixel(x, y)
+	local after = channel == 1 and r or (channel == 2 and g or b)
+	local texel = select(channel, Bino.VisionTintTexel(vision.paintedFor))
+
+	vision.mode = Bino.VisionClassify(after / before, texel / 255, before / 255)
+
+	if vision.mode ~= vision.paintedFor then
+		repaint(vision.mode)
+	end
+end
+
+-- RenderScreenspaceEffects: only while the binoculars are up in first person with the option on (the hook itself is added only
+-- then, see Bino.VisionStep). The blend is always put back and the 2D ended, whatever a draw does.
+function Bino.DrawVision()
+	if not Bino.VisionEnabled() or not Bino.Enabled() then
+		return
+	end
+
+	local ply = LocalPlayer()
+
+	if not Bino.Wanted(ply) or ply:ShouldDrawLocalPlayer() or not Bino.VisionBuild() then
+		return
+	end
+
+	if not vision.mode then
+		probeBlend()
+	end
+
+	cam.Start2D()
+	local ok, err = pcall(visionPasses)
+	render.OverrideBlend(false)
+	cam.End2D()
+
+	if not ok then
+		ErrorNoHalt("GryMod binoculars vision: " .. tostring(err) .. "\n")
+	end
+end
+
+local function visionHook()
+	Bino.DrawVision()
+end
+
+-- Once per frame (from the HUD): the hook on RenderScreenspaceEffects exists only while the vision is wanted, so with the
+-- binoculars down nothing runs at all.
+function Bino.VisionStep(wanted)
+	local want = wanted and Bino.VisionEnabled() and Bino.Enabled() and not missing
+
+	if want and not vision.hooked then
+		vision.hooked = true
+		hook.Add("RenderScreenspaceEffects", "GRYBINOCULARSVISION", visionHook)
+	elseif not want and vision.hooked then
+		vision.hooked = false
+		hook.Remove("RenderScreenspaceEffects", "GRYBINOCULARSVISION")
+	end
 end
 
 -- The sway of the binoculars (see Bino.SwayOffset): its pitch and yaw for this frame, or nil, and the state is dropped as soon as
@@ -1307,4 +1691,5 @@ function Bino.Reset()
 	Bino.SilhouetteClear(Bino.Silhouettes)
 	Bino.ZoomReset(zoom)
 	Bino.SwayReset(Bino.SwayState)
+	Bino.VisionStep(false)
 end
