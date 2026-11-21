@@ -2300,6 +2300,46 @@ return {
 			end
 		},
 		{
+			name = "Scannable: a living NPC that is not tagged yet may be scanned; a registered entry with scan = false may not, a registered nextbot may; no registry is no change",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local API = GryMod.API
+				local function fake(class, props)
+					local e = {IsValid = function() return true end, GetClass = function() return class end,
+						IsNPC = function() return true end, IsNextBot = function() return false end, Health = function() return 50 end}
+
+					for k, v in pairs(props or {}) do e[k] = v end
+
+					return e
+				end
+
+				expect(isfunction(M.Scannable)).to.beTrue()
+				expect(M.Scannable(fake("t_bino_npc"), false)).to.beTrue()
+				expect(M.Scannable(fake("t_bino_npc"), true)).to.beFalse() -- already tagged
+				expect(M.Scannable(fake("t_bino_npc", {Health = function() return 0 end}), false)).to.beFalse()
+				expect(M.Scannable(NULL, false)).to.beFalse()
+				expect(M.Scannable(nil, false)).to.beFalse()
+
+				local bot = fake("t_bino_bot", {IsNPC = function() return false end, IsNextBot = function() return true end, Health = function() return 0 end, GetMaxHealth = function() return 0 end})
+				expect(M.Scannable(bot, false)).to.beFalse() -- a nextbot is not scanned unless it is registered
+
+				local ok, err = pcall(function()
+					API.RegisterTracked("t_bino_a", {class = "t_bino_npc", scan = false})
+					API.RegisterTracked("t_bino_b", {class = "t_bino_bot"})
+					expect(M.Scannable(fake("t_bino_npc"), false)).to.beFalse()
+					expect(M.Scannable(bot, false)).to.beTrue()
+					expect(M.Scannable(fake("t_bino_other"), false)).to.beTrue()
+				end)
+
+				API.UnregisterTracked("t_bino_a")
+				API.UnregisterTracked("t_bino_b")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

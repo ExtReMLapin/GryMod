@@ -1051,9 +1051,35 @@ local function aim(ply)
 	return Bino.AimedDistance(rays, centreOf)
 end
 
--- An NPC that is alive and not tagged yet may be scanned.
+-- Whether the binoculars may scan the entity: an NPC that is alive and not tagged yet, unless the registry of tracked entities
+-- says scan = false for it; a nextbot only when the registry has an entry for it (the server decides in the end, Radar.Scan:
+-- this only spares the sound of a lock the server would refuse). Without the registry (a hot reload) it is the NPC rule.
+function Bino.Scannable(entity, isTagged)
+	if isTagged or entity == nil or not IsValid(entity) then
+		return false
+	end
+
+	local API = GryMod.API
+	local tracked = API and API.GetTracked and API.GetTracked(entity)
+
+	if entity:IsNPC() then
+		if entity:Health() <= 0 then
+			return false
+		end
+	elseif tracked and entity:IsNextBot() then
+		-- a nextbot may have no health at all (0 of 0): only one that lost its health is dead
+		if entity:Health() <= 0 and entity:GetMaxHealth() > 0 then
+			return false
+		end
+	else
+		return false
+	end
+
+	return not (tracked and tracked.scan == false)
+end
+
 local function scannable(entity)
-	return IsValid(entity) and entity:IsNPC() and entity:Health() > 0 and not tagged[entity]
+	return Bino.Scannable(entity, tagged[entity])
 end
 
 -- The scan ended on an entity: its sound, and the server tags it (the radar shows it).
