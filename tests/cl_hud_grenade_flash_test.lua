@@ -65,6 +65,44 @@ return {
 			end
 		},
 		{
+			name = "the distance field carries the current distance at every frame of a moving player, never the movie's initial 34.06M (the update animation recreates the field)",
+			func = function(state)
+				local w = newWarning()
+				w:Show()
+				run(w, 1.2)
+
+				for i = 1, 90 do
+					local metres = 40 - i * 0.31 -- the distance changes at every frame
+					local text = string.format("%.2fM", metres)
+					w:SetType("FRAG GRENADE")
+					w:SetDistance(metres)
+					-- right after the call (the clip went through its "update" frame and back to the first)
+					expect(w.icon:Find("Distance").names.TargetDistance.text).to.equal(text)
+					w:SetPosition(300 + i, 200)
+					w:Update(1 / 30)
+					-- and after the frame has advanced (the image after the "update" one)
+					expect(w.icon:Find("Distance").names.TargetDistance.text).to.equal(text)
+					expect(w.icon:Find("Text").names.GrenadeText.text).to.equal("FRAG GRENADE")
+				end
+			end
+		},
+		{
+			name = "the distance and type fields are written again when the clips are recreated behind the warning's back",
+			func = function(state)
+				local w = newWarning()
+				w:Show()
+				run(w, 1.2)
+				w:SetDistance(12.5)
+				w:SetType("MISSILE")
+				-- the movie's own scripts rebuild the two clips
+				w.icon:Find("Distance"):GotoAndPlay("update")
+				w.icon:Find("Text"):GotoAndStop(1)
+				w:Update(1 / 30)
+				expect(w.icon:Find("Distance").names.TargetDistance.text).to.equal("12.50M")
+				expect(w.icon:Find("Text").names.GrenadeText.text).to.equal("MISSILE")
+			end
+		},
+		{
 			name = "the grenade type is written in the text field",
 			func = function(state)
 				local w = newWarning()

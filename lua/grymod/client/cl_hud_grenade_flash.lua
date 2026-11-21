@@ -118,19 +118,40 @@ function Instance:SetPosition(x, y)
 	self.icon:SetY(y)
 end
 
+-- The movie keeps the shown distance in a text field of the root (setDistance writes _root.TargetDistance.text) and
+-- the first frame of the Distance clip copies it into its own field (this.TargetDistance.text = _root.TargetDistance.text):
+-- every time the clip is recreated, by the "update" animation or by the opening, its field is given the distance again.
+-- The converted movie does not carry that copy, so it is done here: the text is held in the instance and written
+-- into the fields whenever they are not what it says (the field of the type goes through the same rebuilds).
+function Instance:_syncFields()
+	local distance = self.icon:Child("Distance")
+
+	if distance and self.distanceText then
+		distance:SetText("TargetDistance", self.distanceText)
+	end
+
+	local text = self.icon:Child("Text")
+
+	if text then
+		text:SetText("GrenadeText", self.type)
+	end
+end
+
 function Instance:_applyDistance(update)
 	local distance = self.icon:Child("Distance")
 
 	if distance then
 		local text = string.format("%.2fM", self.metres)
-		distance:SetText("TargetDistance", text)
+		local changed = text ~= self.distanceText
+		self.distanceText = text
 
 		-- the "update" animation plays when the shown distance changes, not at every frame
-		if update and text ~= self.distanceText then
+		if update and changed then
 			distance:GotoAndPlay("update")
 		end
 
-		self.distanceText = text
+		-- the clip may have gone back to its first frame: its field takes the distance again
+		distance:SetText("TargetDistance", text)
 	end
 
 	local size = Grenade.SizeFor(self.metres)
@@ -158,6 +179,7 @@ function Instance:Update(dt)
 	end
 
 	self.root:Advance(dt)
+	self:_syncFields()
 
 	-- the opening rebuilds the clips: say the values again while it plays
 	local frame = self.icon:CurrentFrame()
