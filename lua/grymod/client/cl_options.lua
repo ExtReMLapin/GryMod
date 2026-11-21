@@ -81,6 +81,7 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:CheckBox("Outline in pale blue the NPCs scanned, from the end of their scan until the binoculars come down (needs the tag option above)", "gry_binoculars_silhouette")
 	Panel:CheckBox("Binoculars sound mood: explosions, collisions and vehicles are lowered while they are up", "gry_binoculars_mood")
 	Panel:CheckBox("Binoculars zoom stages 2x, 4x, 8x with the mouse wheel, 0.055 s between them, 0.2 s to open and close (off: the Half-Life 2 zoom). Changes how the mouse feels", "gry_binoculars_stages")
+	Panel:CheckBox("Binoculars sway: the view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view", "gry_binoculars_sway")
 
 	Panel:CheckBox("Screen effects: heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change", "gry_screenfx")
 	Panel:NumSlider("Crosshair style (1 to 13)", "gry_hud_crosshair_style", 1, 13, 0)

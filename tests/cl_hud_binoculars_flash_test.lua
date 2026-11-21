@@ -1612,6 +1612,292 @@ return {
 			end
 		},
 		{
+			name = "sway (F13, recipe 8.6): a figure of eight from the time since the zoom started, in radians: pitch 0.012 * k * sin(4 pi p), yaw 0.015 * k * -cos(2 pi p), p = 0.3 t, k = max(0.2, 1 - t / 1.125)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+
+				-- t = 0: no pitch, the yaw at its full -0.015 at once
+				local pitch, yaw = M.SwayOffset(0, false, false, false)
+				expect(pitch).to.aboutEqual(0, 1e-9)
+				expect(yaw).to.aboutEqual(-0.015, 1e-9)
+
+				-- t = 0.3 s: k = 0.7333, p = 0.09
+				pitch, yaw = M.SwayOffset(0.3, false, false, false)
+				expect(pitch).to.aboutEqual(0.007962478, 1e-8)
+				expect(yaw).to.aboutEqual(-0.009287607, 1e-8)
+
+				-- t = 1.125 s: k is at its floor 0.2, p = 0.3375
+				pitch, yaw = M.SwayOffset(1.125, false, false, false)
+				expect(pitch).to.aboutEqual(-0.002138416, 1e-8)
+				expect(yaw).to.aboutEqual(0.001567496, 1e-8)
+
+				-- t = 5 s: k = 0.2, p = 0.5 (the phase wraps at 1): no pitch, the yaw at +0.003
+				pitch, yaw = M.SwayOffset(5, false, false, false)
+				expect(pitch).to.aboutEqual(0, 1e-9)
+				expect(yaw).to.aboutEqual(0.003, 1e-9)
+
+				-- absolute, never accumulated: the same time gives the same answer, and a time 10 s on (p back to the same
+				-- place, k at its floor) never grows past the floor
+				local a1, a2 = M.SwayOffset(0.3, false, false, false)
+				local b1, b2 = M.SwayOffset(0.3, false, false, false)
+				expect(a1).to.equal(b1)
+				expect(a2).to.equal(b2)
+
+				for t = 1, 200 do
+					local p, y = M.SwayOffset(t * 0.37, false, false, false)
+					expect(math.abs(p) <= 0.012 * 0.2 + 1e-12 or t * 0.37 < 0.9).to.beTrue()
+					expect(math.abs(y) <= 0.015 * 0.2 + 1e-12 or t * 0.37 < 0.9).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "sway: crouching scales it by 0.75, lying down by 0.5, the strength mode by 0.75 (they multiply), and nonsense in gives no sway",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local p0, y0 = M.SwayOffset(0.3, false, false, false)
+
+				local p, y = M.SwayOffset(0.3, true, false, false)
+				expect(p).to.aboutEqual(p0 * 0.75, 1e-12)
+				expect(y).to.aboutEqual(y0 * 0.75, 1e-12)
+				expect(p).to.aboutEqual(0.005971859, 1e-8)
+
+				p, y = M.SwayOffset(0.3, false, true, false)
+				expect(p).to.aboutEqual(p0 * 0.5, 1e-12)
+				expect(y).to.aboutEqual(-0.004643803, 1e-8)
+
+				p, y = M.SwayOffset(0.3, false, false, true)
+				expect(p).to.aboutEqual(p0 * 0.75, 1e-12)
+				expect(y).to.aboutEqual(y0 * 0.75, 1e-12)
+
+				p, y = M.SwayOffset(0.3, true, false, true)
+				expect(p).to.aboutEqual(p0 * 0.5625, 1e-12)
+				expect(y).to.aboutEqual(-0.005224279, 1e-8)
+
+				-- lying down wins over crouching (one stance at a time)
+				p = M.SwayOffset(0.3, true, true, false)
+				expect(p).to.aboutEqual(p0 * 0.5, 1e-12)
+
+				-- a time that is not a number: none
+				p, y = M.SwayOffset(nil, false, false, false)
+				expect(p).to.equal(0)
+				expect(y).to.equal(0)
+				p, y = M.SwayOffset(0 / 0, false, false, false)
+				expect(p).to.equal(0)
+				expect(y).to.equal(0)
+			end
+		},
+		{
+			name = "sway state: it starts again from zero each time the binoculars are raised, follows the clock while they are up (a long frame is cut at 0.1 s), and gives nothing (and forgets) while they are down",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local s = M.NewSway()
+
+				expect(M.SwayStep(s, false, 0)).to.beNil()
+
+				-- first frame: t = 0
+				local pitch, yaw = M.SwayStep(s, true, 10)
+				expect(pitch).to.aboutEqual(0, 1e-9)
+				expect(yaw).to.aboutEqual(-0.015, 1e-9)
+
+				-- 0.3 s later
+				pitch, yaw = M.SwayStep(s, true, 10.1)
+				pitch, yaw = M.SwayStep(s, true, 10.2)
+				pitch, yaw = M.SwayStep(s, true, 10.3)
+				expect(pitch).to.aboutEqual(0.007962478, 1e-8)
+				expect(yaw).to.aboutEqual(-0.009287607, 1e-8)
+
+				-- the same frame again changes nothing
+				local again1, again2 = M.SwayStep(s, true, 10.3)
+				expect(again1).to.aboutEqual(pitch, 1e-12)
+				expect(again2).to.aboutEqual(yaw, 1e-12)
+
+				-- a stall of 5 s counts 0.1 s only
+				pitch, yaw = M.SwayStep(s, true, 15.3)
+				local p2, y2 = M.SwayOffset(0.4, false, false, false)
+				expect(pitch).to.aboutEqual(p2, 1e-9)
+				expect(yaw).to.aboutEqual(y2, 1e-9)
+
+				-- let go: nothing, and the state is back at the start
+				expect(M.SwayStep(s, false, 16)).to.beNil()
+				expect(s.t).to.equal(0)
+				expect(s.last).to.beNil()
+
+				-- raised again: from zero, whatever the clock says
+				pitch, yaw = M.SwayStep(s, true, 100)
+				expect(yaw).to.aboutEqual(-0.015, 1e-9)
+
+				-- the stance and the strength mode are read each frame
+				pitch, yaw = M.SwayStep(s, true, 100.1, true, false, false)
+				local q1, q2 = M.SwayOffset(0.1, true, false, false)
+				expect(pitch).to.aboutEqual(q1, 1e-9)
+				expect(yaw).to.aboutEqual(q2, 1e-9)
+
+				M.SwayReset(s)
+				expect(s.t).to.equal(0)
+			end
+		},
+		{
+			name = "sway stance: crouching from Crouching(), lying down from IsProne() when an addon has it, the strength mode from the suit's mode",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local ply = {Crouching = function() return true end, NanosuitMode = GryMod.Modes.STRENGTH}
+				local crouch, prone, strength = M.SwayStance(ply)
+				expect(crouch).to.beTrue()
+				expect(prone).to.beFalse()
+				expect(strength).to.beTrue()
+
+				ply = {Crouching = function() return false end, IsProne = function() return true end, NanosuitMode = GryMod.Modes.SPEED}
+				crouch, prone, strength = M.SwayStance(ply)
+				expect(crouch).to.beFalse()
+				expect(prone).to.beTrue()
+				expect(strength).to.beFalse()
+
+				crouch, prone, strength = M.SwayStance({Crouching = function() return false end})
+				expect(crouch).to.beFalse()
+				expect(prone).to.beFalse()
+				expect(strength).to.beFalse()
+			end
+		},
+		{
+			name = "sway in CalcView: with the option on and the binoculars up it adds the offsets (in degrees) to the view's pitch and yaw and leaves the rest (the field of view too); nothing at all otherwise, and what was added is gone when they are let go",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local now, wanted, enabled, stages, sway, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled, M.Now
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, Crouching = function() return false end}
+				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
+				local want, on = true, true
+
+				local ok, err = pcall(function()
+					M.Now = function() return now end
+					M.Wanted = function() return want end
+					M.Enabled = function() return true end
+					M.StagesEnabled = function() return false end
+					M.SwayEnabled = function() return on end
+					M.SwayReset(M.SwayState)
+
+					-- first frame: t = 0, yaw -0.015 rad
+					local view = M.CalcView(ply, origin, angles, 90, 3, 8000)
+					expect(view).toNot.beNil()
+					expect(view.fov).to.equal(90)
+					expect(view.origin).to.equal(origin)
+					expect(view.znear).to.equal(3)
+					expect(view.zfar).to.equal(8000)
+					expect(view.angles.p).to.aboutEqual(4, 1e-4)
+					expect(view.angles.y).to.aboutEqual(5 + math.deg(-0.015), 1e-4)
+					expect(view.angles.r).to.aboutEqual(6, 1e-4)
+					-- the caller's angles are not touched
+					expect(angles.y).to.aboutEqual(5, 1e-9)
+
+					-- 0.3 s on (frames of 0.1 s)
+					for i = 1, 3 do
+						now = i * 0.1
+						view = M.CalcView(ply, origin, angles, 90, 3, 8000)
+					end
+
+					expect(view.angles.p).to.aboutEqual(4 + math.deg(0.007962478), 1e-4)
+					expect(view.angles.y).to.aboutEqual(5 + math.deg(-0.009287607), 1e-4)
+
+					-- the same frame again: the same view (recalculated, not accumulated)
+					local again = M.CalcView(ply, origin, angles, 90, 3, 8000)
+					expect(again.angles.p).to.aboutEqual(view.angles.p, 1e-9)
+					expect(again.angles.y).to.aboutEqual(view.angles.y, 1e-9)
+
+					-- let go: nothing, state gone
+					want = false
+					now = 1
+					expect(M.CalcView(ply, origin, angles, 90, 3, 8000)).to.beNil()
+					expect(M.SwayState.t).to.equal(0)
+					expect(M.SwayState.last).to.beNil()
+
+					-- the option off while up: nothing
+					want = true
+					on = false
+					expect(M.CalcView(ply, origin, angles, 90, 3, 8000)).to.beNil()
+					expect(M.SwayState.last).to.beNil()
+				end)
+
+				M.Now, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled = clock, wanted, enabled, stages, sway
+				M.SwayReset(M.SwayState)
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "sway with the stages: one view with the stage's field of view and the swayed angles; Reset puts the sway away; it has its own switch (gry_binoculars_sway, saved, OFF by default) with a check box",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local now, wanted, enabled, stages, sway, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled, M.Now
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, Crouching = function() return false end}
+
+				local ok, err = pcall(function()
+					M.Now = function() return now end
+					M.Wanted = function() return true end
+					M.Enabled = function() return true end
+					M.StagesEnabled = function() return true end
+					M.SwayEnabled = function() return true end
+					M.SwayReset(M.SwayState)
+					M.ZoomReset(M.ZoomState)
+
+					M.CalcView(ply, Vector(), Angle(), 100, 1, 1)
+					-- (a frame counts 0.1 s at most: two frames to reach 0.2 s)
+					now = 0.1
+					M.CalcView(ply, Vector(), Angle(), 40, 1, 1)
+					now = 0.2
+					local view = M.CalcView(ply, Vector(), Angle(), 40, 1, 1)
+					expect(view.fov).to.aboutEqual(M.StageFov(100, 2), 1e-6)
+					local p, y = M.SwayOffset(0.2, false, false, false)
+					expect(view.angles.p).to.aboutEqual(math.deg(p), 1e-4)
+					expect(view.angles.y).to.aboutEqual(math.deg(y), 1e-4)
+
+					M.Reset()
+					expect(M.SwayState.t).to.equal(0)
+					expect(M.SwayState.last).to.beNil()
+				end)
+
+				M.Now, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled = clock, wanted, enabled, stages, sway
+				M.SwayReset(M.SwayState)
+				M.ZoomReset(M.ZoomState)
+
+				if not ok then
+					error(err, 0)
+				end
+
+				local convar = GetConVar("gry_binoculars_sway")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0")
+				expect(isfunction(M.SwayEnabled)).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok2, err2 = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok2 then
+					error(err2, 0)
+				end
+
+				expect(found["gry_binoculars_sway"]).to.beTrue()
+			end
+		},
+		{
 			name = "a missing movie gives no binoculars instead of an error",
 			func = function(state)
 				expect(GryMod.FlashBinoculars.New(nil)).to.equal(nil)

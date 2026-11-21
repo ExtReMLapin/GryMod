@@ -39,7 +39,10 @@ local MoodConVar = CreateClientConVar("gry_binoculars_mood", "1", true, false, "
 local SilhouetteConVar = CreateClientConVar("gry_binoculars_silhouette", "1", true, false, "The NPC scanned through the binoculars is outlined in pale blue from the last 0.3 s of its scan until the binoculars come down (at most 8 at once; needs the tag switch: the scan is the tag's)")
 local StagesConVar = CreateClientConVar("gry_binoculars_stages", "0", true, false, "The original's zoom stages (2x, 4x, 8x) with the mouse wheel while the binoculars are up, a straight 0.2 s to open and close and 0.055 s between two stages (off: the Half-Life 2 zoom, one fixed field of view). Changes how the mouse feels")
 
+local SwayConVar = CreateClientConVar("gry_binoculars_sway", "0", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view; off by default")
+
 function Bino.StagesEnabled() return StagesConVar:GetBool() end
+function Bino.SwayEnabled() return SwayConVar:GetBool() end
 function Bino.SilhouetteEnabled() return SilhouetteConVar:GetBool() end
 function Bino.MoodEnabled() return MoodConVar:GetBool() end
 function Bino.SoundsEnabled() return SoundsConVar:GetBool() end
@@ -865,6 +868,80 @@ function Bino.ZoomLabelMode(z, base, engineFov)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
+-- The sway of the zoom (option gry_binoculars_sway, off by default; research note 8.2 and recipe 8.6): the original's zoom class
+-- (vtable 0x3927e0b8, slot 22, the function 0x3917aba0) turns the VIEW, never the field of view, by two angles that are a
+-- deterministic figure of eight (no noise): with t the seconds since the zoom started and p = 0.3 t (mod 1),
+--   pitch = 0.012 * k * sin(4 pi p), yaw = 0.015 * k * -cos(2 pi p), both in radians (the zoomSway block of Binoculars.xml),
+--   k = max(0.2, 1 - t / 1.125) * (0.75 crouching, 0.5 lying down) * (0.75 in strength mode).
+-- VERIFIED: the form and the numbers; DEDUCED: which angle is which and the stance and strength readings. The offsets are
+-- absolute (recomputed each frame from t, never added up), so there is nothing to undo: the camera of one frame is the only
+-- thing touched, through CalcView.
+-- ---------------------------------------------------------------------------------------------------------
+
+Bino.SWAY_PITCH = 0.012
+Bino.SWAY_YAW = 0.015
+Bino.SWAY_RATE = 0.3
+-- stabilizeTime 1.5 * strengthScaleTime 0.75: the time the strength takes to fall to its floor (the floor is 0.2)
+Bino.SWAY_SETTLE = 1.125
+Bino.SWAY_MIN = 0.2
+Bino.SWAY_CROUCH = 0.75
+Bino.SWAY_PRONE = 0.5
+Bino.SWAY_STRENGTH = 0.75
+
+-- The pitch and yaw offsets (radians) t seconds after the zoom started.
+function Bino.SwayOffset(t, crouch, prone, strength)
+	if type(t) ~= "number" or t ~= t or t < 0 then
+		return 0, 0
+	end
+
+	local phase = (Bino.SWAY_RATE * t) % 1
+	local k = math.max(Bino.SWAY_MIN, 1 - t / Bino.SWAY_SETTLE)
+
+	if prone then
+		k = k * Bino.SWAY_PRONE
+	elseif crouch then
+		k = k * Bino.SWAY_CROUCH
+	end
+
+	if strength then
+		k = k * Bino.SWAY_STRENGTH
+	end
+
+	return Bino.SWAY_PITCH * k * math.sin(4 * math.pi * phase), Bino.SWAY_YAW * k * -math.cos(2 * math.pi * phase)
+end
+
+function Bino.NewSway()
+	return {t = 0, last = nil}
+end
+
+function Bino.SwayReset(s)
+	s.t, s.last = 0, nil
+end
+
+-- One frame: wanted says whether the binoculars are up, now the clock. Returns the offsets, or nothing (and forgets the time:
+-- the next raising starts at 0) while they are down. A long frame counts 0.1 s at most.
+function Bino.SwayStep(s, wanted, now, crouch, prone, strength)
+	if not wanted then
+		Bino.SwayReset(s)
+
+		return nil
+	end
+
+	s.t = s.t + math.min(now - (s.last or now), 0.1)
+	s.last = now
+
+	return Bino.SwayOffset(s.t, crouch, prone, strength)
+end
+
+-- The stance of the player: crouching, lying down (only for the addons that give a player an IsProne), the suit in strength mode.
+function Bino.SwayStance(ply)
+	local prone = isfunction(ply.IsProne) and ply:IsProne() or false
+	local crouch = isfunction(ply.Crouching) and ply:Crouching() or false
+
+	return crouch, prone, ply.NanosuitMode == GryMod.Modes.STRENGTH
+end
+
+-- ---------------------------------------------------------------------------------------------------------
 -- In the game: the Half-Life 2 suit zoom (the zoom key) shows the binoculars
 -- ---------------------------------------------------------------------------------------------------------
 
@@ -1116,29 +1193,50 @@ local function stagesOn()
 	return Bino.StagesEnabled() and Bino.Enabled() and not missing
 end
 
--- CalcView: the view with the stage's field of view, or nothing (the state is dropped as soon as the stages are not wanted).
-function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
-	if not stagesOn() then
-		if zoom.active then
-			Bino.ZoomReset(zoom)
+-- The sway of the binoculars (see Bino.SwayOffset): its pitch and yaw for this frame, or nil, and the state is dropped as soon as
+-- it is not wanted (the binoculars down, the option or the HUD element off).
+local sway = Bino.NewSway()
+Bino.SwayState = sway
+
+local function swayFor(ply, wanted)
+	if not wanted or not Bino.SwayEnabled() or not Bino.Enabled() or missing then
+		if sway.last then
+			Bino.SwayReset(sway)
 		end
 
 		return nil
 	end
 
+	local crouch, prone, strength = Bino.SwayStance(ply)
+
+	return Bino.SwayStep(sway, true, Bino.Now(), crouch, prone, strength)
+end
+
+-- CalcView: the view with the stage's field of view and / or the sway's angles, or nothing (the stage state is dropped as soon as
+-- the stages are not wanted, the sway's as soon as the binoculars are down).
+function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 	local wanted = Bino.Wanted(ply)
+	local stageFov
 
-	if not wanted and not zoom.active then
+	if not stagesOn() then
+		if zoom.active then
+			Bino.ZoomReset(zoom)
+		end
+	elseif wanted or zoom.active then
+		stageFov = Bino.ZoomStep(zoom, Bino.Now(), wanted, ply:GetInfoNum("fov_desired", 75), fov)
+	end
+
+	local pitch, yaw = swayFor(ply, wanted)
+
+	if not stageFov and not pitch then
 		return nil
 	end
 
-	local stageFov = Bino.ZoomStep(zoom, Bino.Now(), wanted, ply:GetInfoNum("fov_desired", 75), fov)
-
-	if not stageFov then
-		return nil
+	if pitch then
+		angles = Angle(angles.p + math.deg(pitch), angles.y + math.deg(yaw), angles.r)
 	end
 
-	return {origin = origin, angles = angles, fov = stageFov, znear = znear, zfar = zfar}
+	return {origin = origin, angles = angles, fov = stageFov or fov, znear = znear, zfar = zfar}
 end
 
 -- The sound of a stage step, through the mix like the others (nothing with the binoculars' sounds off).
@@ -1208,4 +1306,5 @@ function Bino.Reset()
 	Bino.ScanReset(scan)
 	Bino.SilhouetteClear(Bino.Silhouettes)
 	Bino.ZoomReset(zoom)
+	Bino.SwayReset(Bino.SwayState)
 end
