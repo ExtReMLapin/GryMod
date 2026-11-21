@@ -74,6 +74,53 @@ return {
 			end
 		},
 		{
+			name = "an ally is drawn with the calm still image of its type, tinted blue, at the calm alpha and never pulsing",
+			func = function(state)
+				local S = GryMod.RadarShared
+				local e = one({contact(10, 0, {type = 1, sub = S.SUB_ALLY})}, 0, math.pi)
+				expect(e.frame).to.equal(5) -- the sub 0 image of the ground type
+				expect(e.alpha).to.aboutEqual(85, 0.01) -- sub 5 is past 3, but it does not pulse
+				expect(e.tint).toNot.beNil()
+				-- blue: the blue is the strongest and the red the weakest
+				expect(e.tint[3] > e.tint[2]).to.beTrue()
+				expect(e.tint[2] > e.tint[1]).to.beTrue()
+				expect((one({contact(10, 0, {type = 2, sub = S.SUB_ALLY})})).frame).to.equal(10)
+				expect((one({contact(10, 0, {type = 3, sub = S.SUB_ALLY})})).frame).to.equal(15)
+				-- a marker of an ally does not pulse either
+				expect((one({contact(10, 0, {sub = S.SUB_ALLY, marker = true})}, 0, math.pi)).alpha).to.aboutEqual(85, 0.01)
+				-- the other subtypes have no tint
+				for sub = 0, 4 do
+					expect((one({contact(10, 0, {sub = sub})})).tint).to.beNil()
+				end
+			end
+		},
+		{
+			name = "an icon takes the ally tint and loses it when it shows something else, the alpha of the pulse keeps working",
+			func = function(state)
+				local panel = newPanel()
+				local R = GryMod.FlashRadar
+				local S = GryMod.RadarShared
+				panel:SetObjects(R.Contacts(Vector(0, 0, 0), 0, {contact(10, 0, {sub = S.SUB_ALLY})}, 0))
+				local icon = panel.main:Child("Units"):Child("ObjectIcon_100")
+				local cx = icon.entry.cx
+				expect(cx).toNot.beNil()
+				expect(cx[3] > cx[1]).to.beTrue()
+				expect(cx[4]).to.aboutEqual(0.85, 0.001)
+				expect(icon:Child("Icon"):CurrentFrame()).to.equal(5)
+				-- the same icon now a hostile that fights: no tint, the movie's own colours (multipliers 1)
+				panel:SetObjects(R.Contacts(Vector(0, 0, 0), 0, {contact(10, 0, {sub = 4})}, math.pi))
+				cx = icon.entry.cx
+				expect(cx[1]).to.aboutEqual(1, 0.001)
+				expect(cx[2]).to.aboutEqual(1, 0.001)
+				expect(cx[3]).to.aboutEqual(1, 0.001)
+				expect(cx[4]).to.aboutEqual(0.3, 0.001)
+				expect(icon:Child("Icon"):CurrentFrame()).to.equal(9)
+				-- and an ally again
+				panel:SetObjects(R.Contacts(Vector(0, 0, 0), 0, {contact(10, 0, {sub = S.SUB_ALLY})}, 0))
+				expect(icon.entry.cx[3] > icon.entry.cx[1]).to.beTrue()
+			end
+		},
+		{
 			name = "the visible area is the original's polygon, not a disc",
 			func = function(state)
 				-- ahead: 42 pixels = 73.3 m
@@ -367,6 +414,18 @@ return {
 				expect(R.StealthTarget({contact(10, 0, {sub = 3}), contact(20, 0, {sub = 4}), contact(30, 0, {sub = 0})})).to.equal(1)
 				-- a hostile that shot the player (its marker) is aware of him
 				expect(R.StealthTarget({contact(90, 0, {sub = 2, marker = true})})).to.equal(1)
+			end
+		},
+		{
+			name = "an ally never raises the stealth bar, whatever the other contacts are, its marker neither",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				local S = GryMod.RadarShared
+				expect(R.Awareness({sub = S.SUB_ALLY, marker = false})).to.equal(0)
+				expect(R.Awareness({sub = S.SUB_ALLY, marker = true})).to.equal(0)
+				expect(R.StealthTarget({contact(10, 0, {sub = S.SUB_ALLY}), contact(20, 0, {sub = S.SUB_ALLY, marker = true})})).to.equal(0)
+				-- next to a hostile, the bar still follows the hostile only
+				expect(R.StealthTarget({contact(10, 0, {sub = S.SUB_ALLY}), contact(20, 0, {sub = 3})})).to.equal(0.5)
 			end
 		},
 		{

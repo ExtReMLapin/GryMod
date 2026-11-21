@@ -24,6 +24,11 @@ Radar.UNITS_CENTRE_Y = 51.5
 Radar.PULSE_SPEED = 3
 Radar.ALPHA = 85
 
+-- The ally: the movie has no icon for it, so the calm still image of its type is drawn with a colour transform whose multipliers
+-- (red, green, blue) turn it blue. The transform is the movie's own mechanism (the clip's colour transform, as the theme
+-- colours use); no image is made for it.
+Radar.ALLY_TINT = {0.3, 0.6, 1}
+
 local frame = Radar.FRAME
 
 local function insideFrame(x, y)
@@ -83,7 +88,8 @@ local function sizeFor(dz, big)
 end
 
 -- The entries for the movie, from the player's position and yaw (degrees) and the contacts {id, x, y, z, yaw, type, sub,
--- marker, big}: {id, x, y, rotation, frame, scale, alpha}, in the movie's coordinates. A unit outside the frame or more
+-- marker, big}: {id, x, y, rotation, frame, scale, alpha, tint}, in the movie's coordinates (tint: the colour multipliers of an
+-- ally, nil for the movie's own colours). A unit outside the frame or more
 -- than 500 m above or below is left out, except a marker (the unit that hurt the player), which is put on the border of
 -- the frame. `phase` is the pulse of the alerted icons.
 function Radar.Contacts(pos, yaw, contacts, phase)
@@ -118,14 +124,17 @@ function Radar.Contacts(pos, yaw, contacts, phase)
 			end
 
 			if show then
+				local ally = c.sub == S.SUB_ALLY
+
 				list[#list + 1] = {
 					id = c.id,
 					x = Radar.UNITS_CENTRE_X + x * Radar.UNITS_PIXEL,
 					y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL,
 					rotation = (yaw - c.yaw + 180) % 360,
-					frame = c.type * 5 + c.sub,
+					frame = c.type * 5 + (ally and 0 or c.sub),
 					scale = sizeFor(dz * S.METRES_PER_UNIT, c.big),
-					alpha = (c.sub >= 3 and not c.marker) and pulse or Radar.ALPHA
+					alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA,
+					tint = ally and Radar.ALLY_TINT or nil
 				}
 			end
 		end
@@ -171,6 +180,36 @@ local Panel = Radar.Panel
 -- The movie's blend mode "add" (the script sets blendMode = 8 on the copies).
 local BLEND_ADD = 8
 
+-- The colour multipliers of an icon: the tint of the entry, or the movie's own colours. The alpha and the added colour of its
+-- transform stay as they are.
+local function setTint(icon, tint)
+	local entry = icon.entry
+	local cx = entry.cx
+	local r, g, b = 1, 1, 1
+
+	if tint then
+		r, g, b = tint[1], tint[2], tint[3]
+	end
+
+	if not cx then
+		if not tint then
+			return
+		end
+
+		cx = {1, 1, 1, 1, 0, 0, 0, 0}
+	end
+
+	if cx[1] == r and cx[2] == g and cx[3] == b then
+		return
+	end
+
+	entry.cx = {r, g, b, cx[4], cx[5], cx[6], cx[7], cx[8]}
+
+	if icon.parent then
+		icon.parent:_touch()
+	end
+end
+
 -- setObjectArray: gives the icons of the Units clip the entries of Radar.Contacts. The icons are made when they are first
 -- needed (named "ObjectIcon_" .. n at depth n + 99 + 1, like the script's) and kept; the ones past the list are hidden.
 function Panel:SetObjects(list)
@@ -215,6 +254,7 @@ function Panel:SetObjects(list)
 		icon:SetScale(e.scale, e.scale)
 		icon:SetRotation(e.rotation)
 		icon:SetAlpha(e.alpha)
+		setTint(icon, e.tint)
 		icon:SetVisible(true)
 	end
 
@@ -309,7 +349,8 @@ Radar.STEALTH_RISE = 1
 Radar.STEALTH_FALL = 0.25
 
 -- The awareness of one contact {sub, marker}: sub 4 fighting the player and 3 alerted are the hostile ones; sub 2 is a calm
--- hostile, except when it is a marker (it hurt the player in the last 10 s); 0 and 1 are not hostile.
+-- hostile, except when it is a marker (it hurt the player in the last 10 s); 0 and 1 are not hostile, and 5 (S.SUB_ALLY) is an ally,
+-- which never counts, marker or not.
 function Radar.Awareness(c)
 	local sub = c.sub
 
