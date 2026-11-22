@@ -10,10 +10,17 @@
 --   gry_zonemap_want   (client -> server)  no payload: "tell me the state and send me the map". Two a second per player at most.
 --   gry_zonemap_reset  (client -> server)  no payload: an administrator (GryMod.MayConfigure; the host of a listen server and the single player are) deletes
 --                                          the file and the map in memory and makes it again. One a second per player; a refusal is silent.
--- Settings: gry_zonemap (the switch, in the administrators' list of sh_server_options.lua), gry_zonemap_budget_ms (milliseconds of rays per server frame while it
--- computes, 0.5 to 10) and gry_zonemap_max_nodes (more ground nodes than this: the first ones only, and the result is flagged incomplete), both console only.
+-- Settings: gry_zonemap (the switch, in the administrators' list of sh_server_options.lua), gry_zonemap_navmesh (the source: on, the default, makes the map from the
+-- nav areas of the level when it has a navmesh; off, or no navmesh, from the node graph; also in the administrators' list), gry_zonemap_budget_ms (milliseconds of
+-- rays per server frame while it computes, 0.5 to 10) and gry_zonemap_max_nodes (more ground nodes than this: the first ones only, and the result is flagged
+-- incomplete), both console only.
+-- Two SOURCES, one rule: "nodes" takes the ground nodes of the graph; "navmesh" takes, for every nav area, one point on the area at each 128 x 128 cell whose centre
+-- lies inside the area's rectangle (a small area with no cell centre gives its own centre), one point per (layer, cell) pair, at most 60000 of them. Both classify a
+-- point with the same SampleNode and give the samples to the same GryMod.ZoneMap.Build. Each source keeps its own file side by side (<key>.dat, <key>_navmesh.dat):
+-- changing the setting reads the file of the other source when it is there, and makes it otherwise; Reset deletes the file of the CURRENT source only.
 -- Cost: NO permanent hook. The computation adds a Think hook when it starts and removes it when it ends; a frame works until the budget in milliseconds is used
--- (the clock is read after each node, never inside the 13 rays of one node) and the tables of the rays are made once. One map is a few hundred bytes to a few KB.
+-- (the clock is read after each node, or after each sample, or after each nav area while the points are listed, never inside the 13 rays of one node) and the tables
+-- of the rays are made once. One map is a few hundred bytes to a few KB.
 -- Tests: everything the module needs from the engine is a field of GryMod.ZoneMapServer (the trace, the graph reader, the files, the clocks, the log), which the
 -- tests replace and put back; RunNow makes the whole map at once with the code of the frames, and no hook.
 
@@ -50,6 +57,8 @@ local UP_DY = {0, 0, 0, 48, -48}
 
 local switch = CreateConVar("gry_zonemap", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
 	"The server makes an in/out map of the level from its node graph and sends it to the players (the automatic zoom of the radar uses it); 0 turns it off")
+local navmeshVar = CreateConVar("gry_zonemap_navmesh", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
+	"The in/out map is made from the navigation mesh of the level when it has one (0: from the AI node graph); each source keeps its own file")
 local budgetVar = CreateConVar("gry_zonemap_budget_ms", "2", FCVAR_ARCHIVE,
 	"Milliseconds of rays per server frame while the in/out map is made (0.5 to 10)", 0.5, 10)
 local maxNodesVar = CreateConVar("gry_zonemap_max_nodes", "20000", FCVAR_ARCHIVE,
@@ -76,6 +85,18 @@ ZS.MapName = game.GetMap
 function ZS.Graph(map)
 	return GryMod.AIN.Load(map)
 end
+
+-- the navigation mesh: the number of areas (0 or an error: no navmesh) and the list of them
+function ZS.NavCount()
+	return navmesh.GetNavAreaCount()
+end
+
+function ZS.NavAreas()
+	return navmesh.GetAllNavAreas()
+end
+
+ZS.NAV_MAX = 60000 -- the most points the navmesh source takes in one map (the first ones; more is flagged incomplete and over budget)
+local NAV_MAX_CELLS = 256 -- a nav area wider than this many cells (32768 units: the whole map) is refused, not walked
 
 -- the size of maps/<map>.bsp, 0 when unknown (the file belongs to that exact map)
 function ZS.BspSize(map)
@@ -331,8 +352,29 @@ local function failed(err)
 	setState(STATE.FAILED, 0, 0)
 end
 
-local function pathFor(map, size)
-	return DIR .. "/" .. GryMod.ZoneMap.Key(map, size) .. ".dat"
+local function pathFor(map, size, source)
+	return DIR .. "/" .. GryMod.ZoneMap.Key(map, size, source) .. ".dat"
+end
+
+-- the source of the map: "navmesh" when the setting is on and the level has a navmesh, else "nodes". A level with no navmesh (or an API that raises or answers
+-- nonsense) falls back on the nodes; that is logged once (not when `silent`).
+local function chooseSource(silent)
+	if not navmeshVar:GetBool() then
+		return "nodes"
+	end
+
+	local ok, count = pcall(ZS.NavCount)
+
+	if ok and type(count) == "number" and count > 0 then
+		return "navmesh"
+	end
+
+	if not silent and not st.navLogged then
+		st.navLogged = true
+		ZS.Log("no navmesh: the in/out map is made from the AI node graph")
+	end
+
+	return "nodes"
 end
 
 -- the budget of a frame in seconds
@@ -392,6 +434,175 @@ local function runStep(job, budget)
 	job.seconds = job.seconds + (clock() - t0)
 end
 
+-- ---------------------------------------------------------------------------------------------------------
+-- the navmesh source: the points of the nav areas, then their samples
+-- ---------------------------------------------------------------------------------------------------------
+
+local scratchVec = Vector(0, 0, 0) -- the position given to GetZ, made once
+
+-- the corners 0 and 2 and the centre of an area (called through pcall: a bad area costs one skipped area, not the map)
+local function readArea(area)
+	local a, b, c = area:GetCorner(0), area:GetCorner(2), area:GetCenter()
+
+	return a.x, a.y, b.x, b.y, c.x, c.y, c.z
+end
+
+-- one point on the list, one per (layer, cell) pair: false when the cap ended the list. The key of a pair is one exact number (13 + 20 + 20 bits).
+local function addPoint(job, Z, x, y, z)
+	local layer, cx, cy = Z.Layer(z), Z.CellOf(x), Z.CellOf(y)
+
+	if layer < -4095 or layer > 4095 or cx < -524287 or cx > 524287 or cy < -524287 or cy > 524287 then
+		job.skipped = job.skipped + 1
+
+		return true
+	end
+
+	local key = ((layer + 4096) * 1048576 + (cx + 524288)) * 1048576 + (cy + 524288)
+	local seen = job.seen
+
+	if seen[key] then
+		return true
+	end
+
+	local n = job.np
+
+	if n >= ZS.NAV_MAX then
+		job.over = true
+
+		return false
+	end
+
+	seen[key] = true
+	n = n + 1
+	job.np = n
+	job.px[n], job.py[n], job.pz[n] = x, y, z
+
+	return true
+end
+
+-- the points of one nav area: the cells whose centre (c * 128 + 64) is inside the rectangle of corners 0 and 2, at the height GetZ gives there (the centre's
+-- height when GetZ fails); an area with no cell centre gives one point at its own centre. false when the cap ended the list.
+local function listArea(job, Z, area)
+	local ok, ax, ay, bx, by, mx, my, mz = pcall(readArea, area)
+
+	if not ok or type(ax) ~= "number" or type(ay) ~= "number" or type(bx) ~= "number" or type(by) ~= "number" or type(mx) ~= "number" or type(my) ~= "number"
+		or type(mz) ~= "number" or ax - ax ~= 0 or ay - ay ~= 0 or bx - bx ~= 0 or by - by ~= 0 or mx - mx ~= 0 or my - my ~= 0 or mz - mz ~= 0 then
+		job.skipped = job.skipped + 1
+
+		return true
+	end
+
+	local CELL = Z.CELL
+	local half = CELL / 2
+	local x1, x2, y1, y2 = ax, bx, ay, by
+
+	if x1 > x2 then
+		x1, x2 = x2, x1
+	end
+
+	if y1 > y2 then
+		y1, y2 = y2, y1
+	end
+
+	local c1x, c2x = math.ceil((x1 - half) / CELL), math.floor((x2 - half) / CELL)
+	local c1y, c2y = math.ceil((y1 - half) / CELL), math.floor((y2 - half) / CELL)
+
+	if c2x - c1x >= NAV_MAX_CELLS or c2y - c1y >= NAV_MAX_CELLS then
+		job.skipped = job.skipped + 1
+
+		return true
+	end
+
+	if c1x > c2x or c1y > c2y then
+		return addPoint(job, Z, mx, my, mz)
+	end
+
+	local getZ = area.GetZ
+
+	for cx = c1x, c2x do
+		local px = cx * CELL + half
+
+		for cy = c1y, c2y do
+			local py = cy * CELL + half
+
+			scratchVec.x, scratchVec.y, scratchVec.z = px, py, 0
+
+			local gok, z = pcall(getZ, area, scratchVec)
+
+			if not gok or type(z) ~= "number" or z - z ~= 0 then
+				z = mz
+			end
+
+			if not addPoint(job, Z, px, py, z) then
+				return false
+			end
+		end
+	end
+
+	return true
+end
+
+-- one step of the navmesh job: first the list of the points (the clock is read after each area), then the samples (after each sample), until the budget
+-- (seconds) is used; so a step ends at most one area, or one sample, past its budget. The progress total is known when the list is complete.
+local function runNavStep(job, budget)
+	local clock = ZS.Clock
+	local t0 = clock()
+	local deadline = t0 + budget
+	local expired = false
+
+	if job.listing then
+		local Z = GryMod.ZoneMap
+		local areas, nAreas, i = job.areas, job.nAreas, job.ai
+
+		while i <= nAreas do
+			local area = areas[i]
+
+			i = i + 1
+
+			if not listArea(job, Z, area) then
+				i = nAreas + 1 -- the cap: the list ends here
+			end
+
+			if clock() >= deadline then
+				expired = true
+
+				break
+			end
+		end
+
+		job.ai = i
+
+		if i > nAreas then
+			job.listing = false
+			job.total = job.np
+		end
+	end
+
+	if not job.listing and not expired then
+		local px, py, pz, samples = job.px, job.py, job.pz, job.samples
+		local taken, total, n = job.taken, job.total, #job.samples
+
+		while taken < total do
+			taken = taken + 1
+
+			local x, y, z = px[taken], py[taken], pz[taken]
+			local indoor, ceil = ZS.SampleNode(x, y, z)
+
+			n = n + 1
+			samples[n] = {x = x, y = y, z = z, indoor = indoor, ceil = ceil}
+
+			if clock() >= deadline then
+				break
+			end
+		end
+
+		job.taken = taken
+	end
+
+	job.steps = job.steps + 1
+	job.seconds = job.seconds + (clock() - t0)
+end
+
 local function setReady(complete, samples)
 	setState(complete and STATE.READY or STATE.INCOMPLETE, samples, samples)
 	ZS.SendData(nil, st.bytes)
@@ -413,8 +624,14 @@ local function finishJob(job)
 	st.map, st.bytes = map, bytes
 	st.stats = {
 		nodes = job.nodeCount, ground = job.ground, taken = job.taken, skipped = job.skipped, samples = #job.samples,
-		boxes = type(map.boxes) == "table" and #map.boxes or 0, steps = job.steps, seconds = job.seconds, bytes = #bytes
+		boxes = type(map.boxes) == "table" and #map.boxes or 0, steps = job.steps, seconds = job.seconds, bytes = #bytes, source = job.source or "nodes"
 	}
+
+	if job.source == "navmesh" then
+		ZS.Log(string.format("made from the navmesh: %d areas, %d samples, %d boxes, %d bytes, %.0f ms of work in %d steps", job.nodeCount, #job.samples,
+			st.stats.boxes, #bytes, job.seconds * 1000, job.steps))
+	end
+
 	setReady(complete, #job.samples)
 end
 
@@ -428,7 +645,7 @@ local function advance(budget)
 		return
 	end
 
-	local ok, err = pcall(runStep, job, budget)
+	local ok, err = pcall(job.source == "navmesh" and runNavStep or runStep, job, budget)
 
 	if not ok then
 		failed(err)
@@ -436,7 +653,8 @@ local function advance(budget)
 		return
 	end
 
-	if job.taken >= job.total then
+	-- a navmesh job still listing its points has no total yet
+	if not job.listing and job.taken >= job.total then
 		ok, err = pcall(finishJob, job)
 
 		if not ok then
@@ -446,7 +664,7 @@ local function advance(budget)
 		return
 	end
 
-	st.done = job.taken
+	st.done, st.total = job.taken, job.total
 	announce(false)
 end
 
@@ -471,9 +689,10 @@ local function startInner(sync)
 	local Z = GryMod.ZoneMap
 	local map = ZS.MapName()
 	local size = ZS.BspSize(map) or 0
-	local path = pathFor(map, size)
+	local source = chooseSource(false)
+	local path = pathFor(map, size, source)
 
-	st.path, st.bsp = path, size
+	st.path, st.bsp, st.source = path, size, source
 
 	-- the file of this exact map: read with one call, valid when its bsp size is the one of the map (when both are known)
 	local bytes = ZS.ReadFile(path)
@@ -487,6 +706,33 @@ local function startInner(sync)
 
 			return
 		end
+	end
+
+	if source == "navmesh" then
+		local ok, areas = pcall(ZS.NavAreas)
+
+		if not ok or type(areas) ~= "table" or #areas == 0 then
+			st.reason = ok and "no nav area" or tostring(areas)
+			ZS.Log("the navmesh areas cannot be read (" .. st.reason .. "): no in/out map for this level")
+			setState(STATE.NO_GRAPH, 0, 0)
+
+			return
+		end
+
+		-- the list of the points is made in the frames too (listing), the total of the progress is known when it is complete
+		st.job = {
+			source = "navmesh", areas = areas, nAreas = #areas, ai = 1, listing = true, np = 0, px = {}, py = {}, pz = {}, seen = {},
+			nodeCount = #areas, ground = #areas, total = 0, over = false,
+			taken = 0, skipped = 0, samples = {}, steps = 0, seconds = 0
+		}
+
+		setState(STATE.COMPUTING, 0, 0)
+
+		if not sync then
+			hook.Add("Think", HOOK, onThink)
+		end
+
+		return
 	end
 
 	local graph, reason = ZS.Graph(map)
@@ -535,7 +781,7 @@ end
 local function start(sync)
 	cancelJob()
 	st.started = true
-	st.map, st.bytes, st.reason, st.stats = nil, nil, nil, nil
+	st.map, st.bytes, st.reason, st.stats, st.source = nil, nil, nil, nil, nil
 	setState(STATE.WAITING, 0, 0, true) -- seen only by the graph reader: the real answer follows at once
 
 	local ok, err = pcall(startInner, sync)
@@ -585,6 +831,7 @@ end
 function ZS.Unload()
 	cancelJob()
 	st.map, st.bytes, st.reason, st.stats, st.path, st.bsp, st.sentAt = nil, nil, nil, nil, nil, nil, nil
+	st.source, st.navLogged = nil, nil
 	st.started = false
 	st.state, st.done, st.total = STATE.WAITING, 0, 0
 end
@@ -597,7 +844,7 @@ function ZS.RunNow(budgetMs, fresh)
 
 		local map = ZS.MapName()
 
-		pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0))
+		pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0, chooseSource(true)))
 	end
 
 	start(true)
@@ -611,15 +858,29 @@ function ZS.RunNow(budgetMs, fresh)
 	return st.state
 end
 
--- Reset(): the file and the map in memory are deleted, a computation that runs is cancelled, and it starts again
+-- Reset(): the file of the CURRENT source (the other source's file stays) and the map in memory are deleted, a computation that runs is cancelled, and it starts again
 function ZS.Reset()
 	cancelJob()
 	st.map, st.bytes = nil, nil
 
 	local map = ZS.MapName()
 
-	pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0))
+	pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0, chooseSource(true)))
 	start(false)
+end
+
+-- Source() -> "nodes" | "navmesh": the source of the last start, or the one the setting and the level would choose now
+function ZS.Source()
+	return st.source or chooseSource(true)
+end
+
+-- the source setting changed: the start begins again with the other source (its file is read when it is there). Nothing while the in/out map is off.
+function ZS.OnSource(old, new)
+	if tobool(old) == tobool(new) or not switch:GetBool() then
+		return
+	end
+
+	ZS.Start()
 end
 
 -- the switch changed: on starts, off stops and forgets
@@ -641,6 +902,10 @@ end
 
 cvars.AddChangeCallback("gry_zonemap", function(_, old, new)
 	ZS.OnSwitch(old, new)
+end, HOOK)
+
+cvars.AddChangeCallback("gry_zonemap_navmesh", function(_, old, new)
+	ZS.OnSource(old, new)
 end, HOOK)
 
 -- ---------------------------------------------------------------------------------------------------------

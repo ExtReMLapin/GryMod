@@ -8,7 +8,7 @@
 
 local WHITELIST = {
 	"gry_cloak_ai", "gry_drown_rules", "gry_energy_net", "gry_grenade_armed_only", "gry_health_regen", "gry_infinite_armor", "gry_malfunction",
-	"gry_mechanics", "gry_movement", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
+	"gry_mechanics", "gry_movement", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap", "gry_zonemap_navmesh"
 }
 
 local saved = {}

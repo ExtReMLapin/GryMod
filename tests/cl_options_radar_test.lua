@@ -90,14 +90,14 @@ local function asAdmin(isAdmin, fn)
 	end
 end
 
-local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"}
+local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_zonemap", "gry_zonemap_navmesh"}
 
 -- what must not be in the Config menu any more: the settings of the radar, the compass and the maps
 local RADAR_CONVARS = {
 	"gry_hud_radar", "gry_hud_radarunits", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
 	"gry_minimap_below", "gry_minimap_outside", "gry_minimap_cache_mb", "gry_minimap_tile", "gry_minimap_budget_ms", "gry_radar_range",
 	"gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_zoom_delay", "gry_zonemap_debug",
-	"gry_zonemap_debug_range", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
+	"gry_zonemap_debug_range", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap", "gry_zonemap_navmesh"
 }
 
 return {
@@ -237,10 +237,30 @@ return {
 					"admin:gry_radar_allies_always",
 					"admin:gry_radar_objects",
 					"admin:gry_zonemap",
+					"admin:gry_zonemap_navmesh",
 					"admin:action:gry_zonemap_reset"
 				}
 
 				expect(table.concat(markers(state.panel), "\n")).to.equal(table.concat(expected, "\n"))
+			end
+		},
+		{
+			-- breaks if: the source setting is a slider or a convar control, has another label, or is placed anywhere but right after gry_zonemap (it is asked through the server)
+			name = "the in/out map source is a check box asked through the server (no convar written from the client), labelled as agreed, right after the gry_zonemap check box",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				local control = state.panel.GryAdminControls["gry_zonemap_navmesh"]
+
+				expect(control ~= nil).to.beTrue()
+				expect(control.ClassName).to.equal("DCheckBoxLabel")
+				expect(control:GetText()).to.equal("In/out map: make it from the map's navigation mesh (off: from the AI node graph)")
+				expect(control.Button:GetTable().m_strConVar).to.beNil()
+
+				local order = markers(state.panel)
+
+				expect(indexOf(order, "admin:gry_zonemap_navmesh")).to.equal(indexOf(order, "admin:gry_zonemap") + 1)
 			end
 		},
 		{
@@ -308,7 +328,7 @@ return {
 								buttons[#buttons + 1] = p:GetText()
 								flags[#flags + 1] = (p.GryMinimapClear and "clear" or "") .. (p.GryZoneMapReset and "reset" or "")
 							elseif p.ClassName == "DCheckBoxLabel" then
-								-- a check box is a setting: a convar of the player, or one of the three settings of the server
+								-- a check box is a setting: a convar of the player, or one of the four settings of the server
 								expect(p.GryMinimapClear).to.beNil()
 								expect(p.GryZoneMapReset).to.beNil()
 
@@ -545,8 +565,8 @@ return {
 			end
 		},
 		{
-			-- breaks if: one of the three server boxes is enabled for a player who is not an admin, or sends
-			name = "for a player who is not an administrator the three server check boxes are disabled with the tooltip and send nothing; the other controls stay as they are",
+			-- breaks if: one of the four server boxes is enabled for a player who is not an admin, or sends
+			name = "for a player who is not an administrator the four server check boxes are disabled with the tooltip and send nothing; the other controls stay as they are",
 			func = function(state)
 				asAdmin(false, function()
 					state.panel = vgui.Create("ControlPanel")
@@ -580,7 +600,7 @@ return {
 		},
 		{
 			-- breaks if: a server box does not send the white-listed name, or sends a convar write
-			name = "for an administrator the three server check boxes are enabled and send the name and the value through the one net message, and no convar is written from the client",
+			name = "for an administrator the four server check boxes are enabled and send the name and the value through the one net message, and no convar is written from the client",
 			func = function(state)
 				asAdmin(true, function()
 					state.panel = vgui.Create("ControlPanel")

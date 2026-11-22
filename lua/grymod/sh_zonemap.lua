@@ -753,8 +753,9 @@ end
 -- Key
 -- ---------------------------------------------------------------------------------------------------------------------------------
 
--- Key(map, bspSize) -> "<map>_<bspSize>_v1": lower case, every byte outside a-z 0-9 _ - . replaced by "_" (a non string or empty map gives "unknown", a bad size 0)
-function ZM.Key(map, bspSize)
+-- Key(map, bspSize, source) -> "<map>_<bspSize>_v1": lower case, every byte outside a-z 0-9 _ - . replaced by "_" (a non string or empty map gives "unknown", a bad size 0).
+-- `source` is optional: "navmesh" (the map made from the nav areas) appends "_navmesh"; nil, "nodes" and anything else give the key of the node files, unchanged.
+function ZM.Key(map, bspSize, source)
 	if type(map) ~= "string" or map == "" then
 		map = "unknown"
 	end
@@ -764,4 +765,5 @@ function ZM.Key(map, bspSize)
 	end
 
 	return string.gsub(string.lower(map), "[^a-z0-9_%-%.]", "_") .. "_" .. string.format("%d", floor(bspSize)) .. "_v" .. ZM.FORMAT_VERSION
+		.. (source == "navmesh" and "_navmesh" or "")
 end

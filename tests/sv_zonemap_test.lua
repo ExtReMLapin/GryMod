@@ -12,8 +12,8 @@ local HOOK = "GryMod zonemap"
 local MAPNAME = "grymod_test_zonemap"
 local BSP = 1234
 local ORIGINAL = {} -- the real fields of ZS, taken once
-local FIELDS = {"Trace", "Graph", "Clock", "ReadFile", "WriteFile", "DeleteFile", "BspSize", "MapName", "Now", "Log", "OnSwitch"}
-local CONVARS = {"gry_zonemap", "gry_zonemap_budget_ms", "gry_zonemap_max_nodes"}
+local FIELDS = {"Trace", "Graph", "Clock", "ReadFile", "WriteFile", "DeleteFile", "BspSize", "MapName", "Now", "Log", "OnSwitch", "NavAreas", "NavCount", "OnSource"}
+local CONVARS = {"gry_zonemap", "gry_zonemap_budget_ms", "gry_zonemap_max_nodes", "gry_zonemap_navmesh"}
 local CONVAR_ORIGINAL = {}
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -127,6 +127,7 @@ local function cleanup()
 	if ZS then
 		-- a convar put back must not start anything: the switch's callback does nothing while the stand-ins go away
 		ZS.OnSwitch = noop
+		ZS.OnSource = noop
 
 		pcall(ZS.Cancel)
 	end
@@ -303,6 +304,7 @@ local function useFakes(spec, graph)
 
 	stubNet()
 	stub(ZS, "OnSwitch", noop)
+	stub(ZS, "OnSource", noop)
 	stub(ZS, "MapName", function() return MAPNAME end)
 	stub(ZS, "BspSize", function() return BSP end)
 	stub(ZS, "ReadFile", function(path) return disk[path] end)
@@ -327,6 +329,8 @@ local function useFakes(spec, graph)
 	setConvar("gry_zonemap", "1")
 	setConvar("gry_zonemap_budget_ms", "2")
 	setConvar("gry_zonemap_max_nodes", "20000")
+	-- these cases are about the node source: the navmesh of the test game does not count (the navmesh source has its own file, sv_zonemap_navmesh_test.lua)
+	setConvar("gry_zonemap_navmesh", "0")
 	ZS.Unload()
 end
 
@@ -1339,6 +1343,7 @@ return {
 			-- only the clock and the net are replaced; the trace, the graph, the files and the map are the real ones
 			stubNet()
 			stub(ZS, "OnSwitch", noop)
+			stub(ZS, "OnSource", noop)
 
 			for _, f in ipairs({"Trace", "Graph", "Clock", "ReadFile", "WriteFile", "DeleteFile", "BspSize", "MapName", "Now", "Log"}) do
 				stub(ZS, f, ORIGINAL[f])
@@ -1347,6 +1352,7 @@ return {
 			setConvar("gry_zonemap", "1")
 			setConvar("gry_zonemap_budget_ms", "2")
 			setConvar("gry_zonemap_max_nodes", "20000")
+			setConvar("gry_zonemap_navmesh", "0")
 
 			local graph = GryMod.AIN.Load(game.GetMap())
 

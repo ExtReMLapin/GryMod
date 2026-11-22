@@ -36,7 +36,7 @@ end
 local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DNumSlider = true, DBinder = true, DColorMixer = true}
 
 -- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
-local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_zonemap = true}
+local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_zonemap = true, gry_zonemap_navmesh = true}
 
 return {
 	groupName = "GryMod administrators' settings (options panel)",
@@ -527,7 +527,7 @@ return {
 		},
 		{
 			-- breaks if: a setting of the white list is in neither menu, or in both (the radar ones moved, the others stayed)
-			name = "the Config menu and the Radar and map menu together hold every setting of the white list exactly once, and the radar menu holds the three radar ones",
+			name = "the Config menu and the Radar and map menu together hold every setting of the white list exactly once, and the radar menu holds the four radar ones",
 			func = function()
 				local config, radar = newPanel(), newPanel()
 				local ok, err = pcall(function()
@@ -552,7 +552,7 @@ return {
 					end
 
 					table.sort(names)
-					expect(table.concat(names, ",")).to.equal("action:gry_zonemap_reset,gry_radar_allies_always,gry_radar_objects,gry_zonemap")
+					expect(table.concat(names, ",")).to.equal("action:gry_zonemap_reset,gry_radar_allies_always,gry_radar_objects,gry_zonemap,gry_zonemap_navmesh")
 				end)
 				config:Remove()
 				radar:Remove()

@@ -2067,7 +2067,7 @@ return {
 
 				expect(control ~= nil).to.beTrue()
 				expect(control.ClassName).to.equal("DCheckBoxLabel")
-				expect(control:GetText()).to.equal("In/out map: the server makes it from the node graph (the automatic zoom and other features use it)")
+				expect(control:GetText()).to.equal("In/out map: the server makes it (the automatic zoom and other features use it)")
 				expect(control.Button:GetTable().m_strConVar).to.beNil()
 
 				local box = resetButton(state.panel)

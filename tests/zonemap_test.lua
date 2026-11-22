@@ -1381,6 +1381,23 @@ return {
 			end
 		},
 		{
+			-- fails if the navmesh source does not add "_navmesh" to the key, if the nodes source (or none, or a word that is not a source) changes the old key, or if the
+			-- suffix is not added after the version (the node files of the owner stay valid under the same names)
+			name = "Key: the optional third parameter: \"navmesh\" appends _navmesh, nil, \"nodes\" and anything else give the old key exactly",
+			func = function()
+				local z = Z()
+
+				expect(z.Key("gm_funkis", 12345678, "navmesh")).to.equal("gm_funkis_12345678_v1_navmesh")
+				expect(z.Key("GM_BigCity", 5, "navmesh")).to.equal("gm_bigcity_5_v1_navmesh")
+				expect(z.Key(nil, nil, "navmesh")).to.equal("unknown_0_v1_navmesh")
+				expect(z.Key("gm_funkis", 12345678, nil)).to.equal("gm_funkis_12345678_v1")
+				expect(z.Key("gm_funkis", 12345678, "nodes")).to.equal("gm_funkis_12345678_v1")
+				expect(z.Key("gm_funkis", 12345678, "other")).to.equal("gm_funkis_12345678_v1")
+				expect(z.Key("gm_funkis", 12345678, 42)).to.equal("gm_funkis_12345678_v1")
+				expect(z.Key("gm_funkis", 12345678, "navmesh") ~= z.Key("gm_funkis", 12345678)).to.beTrue()
+			end
+		},
+		{
 			-- fails if Build is slower than 250 ms on 20000 random samples over 400 x 400 cells (the worst case: random states, almost every cell its own box)
 			name = "Performance: Build of 20000 random samples over 400 x 400 cells in under 250 ms",
 			func = function()

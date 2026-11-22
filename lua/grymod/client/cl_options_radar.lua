@@ -36,18 +36,19 @@ local function radarHUDSwitches(Panel)
 	end
 end
 
--- The settings of the server about the radar and the in/out map, for the administrators only: three check boxes (a request to the server each) and the
+-- The settings of the server about the radar and the in/out map, for the administrators only: four check boxes (a request to the server each) and the
 -- button that deletes the in/out map and makes it again (the server checks the right again).
 local function serverOptions(Panel)
 	GryMod.AdminUI.Section(Panel, "Server (administrators only)")
 
 	GryMod.AdminOption(Panel, "Radar: allies (NPCs that like you) show in blue from the start (off: only when alerted, fighting or scanned)", "gry_radar_allies_always", "bool")
 	GryMod.AdminOption(Panel, "Radar: vehicles and Combine mines show once the binoculars have scanned them", "gry_radar_objects", "bool")
-	GryMod.AdminOption(Panel, "In/out map: the server makes it from the node graph (the automatic zoom and other features use it)", "gry_zonemap", "bool")
+	GryMod.AdminOption(Panel, "In/out map: the server makes it (the automatic zoom and other features use it)", "gry_zonemap", "bool")
+	GryMod.AdminOption(Panel, "In/out map: make it from the map's navigation mesh (off: from the AI node graph)", "gry_zonemap_navmesh", "bool")
 
 	local reset = GryMod.AdminOption(Panel, "Delete the in/out map and make it again", nil, "action", {
 		message = "gry_zonemap_reset",
-		confirm = "Delete the in/out map of this map and make it again? The server computes it again from the node graph; the automatic zoom uses its own rays meanwhile."
+		confirm = "Delete the in/out map of this map and make it again? The server computes it again from the map's navigation mesh or its node graph (the box above); the automatic zoom uses its own rays meanwhile."
 	})
 
 	reset.GryZoneMapReset = true
