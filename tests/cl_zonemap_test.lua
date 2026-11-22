@@ -852,6 +852,64 @@ return {
 			end
 		},
 		{
+			-- the owner's decision (2026-11-22): while the server waits for the navigation mesh (state 2) the engine gives no progress, so the radar must not show a
+			-- percentage: Loading's third answer is the phase, "wait" for the state 2 and "percent" for everything else (asking, computing, the file on its way).
+			-- Breaks if the state 2 gives "percent" (the veil would show "In/out 0%" again), if the phase is missing, if state 3 is "wait", or if the grace changes
+			name = "Loading: the third answer is the phase: 'wait' for the state 2 (no percentage to show), 'percent' for the asking, the state 3 and the file on its way; the grace is the same and 2 to 3 keeps it",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local realTimer, realWant = Z.Timer, Z.Want
+
+				local ok, err = pcall(function()
+					Z.Timer, Z.Want = function() end, function() end
+
+					-- the first answer is awaited: a percentage (0), as before
+					Z.Reset()
+					Z.AskUntilAnswered()
+					Z.Loading() -- the grace starts at the first look
+					state.now = state.now + 0.3
+					local loading, percent, phase = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(percent).to.equal(0)
+					expect(phase).to.equal("percent")
+
+					-- the server waits for the navigation mesh: the veil, the phase "wait"
+					Z.OnState(2, 0, 0)
+					loading, percent, phase = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(phase).to.equal("wait")
+
+					-- it computes: the percentage again; the grace was counted once (no new quarter of a second)
+					Z.OnState(3, 41, 100)
+					loading, percent, phase = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(percent).to.equal(41)
+					expect(phase).to.equal("percent")
+
+					-- the file is on its way: a percentage
+					Z.OnState(4, 10, 10)
+					loading, percent, phase = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(phase).to.equal("percent")
+
+					-- a state 2 on a fresh start still has the grace of a quarter of a second (a map found in a few frames does not flash the veil)
+					Z.Reset()
+					Z.OnState(2, 0, 0)
+					expect(Z.Loading()).to.beFalse()
+					state.now = state.now + 0.2
+					expect(Z.Loading()).to.beFalse()
+					state.now = state.now + 0.1
+					loading, percent, phase = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(phase).to.equal("wait")
+				end)
+
+				Z.Timer, Z.Want = realTimer, realWant
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			-- breaks if the front (the HUD, another addon) is not told of the changes of the in/out map, or if a hook that raises stops the receiver
 			name = "every state message runs the hook GryMod_InOutMapState with the state, done and total, and a hook that raises changes nothing",
 			func = function(state)

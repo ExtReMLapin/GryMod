@@ -681,6 +681,68 @@ return {
 			end
 		},
 		{
+			-- the owner's decision (2026-11-22): while the server waits for the navigation mesh (the engine gives no progress) the veil says "Navigation mesh..." with NO
+			-- percentage; when the server computes, "In/out NN%". Breaks if the wait shows a percentage ("In/out 0%"), if the phase is ignored, if a switch from the wait to the
+			-- computation does not change the text exactly once, or if the same text is applied again at every draw
+			name = "the in/out map waits for the navigation mesh: the veil says 'Navigation mesh...' with no percentage, then 'In/out NN%' once the server computes (text changed once per change)",
+			func = function(state)
+				local realZone = GryMod.ZoneMapClient
+				local zone = {phase = "wait", percent = 0}
+				local ok, err = pcall(function()
+					GryMod.ZoneMapClient = {Loading = function() return true, zone.percent, zone.phase end}
+
+					state.has = true
+					state.progress = {done = 4, total = 4, percent = 100, active = false, failed = 0}
+
+					local panel = newPanel()
+					local texts = {}
+					local real = panel.SetProgressText
+
+					panel.SetProgressText = function(self, text)
+						texts[#texts + 1] = text or false
+
+						return real(self, text)
+					end
+
+					panel:Draw(0, 0, 1)
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("Navigation mesh...")
+					expect(string.find(panel.progressText, "%", 1, true)).to.beNil()
+					expect(panel.zone:Child("Zone").text).to.equal("Navigation mesh...")
+					expect(panel.main:Child("Noise").visible).to.beTrue()
+					expect(#texts).to.equal(1)
+
+					-- the server computes: the percentage, one change
+					zone.phase, zone.percent = "percent", 0
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("In/out 0%")
+					expect(#texts).to.equal(2)
+					panel:Draw(0, 0, 1)
+					expect(#texts).to.equal(2)
+
+					zone.percent = 41
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("In/out 41%")
+					expect(#texts).to.equal(3)
+
+					-- back to the wait (a new start): the label alone again
+					zone.phase, zone.percent = "wait", 0
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("Navigation mesh...")
+					expect(#texts).to.equal(4)
+
+					-- no phase given (a module that only answers the percentage): the percentage, as before
+					GryMod.ZoneMapClient = {Loading = function() return true, 12 end}
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("In/out 12%")
+				end)
+
+				GryMod.ZoneMapClient = realZone
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "the tile looked up is the one under the player: its level id, the tile of the position, the settings' resolution and definition",
 			func = function(state)
 				state.has = false

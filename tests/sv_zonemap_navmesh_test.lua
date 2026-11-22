@@ -1011,7 +1011,7 @@ return {
 		-- The engine can answer "0 areas" at the start of a map whose .nav file exists (a Workshop map: the file is in the map's GMA) and have the navmesh some
 		-- seconds later. The choice of the source must not give up at the first 0 when the file is there.
 		-- breaks if: the choice goes back to "0 areas means nodes": the state would be 3 (the nodes) at once, with no timer
-		case("0 areas at the start, but the map's .nav file exists and there is no cache file: the source is the navmesh, the state is 2 (waiting), nothing is computed, a poll timer every 0.5 s runs and the wait is logged once", function()
+		case("0 areas at the start, but the map's .nav file exists and there is no cache file: the source is the navmesh, the state is 2 (waiting), nothing is computed, a poll timer every 0.1 s runs and the wait is logged once", function()
 			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
 			navNow, fileExists = 0, true
 			recordSamples()
@@ -1023,11 +1023,13 @@ return {
 			expect(navCalls).to.equal(0)
 			expect(graphCalls).to.equal(0)
 			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
-			expect(timers[NAV_TIMER].delay).to.equal(0.5)
+			-- breaks if: the poll goes back to every 0.5 s (a map would be seen up to half a second late)
+			expect(ZS.NAV_POLL).to.equal(0.1)
+			expect(timers[NAV_TIMER].delay).to.equal(0.1)
 			expect(timers[NAV_TIMER].reps).to.equal(0)
 			expect(timerCreates).to.equal(1)
 			expect(#logs).to.equal(1)
-			expect(string.find(logs[1], "waiting for the navigation mesh (the file exists): checking every 0.5 s", 1, true) ~= nil).to.beTrue()
+			expect(string.find(logs[1], "waiting for the navigation mesh (the file exists): checking every 0.1 s", 1, true) ~= nil).to.beTrue()
 
 			-- the clients are told once (the radar veils on the state 2)
 			local list = stateMessages()
@@ -1095,24 +1097,28 @@ return {
 			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
 		end),
 		-- breaks if: the timeout is ignored (the wait would go on for ever), the timer is left behind, or the nodes are not used
-		case("the count stays 0 for 20 s: the timer is removed, 'the navigation mesh did not load in 20 s' is logged and the map is made from the nodes", function()
+		-- (the patience is a safety net of 60 s, the owner's decision of 2026-11-22; breaks if it goes back to 20 s: the wait would end at 30 s on the fake clock)
+		case("the count stays 0 for 60 s: the timer is removed, 'the navigation mesh did not load in 60 s' is logged and the map is made from the nodes", function()
 			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
 			navNow, fileExists = 0, true
-			expect(ZS.NAV_WAIT_MAX).to.equal(20)
+			expect(ZS.NAV_WAIT_MAX).to.equal(60)
 			nowT = 10
 			ZS.Start()
-			nowT = 29.5
+			nowT = 30 -- 20 s: the old patience is over, the new one is not
 			timers[NAV_TIMER].fn()
-			expect((ZS.State())).to.equal(2) -- 19.5 s: still waiting
+			expect((ZS.State())).to.equal(2)
+			nowT = 69
+			timers[NAV_TIMER].fn()
+			expect((ZS.State())).to.equal(2) -- 59 s: still waiting
 			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
 			expect(ZS.Source()).to.equal("navmesh")
 
-			nowT = 30
+			nowT = 70
 			timers[NAV_TIMER].fn()
 			expect(timers[NAV_TIMER]).to.beNil()
 			expect(#timerRemoves).to.equal(1)
 			expect(#logs).to.equal(2)
-			expect(logs[2]).to.equal("the navigation mesh did not load in 20 s: the in/out map is made from the AI node graph")
+			expect(logs[2]).to.equal("the navigation mesh did not load in 60 s: the in/out map is made from the AI node graph")
 			expect(ZS.Source()).to.equal("nodes")
 			expect((ZS.State())).to.equal(3)
 			expect(graphCalls).to.equal(1)

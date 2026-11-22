@@ -357,8 +357,9 @@ end
 
 -- The veil and the text that say the map is being made: only changes are applied (the state lives in the panel, which is rebuilt at
 -- every death; `present` nil means nothing was asked yet, which is the same as present).
--- `label` (optional) goes before the percentage: the in/out map's loading is shown as "In/out 40%", the tiles' own as "40%".
-function Panel:_mapProgress(present, percent, label)
+-- `label` (optional) goes before the percentage: the in/out map's loading is shown as "In/out 40%", the tiles' own as "40%". `noPercent` (optional, with a label)
+-- shows the label alone, "Navigation mesh...": a wait that has no progress to tell.
+function Panel:_mapProgress(present, percent, label, noPercent)
 	if present then
 		if self.mapPresent == false then
 			self.mapPresent = true
@@ -378,15 +379,24 @@ function Panel:_mapProgress(present, percent, label)
 		self:SetNoise(Radar.MAP_VEIL, true)
 	end
 
+	if noPercent and label then
+		percent = nil -- the text has no number: only the label can change it
+	end
+
 	if self.mapPercent ~= percent or self.mapLabel ~= label then
 		self.mapPercent = percent
 		self.mapLabel = label
-		self:SetProgressText(label and (label .. " " .. percent .. "%") or (percent .. "%"))
+
+		if percent == nil then
+			self:SetProgressText(label .. "...")
+		else
+			self:SetProgressText(label and (label .. " " .. percent .. "%") or (percent .. "%"))
+		end
 	end
 end
 
 -- Whether the in/out map of the server is still being waited for (cl_zonemap.lua), and its percentage. A missing module or one that raises is "no": then the
--- tiles decide, as before.
+-- tiles decide, as before. The third answer is the phase ("wait": the server waits for the navigation mesh, no percentage; anything else: a percentage).
 local function inOutLoading()
 	local Zone = GryMod.ZoneMapClient
 
@@ -394,10 +404,10 @@ local function inOutLoading()
 		return false
 	end
 
-	local ok, loading, percent = pcall(Zone.Loading)
+	local ok, loading, percent, phase = pcall(Zone.Loading)
 
 	if ok and loading then
-		return true, percent
+		return true, percent, phase
 	end
 
 	return false
@@ -624,10 +634,15 @@ local function drawMap(self, x, y, scale)
 
 	-- the in/out map comes first: the radar is veiled from the moment the player is in the game until the server has made it and sent it (the server's percentage),
 	-- then the veil is the tiles' own (the client's percentage), as before
-	local inOut, inOutPercent = inOutLoading()
+	local inOut, inOutPercent, inOutPhase = inOutLoading()
 
 	if inOut then
-		self:_mapProgress(false, inOutPercent, "In/out")
+		if inOutPhase == "wait" then
+			-- the server waits for the navigation mesh: the engine gives no progress, so no percentage
+			self:_mapProgress(false, 0, "Navigation mesh", true)
+		else
+			self:_mapProgress(false, inOutPercent, "In/out")
+		end
 	elseif covered then
 		self:_mapProgress(true)
 	else

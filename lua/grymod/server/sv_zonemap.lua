@@ -20,8 +20,9 @@
 -- changing the setting reads the file of the other source when it is there, and makes it otherwise; Reset deletes the file of the CURRENT source only.
 -- A navmesh that loads late: on a map from the Workshop the engine can still answer "0 areas" when the map starts, although the map ships its .nav file (the mesh is
 -- there some seconds later). So "0 areas" is not "no navmesh" while maps/<map>.nav exists: the source stays "navmesh" and (unless the cache file of the navmesh is
--- valid: a file is read with no navmesh) the module WAITS in state 2 with a poll timer (every 0.5 s, at most NAV_WAIT_MAX = 20 s), removed as soon as the wait ends;
--- when the count is above 0 it logs the time it took and computes; after 20 s it makes the map from the nodes. No .nav file: the nodes at once.
+-- valid: a file is read with no navmesh) the module WAITS in state 2 with a poll timer (every NAV_POLL = 0.1 s, at most NAV_WAIT_MAX = 60 s: a safety net, the wait normally ends when the engine has loaded the mesh, a
+-- big Workshop map took 12 s), removed as soon as the wait ends; when the count is above 0 it logs the time it took and computes; after 60 s it makes the map from
+-- the nodes. The engine gives no progress for this wait: the clients show "Navigation mesh..." with no percentage. No .nav file: the nodes at once.
 -- Cost: NO permanent hook. The computation adds a Think hook when it starts and removes it when it ends; a frame works until the budget in milliseconds is used
 -- (the clock is read after each node, or after each sample, or after each nav area while the points are listed, never inside the 13 rays of one node) and the tables
 -- of the rays are made once. One map is a few hundred bytes to a few KB.
@@ -106,8 +107,8 @@ function ZS.NavFileExists(map)
 end
 
 -- the poll timer of the wait for a navmesh that loads late (replaced by the tests)
-ZS.NAV_WAIT_MAX = 20 -- seconds
-ZS.NAV_POLL = 0.5 -- seconds between two polls
+ZS.NAV_WAIT_MAX = 60 -- seconds: only a safety net (the wait ends as soon as the engine has the navmesh)
+ZS.NAV_POLL = 0.1 -- seconds between two polls
 local NAV_TIMER = "GryMod zonemap navwait"
 
 function ZS.TimerCreate(name, delay, reps, fn)
@@ -722,7 +723,7 @@ end
 local startSource
 
 -- the poll of the wait for a navmesh that loads late: the count above 0 ends the wait (the time it took is logged) and the computation starts with the navmesh;
--- 20 seconds with no navmesh end it with the nodes. Called by the timer (through pcall: an error is the failed state, not a timer that raises for ever).
+-- NAV_WAIT_MAX seconds with no navmesh end it with the nodes. Called by the timer (through pcall: an error is the failed state, not a timer that raises for ever).
 function ZS.NavWaitPoll()
 	local wait = st.navWait
 
@@ -759,7 +760,7 @@ end
 -- the wait: state 2 (the clients' radar veils), one log line, a poll timer that the end of the wait removes
 local function beginNavWait(sync)
 	st.navWait = {t0 = ZS.Now(), sync = sync}
-	ZS.Log("waiting for the navigation mesh (the file exists): checking every 0.5 s")
+	ZS.Log(string.format("waiting for the navigation mesh (the file exists): checking every %g s", ZS.NAV_POLL))
 	setState(STATE.WAITING, 0, 0)
 	ZS.TimerCreate(NAV_TIMER, ZS.NAV_POLL, 0, function()
 		ZS.NavWaitPoll()

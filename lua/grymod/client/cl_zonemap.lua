@@ -303,18 +303,20 @@ end
 -- Whether the radar should be veiled because the in/out map is not there yet, and the percentage to show: the client is waiting for the server's first answer (from
 -- the moment it asks, for as long as the asks go on: RETRY_EVERY * RETRY_MAX seconds), the server waits or computes (state 2, 3: its percentage), or the server says the
 -- map is ready and the file is on its way (state 4, 5 with no map yet and no refusal). Nothing to wait for when it is off, there is no graph or it failed (0, 1, 6), or
--- when the map is held. A grace of a quarter of a second: a map made in a few frames does not flash the veil. Returns false, or true and a whole percentage.
+-- when the map is held. A grace of a quarter of a second: a map made in a few frames does not flash the veil. Returns false, or true, a whole percentage and the
+-- PHASE of the wait: "wait" while the server waits for the navigation mesh (state 2: the engine gives no progress, so there is no percentage to show), "percent"
+-- for everything else (the first answer awaited, the server computing, the file on its way).
 local GRACE = 0.25
 
 function Z.Loading()
 	local now = Z.Clock()
 	local state = S.state
-	local wanted, percent = false, 0
+	local wanted, percent, phase = false, 0, "percent"
 
 	if state == nil then
 		wanted = S.askedAt ~= nil and now - S.askedAt < RETRY_EVERY * RETRY_MAX
 	elseif state == 2 then
-		wanted = true
+		wanted, phase = true, "wait"
 	elseif state == 3 then
 		wanted = true
 
@@ -337,7 +339,7 @@ function Z.Loading()
 		return false
 	end
 
-	return true, percent
+	return true, percent, phase
 end
 
 -- when the file loads (a new map, or a reload in the game)
