@@ -1,4 +1,4 @@
--- Tests of the indoor / outdoor map (lua/grymod/sh_zonemap.lua, GryMod.ZoneMap), GLuaTest format, SHARED: the same file runs in the client realm and in the
+-- Tests of the in/out map (lua/grymod/sh_zonemap.lua, GryMod.ZoneMap), GLuaTest format, SHARED: the same file runs in the client realm and in the
 -- server realm. The module is pure (no engine call), so everything here runs for real. Three things are written here independently of the module so that
 -- a wrong module cannot hide behind a wrong test: a brute-force reference of the build steps 1 to 3 (strings as keys, scans over all the known cells), the
 -- expansion of boxes into cells, and a byte encoder for the file format.

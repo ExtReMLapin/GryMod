@@ -1,4 +1,4 @@
--- The indoor / outdoor map made by the SERVER (design: docs/superpowers/specs/2026-11-22-zonemap-design.md). On the start of a map it looks for the
+-- The in/out map made by the SERVER (design: docs/superpowers/specs/2026-11-22-zonemap-design.md). On the start of a map it looks for the
 -- file of that exact map in data/grymod/zonemap and, when there is none, makes the map from the engine's node graph (GryMod.AIN): 13 rays at each ground node
 -- (5 up, 8 around) say whether the place is under a ceiling and narrow (indoor) and how high the ceiling is (a class of the minimap's levels); the pure module
 -- GryMod.ZoneMap (sh_zonemap.lua) turns the samples into boxes, writes and reads the file. The clients get the state and the file through four net messages:
@@ -49,11 +49,11 @@ local UP_DX = {0, 48, -48, 0, 0}
 local UP_DY = {0, 0, 0, 48, -48}
 
 local switch = CreateConVar("gry_zonemap", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
-	"The server makes an indoor / outdoor map of the level from its node graph and sends it to the players (the automatic zoom of the radar uses it); 0 turns it off")
+	"The server makes an in/out map of the level from its node graph and sends it to the players (the automatic zoom of the radar uses it); 0 turns it off")
 local budgetVar = CreateConVar("gry_zonemap_budget_ms", "2", FCVAR_ARCHIVE,
-	"Milliseconds of rays per server frame while the indoor / outdoor map is made (0.5 to 10)", 0.5, 10)
+	"Milliseconds of rays per server frame while the in/out map is made (0.5 to 10)", 0.5, 10)
 local maxNodesVar = CreateConVar("gry_zonemap_max_nodes", "20000", FCVAR_ARCHIVE,
-	"A graph with more ground nodes than this makes the indoor / outdoor map from the first ones only, flagged incomplete", 1)
+	"A graph with more ground nodes than this makes the in/out map from the first ones only, flagged incomplete", 1)
 
 -- the state of the module; it survives a hot reload of this file (a computation that runs goes on with the new code)
 local st = ZS.st or {}
@@ -456,7 +456,7 @@ end
 
 local function noGraph(reason)
 	st.reason = reason
-	ZS.Log("no usable node graph (" .. tostring(reason) .. "): no indoor / outdoor map for this level")
+	ZS.Log("no usable node graph (" .. tostring(reason) .. "): no in/out map for this level")
 	setState(STATE.NO_GRAPH, 0, 0)
 end
 

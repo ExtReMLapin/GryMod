@@ -357,11 +357,13 @@ end
 
 -- The veil and the text that say the map is being made: only changes are applied (the state lives in the panel, which is rebuilt at
 -- every death; `present` nil means nothing was asked yet, which is the same as present).
-function Panel:_mapProgress(present, percent)
+-- `label` (optional) goes before the percentage: the in/out map's loading is shown as "In/out 40%", the tiles' own as "40%".
+function Panel:_mapProgress(present, percent, label)
 	if present then
 		if self.mapPresent == false then
 			self.mapPresent = true
 			self.mapPercent = nil
+			self.mapLabel = nil
 			self:SetNoise(0)
 			self:SetProgressText(nil)
 		end
@@ -376,10 +378,29 @@ function Panel:_mapProgress(present, percent)
 		self:SetNoise(Radar.MAP_VEIL, true)
 	end
 
-	if self.mapPercent ~= percent then
+	if self.mapPercent ~= percent or self.mapLabel ~= label then
 		self.mapPercent = percent
-		self:SetProgressText(percent .. "%")
+		self.mapLabel = label
+		self:SetProgressText(label and (label .. " " .. percent .. "%") or (percent .. "%"))
 	end
+end
+
+-- Whether the in/out map of the server is still being waited for (cl_zonemap.lua), and its percentage. A missing module or one that raises is "no": then the
+-- tiles decide, as before.
+local function inOutLoading()
+	local Zone = GryMod.ZoneMapClient
+
+	if not Zone or not Zone.Loading then
+		return false
+	end
+
+	local ok, loading, percent = pcall(Zone.Loading)
+
+	if ok and loading then
+		return true, percent
+	end
+
+	return false
 end
 
 -- The pixels of the screen that show one metre of ground: the radar's pixels per metre (PIXELS for the range, as Radar.Contacts places the contacts) times the
@@ -601,7 +622,13 @@ local function drawMap(self, x, y, scale)
 		end
 	end
 
-	if covered then
+	-- the in/out map comes first: the radar is veiled from the moment the player is in the game until the server has made it and sent it (the server's percentage),
+	-- then the veil is the tiles' own (the client's percentage), as before
+	local inOut, inOutPercent = inOutLoading()
+
+	if inOut then
+		self:_mapProgress(false, inOutPercent, "In/out")
+	elseif covered then
 		self:_mapProgress(true)
 	else
 		self:_mapProgress(false, progress and progress.percent)

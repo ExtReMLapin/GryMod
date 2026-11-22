@@ -1,4 +1,4 @@
--- Tests of the client side of the indoor / outdoor map (lua/grymod/client/cl_zonemap.lua, GryMod.ZoneMapClient), GLuaTest format, client realm:
+-- Tests of the client side of the in/out map (lua/grymod/client/cl_zonemap.lua, GryMod.ZoneMapClient), GLuaTest format, client realm:
 -- the receivers (state and chunks of the file), the answer of Indoor, the status line, the notice for an incomplete map, the debug drawing (a hook
 -- that exists only while gry_zonemap_debug is on) and the options panel. The pure module GryMod.ZoneMap is another file: the cases of the receivers
 -- run on a stand-in of it (so that they test only this file), the cases of the section "real module" run on the real one.
@@ -603,6 +603,115 @@ return {
 			end
 		},
 		{
+			-- the radar shows its veil while the in/out map is not there: from the moment the client asks (before any answer), while the server waits or computes (with its
+			-- percentage), and while the file is on its way; not when it is off, has no graph or failed (there is nothing to wait for)
+			name = "Loading: the veil is wanted from the ask until the map is there, with the server's percentage while it computes, and not for states 0, 1 and 6",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local realTimer, realWant = Z.Timer, Z.Want
+
+				local ok, err = pcall(function()
+					Z.Timer, Z.Want = function() end, function() end
+
+					expect(isfunction(Z.Loading)).to.beTrue()
+					-- nothing asked yet (a module that was just reset): nothing to wait for
+					expect(Z.Loading()).to.beFalse()
+
+					Z.AskUntilAnswered()
+					-- the grace of a quarter of a second: no flicker for a map that is made in a few frames
+					expect(Z.Loading()).to.beFalse()
+					state.now = state.now + 0.3
+					expect(Z.Loading()).to.beTrue()
+
+					-- the server waits: still the veil, 0 %
+					Z.OnState(2, 0, 0)
+					local loading, percent = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(percent).to.equal(0)
+
+					-- computing: its percentage (whole, no division by 0)
+					Z.OnState(3, 41, 100)
+					loading, percent = Z.Loading()
+					expect(loading).to.beTrue()
+					expect(percent).to.equal(41)
+					Z.OnState(3, 0, 0)
+					loading, percent = Z.Loading()
+					expect(percent).to.equal(0)
+
+					-- ready but the file has not come: still the veil
+					Z.OnState(4, 10, 10)
+					expect((Z.Loading())).to.beTrue()
+
+					-- the file came: no more veil
+					Z.OnData(0, 1, 4, "ABCD")
+					expect(Z.Loading()).to.beFalse()
+				end)
+
+				if ok then
+					ok, err = pcall(function()
+						-- off, no graph, failed: nothing to wait for
+						for _, s in ipairs({0, 1, 6}) do
+							Z.Reset()
+							Z.AskUntilAnswered()
+							state.now = state.now + 0.3
+							Z.OnState(s, 0, 0)
+							expect(Z.Loading()).to.beFalse()
+						end
+
+						-- a server that never answers: the veil ends with the ask (10 wants, 3 seconds apart)
+						Z.Reset()
+						Z.AskUntilAnswered()
+						Z.Loading() -- the grace starts at the first look
+						state.now = state.now + 0.3
+						expect(Z.Loading()).to.beTrue()
+						state.now = state.now + 31
+						expect(Z.Loading()).to.beFalse()
+					end)
+				end
+
+				Z.Timer, Z.Want = realTimer, realWant
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if the front (the HUD, another addon) is not told of the changes of the in/out map, or if a hook that raises stops the receiver
+			name = "every state message runs the hook GryMod_InOutMapState with the state, done and total, and a hook that raises changes nothing",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local seen = {}
+				local id = "GryMod test inout"
+
+				local ok, err = pcall(function()
+					hook.Add("GryMod_InOutMapState", id, function(s, d, t)
+						seen[#seen + 1] = {s, d, t}
+					end)
+
+					Z.OnState(3, 5, 50)
+					Z.OnState(4, 50, 50)
+					expect(#seen).to.equal(2)
+					expect(seen[1][1]).to.equal(3)
+					expect(seen[1][2]).to.equal(5)
+					expect(seen[1][3]).to.equal(50)
+					expect(seen[2][1]).to.equal(4)
+
+					-- a state that is refused (out of range) runs nothing
+					Z.OnState(9, 0, 0)
+					expect(#seen).to.equal(2)
+
+					-- a hook that raises
+					hook.Add("GryMod_InOutMapState", id .. " bad", function() error("boom") end)
+					expect(function() Z.OnState(2, 0, 0) end).to.succeed()
+					expect((Z.Status())).to.equal(2)
+				end)
+
+				hook.Remove("GryMod_InOutMapState", id)
+				hook.Remove("GryMod_InOutMapState", id .. " bad")
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "bad chunk numbers (count 0, index not under count, length 0, not numbers) are dropped without an error",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
@@ -719,14 +828,14 @@ return {
 				local s = Z.Status()
 
 				expect(s).to.beNil()
-				expect(Z.StatusText()).to.equal("Indoor / outdoor map: not received yet")
+				expect(Z.StatusText()).to.equal("In/out map: not received yet")
 			end
 		},
 		{
 			name = "Status gives state, done, total for each state 0 to 6, and StatusText tells each one",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
-				local PREFIX = "Indoor / outdoor map: "
+				local PREFIX = "In/out map: "
 
 				local wanted = {
 					[0] = "off on this server",
@@ -767,11 +876,11 @@ return {
 				local Z = GryMod.ZoneMapClient
 
 				Z.OnState(3, 1, 3)
-				expect(Z.StatusText()).to.equal("Indoor / outdoor map: computing 33 %")
+				expect(Z.StatusText()).to.equal("In/out map: computing 33 %")
 				Z.OnState(3, 0, 0)
-				expect(Z.StatusText()).to.equal("Indoor / outdoor map: computing 0 %")
+				expect(Z.StatusText()).to.equal("In/out map: computing 0 %")
 				Z.OnState(3, 7, 7)
-				expect(Z.StatusText()).to.equal("Indoor / outdoor map: computing 100 %")
+				expect(Z.StatusText()).to.equal("In/out map: computing 100 %")
 			end
 		},
 		{
@@ -807,7 +916,7 @@ return {
 				Z.OnState(5, 1, 1)
 				expect(#state.notices).to.equal(1)
 				expect(string.find(state.notices[1], "was not made from every node", 1, true) ~= nil).to.beTrue()
-				expect(string.find(state.notices[1], "indoor / outdoor map", 1, true) ~= nil).to.beTrue()
+				expect(string.find(state.notices[1], "in/out map", 1, true) ~= nil).to.beTrue()
 
 				Z.OnState(5, 1, 1)
 				Z.OnData(0, 1, 4, "MAP1")
@@ -1140,13 +1249,13 @@ return {
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.ZoneMapOptions(state.panel)
 
-				expect(hasLabel(state.panel, "Indoor / outdoor map")).to.beTrue()
-				expect(hasLabel(state.panel, "Indoor / outdoor map: computing 42 %")).to.beTrue()
+				expect(hasLabel(state.panel, "In/out map")).to.beTrue()
+				expect(hasLabel(state.panel, "In/out map: computing 42 %")).to.beTrue()
 
 				local box = checkBoxOn(state.panel, DEBUG)
 
 				expect(box ~= nil).to.beTrue()
-				expect(string.find(box:GetText(), "Draw the indoor / outdoor map in the world (debug)", 1, true) == 1).to.beTrue()
+				expect(string.find(box:GetText(), "Draw the in/out map in the world (debug)", 1, true) == 1).to.beTrue()
 				expect(GetConVar(DEBUG):GetString()).to.equal(state.debug)
 			end
 		},
@@ -1182,12 +1291,12 @@ return {
 
 				expect(control ~= nil).to.beTrue()
 				expect(control.ClassName).to.equal("DCheckBoxLabel")
-				expect(control:GetText()).to.equal("Indoor / outdoor map: the server makes it from the node graph (the automatic zoom and other features use it)")
+				expect(control:GetText()).to.equal("In/out map: the server makes it from the node graph (the automatic zoom and other features use it)")
 
 				local button = resetButton(state.panel)
 
 				expect(button ~= nil).to.beTrue()
-				expect(button:GetText()).to.equal("Delete the indoor / outdoor map and make it again")
+				expect(button:GetText()).to.equal("Delete the in/out map and make it again")
 			end
 		},
 		{
@@ -1214,7 +1323,7 @@ return {
 				state.confirmAnswer = false
 				button:DoClick()
 				expect(#state.asked).to.equal(1)
-				expect(string.find(state.asked[1], "Delete the indoor / outdoor map of this map and make it again?", 1, true) == 1).to.beTrue()
+				expect(string.find(state.asked[1], "Delete the in/out map of this map and make it again?", 1, true) == 1).to.beTrue()
 				expect(#state.sent).to.equal(0)
 
 				state.confirmAnswer = true

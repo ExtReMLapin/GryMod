@@ -1,4 +1,4 @@
--- Tests of the SERVER side of the indoor / outdoor map (GryMod.ZoneMapServer, lua/grymod/server/sv_zonemap.lua), GLuaTest format, server realm.
+-- Tests of the SERVER side of the in/out map (GryMod.ZoneMapServer, lua/grymod/server/sv_zonemap.lua), GLuaTest format, server realm.
 -- Design: docs/superpowers/specs/2026-11-22-zonemap-design.md. What the module does: it reads the map's node graph (GryMod.AIN), casts 13 rays at each ground
 -- node (5 up, 8 around) to find out whether the place is under a ceiling and narrow, builds the map (GryMod.ZoneMap, the pure shared module), keeps it in a file
 -- of data/grymod/zonemap, and sends it to the clients through four net messages. Everything the module needs from the engine (the trace, the graph, the files, the

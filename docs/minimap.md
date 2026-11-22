@@ -117,7 +117,9 @@ modes. The three ranges are the player's sliders and nothing ties one to another
   contacts is a later change). A roof made of props is not seen (the rays use the brush mask), the same trap as the floors. Going from a small range
   to a big one shows tiles that may not exist yet (the veil rules above apply).
 
-## The indoor / outdoor map (made by the server)
+## The in/out map (made by the server)
+
+(The in/out map is called `zonemap` in the code: `GryMod.ZoneMap`, `gry_zonemap*`, `sv_zonemap.lua`.)
 
 The automatic zoom has to know whether the player is indoors. The server makes that answer once per map, from the engine's node graph, and sends it to the players;
 the automatic zoom asks it first and only falls back on its own rays where the map says nothing.

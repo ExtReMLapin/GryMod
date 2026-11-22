@@ -1,4 +1,4 @@
--- The client side of the indoor / outdoor map (see docs/superpowers/specs/2026-11-22-zonemap-design.md): the server makes the map from the node graph
+-- The client side of the in/out map (see docs/superpowers/specs/2026-11-22-zonemap-design.md): the server makes the map from the node graph
 -- (sv_zonemap.lua) and sends it; this file receives it, answers "is this place indoors?" (the automatic zoom asks, cl_hud_radar_zoom.lua), keeps the
 -- state for the options panel and draws the boxes in the world while the debug convar is on.
 -- GryMod.ZoneMap (sh_zonemap.lua) is the pure module: it decodes the file and looks a position up. It is read at the moment of use, never kept, so that a
@@ -22,7 +22,7 @@ local LAST_STATE = 6
 -- the heights of the ceiling classes 1..7 (the same classes as Floors, lua/grymod/client/minimap/floors.lua)
 local CLASS_HEIGHT = {56, 88, 120, 160, 224, 320, 448}
 
-CreateClientConVar(DEBUG_CONVAR, "0", true, false, "Draw the indoor / outdoor map of the level in the world (red = indoor, green = outdoor, cyan = ceiling height)", 0, 1)
+CreateClientConVar(DEBUG_CONVAR, "0", true, false, "Draw the in/out map of the level in the world (red = indoor, green = outdoor, cyan = ceiling height)", 0, 1)
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The state: one table, so that a test can save it and put it back
@@ -42,6 +42,8 @@ local function freshState()
 		pieces = nil, -- the chunks of the file being received (1-based list)
 		setCount = nil, -- how many chunks that file has
 		lastAsk = -math.huge, -- the clock of the last request made after a failure
+		askedAt = nil, -- the clock when the client started to ask for the map (Z.AskUntilAnswered)
+		loadingSince = nil, -- the clock since when Z.Loading wants the veil (its grace is counted from there)
 		noticedMap = nil, -- the level for which the incomplete notice was shown
 		flat = nil -- the boxes as plain number lists for the drawing (made at the first frame drawn)
 	}
@@ -174,13 +176,21 @@ function Z.OnState(state, done, total)
 		S.reason = nil
 	end
 
+	-- the front (the radar's veil asks Z.Loading; the HUD or another addon may listen): the state, how many nodes are done, how many there are. A hook that raises
+	-- does not stop the receiver.
+	local ran, hookErr = pcall(hook.Run, "GryMod_InOutMapState", state, S.done, S.total)
+
+	if not ran then
+		ErrorNoHalt("[GryMod] GryMod_InOutMapState: " .. tostring(hookErr) .. "\n")
+	end
+
 	-- made, but not from every node: said once per level
 	if state == 5 then
 		local map = game.GetMap()
 
 		if S.noticedMap ~= map then
 			S.noticedMap = map
-			notice("The indoor / outdoor map of this map was not made from every node")
+			notice("The in/out map of this map was not made from every node")
 		end
 	end
 end
@@ -263,7 +273,48 @@ end
 
 function Z.AskUntilAnswered()
 	chain = chain + 1
+	S.askedAt = Z.Clock()
 	askUntilAnswered(chain, 1)
+end
+
+-- Whether the radar should be veiled because the in/out map is not there yet, and the percentage to show: the client is waiting for the server's first answer (from
+-- the moment it asks, for as long as the asks go on: RETRY_EVERY * RETRY_MAX seconds), the server waits or computes (state 2, 3: its percentage), or the server says the
+-- map is ready and the file is on its way (state 4, 5 with no map yet and no refusal). Nothing to wait for when it is off, there is no graph or it failed (0, 1, 6), or
+-- when the map is held. A grace of a quarter of a second: a map made in a few frames does not flash the veil. Returns false, or true and a whole percentage.
+local GRACE = 0.25
+
+function Z.Loading()
+	local now = Z.Clock()
+	local state = S.state
+	local wanted, percent = false, 0
+
+	if state == nil then
+		wanted = S.askedAt ~= nil and now - S.askedAt < RETRY_EVERY * RETRY_MAX
+	elseif state == 2 then
+		wanted = true
+	elseif state == 3 then
+		wanted = true
+
+		if S.total > 0 then
+			percent = math.Clamp(math.floor(S.done * 100 / S.total), 0, 100)
+		end
+	elseif (state == 4 or state == 5) and S.index == nil and S.reason == nil then
+		wanted, percent = true, 100
+	end
+
+	if not wanted then
+		S.loadingSince = nil
+
+		return false
+	end
+
+	S.loadingSince = S.loadingSince or now
+
+	if now - S.loadingSince < GRACE then
+		return false
+	end
+
+	return true, percent
 end
 
 -- when the file loads (a new map, or a reload in the game)
@@ -324,7 +375,7 @@ function Z.Status()
 	return S.state, S.done, S.total, S.boxes, S.reason
 end
 
-local PREFIX = "Indoor / outdoor map: "
+local PREFIX = "In/out map: "
 
 -- The line the options panel shows.
 function Z.StatusText()

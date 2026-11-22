@@ -1,4 +1,4 @@
--- GryMod: the indoor / outdoor map (zone map). SHARED: the server makes it from the node graph (sv_zonemap.lua) and the client reads it (the automatic zoom of
+-- GryMod: the in/out map (zone map). SHARED: the server makes it from the node graph (sv_zonemap.lua) and the client reads it (the automatic zoom of
 -- the radar, the debug drawing). Design: docs/superpowers/specs/2026-11-22-zonemap-design.md. This file is PURE: no engine call, no file, no util, no entity;
 -- every function takes values and returns values, so the same code runs in both realms and is tested without a map.
 --

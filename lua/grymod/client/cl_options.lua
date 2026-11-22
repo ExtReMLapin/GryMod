@@ -228,7 +228,7 @@ end
 -- The button that deletes the map of the level and makes it again: it asks first, then asks the server (which checks the administrator itself).
 local function zoneMapResetButton(Panel)
 	-- the usual administrators' button (dimmed with a tooltip for the others, looked at every second), with its own click
-	local button = GryMod.AdminOption(Panel, "Delete the indoor / outdoor map and make it again", nil, "button", {command = "gry_zonemap_reset"})
+	local button = GryMod.AdminOption(Panel, "Delete the in/out map and make it again", nil, "button", {command = "gry_zonemap_reset"})
 
 	button.GryZoneMapReset = true
 	button.DoClick = function()
@@ -236,7 +236,7 @@ local function zoneMapResetButton(Panel)
 			return
 		end
 
-		GryMod.Confirm("Delete the indoor / outdoor map of this map and make it again? The server computes it again from the node graph; the automatic zoom uses its own rays meanwhile.", function()
+		GryMod.Confirm("Delete the in/out map of this map and make it again? The server computes it again from the node graph; the automatic zoom uses its own rays meanwhile.", function()
 			net.Start("gry_zonemap_reset")
 			net.SendToServer()
 		end)
@@ -262,7 +262,7 @@ function GryMod.AdminOptions(Panel)
 	GryMod.AdminOption(Panel, "Movement: the original game's walk and run speeds (177 and 266 units a second, the speed mode's sprint 757) instead of GryMod's own; the energy is not touched", "gry_movement", "bool")
 	GryMod.AdminOption(Panel, "Radar: vehicles and Combine mines show once the binoculars have scanned them", "gry_radar_objects", "bool")
 	GryMod.AdminOption(Panel, "Grenade warning only for armed grenades, mines in the air... (off: also the ones lying around)", "gry_grenade_armed_only", "bool")
-	GryMod.AdminOption(Panel, "Indoor / outdoor map: the server makes it from the node graph (the automatic zoom and other features use it)", "gry_zonemap", "bool")
+	GryMod.AdminOption(Panel, "In/out map: the server makes it from the node graph (the automatic zoom and other features use it)", "gry_zonemap", "bool")
 	zoneMapResetButton(Panel)
 	GryMod.AdminOption(Panel, "Toggle health regeneration", nil, "button", {command = "gry_Health"})
 	GryMod.AdminOption(Panel, "Toggle infinite armor", nil, "button", {command = "gry_Armor"})
@@ -435,15 +435,15 @@ function GryMod.RadarZoomOptions(Panel)
 	Panel:NumSlider("Time a mode must hold before the radar goes there (seconds; in a mode for less than that, nothing changes)", "gry_radar_zoom_delay", 0.1, 5, 1)
 end
 
--- The indoor / outdoor map the server makes (cl_zonemap.lua): the line with its state (as it is when the panel is built: nothing runs while the panel is
+-- The in/out map the server makes (cl_zonemap.lua): the line with its state (as it is when the panel is built: nothing runs while the panel is
 -- open) and the check box of the debug drawing. The switch and the button that makes the map again are the administrators' (GryMod.AdminOptions).
 function GryMod.ZoneMapOptions(Panel)
-	Panel:Help("Indoor / outdoor map")
+	Panel:Help("In/out map")
 
 	local Zone = GryMod.ZoneMapClient
 
-	Panel:Help(Zone and Zone.StatusText() or "Indoor / outdoor map: not available")
-	Panel:CheckBox("Draw the indoor / outdoor map in the world (debug)", "gry_zonemap_debug")
+	Panel:Help(Zone and Zone.StatusText() or "In/out map: not available")
+	Panel:CheckBox("Draw the in/out map in the world (debug)", "gry_zonemap_debug")
 end
 
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.

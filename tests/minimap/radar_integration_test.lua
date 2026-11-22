@@ -623,6 +623,64 @@ return {
 			end
 		},
 		{
+			-- the owner's design (2026-11-22): from the moment a player joins, while the server has not answered, while it waits or computes the in/out map, the radar is veiled,
+			-- with the SERVER's percentage; then, once the in/out map is there, the veil is the CLIENT's tile percentage as before. Breaks if the veil follows only the tiles, if
+			-- the in/out percentage is not shown with its name, or if the veil stays after the in/out map has come
+			name = "the in/out map first: while it is loading the radar is veiled with 'In/out NN%' even when the tile under the player is there, then the tile's own percentage",
+			func = function(state)
+				local realZone = GryMod.ZoneMapClient
+				local zone = {loading = true, percent = 40}
+				local ok, err = pcall(function()
+					GryMod.ZoneMapClient = {Loading = function() return zone.loading, zone.percent end}
+
+					-- the tile under the player is there (no tile veil), the in/out map is loading: veil and the server's percentage
+					state.has = true
+					state.progress = {done = 4, total = 4, percent = 100, active = false, failed = 0}
+
+					local panel = newPanel()
+
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("In/out 40%")
+					expect(panel.main:Child("Noise").visible).to.beTrue()
+					expect(panel.zone:Child("Zone").text).to.equal("In/out 40%")
+
+					-- it goes up with the server's work
+					zone.percent = 75
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("In/out 75%")
+
+					-- the in/out map is there and the tile is not: the veil stays, now with the tile's own percentage
+					zone.loading = false
+					state.has = false
+					state.progress = {done = 1, total = 4, percent = 40.7, active = true, failed = 0}
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.equal("40%")
+					expect(panel.main:Child("Noise").visible).to.beTrue()
+
+					-- both there: no veil, no text
+					state.has = true
+					state.progress = {done = 4, total = 4, percent = 100, active = false, failed = 0}
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.beNil()
+					expect(panel.main:Child("Noise").visible).to.beFalse()
+
+					-- a module that raises is no veil and no error: the tiles decide as before
+					GryMod.ZoneMapClient = {Loading = function() error("boom") end}
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.beNil()
+
+					-- no module at all
+					GryMod.ZoneMapClient = nil
+					panel:Draw(0, 0, 1)
+					expect(panel.progressText).to.beNil()
+				end)
+
+				GryMod.ZoneMapClient = realZone
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "the tile looked up is the one under the player: its level id, the tile of the position, the settings' resolution and definition",
 			func = function(state)
 				state.has = false

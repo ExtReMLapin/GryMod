@@ -251,7 +251,7 @@ function Zoom.Probe(ply, now)
 
 	probe.t, probe.x, probe.y, probe.z = now, x, y, z
 
-	-- the server's indoor / outdoor map (cl_zonemap.lua) answers first: true or false when it knows the place, nil when it does not (no map, a place no node
+	-- the server's in/out map (cl_zonemap.lua) answers first: true or false when it knows the place, nil when it does not (no map, a place no node
 	-- reaches): then the level and the rays below, as before
 	local Zone = GryMod.ZoneMapClient
 

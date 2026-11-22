@@ -1,5 +1,5 @@
 -- GryMod: the node graph reader (module ain). SHARED: the client's minimap reads the graph for its floors (module floors) and the server reads it to make the
--- indoor / outdoor map (sv_zonemap.lua). Also reachable as GryMod.Minimap.AIN (the name the minimap and its tests use).
+-- in/out map (sv_zonemap.lua). Also reachable as GryMod.Minimap.AIN (the name the minimap and its tests use).
 GryMod = GryMod or {}
 GryMod.AIN = GryMod.AIN or {}
 GryMod.Minimap = GryMod.Minimap or {}
