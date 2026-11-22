@@ -63,6 +63,7 @@ local function install(st)
 		sinceTrim = G and G._state and G._state.storedSinceTrim,
 		View = M.View,
 		realTime = G and G._realTime,
+		frameTime = G and G._frameTime,
 		getMap = game.GetMap,
 		-- the sets that Gen changes pixel by pixel: a case may switch one off, afterEach puts all three back
 		fillSets = G and type(G.VOID_FILL_SETS) == "table" and {main = G.VOID_FILL_SETS.main, below = G.VOID_FILL_SETS.below, outside = G.VOID_FILL_SETS.outside} or nil
@@ -216,6 +217,8 @@ local function install(st)
 		end
 
 		G._realTime = function() return st.rt end
+		-- the duration of the last frame: a fast one by default (the real one is slow while the tests run, and the preload waits after a slow frame)
+		G._frameTime = function() return 0.005 end
 	end
 end
 
@@ -237,6 +240,7 @@ local function restore()
 	if G and saved.hasClock then
 		G._clock = saved.clock
 		G._realTime = saved.realTime
+		G._frameTime = saved.frameTime
 
 		if G._state then
 			G._state.prunedMap = saved.prunedMap
@@ -2943,6 +2947,64 @@ return {
 
 				-- a tile is stored under the name of its level, not of its role: the content must not depend on who asked first
 				expect(G.VOID_FILL_SETS.preload).to.equal(true)
+			end
+		},
+		-- The preload must not freeze the game: when nothing else is asked for it works with a smaller budget than the tiles somebody waits for, and it waits while the
+		-- frames are slow. fails if the preload uses the full budget, or keeps working when the last frame was slow
+		{
+			name = "preload: with nothing else asked it works within its own small budget (2 ms) and not the settings' (6 ms); a request's tiles keep the settings' budget",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+				local entries = {}
+
+				for i = 1, 3 do
+					entries[i] = {tile = {level = P1.id, tx = i, ty = 0, res = 512, ppm = 2}, level = P1, d = i}
+				end
+
+				state.budget = 6
+				state.dt = 0.001 -- every reading of the clock is 1 ms later
+				G._frameTime = function() return 0.005 end
+
+				expect(G.PRELOAD_BUDGET_MS).to.equal(2)
+
+				-- a request's tile: 6 units (capture, four chunks of 32 rows, store) in the 6 ms of the settings
+				request9(state)
+				G.Step(state.t)
+				expect(#state.stores).to.equal(1)
+				G.Cancel()
+
+				-- a preload tile: two units in 2 ms (the capture, one chunk), no store yet
+				state.stores, state.compress = {}, {}
+				G.SetPreload(entries)
+				G.Step(state.t)
+				expect(#state.stores).to.equal(0)
+				expect(#state.compress).to.equal(1)
+			end
+		},
+		{
+			name = "preload: no work in a frame that follows a slow frame (over 25 ms); it goes on when the frames are fast again",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+
+				G.SetPreload({{tile = {level = P1.id, tx = 1, ty = 0, res = 512, ppm = 2}, level = P1, d = 1}})
+
+				G._frameTime = function() return 0.05 end
+				G.Step(state.t)
+				expect(#state.renders).to.equal(0)
+				expect(G.Pending()).to.equal(1)
+				expect((hook.GetTable()[HOOK_EVENT] or {})[HOOK_NAME] ~= nil).to.beTrue()
+
+				G._frameTime = function() return 0.01 end
+				stepAll(state)
+				expect(#state.renders).to.equal(1)
+
+				-- the tiles of a request are not held back by a slow frame (somebody is waiting for them)
+				request9(state)
+				G._frameTime = function() return 0.05 end
+				G.Step(state.t)
+				expect(#state.renders >= 2).to.beTrue()
 			end
 		}
 	}

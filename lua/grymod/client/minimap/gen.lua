@@ -53,6 +53,12 @@ local COMPRESS_OPTS = {alpha = true} -- read by DXT1.CompressRows, never modifie
 -- the clock of the budget, replaceable by the tests
 Gen._clock = SysTime
 Gen._realTime = RealTime
+Gen._frameTime = FrameTime -- the duration of the last frame, seconds (the preload waits while frames are slow)
+
+-- The preload (tiles made in advance) must not freeze the game: when only preload tiles wait it works within this budget instead of the settings' (a capture
+-- still costs a few ms by itself, and there is at least one unit per call), and not at all in a frame that follows a frame slower than PRELOAD_MAX_FRAME.
+Gen.PRELOAD_BUDGET_MS = 2
+Gen.PRELOAD_MAX_FRAME = 0.025
 
 -- a hot reload: the hook of the old copy goes away, and the state starts again
 pcall(hook.Remove, Gen.HOOK_EVENT, Gen.HOOK_NAME)
@@ -652,6 +658,19 @@ function Gen.Step(now)
 	local captured = false
 
 	now = tonumber(now) or clock()
+
+	-- only preload tiles wait (nothing asked for by the radar): the small budget, and nothing at all after a slow frame (the hook stays, the work comes back)
+	local sets = S.sets
+
+	if #sets.main.queue + #sets.below.queue + #sets.outside.queue == 0 and (not S.current or S.current.set == "preload") then
+		local last = Gen._frameTime and Gen._frameTime() or 0
+
+		if type(last) == "number" and last > Gen.PRELOAD_MAX_FRAME then
+			return
+		end
+
+		budget = math.min(budget, Gen.PRELOAD_BUDGET_MS / 1000)
+	end
 
 	while true do
 		local cur = S.current or nextTile()
