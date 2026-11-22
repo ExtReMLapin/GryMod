@@ -573,6 +573,74 @@ return {
 			end
 		},
 		{
+			name = "Step with a scratch table advances the state it is given and reuses the action list, with the same result as the pure Step on every frame of a long scenario (the Think hook made about a kilobyte of tables a frame for nothing)",
+			func = function(state)
+				local SS = GryMod.SprintSound
+				local pure = SS.New()
+				local inPlace = SS.New()
+				local reuse = {actions = {}}
+				local actionList = reuse.actions
+
+				-- a scenario with every kind of frame: sprint, jump, dive, energy falling, death, suit down, the mode left
+				local frames = {}
+				local function add(n, overrides) for _ = 1, n do frames[#frames + 1] = input(overrides) end end
+
+				add(10, {speed = false, sprint = false})
+				add(20)
+				add(5, {onGround = false})
+				add(5, {onGround = false, jumped = true})
+				add(20)
+				add(10, {waterLevel = 3})
+				add(10, {waterLevel = 1})
+				add(15, {energy = 18})
+				add(10, {energy = 90})
+				add(10, {suit = false})
+				add(10)
+				add(5, {alive = false})
+				add(10)
+				add(10, {speed = false})
+				add(10, {sprint = false})
+
+				for index, frame in ipairs(frames) do
+					local dt = 0.01 + (index % 7) * 0.01
+					local nextPure, pureActions = SS.Step(pure, frame, dt)
+					pure = nextPure
+
+					local returnedState, returnedActions = SS.Step(inPlace, frame, dt, reuse)
+					expect(returnedState).to.equal(inPlace)
+					expect(returnedActions).to.equal(actionList)
+					expect(sameTable(inPlace, pure)).to.beTrue()
+					expect(sameTable(returnedActions, pureActions)).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "Sample fills the table it is given (the Think hook keeps one) with the same frame as a fresh one",
+			func = function(state)
+				local SS = GryMod.SprintSound
+				local ply = {
+					NanosuitMode = GryMod.Modes.SPEED,
+					IsSprinting = function() return true end,
+					GetVelocity = function() return Vector(500, 0, 200) end,
+					IsOnGround = function() return false end,
+					WaterLevel = function() return 2 end,
+					Alive = function() return true end,
+					GetNW2Bool = function() return false end,
+					IsValid = function() return true end
+				}
+				local into = {}
+				local again = SS.Sample(ply, 55, true, into)
+				expect(again).to.equal(into)
+				expect(sameTable(into, SS.Sample(ply, 55, true))).to.beTrue()
+
+				-- a second call gives the new facts, none of the old stays
+				ply.IsOnGround = function() return true end
+				ply.WaterLevel = function() return 0 end
+				SS.Sample(ply, 30, true, into)
+				expect(sameTable(into, SS.Sample(ply, 30, true))).to.beTrue()
+			end
+		},
+		{
 			name = "Sample builds the frame from a player: sprint needs speed over 412 u/s, the mode, the ground and the water",
 			func = function(state)
 				local SS = GryMod.SprintSound

@@ -140,25 +140,60 @@ end
 -- {the entity's angles in radians: pitch, yaw, roll; the drift}, {the entity's origin, 0}}. The vertex position the engine hands to the shader is in the
 -- WORLD (measured: a plate moved elsewhere showed another pattern, a plate turned a quarter the same one), so a pattern read from it stayed put in the world
 -- and a walking player slid through it: the shader reads it relative to the entity's own origin and angles (as the original's object space is).
-function Sh.Constants(curtime, amount, strength, screenHeight, index, drift, pos, ang)
+-- `into` (optional) is the result of an earlier call, filled again instead of making new tables.
+function Sh.Constants(curtime, amount, strength, screenHeight, index, drift, pos, ang, into)
 	local time = Sh.Time(curtime, index)
 	local vx, vy = Sh.Variation(time, amount)
 	local period = Sh.RowPeriod(screenHeight)
+	local c = into or {{}, {}, {}, {}}
+	local r1, r2, r3, r4 = c[1], c[2], c[3], c[4]
 
-	return {
-		{Sh.UNITS, time, strength, period},
-		{vx, vy, Sh.RowOffset(curtime, period), 0},
-		{ang and math.rad(ang.p) or 0, ang and math.rad(ang.y) or 0, ang and math.rad(ang.r) or 0, drift or 0},
-		{pos and pos.x or 0, pos and pos.y or 0, pos and pos.z or 0, 0}
-	}
+	r1[1], r1[2], r1[3], r1[4] = Sh.UNITS, time, strength, period
+	r2[1], r2[2], r2[3], r2[4] = vx, vy, Sh.RowOffset(curtime, period), 0
+	r3[1], r3[2], r3[3], r3[4] = ang and math.rad(ang.p) or 0, ang and math.rad(ang.y) or 0, ang and math.rad(ang.r) or 0, drift or 0
+	r4[1], r4[2], r4[3], r4[4] = pos and pos.x or 0, pos and pos.y or 0, pos and pos.z or 0, 0
+
+	return c
 end
 
 local REGISTERS = {"x", "y", "z", "w"}
 
+-- the names of the material's sixteen parameters, made once
+local NAMES = {}
+
+for r = 1, 4 do
+	NAMES[r] = {}
+
+	for i = 1, 4 do
+		NAMES[r][i] = "$c" .. (r - 1) .. "_" .. REGISTERS[i]
+	end
+end
+
+-- What a material was last given: every SetFloat goes through the engine and part of the constants are the same from one draw to the next (the
+-- period, the units, the strength, the variation once the change is done). A material not written whole for a second is written whole again, so
+-- that a change made from outside (a reload of the materials) cannot stay for long.
+local REFRESH = 1
+local written = setmetatable({}, {__mode = "k"})
+
 local function setConstants(material, constants)
+	local last = written[material]
+	local now = RealTime()
+
+	if not last or now - last.stamp >= REFRESH then
+		last = {stamp = now}
+		written[material] = last
+	end
+
 	for r = 1, #constants do
+		local row, names = constants[r], NAMES[r]
+
 		for i = 1, 4 do
-			material:SetFloat("$c" .. (r - 1) .. "_" .. REGISTERS[i], constants[r][i])
+			local value, key = row[i], names[i]
+
+			if last[key] ~= value then
+				material:SetFloat(key, value)
+				last[key] = value
+			end
 		end
 	end
 end
@@ -271,12 +306,16 @@ end
 -- Draws `ent` through the shader, added to the picture, with the strength of the sparks (0 to 1; the original's max(speed, transition ^ 2))
 -- and the camouflage's level `amount` (0 to 1). `draw` draws the entity in a way its own draw hook lets through (cl_cloak_fx.lua).
 -- Whatever happens, the material override comes off. Returns whether it drew.
+local drawConstants
+
 function Sh.Draw(ent, strength, amount, draw)
 	if not Sh.Active() or strength < Sh.MIN_STRENGTH or not IsValid(ent) then return false end
 
 	local material = Sh.Material()
 
-	setConstants(material, Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex(), Sh.Drift(ent), ent:GetPos(), ent:GetAngles()))
+	-- (the tables are kept from a draw to the next: nothing is made for each draw)
+	drawConstants = Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex(), Sh.Drift(ent), ent:GetPos(), ent:GetAngles(), drawConstants)
+	setConstants(material, drawConstants)
 
 	local ok = pcall(function()
 		render.MaterialOverride(material)

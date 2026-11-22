@@ -77,23 +77,57 @@ function R.Alpha(base)
 end
 
 -- The three constant registers: {{bump scale, alpha, the rim's light, rows to a period}, {scan lines' offset, half a pixel x, half a pixel y,
--- units to a metre}, {tiling, relief strength}}.
-function R.Constants(bump, alpha, curtime, screenW, screenH, tiling)
+-- units to a metre}, {tiling, relief strength}}. `into` (optional) is the result of an earlier call, filled again instead of making new tables.
+function R.Constants(bump, alpha, curtime, screenW, screenH, tiling, into)
 	local period = F.Shader.RowPeriod(screenH)
+	local c = into or {{}, {}, {}}
+	local r1, r2, r3 = c[1], c[2], c[3]
 
-	return {
-		{bump, alpha, R.RIM_LIGHT, period},
-		{F.Shader.RowOffset(curtime, period), 0.5 / screenW, 0.5 / screenH, R.UNITS},
-		{tiling, R.RELIEF, 0, 0}
-	}
+	r1[1], r1[2], r1[3], r1[4] = bump, alpha, R.RIM_LIGHT, period
+	r2[1], r2[2], r2[3], r2[4] = F.Shader.RowOffset(curtime, period), 0.5 / screenW, 0.5 / screenH, R.UNITS
+	r3[1], r3[2], r3[3], r3[4] = tiling, R.RELIEF, 0, 0
+
+	return c
 end
 
 local REGISTERS = {"x", "y", "z", "w"}
 
+-- the names of the material's twelve parameters, made once
+local NAMES = {}
+
+for r = 1, 3 do
+	NAMES[r] = {}
+
+	for i = 1, 4 do
+		NAMES[r][i] = "$c" .. (r - 1) .. "_" .. REGISTERS[i]
+	end
+end
+
+-- What a material was last given. Every SetFloat goes through the engine and nearly every constant is the same from one frame to the next (only the
+-- scan lines' offset moves, 30 times a second, and the bend and the alpha while the change lasts). A material not written whole for a second is
+-- written whole again, so that a change made from outside (a reload of the materials) cannot stay for long.
+local REFRESH = 1
+local written = setmetatable({}, {__mode = "k"})
+
 local function setConstants(material, constants)
+	local last = written[material]
+	local now = RealTime()
+
+	if not last or now - last.stamp >= REFRESH then
+		last = {stamp = now}
+		written[material] = last
+	end
+
 	for r = 1, 3 do
+		local row, names = constants[r], NAMES[r]
+
 		for i = 1, 4 do
-			material:SetFloat("$c" .. (r - 1) .. "_" .. REGISTERS[i], constants[r][i])
+			local value, key = row[i], names[i]
+
+			if last[key] ~= value then
+				material:SetFloat(key, value)
+				last[key] = value
+			end
 		end
 	end
 end
@@ -278,15 +312,21 @@ end
 -- picture behind has to be copied before the model is drawn (render.UpdateScreenEffectTexture). `draw` draws the entity in a way its own draw
 -- hook lets through (cl_cloak_fx.lua). Every part of the model has its own material for the length of the draw; whatever happens the overrides come
 -- off. Returns whether it drew.
+local drawConstants
+
 function R.Draw(ent, bump, alpha, draw)
 	if not R.Active() or alpha < R.MIN_ALPHA or not IsValid(ent) then return false end
 
 	local list = partsOf(ent)
-	local constants = {}
 	local curtime, w, h = CurTime(), ScrW(), ScrH()
 
+	-- the same numbers for every part but the tiling of its relief map: one set of tables, kept from a draw to the next, with the tiling put in for each part
+	local constants = R.Constants(bump, alpha, curtime, w, h, 1, drawConstants)
+	drawConstants = constants
+
 	for index, part in ipairs(list) do
-		setConstants(part.material, R.Constants(bump, alpha, curtime, w, h, part.tiling))
+		constants[3][1] = part.tiling
+		setConstants(part.material, constants)
 		render.MaterialOverrideByIndex(index - 1, part.material)
 	end
 
