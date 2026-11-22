@@ -108,6 +108,7 @@ end
 function Zoom.Reset()
 	st.mode, st.cand, st.candSince = nil, nil, nil
 	st.from, st.to, st.startAt = nil, nil, nil
+	Zoom.ResetProbe()
 end
 
 -- tells the server the new target now (Radar.RangeChanged does nothing while the client does not want the contacts)
@@ -210,6 +211,11 @@ end
 local probe = {t = -1000, x = 0, y = 0, z = 0, indoor = false, narrow = false}
 local rays, dists
 
+-- Forgets the probe's last answer (the next call measures at once).
+function Zoom.ResetProbe()
+	probe.t, probe.x, probe.y, probe.z, probe.indoor, probe.narrow = -1000, 0, 0, 0, false, false
+end
+
 local function makeRays()
 	rays, dists = {}, {}
 
@@ -244,6 +250,21 @@ function Zoom.Probe(ply, now)
 	end
 
 	probe.t, probe.x, probe.y, probe.z = now, x, y, z
+
+	-- the server's indoor / outdoor map (cl_zonemap.lua) answers first: true or false when it knows the place, nil when it does not (no map, a place no node
+	-- reaches): then the level and the rays below, as before
+	local Zone = GryMod.ZoneMapClient
+
+	if Zone and Zone.Indoor then
+		local zoneOk, known = pcall(Zone.Indoor, pos)
+
+		if zoneOk and known ~= nil then
+			probe.narrow = false
+			probe.indoor = known and true or false
+
+			return probe.indoor
+		end
+	end
 
 	local M = GryMod.Minimap
 	local Floors = M and M.Floors

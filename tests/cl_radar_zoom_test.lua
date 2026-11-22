@@ -319,6 +319,43 @@ return {
 			end
 		},
 		{
+			-- breaks if the probe still casts rays (or asks the level) when the zone map of the server knows the place, or if an unknown place does not fall back on the rays
+			name = "the zone map decides when it knows the place (true or false: no ray, no level asked); when it says nothing (nil) the probe falls back on the level and the eight rays",
+			func = function()
+				local Z = GryMod.RadarZoom
+				local realZone, realTrace, realFloors = GryMod.ZoneMapClient, util.TraceLine, GryMod.Minimap.Floors
+				local rays, levels = 0, 0
+				local ply = {GetPos = function() return Vector(100, 200, 0) end}
+				local answer
+
+				local ok, err = pcall(function()
+					util.TraceLine = function() rays = rays + 1 return {Hit = false} end
+					GryMod.Minimap.Floors = {CurrentAt = function() levels = levels + 1 return {open = false} end}
+					GryMod.ZoneMapClient = {Indoor = function() return answer end}
+
+					answer = true
+					Z.Reset()
+					expect(Z.Probe(ply, 5000)).to.beTrue()
+					answer = false
+					Z.Reset()
+					expect(Z.Probe(ply, 6000)).to.beFalse()
+					expect(rays).to.equal(0)
+					expect(levels).to.equal(0)
+
+					answer = nil
+					Z.Reset()
+					Z.Probe(ply, 7000)
+					expect(levels).to.equal(1)
+					expect(rays).to.equal(8)
+				end)
+
+				util.TraceLine, GryMod.Minimap.Floors, GryMod.ZoneMapClient = realTrace, realFloors, realZone
+				Z.Reset()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "a change of mode tells the server the TARGET range at once (not the one shown, not after the one second timer), and nothing is sent while the mode holds",
 			func = function()
 				local R = GryMod.FlashRadar
