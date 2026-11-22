@@ -97,7 +97,7 @@ local RADAR_CONVARS = {
 	"gry_hud_radar", "gry_hud_radarunits", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
 	"gry_minimap_below", "gry_minimap_outside", "gry_minimap_cache_mb", "gry_minimap_tile", "gry_minimap_budget_ms", "gry_radar_range",
 	"gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_zoom_delay", "gry_zonemap_debug",
-	"gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
+	"gry_zonemap_debug_range", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
 }
 
 return {
@@ -232,6 +232,7 @@ return {
 					"slider:gry_radar_zoom_delay",
 					"label:In/out map",
 					"box:gry_zonemap_debug",
+					"slider:gry_zonemap_debug_range",
 					"label:Server (administrators only)",
 					"admin:gry_radar_allies_always",
 					"admin:gry_radar_objects",
@@ -262,6 +263,32 @@ return {
 					expect(found ~= nil).to.beTrue()
 					expect(found:GetText()).to.equal(option.label)
 				end
+			end
+		},
+		{
+			-- breaks if: the slider is bound to another convar, has other limits or another label, or is a check box
+			name = "the in/out map debug distance is a slider on gry_zonemap_debug_range, 20 to 300 metres, right after the debug check box",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				local slider
+
+				for _, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DNumSlider" and p.Scratch and p.Scratch:GetTable().m_strConVar == "gry_zonemap_debug_range" then
+						slider = p
+					end
+				end
+
+				expect(slider ~= nil).to.beTrue()
+				expect(slider:GetText()).to.equal("In/out map debug: display distance (metres)")
+				expect(slider:GetMin()).to.equal(20)
+				expect(slider:GetMax()).to.equal(300)
+				expect(slider:GetDecimals()).to.equal(0)
+
+				local order = markers(state.panel)
+
+				expect(indexOf(order, "slider:gry_zonemap_debug_range")).to.equal(indexOf(order, "box:gry_zonemap_debug") + 1)
 			end
 		},
 		{

@@ -13,7 +13,10 @@ if not realModule then
 end
 
 local HOOK = "GryMod zonemap debug"
+local HUD_HOOK = "GryMod zonemap debug hud"
 local DEBUG = "gry_zonemap_debug"
+local RANGE = "gry_zonemap_debug_range"
+local METRES_PER_UNIT = 0.01905
 
 local function walk(panel, found)
 	found = found or {}
@@ -77,6 +80,87 @@ local function hookFunction()
 	return (hook.GetTable()["PostDrawTranslucentRenderables"] or {})[HOOK]
 end
 
+local function hudHookFunction()
+	return (hook.GetTable()["HUDPaint"] or {})[HUD_HOOK]
+end
+
+-- The drawing stand-ins: every call is recorded with copies of the numbers (the module reuses its Vectors and Colors, so a record must not keep them).
+-- Returns the record: boxes (DrawBox), wires (DrawWireframeBox), lines (DrawLine), materials (the number of SetColorMaterial calls).
+local function recordRender()
+	local rec = {boxes = {}, wires = {}, lines = {}, materials = 0}
+
+	render.SetColorMaterial = function()
+		rec.materials = rec.materials + 1
+	end
+	render.DrawBox = function(origin, angle, mins, maxs, colour, writeZ)
+		rec.boxes[#rec.boxes + 1] = {
+			ox = origin.x, oy = origin.y, oz = origin.z, ap = angle.p, ay = angle.y, ar = angle.r,
+			x1 = mins.x, y1 = mins.y, z1 = mins.z, x2 = maxs.x, y2 = maxs.y, z2 = maxs.z,
+			r = colour.r, g = colour.g, b = colour.b, a = colour.a, writeZ = writeZ
+		}
+	end
+	render.DrawWireframeBox = function(origin, angle, mins, maxs, colour, writeZ)
+		rec.wires[#rec.wires + 1] = {
+			ox = origin.x, oy = origin.y, oz = origin.z,
+			x1 = mins.x, y1 = mins.y, z1 = mins.z, x2 = maxs.x, y2 = maxs.y, z2 = maxs.z,
+			r = colour.r, g = colour.g, b = colour.b, a = colour.a, writeZ = writeZ
+		}
+	end
+	render.DrawLine = function(from, to, colour)
+		rec.lines[#rec.lines + 1] = {z1 = from.z, z2 = to.z, r = colour.r, g = colour.g, b = colour.b, a = colour.a}
+	end
+
+	return rec
+end
+
+-- render stand-ins that do nothing (for the allocation cases)
+local function silentRender()
+	render.SetColorMaterial = function() end
+	render.DrawBox = function() end
+	render.DrawWireframeBox = function() end
+	render.DrawLine = function() end
+end
+
+-- draw.SimpleText stand-in: records text, font, x, y, the colour and the alignments
+local function recordText()
+	local calls = {}
+
+	draw.SimpleText = function(text, font, x, y, colour, xalign, yalign)
+		calls[#calls + 1] = {
+			text = text, font = font, x = x, y = y, r = colour and colour.r, g = colour and colour.g, b = colour and colour.b, a = colour and colour.a,
+			xalign = xalign, yalign = yalign
+		}
+
+		return 0, 0
+	end
+
+	return calls
+end
+
+-- the lines of the HUD block: the calls whose colour is not the dark shadow, in order
+local function textLines(calls)
+	local lines = {}
+
+	for _, call in ipairs(calls) do
+		if call.r + call.g + call.b > 200 then
+			lines[#lines + 1] = call
+		end
+	end
+
+	return lines
+end
+
+-- the distance from a point to a drawn box (the box's own world bounds, 0 along an axis the point is inside)
+local function distanceTo(box, px, py, pz)
+	local function axis(p, lo, hi)
+		return p < lo and lo - p or (p > hi and p - hi or 0)
+	end
+
+	local dx, dy, dz = axis(px, box.x1, box.x2), axis(py, box.y1, box.y2), axis(pz, box.z1, box.z2)
+
+	return dx * dx + dy * dy + dz * dz
+end
+
 -- the stand-in of the pure module: only what the receivers use
 local function standInModule(state)
 	return {
@@ -132,6 +216,12 @@ return {
 		state.realStart, state.realSend = net.Start, net.SendToServer
 		state.realReadUInt, state.realReadData = net.ReadUInt, net.ReadData
 		state.realBox, state.realLine, state.realMat = render.DrawWireframeBox, render.DrawLine, render.SetColorMaterial
+		state.realDrawBox = render.DrawBox
+		state.realErrorNoHalt = ErrorNoHaltWithStack
+		state.realDraw = GryMod.ZoneMapClient and GryMod.ZoneMapClient.Draw
+		state.realDrawHud = GryMod.ZoneMapClient and GryMod.ZoneMapClient.DrawHud
+		state.realText = draw.SimpleText
+		state.range = GetConVar(RANGE) and GetConVar(RANGE):GetString()
 		state.realAdd = notification and notification.AddLegacy
 		state.realMap = game.GetMap
 		state.realConfirm = GryMod.Confirm
@@ -188,6 +278,14 @@ return {
 			net.Start, net.SendToServer = state.realStart, state.realSend
 			net.ReadUInt, net.ReadData = state.realReadUInt, state.realReadData
 			render.DrawWireframeBox, render.DrawLine, render.SetColorMaterial = state.realBox, state.realLine, state.realMat
+			render.DrawBox = state.realDrawBox
+			draw.SimpleText = state.realText
+			ErrorNoHaltWithStack = state.realErrorNoHalt
+
+			if GryMod.ZoneMapClient then
+				GryMod.ZoneMapClient.Draw = state.realDraw
+				GryMod.ZoneMapClient.DrawHud = state.realDrawHud
+			end
 			notification.AddLegacy = state.realAdd
 			game.GetMap = state.realMap
 			GryMod.Confirm = state.realConfirm
@@ -201,7 +299,11 @@ return {
 				state.panel:Remove()
 			end
 
-			-- the convar goes back first (its callback puts the hook back in line), then the module's own state
+			-- the range goes back, then the switch (its callback puts the hooks back in line), then the module's own state
+			if state.range and GetConVar(RANGE) then
+				GetConVar(RANGE):SetString(state.range)
+			end
+
 			if state.debug and GetConVar(DEBUG) then
 				GetConVar(DEBUG):SetString(state.debug)
 			end
@@ -229,7 +331,7 @@ return {
 
 				expect(istable(Z)).to.beTrue()
 
-				for _, name in ipairs({"Indoor", "Status", "StatusText", "Reset", "OnState", "OnData", "Want", "Draw"}) do
+				for _, name in ipairs({"Indoor", "Status", "StatusText", "Reset", "OnState", "OnData", "Want", "Draw", "BoxAt", "DrawHud", "DebugRangeUnits", "SelectionRuns"}) do
 					expect(isfunction(Z[name])).to.beTrue()
 				end
 
@@ -1000,19 +1102,97 @@ return {
 
 				convar:SetString("0")
 				expect(hookFunction()).to.beNil()
+				expect(hudHookFunction()).to.beNil()
 
 				convar:SetString("1")
 				expect(isfunction(hookFunction())).to.beTrue()
+				expect(isfunction(hudHookFunction())).to.beTrue()
 
 				convar:SetString("0")
 				expect(hookFunction()).to.beNil()
+				expect(hudHookFunction()).to.beNil()
 
-				-- again, and twice on in a row: one hook, not a pile
+				-- again, and twice on in a row: one hook of each, not a pile
 				convar:SetString("1")
 				convar:SetString("1")
 				expect(isfunction(hookFunction())).to.beTrue()
+				expect(isfunction(hudHookFunction())).to.beTrue()
 				convar:SetString("0")
 				expect(hookFunction()).to.beNil()
+				expect(hudHookFunction()).to.beNil()
+			end
+		},
+		{
+			-- breaks if: the HUD function does not draw the block of the player's place (the hook must reach DrawHud with the local player's position)
+			name = "the HUD hook draws the block (the status line when no map is there) and the 3D hook draws nothing when there is no map, nor in the skybox passes",
+			func = function(state)
+				local convar = GetConVar(DEBUG)
+
+				GryMod.ZoneMapClient.Reset()
+				convar:SetString("1")
+
+				local calls = recordText()
+				local rec = recordRender()
+
+				hudHookFunction()()
+				expect(#textLines(calls)).to.equal(1)
+				expect(textLines(calls)[1].text).to.equal("In/out map: not received yet")
+
+				hookFunction()(false, false, false)
+				hookFunction()(false, true, false)
+				hookFunction()(false, false, true)
+				expect(#rec.boxes + #rec.wires + #rec.lines).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: a hook runs its drawing without a guard (an error every frame: thousands of lines in a minute), the error is printed more than once, a hook stays,
+			-- the switch stays at 1, the player is not told, or the next activation is not reported again
+			name = "a drawing that raises (3D or HUD) is reported once with its stack, the switch goes to 0, both hooks are gone and the player is told once; the next activation reports again",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local convar = GetConVar(DEBUG)
+				local printed = {}
+
+				ErrorNoHaltWithStack = function(text)
+					printed[#printed + 1] = tostring(text)
+				end
+
+				for _, which in ipairs({"3D", "HUD"}) do
+					printed, state.notices = {}, {}
+
+					Z.Draw = function() error("boom in the 3D drawing") end
+					Z.DrawHud = function() error("boom in the HUD drawing") end
+					convar:SetString("1")
+
+					local run = which == "3D" and hookFunction() or hudHookFunction()
+					local wanted = which == "3D" and "boom in the 3D drawing" or "boom in the HUD drawing"
+
+					-- the first frame: the error does not escape the hook
+					expect(function() run(false, false, false) end).to.succeed()
+					expect(#printed).to.equal(1)
+					expect(string.find(printed[1], wanted, 1, true) ~= nil).to.beTrue()
+					expect(hookFunction()).to.beNil()
+					expect(hudHookFunction()).to.beNil()
+					expect(convar:GetString()).to.equal("0")
+					expect(#state.notices).to.equal(1)
+					expect(string.find(state.notices[1], "The in/out map debug drawing stopped: ", 1, true) == 1).to.beTrue()
+					expect(string.find(state.notices[1], wanted, 1, true) ~= nil).to.beTrue()
+
+					-- a frame that still gets through (a function kept by the engine for the frame): nothing more is said
+					expect(function() run(false, false, false) end).to.succeed()
+					expect(#printed).to.equal(1)
+					expect(#state.notices).to.equal(1)
+
+					-- the switch on again: the hooks come back and the next error is reported
+					convar:SetString("1")
+					expect(isfunction(hookFunction())).to.beTrue()
+					expect(isfunction(hudHookFunction())).to.beTrue()
+					run = which == "3D" and hookFunction() or hudHookFunction()
+					run(false, false, false)
+					expect(#printed).to.equal(2)
+					expect(#state.notices).to.equal(2)
+					expect(convar:GetString()).to.equal("0")
+				end
 			end
 		},
 		{
@@ -1023,127 +1203,338 @@ return {
 
 				convar:SetString("1")
 				hook.Remove("PostDrawTranslucentRenderables", HOOK)
+				hook.Remove("HUDPaint", HUD_HOOK)
 				expect(hookFunction()).to.beNil()
+				expect(hudHookFunction()).to.beNil()
 				Z.SyncDebugHook()
 				expect(isfunction(hookFunction())).to.beTrue()
+				expect(isfunction(hudHookFunction())).to.beTrue()
 
 				convar:SetString("0")
 				hook.Add("PostDrawTranslucentRenderables", HOOK, function() end)
+				hook.Add("HUDPaint", HUD_HOOK, function() end)
 				Z.SyncDebugHook()
 				expect(hookFunction()).to.beNil()
+				expect(hudHookFunction()).to.beNil()
 			end
 		},
 		{
-			-- breaks if: the cap of 300 boxes a frame is raised, or removed
-			name = "at most 300 boxes are drawn a frame, and the wireframe boxes are exactly that many",
-			func = function(state)
-				local Z = GryMod.ZoneMapClient
-				local boxes, lines = 0, 0
+			-- breaks if: the range convar is missing, has another default, or has no limits (a slider could then send it anywhere)
+			name = "gry_zonemap_debug_range is a client convar in metres: 120 by default, 20 to 300, saved with the settings",
+			func = function()
+				local convar = GetConVar(RANGE)
 
-				state.decoded = gridBoxes(20, 20, 0)
-				Z.OnData(0, 1, 4, "MAP1")
-
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function() boxes = boxes + 1 end
-				render.DrawLine = function() lines = lines + 1 end
-
-				-- in the middle of the grid: all 400 are within 3000 units
-				local drawn = Z.Draw(at(1280, 1280, 0))
-
-				expect(drawn).to.equal(300)
-				expect(boxes).to.equal(300)
-				expect(lines).to.equal(0)
-
-				-- a map of 250 boxes: all of them
-				boxes = 0
-				state.decoded = gridBoxes(10, 25, 0)
-				Z.OnData(0, 1, 4, "MAP1")
-				expect(Z.Draw(at(640, 1600, 0))).to.equal(250)
-				expect(boxes).to.equal(250)
+				expect(convar ~= nil).to.beTrue()
+				expect(convar:GetDefault()).to.equal("120")
+				expect(convar:GetMin()).to.equal(20)
+				expect(convar:GetMax()).to.equal(300)
+				expect(convar:GetFlags()).to.equal(GetConVar("gry_minimap"):GetFlags())
 			end
 		},
 		{
-			-- breaks if: the range test is dropped (everything is drawn), or the 3000 units become something else
-			name = "only the boxes within 3000 units of the player are drawn",
+			-- breaks if: the conversion to units is not 0.01905 metres a unit (the same as the radar), or the convar is not read at all
+			name = "DebugRangeUnits turns the convar's metres into units with 0.01905 metres per unit",
+			func = function()
+				local Z = GryMod.ZoneMapClient
+				local convar = GetConVar(RANGE)
+
+				convar:SetString("120")
+				expect(Z.DebugRangeUnits()).to.aboutEqual(120 / METRES_PER_UNIT, 0.01)
+				convar:SetString("20")
+				expect(Z.DebugRangeUnits()).to.aboutEqual(20 / METRES_PER_UNIT, 0.01)
+				convar:SetString("300")
+				expect(Z.DebugRangeUnits()).to.aboutEqual(300 / METRES_PER_UNIT, 0.01)
+			end
+		},
+		{
+			-- breaks if: the cap of 800 boxes a frame is raised, lowered or removed
+			name = "at most 800 boxes are drawn a frame (a filled box and a wire each), and 700 are all drawn",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
-				local calls = {}
 
+				GetConVar(RANGE):SetString("300")
+				state.decoded = gridBoxes(30, 30, 0)
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local rec = recordRender()
+
+				-- in the middle of the grid: all 900 are within 300 metres
+				local drawn = Z.Draw(at(15 * 128 + 64, 15 * 128 + 64, 0))
+
+				expect(drawn).to.equal(800)
+				expect(#rec.boxes).to.equal(800)
+				expect(#rec.wires).to.equal(800)
+				expect(#rec.lines).to.equal(0)
+
+				-- a map of 700 boxes: all of them
+				state.decoded = gridBoxes(28, 25, 0)
+				Z.OnData(0, 1, 4, "MAP1")
+				rec = recordRender()
+				expect(Z.Draw(at(14 * 128 + 64, 12 * 128 + 64, 0))).to.equal(700)
+				expect(#rec.boxes).to.equal(700)
+				expect(#rec.wires).to.equal(700)
+			end
+		},
+		{
+			-- breaks if: the boxes drawn are the first 800 found (rows of the grid) and not the nearest, or the sort is by the wrong key
+			name = "with more boxes than the cap, the NEAREST ones are the ones drawn (no drawn box is farther than a box left out), the corners are left out",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local px, py, pz = 15 * 128 + 64, 15 * 128 + 64, 0
+
+				GetConVar(RANGE):SetString("300")
+				state.decoded = gridBoxes(30, 30, 0)
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local rec = recordRender()
+
+				expect(Z.Draw(at(px, py, pz))).to.equal(800)
+
+				local drawn = {}
+				local farthestDrawn = 0
+
+				for _, box in ipairs(rec.boxes) do
+					drawn[box.x1 .. "," .. box.y1] = true
+					farthestDrawn = math.max(farthestDrawn, distanceTo(box, px, py, pz))
+				end
+
+				local nearestLeftOut = math.huge
+				local leftOut = 0
+
+				for cy = 0, 29 do
+					for cx = 0, 29 do
+						if not drawn[(cx * 128) .. "," .. (cy * 128)] then
+							leftOut = leftOut + 1
+							nearestLeftOut = math.min(nearestLeftOut, distanceTo({x1 = cx * 128, y1 = cy * 128, z1 = -64, x2 = cx * 128 + 128, y2 = cy * 128 + 128, z2 = 64}, px, py, pz))
+						end
+					end
+				end
+
+				expect(leftOut).to.equal(100)
+				expect(farthestDrawn <= nearestLeftOut).to.beTrue()
+
+				-- the box under the player is drawn, the four corners of the grid are not
+				expect(drawn[(15 * 128) .. "," .. (15 * 128)]).to.beTrue()
+
+				for _, corner in ipairs({{0, 0}, {29, 0}, {0, 29}, {29, 29}}) do
+					expect(drawn[(corner[1] * 128) .. "," .. (corner[2] * 128)]).to.beNil()
+				end
+			end
+		},
+		{
+			-- breaks if: the selection is made at every frame (the cost of the sort and of the scan is paid 60 times a second), or never made again
+			name = "the selection of the boxes is made at most four times a second, or when the player moved more than 64 units, or when the range changed: not every frame",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				GetConVar(RANGE):SetString("300")
+				state.decoded = gridBoxes(30, 30, 0)
+				Z.OnData(0, 1, 4, "MAP1")
+				silentRender()
+
+				local x, y = 15 * 128 + 64, 15 * 128 + 64
+
+				expect(Z.SelectionRuns()).to.equal(0)
+				Z.Draw(at(x, y, 0))
+				expect(Z.SelectionRuns()).to.equal(1)
+
+				-- sixty frames at the same place and the same time: the selection of the first
+				for _ = 1, 60 do
+					Z.Draw(at(x, y, 0))
+				end
+
+				expect(Z.SelectionRuns()).to.equal(1)
+
+				-- 60 units away from where it was made: still the same
+				Z.Draw(at(x + 60, y, 0))
+				expect(Z.SelectionRuns()).to.equal(1)
+
+				-- 70 units away: made again (here, at 70)
+				Z.Draw(at(x + 70, y, 0))
+				expect(Z.SelectionRuns()).to.equal(2)
+
+				-- a fifth of a second later at the same place: not yet
+				state.now = state.now + 0.2
+				Z.Draw(at(x + 70, y, 0))
+				expect(Z.SelectionRuns()).to.equal(2)
+
+				-- more than a quarter of a second after the last one: made again
+				state.now = state.now + 0.06
+				Z.Draw(at(x + 70, y, 0))
+				expect(Z.SelectionRuns()).to.equal(3)
+
+				-- the range changed (the slider): at once
+				GetConVar(RANGE):SetString("200")
+				Z.Draw(at(x + 70, y, 0))
+				expect(Z.SelectionRuns()).to.equal(4)
+
+				-- a new map: the selection is the new map's
+				state.decoded = gridBoxes(3, 3, 0)
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local rec = recordRender()
+
+				expect(Z.Draw(at(x + 70, y, 0))).to.equal(9)
+				expect(#rec.boxes).to.equal(9)
+				expect(Z.SelectionRuns()).to.equal(1)
+			end
+		},
+		{
+			-- breaks if: the range test is dropped (everything is drawn), the range is a fixed number, or the convar's metres are not turned into units
+			name = "only the boxes within the convar's range of the player are drawn: 20, 50 and 120 metres give three different sets",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local convar = GetConVar(RANGE)
+
+				-- 20 metres = 1049.9 units, 50 metres = 2624.7 units, 120 metres = 6299.2 units
 				state.decoded = {boxes = {
-					{0, 0, 0, 0, 0, 2, 0},     -- the cell at the player
-					{0, 20, 0, 20, 0, 1, 0},   -- from x = 2560 to 2688: nearest edge 2560 away: in
-					{0, 24, 0, 24, 0, 1, 0},   -- from x = 3072: out
-					{0, 0, 0, 0, 0, 1, 0},     -- again in
-					{20, 0, 0, 0, 0, 1, 0}     -- layer 20: z = 2496 to 2624, 2496 above: in (3D distance: 2496 < 3000)
+					{0, 0, 0, 0, 0, 2, 0},     -- the cell at the player: in at any range
+					{0, 20, 0, 20, 0, 1, 0},   -- from x = 2560: nearest edge 2560 away: in at 50 and 120
+					{0, 21, 0, 21, 0, 1, 0},   -- from x = 2688: in at 120 only
+					{20, 0, 0, 0, 0, 1, 0},    -- layer 20: z = 2496 to 2624, 2496 above: in at 50 and 120 (3D distance)
+					{22, 0, 0, 0, 0, 1, 0},    -- layer 22: z from 2752: in at 120 only
+					{0, 60, 0, 60, 0, 1, 0}    -- from x = 7680: out at any range
 				}}
 				Z.OnData(0, 1, 4, "MAP1")
 
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function(origin, angle, mins, maxs)
-					calls[#calls + 1] = {mins.x, maxs.x, mins.z, maxs.z}
+				local function count(metres)
+					convar:SetString(tostring(metres))
+
+					local rec = recordRender()
+					local drawn = Z.Draw(at(0, 0, 0))
+
+					expect(#rec.boxes).to.equal(drawn)
+
+					return drawn
 				end
-				render.DrawLine = function() end
 
-				expect(Z.Draw(at(0, 0, 0))).to.equal(4)
-				expect(#calls).to.equal(4)
-
-				-- a box far in height is out
-				calls = {}
-				state.decoded = {boxes = {{0, 0, 0, 0, 0, 2, 0}, {40, 0, 0, 0, 0, 2, 0}}}
-				Z.OnData(0, 1, 4, "MAP1")
-				expect(Z.Draw(at(0, 0, 0))).to.equal(1)
+				expect(count(20)).to.equal(1)
+				expect(count(50)).to.equal(3)
+				expect(count(120)).to.equal(5)
 			end
 		},
 		{
-			name = "a box is drawn from x1 * 128 to (x2 + 1) * 128, likewise y, and z from layer * 128 - 64 to layer * 128 + 64",
+			-- breaks if: the box is drawn from other corners, with an origin, an angle, or with writes to the depth buffer (the translucent boxes would hide each other)
+			name = "a box is drawn filled and as a wire from x1 * 128 to (x2 + 1) * 128, likewise y, z from layer * 128 - 64 to + 64, origin 0, angle 0, no depth write, with the colour material set",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
-				local seen
 
 				state.decoded = {boxes = {{2, -3, 4, -1, 6, 2, 0}}}
 				Z.OnData(0, 1, 4, "MAP1")
 
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function(origin, angle, mins, maxs)
-					seen = {origin.x, origin.y, origin.z, mins.x, mins.y, mins.z, maxs.x, maxs.y, maxs.z}
-				end
-				render.DrawLine = function() end
+				local rec = recordRender()
 
 				expect(Z.Draw(at(-200, 700, 256))).to.equal(1)
-				-- the box is drawn with an origin of 0 and the corners given in the world (so that nothing is built per box)
-				expect(seen[1]).to.equal(0)
-				expect(seen[2]).to.equal(0)
-				expect(seen[3]).to.equal(0)
-				expect(seen[4]).to.equal(-3 * 128)
-				expect(seen[5]).to.equal(4 * 128)
-				expect(seen[6]).to.equal(2 * 128 - 64)
-				expect(seen[7]).to.equal(0)
-				expect(seen[8]).to.equal(7 * 128)
-				expect(seen[9]).to.equal(2 * 128 + 64)
+				expect(rec.materials >= 1).to.beTrue()
+				expect(#rec.boxes).to.equal(1)
+				expect(#rec.wires).to.equal(1)
+
+				for _, drawn in ipairs({rec.boxes[1], rec.wires[1]}) do
+					-- the box is drawn with an origin of 0 and the corners given in the world (so that nothing is built per box)
+					expect(drawn.ox).to.equal(0)
+					expect(drawn.oy).to.equal(0)
+					expect(drawn.oz).to.equal(0)
+					expect(drawn.x1).to.equal(-3 * 128)
+					expect(drawn.y1).to.equal(4 * 128)
+					expect(drawn.z1).to.equal(2 * 128 - 64)
+					expect(drawn.x2).to.equal(0)
+					expect(drawn.y2).to.equal(7 * 128)
+					expect(drawn.z2).to.equal(2 * 128 + 64)
+					expect(drawn.writeZ).to.equal(false)
+				end
+
+				expect(rec.boxes[1].ap).to.equal(0)
+				expect(rec.boxes[1].ay).to.equal(0)
+				expect(rec.boxes[1].ar).to.equal(0)
 			end
 		},
 		{
 			name = "the boxes may be named fields (layer, x1...) as well as positional",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
-				local boxes = 0
 
 				state.decoded = gridBoxes(5, 5, 3, true)
 				Z.OnData(0, 1, 4, "MAP1")
 
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function() boxes = boxes + 1 end
-				render.DrawLine = function() end
+				local rec = recordRender()
 
 				expect(Z.Draw(at(300, 300, 0))).to.equal(25)
-				expect(boxes).to.equal(25)
+				expect(#rec.boxes).to.equal(25)
+				expect(#rec.wires).to.equal(25)
 			end
 		},
 		{
-			name = "red for indoor, green for outdoor, a cyan line only when the ceiling class is not 0",
+			-- breaks if: the faces are opaque (alpha 255) or the colours are swapped, or the wire is as faint as the faces
+			name = "faces: red for indoor, green for outdoor, translucent (alpha 38); the wire of every box at alpha 90",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
-				local colours, lines = {}, {}
+
+				state.decoded = {boxes = {
+					{0, 0, 0, 0, 0, 2, 3},   -- indoor, class 3
+					{0, 1, 0, 1, 0, 1, 0},   -- outdoor, no ceiling
+					{0, 2, 0, 2, 0, 1, 5}    -- outdoor with a ceiling class 5
+				}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local rec = recordRender()
+
+				-- the player is over no box (y = 500 is the row 3): nothing is highlighted
+				expect(Z.Draw(at(0, 500, 0))).to.equal(3)
+
+				local face, wire = {}, {}
+
+				for _, box in ipairs(rec.boxes) do
+					face[box.x1 / 128] = box
+				end
+
+				for _, box in ipairs(rec.wires) do
+					wire[box.x1 / 128] = box
+				end
+
+				expect(face[0].r > face[0].g).to.beTrue()
+				expect(face[1].g > face[1].r).to.beTrue()
+				expect(face[2].g > face[2].r).to.beTrue()
+
+				for cx = 0, 2 do
+					expect(face[cx].a).to.equal(38)
+					expect(wire[cx].a).to.equal(90)
+					-- the wire is the colour of its faces
+					expect(wire[cx].r).to.equal(face[cx].r)
+					expect(wire[cx].g).to.equal(face[cx].g)
+				end
+			end
+		},
+		{
+			-- breaks if: the box the player stands in is not told from the others, or both of its alphas are not raised
+			name = "the box the player is in is highlighted: faces at double the alpha (76), wire at full alpha; the others stay at 38 and 90",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {
+					{0, 0, 0, 0, 0, 2, 0},
+					{0, 1, 0, 1, 0, 1, 0},
+					{0, 2, 0, 2, 0, 1, 0}
+				}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local rec = recordRender()
+
+				-- inside the middle box
+				Z.Draw(at(128 + 64, 64, 0))
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.a).to.equal(box.x1 == 128 and 76 or 38)
+				end
+
+				for _, box in ipairs(rec.wires) do
+					expect(box.a).to.equal(box.x1 == 128 and 255 or 90)
+				end
+			end
+		},
+		{
+			name = "a cyan line only where the ceiling class is not 0, going up by the class height",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
 
 				state.decoded = {boxes = {
 					{0, 0, 0, 0, 0, 2, 3},   -- indoor, class 3 (120)
@@ -1152,87 +1543,433 @@ return {
 				}}
 				Z.OnData(0, 1, 4, "MAP1")
 
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function(origin, angle, mins, maxs, colour)
-					colours[#colours + 1] = {colour.r, colour.g, colour.b}
-				end
-				render.DrawLine = function(from, to, colour)
-					lines[#lines + 1] = {from.z, to.z, colour.r, colour.g, colour.b}
-				end
+				local rec = recordRender()
 
 				expect(Z.Draw(at(0, 0, 0))).to.equal(3)
 
-				-- indoor is red (more red than green), outdoor is green
-				expect(colours[1][1] > colours[1][2]).to.beTrue()
-				expect(colours[2][2] > colours[2][1]).to.beTrue()
-				expect(colours[3][2] > colours[3][1]).to.beTrue()
-
 				-- two lines (classes 3 and 5), cyan (no red, green and blue high), going up by the class height
-				expect(#lines).to.equal(2)
-				expect(lines[1][3]).to.equal(0)
-				expect(lines[1][4] > 100 and lines[1][5] > 100).to.beTrue()
-				expect(lines[1][2] - lines[1][1]).to.equal(120)
-				expect(lines[2][2] - lines[2][1]).to.equal(224)
+				expect(#rec.lines).to.equal(2)
+				expect(rec.lines[1].r).to.equal(0)
+				expect(rec.lines[1].g > 100 and rec.lines[1].b > 100).to.beTrue()
+				expect(rec.lines[1].z2 - rec.lines[1].z1).to.equal(120)
+				expect(rec.lines[2].z2 - rec.lines[2].z1).to.equal(224)
 			end
 		},
 		{
 			name = "Draw with no map draws nothing, and with a position that is not a position too",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
-				local calls = 0
-
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function() calls = calls + 1 end
-				render.DrawLine = function() calls = calls + 1 end
+				local rec = recordRender()
 
 				expect(Z.Draw(at(0, 0, 0))).to.equal(0)
 
 				state.decoded = gridBoxes(3, 3, 2)
 				Z.OnData(0, 1, 4, "MAP1")
 				expect(Z.Draw(nil)).to.equal(0)
-				expect(calls).to.equal(0)
+				expect(Z.Draw(at(0 / 0, 0, 0))).to.equal(0)
+				expect(#rec.boxes + #rec.wires + #rec.lines).to.equal(0)
 			end
 		},
 		{
-			-- breaks if: the drawing builds a table or a Vector per box per frame
-			name = "drawing 300 boxes allocates no table and no Vector per box",
+			-- breaks if: the drawing builds a table, a Vector or a Color per box per frame, or the selection builds a table per candidate
+			name = "drawing 400 boxes allocates no table, Vector or Color per box, also when the selection is made again at every frame, also with the sort of more boxes than the cap",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				GetConVar(RANGE):SetString("300")
+				silentRender()
+
+				local function grownOver(pos, advance)
+					-- warm up (the JIT compiles the loop meanwhile, and its own objects are not the drawing's)
+					for _ = 1, 300 do
+						if advance then
+							state.now = state.now + 1
+						end
+
+						Z.Draw(pos)
+					end
+
+					-- the smallest of three rounds: the game may allocate a little of its own between two measures (a test must not depend on that)
+					local grown = math.huge
+
+					for _ = 1, 5 do
+						collectgarbage("collect")
+						collectgarbage("stop")
+
+						local before = collectgarbage("count")
+
+						for _ = 1, 20 do
+							if advance then
+								state.now = state.now + 1
+							end
+
+							Z.Draw(pos)
+						end
+
+						grown = math.min(grown, collectgarbage("count") - before)
+						collectgarbage("restart")
+					end
+
+					return grown
+				end
+
+				-- 20 frames of 400 boxes: a Vector per box would be 8000 * 40 bytes = 320 KB, a table per box more; the test runner's own step-budget hook allocates about 10 KB over the same instructions
+				state.decoded = gridBoxes(20, 20, 4)
+				Z.OnData(0, 1, 4, "MAP1")
+				expect(grownOver(at(1280, 1280, 0), false)).to.beLessThan(64)
+				expect(grownOver(at(1280, 1280, 0), true)).to.beLessThan(64)
+
+				-- 900 boxes: the selection sorts them at every frame
+				state.decoded = gridBoxes(30, 30, 4)
+				Z.OnData(0, 1, 4, "MAP1")
+				expect(grownOver(at(1984, 1984, 0), true)).to.beLessThan(64)
+			end
+		},
+		-- ----------------------------------------------------------------------------------------------------------------------
+		-- BoxAt: the box the player is in
+		-- ----------------------------------------------------------------------------------------------------------------------
+		{
+			name = "BoxAt is nil with no map, and for a position that is not a position, and raises nothing",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				expect(Z.BoxAt(at(0, 0, 0))).to.beNil()
+
+				state.decoded = gridBoxes(3, 3, 2)
+				Z.OnData(0, 1, 4, "MAP1")
+
+				expect(function()
+					expect(Z.BoxAt(nil)).to.beNil()
+					expect(Z.BoxAt(12)).to.beNil()
+					expect(Z.BoxAt({})).to.beNil()
+					expect(Z.BoxAt({x = 1, y = 2})).to.beNil()
+					expect(Z.BoxAt({x = 0 / 0, y = 0, z = 0})).to.beNil()
+					expect(Z.BoxAt({x = 1, y = math.huge, z = 0})).to.beNil()
+				end).to.succeed()
+
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(1)
+			end
+		},
+		{
+			-- breaks if: the index or a field comes back in another order than (index, layer, x1, y1, x2, y2, state, ceil)
+			name = "BoxAt returns the index and the fields of the box that contains the position (the module's order: layer, x1, y1, x2, y2, state, ceil)",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 4}, {0, 10, -2, 12, 4, 1, 0}, {2, 3, -2, 9, 4, 1, 6}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local index, layer, x1, y1, x2, y2, st, ceil = Z.BoxAt(at(5 * 128 + 10, 128, 0))
+
+				expect(index).to.equal(1)
+				expect(layer).to.equal(0)
+				expect(x1).to.equal(3)
+				expect(y1).to.equal(-2)
+				expect(x2).to.equal(9)
+				expect(y2).to.equal(4)
+				expect(st).to.equal(2)
+				expect(ceil).to.equal(4)
+
+				index, layer, x1, y1, x2, y2, st, ceil = Z.BoxAt(at(11 * 128, 0, 0))
+
+				expect(index).to.equal(2)
+				expect(x1).to.equal(10)
+				expect(st).to.equal(1)
+				expect(ceil).to.equal(0)
+
+				-- the box of layer 2, over the first one
+				index, layer, _, _, _, _, st, ceil = Z.BoxAt(at(5 * 128, 128, 2 * 128))
+
+				expect(index).to.equal(3)
+				expect(layer).to.equal(2)
+				expect(ceil).to.equal(6)
+			end
+		},
+		{
+			-- breaks if: the edge is off by a cell: the cell x2 + 1 is outside, the cell x1 is inside (floor of the coordinate over the cell)
+			name = "BoxAt: a box contains from x1 * 128 up to just under (x2 + 1) * 128, likewise y; the next cell is outside",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 0}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				expect(Z.BoxAt(at(3 * 128, 0, 0))).to.equal(1)
+				expect(Z.BoxAt(at(3 * 128 - 0.01, 0, 0))).to.beNil()
+				expect(Z.BoxAt(at(10 * 128 - 0.01, 0, 0))).to.equal(1)
+				expect(Z.BoxAt(at(10 * 128, 0, 0))).to.beNil()
+				expect(Z.BoxAt(at(5 * 128, -2 * 128, 0))).to.equal(1)
+				expect(Z.BoxAt(at(5 * 128, -2 * 128 - 0.01, 0))).to.beNil()
+				expect(Z.BoxAt(at(5 * 128, 5 * 128 - 0.01, 0))).to.equal(1)
+				expect(Z.BoxAt(at(5 * 128, 5 * 128, 0))).to.beNil()
+			end
+		},
+		{
+			-- breaks if: the layer above and the one below are not looked at (stairs), or are looked at before the player's own layer, or a layer farther away is taken
+			name = "BoxAt looks at the player's own layer first, then the layer above, then the one below (like Lookup), and no farther",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				-- only the layer 1 (z = 64 to 192 ... the band of a layer is 128 high around layer * 128)
+				state.decoded = {boxes = {{1, 0, 0, 2, 2, 1, 0}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				expect(Z.BoxAt(at(64, 64, 128))).to.equal(1) -- its own layer
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(1) -- layer 0: the layer above is layer 1
+				expect(Z.BoxAt(at(64, 64, 256))).to.equal(1) -- layer 2: the layer below is layer 1
+				expect(Z.BoxAt(at(64, 64, 512))).to.beNil() -- layer 4: two layers away
+				expect(Z.BoxAt(at(64, 64, -200))).to.beNil() -- layer -2
+
+				-- the player's own layer is chosen first when both exist
+				state.decoded = {boxes = {{0, 0, 0, 2, 2, 1, 0}, {1, 0, 0, 2, 2, 2, 3}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(1)
+				expect(Z.BoxAt(at(64, 64, 63))).to.equal(1)
+				expect(Z.BoxAt(at(64, 64, 64))).to.equal(2)
+				expect(Z.BoxAt(at(64, 64, 128))).to.equal(2)
+
+				-- the layer above before the one below: z = 64 is the layer 1 (own), z = 0 with layers -1 and 1 only gives the one above
+				state.decoded = {boxes = {{-1, 0, 0, 2, 2, 1, 0}, {1, 0, 0, 2, 2, 2, 3}}}
+				Z.OnData(0, 1, 4, "MAP1")
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(2)
+			end
+		},
+		{
+			-- breaks if: the answer is kept from the old map or the old place
+			name = "BoxAt follows the player from a box to the next at once, and a new map or a state that drops the map gives a new answer",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 0, 0, 0, 0, 2, 0}, {0, 1, 0, 1, 0, 1, 0}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				-- the clock does not move: the answer still changes with the cell
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(1)
+				expect(Z.BoxAt(at(128 + 64, 64, 0))).to.equal(2)
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(1)
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(1)
+
+				-- another map at the same place
+				state.decoded = {boxes = {{0, 5, 5, 5, 5, 1, 0}, {0, 0, 0, 0, 0, 1, 0}}}
+				Z.OnData(0, 1, 4, "MAP1")
+				expect(Z.BoxAt(at(64, 64, 0))).to.equal(2)
+
+				-- the map dropped
+				Z.OnState(2, 0, 0)
+				expect(Z.BoxAt(at(64, 64, 0))).to.beNil()
+			end
+		},
+		{
+			-- breaks if: the scan makes a table, a Vector or a string at each call
+			name = "BoxAt allocates nothing, also when the cell changes at every call (the scan itself)",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
 
 				state.decoded = gridBoxes(20, 20, 4)
 				Z.OnData(0, 1, 4, "MAP1")
 
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function() end
-				render.DrawLine = function() end
+				local a, b = at(64, 64, 0), at(1500, 1500, 0)
 
-				-- the first call may build the flat arrays; the next ones must not allocate (a few bytes of the call itself at most)
-				local pos = at(1280, 1280, 0)
-
-				-- warm up (the JIT compiles the loop meanwhile, and its own objects are not the drawing's)
-				for _ = 1, 300 do
-					Z.Draw(pos)
+				for _ = 1, 1000 do
+					Z.BoxAt(a)
+					Z.BoxAt(b)
 				end
 
-				-- the smallest of three rounds: the game may allocate a little of its own between two measures (a test must not depend on that)
 				local grown = math.huge
 
-				for _ = 1, 3 do
+				for _ = 1, 5 do
 					collectgarbage("collect")
 					collectgarbage("stop")
 
 					local before = collectgarbage("count")
 
-					for _ = 1, 20 do
-						Z.Draw(pos)
+					for _ = 1, 2000 do
+						Z.BoxAt(a)
+						Z.BoxAt(b)
 					end
 
 					grown = math.min(grown, collectgarbage("count") - before)
 					collectgarbage("restart")
 				end
 
-				-- 20 frames of 300 boxes: a Vector per box would be 6000 * 40 bytes = 240 KB, a table per box more; the test runner's own step-budget hook allocates about 10 KB over the same instructions
-				expect(grown).to.beLessThan(64)
+				expect(grown).to.beLessThan(128)
+			end
+		},
+		-- ----------------------------------------------------------------------------------------------------------------------
+		-- the HUD block of the debug mode
+		-- ----------------------------------------------------------------------------------------------------------------------
+		{
+			-- breaks if: a line says something else, or the box number or the total is wrong, or the ceiling of a class is wrong
+			name = "the HUD block in an indoor box: box number / total, indoor with the ceiling height and class, the layer and the cells with their size",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 4}, {0, 10, -2, 12, 2, 1, 0}, {0, 20, 0, 20, 0, 1, 3}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local calls = recordText()
+
+				Z.DrawHud(at(5 * 128 + 10, 128, 0))
+
+				local lines = textLines(calls)
+
+				expect(#lines).to.equal(3)
+				expect(lines[1].text).to.equal("In/out map: box 1 / 3")
+				expect(lines[2].text).to.equal("indoor, ceiling 160 units (class 4)")
+				expect(lines[3].text).to.equal("layer 0, cells x 3..9, y -2..4 (7 x 7)")
+			end
+		},
+		{
+			name = "the HUD block in an outdoor box with no ceiling, with a box that is not square",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 4}, {0, 10, -2, 12, 2, 1, 0}, {1, 20, 0, 20, 0, 1, 3}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local calls = recordText()
+
+				Z.DrawHud(at(11 * 128, 0, 0))
+
+				local lines = textLines(calls)
+
+				expect(#lines).to.equal(3)
+				expect(lines[1].text).to.equal("In/out map: box 2 / 3")
+				expect(lines[2].text).to.equal("outdoor, open sky / ceiling over 512")
+				expect(lines[3].text).to.equal("layer 0, cells x 10..12, y -2..2 (3 x 5)")
+
+				-- the next frame in another box: the text follows (nothing is kept from the first)
+				calls = recordText()
+				Z.DrawHud(at(20 * 128 + 5, 5, 128))
+				lines = textLines(calls)
+				expect(lines[1].text).to.equal("In/out map: box 3 / 3")
+				expect(lines[2].text).to.equal("outdoor, ceiling 120 units (class 3)")
+				expect(lines[3].text).to.equal("layer 1, cells x 20..20, y 0..0 (1 x 1)")
+			end
+		},
+		{
+			-- breaks if: the block is not placed under the crosshair, not centred, the lines overlap, or the shadow is missing or is drawn after the text
+			name = "the HUD block is centred under the crosshair (ScrW() / 2, ScrH() / 2 + 80), one line under the other, each with a dark shadow drawn first, with a font",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 4}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local calls = recordText()
+
+				Z.DrawHud(at(5 * 128, 128, 0))
+
+				-- three lines, each drawn twice: 6 calls
+				expect(#calls).to.equal(6)
+
+				local lines = textLines(calls)
+
+				expect(#lines).to.equal(3)
+				expect(lines[1].x).to.equal(ScrW() / 2)
+				expect(lines[1].y).to.equal(ScrH() / 2 + 80)
+				expect(lines[2].y > lines[1].y).to.beTrue()
+				expect(lines[3].y > lines[2].y).to.beTrue()
+
+				for i, call in ipairs(calls) do
+					expect(isstring(call.font) and #call.font > 0).to.beTrue()
+					expect(call.xalign).to.equal(TEXT_ALIGN_CENTER)
+
+					if call.r + call.g + call.b > 200 then
+						-- the text: the call before it is its shadow, the same text one pixel right and down, dark
+						local shadow = calls[i - 1]
+
+						expect(shadow ~= nil).to.beTrue()
+						expect(shadow.text).to.equal(call.text)
+						expect(shadow.r + shadow.g + shadow.b <= 200).to.beTrue()
+						expect(shadow.a > 0).to.beTrue()
+						expect(shadow.x).to.equal(call.x + 1)
+						expect(shadow.y).to.equal(call.y + 1)
+					end
+				end
+			end
+		},
+		{
+			name = "the HUD block with a map but no box at the player's feet says so, in one line",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 4}}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local calls = recordText()
+
+				Z.DrawHud(at(100000, 0, 0))
+
+				local lines = textLines(calls)
+
+				expect(#lines).to.equal(1)
+				expect(lines[1].text).to.equal("In/out map: unknown here (no box): the automatic zoom uses its own rays")
+				expect(lines[1].x).to.equal(ScrW() / 2)
+				expect(lines[1].y).to.equal(ScrH() / 2 + 80)
+			end
+		},
+		{
+			-- breaks if: with no map the block is empty or says "no box" (it is not the same thing: the map has not come)
+			name = "the HUD block with no map is the state's own line: not received yet, computing, off on this server",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				local function lineFor(pos)
+					local calls = recordText()
+
+					Z.DrawHud(pos)
+
+					local lines = textLines(calls)
+
+					expect(#lines).to.equal(1)
+
+					return lines[1].text
+				end
+
+				expect(lineFor(at(0, 0, 0))).to.equal("In/out map: not received yet")
+
+				Z.OnState(3, 42, 100)
+				expect(lineFor(at(0, 0, 0))).to.equal("In/out map: computing 42 %")
+
+				Z.OnState(0, 0, 0)
+				expect(lineFor(at(0, 0, 0))).to.equal("In/out map: off on this server")
+			end
+		},
+		{
+			-- breaks if: the block builds its strings at every frame (the cache of the lines by box), or never builds them again when the box changes
+			name = "the HUD lines are made when the player goes into another box, not at every frame in the same box",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {{0, 3, -2, 9, 4, 2, 4}, {0, 10, -2, 12, 2, 1, 0}}}
+				Z.OnData(0, 1, 4, "MAP1")
+				draw.SimpleText = function() return 0, 0 end
+
+				local first = Z.HudBuilds()
+
+				for _ = 1, 100 do
+					Z.DrawHud(at(5 * 128, 128, 0))
+				end
+
+				-- 100 frames in box 1, and a few steps inside it: one build
+				Z.DrawHud(at(5 * 128 + 40, 128 + 10, 0))
+				expect(Z.HudBuilds()).to.equal(first + 1)
+
+				-- into box 2: one more, then no more
+				for _ = 1, 100 do
+					Z.DrawHud(at(11 * 128, 0, 0))
+				end
+
+				expect(Z.HudBuilds()).to.equal(first + 2)
+
+				-- out of every box: one more
+				for _ = 1, 100 do
+					Z.DrawHud(at(100000, 0, 0))
+				end
+
+				expect(Z.HudBuilds()).to.equal(first + 3)
 			end
 		},
 		-- ----------------------------------------------------------------------------------------------------------------------
@@ -1258,6 +1995,33 @@ return {
 				expect(box ~= nil).to.beTrue()
 				expect(string.find(box:GetText(), "Draw the in/out map in the world (debug)", 1, true) == 1).to.beTrue()
 				expect(GetConVar(DEBUG):GetString()).to.equal(state.debug)
+			end
+		},
+		{
+			-- breaks if: the slider is missing, is bound to another convar, has other limits, or is above the check box
+			name = "ZoneMapOptions has the display distance slider (metres, 20 to 300, whole numbers) bound to gry_zonemap_debug_range right under the debug check box; building it writes nothing",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.ZoneMapOptions(state.panel)
+
+				local boxAt, sliderAt, slider
+
+				for i, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == DEBUG then
+						boxAt = i
+					elseif p.ClassName == "DNumSlider" and p.Scratch and p.Scratch:GetTable().m_strConVar == RANGE then
+						sliderAt, slider = i, p
+					end
+				end
+
+				expect(boxAt ~= nil).to.beTrue()
+				expect(slider ~= nil).to.beTrue()
+				expect(sliderAt > boxAt).to.beTrue()
+				expect(slider:GetText()).to.equal("In/out map debug: display distance (metres)")
+				expect(slider:GetMin()).to.equal(20)
+				expect(slider:GetMax()).to.equal(300)
+				expect(slider:GetDecimals()).to.equal(0)
+				expect(GetConVar(RANGE):GetString()).to.equal(state.range)
 			end
 		},
 		{
@@ -1447,15 +2211,70 @@ return {
 				Z.OnData(0, 1, #bytes, bytes)
 				expect((select(4, Z.Status()))).to.equal(#map.boxes)
 
-				render.SetColorMaterial = function() end
-				render.DrawWireframeBox = function() boxes = boxes + 1 end
-				render.DrawLine = function() lines = lines + 1 end
+				local rec = recordRender()
 
 				expect(Z.Draw(Vector(500, 64, 0))).to.equal(#map.boxes)
+				boxes, lines = #rec.boxes, #rec.lines
 				expect(boxes).to.equal(#map.boxes)
+				expect(#rec.wires).to.equal(#map.boxes)
 
 				-- the indoor boxes have ceiling class 4, the outdoor ones none: some lines, not one a box
 				expect(lines > 0 and lines < boxes).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the HUD and the zoom disagree (BoxAt and Indoor must answer the same, the stairs layers included)
+			name = "real module: BoxAt and Indoor agree on a grid of positions, on three layers (the HUD names the box the automatic zoom reads)",
+			skip = realModule == nil,
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local M = realModule
+
+				GryMod.ZoneMap = M
+
+				local samples = {}
+
+				-- layer 0 and layer 1 over a part of the area, outdoor cells beside
+				for i = 0, 5 do
+					for j = 0, 3 do
+						samples[#samples + 1] = {x = 64 + 128 * i, y = 64 + 128 * j, z = 0, indoor = i < 3, ceil = i < 3 and 3 or 0}
+					end
+				end
+
+				for i = 1, 4 do
+					samples[#samples + 1] = {x = 64 + 128 * i, y = 64, z = 128, indoor = true, ceil = 5}
+				end
+
+				local map = M.Build(samples)
+				local bytes = M.Encode(map, {bspSize = 1, nodeCount = #samples, complete = true})
+
+				Z.OnState(4, 1, 1)
+				Z.OnData(0, 1, #bytes, bytes)
+				expect(#map.boxes > 1).to.beTrue()
+
+				local checked, found = 0, 0
+
+				for x = -100, 900, 61 do
+					for y = -100, 600, 53 do
+						for z = -140, 300, 37 do
+							local pos = Vector(x, y, z)
+							local indoor = Z.Indoor(pos)
+							local index, _, _, _, _, _, boxState = Z.BoxAt(pos)
+
+							checked = checked + 1
+
+							if index then
+								found = found + 1
+								expect(indoor).to.equal(boxState == 2)
+							else
+								expect(indoor).to.beNil()
+							end
+						end
+					end
+				end
+
+				expect(checked > 500).to.beTrue()
+				expect(found > 50).to.beTrue()
 			end
 		},
 		{

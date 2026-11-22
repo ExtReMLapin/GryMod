@@ -1,9 +1,11 @@
 -- The client side of the in/out map (see docs/superpowers/specs/2026-11-22-zonemap-design.md): the server makes the map from the node graph
 -- (sv_zonemap.lua) and sends it; this file receives it, answers "is this place indoors?" (the automatic zoom asks, cl_hud_radar_zoom.lua), keeps the
--- state for the options panel and draws the boxes in the world while the debug convar is on.
+-- state for the options panel and, while the debug convar is on, draws the boxes in the world (translucent volumes, the nearest ones, within the range the
+-- player chose) and a block of text under the crosshair that names the box the player is in.
 -- GryMod.ZoneMap (sh_zonemap.lua) is the pure module: it decodes the file and looks a position up. It is read at the moment of use, never kept, so that a
 -- reload of it (or a test's stand-in) is seen at once.
--- Cost: the two net receivers run only when the server sends something; Indoor allocates nothing; the drawing hook exists only while gry_zonemap_debug is 1.
+-- Cost: the two net receivers run only when the server sends something; Indoor allocates nothing; the two drawing hooks (3D and HUD) exist only while
+-- gry_zonemap_debug is 1.
 
 GryMod = GryMod or {}
 
@@ -12,8 +14,13 @@ GryMod.ZoneMapClient = Z
 
 local DEBUG_CONVAR = "gry_zonemap_debug"
 local DEBUG_HOOK = "GryMod zonemap debug"
-local DEBUG_RANGE = 3000 -- units: the boxes farther than this from the player are not drawn
-local DEBUG_MAX = 300 -- boxes drawn a frame, at most
+local HUD_HOOK = "GryMod zonemap debug hud"
+local RANGE_CONVAR = "gry_zonemap_debug_range"
+local RANGE_MIN, RANGE_MAX = 20, 300 -- metres, the limits of the convar
+local DEBUG_MAX = 800 -- boxes drawn a frame, at most (the nearest ones)
+local REFRESH_EVERY = 0.25 -- seconds: the selection of the boxes to draw is made again after that
+local MOVE_LIMIT = 64 -- units: or when the player moved farther than that from where it was made
+local FALLBACK_METRES_PER_UNIT = 0.01905 -- GryMod.RadarShared.METRES_PER_UNIT, when that file is not loaded
 local ASK_EVERY = 5 -- seconds between two requests made after a failure to receive
 local CELL = 128 -- units, as in the pure module
 local HALF_BAND = 64
@@ -22,7 +29,9 @@ local LAST_STATE = 6
 -- the heights of the ceiling classes 1..7 (the same classes as Floors, lua/grymod/client/minimap/floors.lua)
 local CLASS_HEIGHT = {56, 88, 120, 160, 224, 320, 448}
 
-CreateClientConVar(DEBUG_CONVAR, "0", true, false, "Draw the in/out map of the level in the world (red = indoor, green = outdoor, cyan = ceiling height)", 0, 1)
+CreateClientConVar(DEBUG_CONVAR, "0", true, false, "Draw the in/out map of the level in the world (red = indoor, green = outdoor, cyan = ceiling height) and name the box you are in", 0, 1)
+
+local rangeConVar = CreateClientConVar(RANGE_CONVAR, "120", true, false, "In/out map debug: how far, in metres, the boxes are drawn around you (20 to 300)", RANGE_MIN, RANGE_MAX)
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The state: one table, so that a test can save it and put it back
@@ -45,7 +54,11 @@ local function freshState()
 		askedAt = nil, -- the clock when the client started to ask for the map (Z.AskUntilAnswered)
 		loadingSince = nil, -- the clock since when Z.Loading wants the veil (its grace is counted from there)
 		noticedMap = nil, -- the level for which the incomplete notice was shown
-		flat = nil -- the boxes as plain number lists for the drawing (made at the first frame drawn)
+		flat = nil, -- the boxes as plain number lists for the drawing (made at the first frame drawn)
+		sel = nil, -- the boxes to draw (the nearest ones), made again now and then (see refreshSelection)
+		boxCache = nil, -- the box the player was last found in (see findBox)
+		hud = nil, -- the lines of the HUD block for the box the player is in
+		hudBuilds = 0 -- how many times those lines were made (see Z.HudBuilds)
 	}
 end
 
@@ -53,6 +66,8 @@ S = freshState()
 
 local function dropMap()
 	S.map, S.index, S.boxes, S.flat = nil, nil, 0, nil
+	-- everything that was made from the old boxes goes with them
+	S.sel, S.boxCache, S.hud = nil, nil, nil
 end
 
 local function dropSet()
@@ -419,12 +434,26 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 -- The debug drawing
 -- ---------------------------------------------------------------------------------------------------------
+-- The boxes are drawn as translucent volumes (a filled box and, over it, its edges as a thin wire at a higher alpha so that two neighbours stay readable), red for
+-- indoor and green for outdoor, plus a cyan line for the ceiling. At most DEBUG_MAX boxes a frame, the NEAREST ones within the range of the convar
+-- gry_zonemap_debug_range (metres). Which boxes those are is worked out at most four times a second, or when the player moved more than 64 units (the frame
+-- draws the selection kept). The box the player is in is drawn brighter. Everything the frame uses is made once: no table, Vector or Color per box per frame.
+
+local floor = math.floor
+local INV_CELL = 1 / CELL -- exact: a power of two
+local INV_BAND = 1 / (2 * HALF_BAND)
 
 local ORIGIN = Vector(0, 0, 0)
 local NO_ANGLE = Angle(0, 0, 0)
 local boxMins, boxMaxs = Vector(0, 0, 0), Vector(0, 0, 0)
 local lineFrom, lineTo = Vector(0, 0, 0), Vector(0, 0, 0)
-local RED, GREEN, CYAN = Color(255, 50, 50), Color(50, 255, 80), Color(0, 255, 255)
+local CYAN = Color(0, 255, 255)
+
+-- the colours by state (1 outdoor, 2 indoor): the faces (alpha 38, 76 for the box the player is in) and the wire (alpha 90, 255 for that box)
+local FACE = {Color(50, 255, 80, 38), Color(255, 50, 50, 38)}
+local FACE_HERE = {Color(50, 255, 80, 76), Color(255, 50, 50, 76)}
+local WIRE = {Color(50, 255, 80, 90), Color(255, 50, 50, 90)}
+local WIRE_HERE = {Color(50, 255, 80, 255), Color(255, 50, 50, 255)}
 
 -- A box as the module gives it: {layer, x1, y1, x2, y2, state, ceil}, in a list or with those names.
 local function field(box, name, at)
@@ -439,7 +468,7 @@ end
 
 -- The boxes of the map as plain lists of numbers (the world bounds of each box), made once for a map, at the first frame that draws it.
 local function flatten(map)
-	local flat = {n = 0, minX = {}, maxX = {}, minY = {}, maxY = {}, minZ = {}, maxZ = {}, baseZ = {}, state = {}, ceil = {}}
+	local flat = {n = 0, minX = {}, maxX = {}, minY = {}, maxY = {}, minZ = {}, maxZ = {}, baseZ = {}, layer = {}, state = {}, ceil = {}, dist = {}}
 	local n = 0
 
 	for _, box in ipairs(map.boxes) do
@@ -455,8 +484,10 @@ local function flatten(map)
 			flat.minZ[n] = layer * CELL - HALF_BAND
 			flat.maxZ[n] = layer * CELL + HALF_BAND
 			flat.baseZ[n] = layer * CELL
+			flat.layer[n] = layer
 			flat.state[n] = field(box, "state", 6)
 			flat.ceil[n] = field(box, "ceil", 7)
+			flat.dist[n] = 0 -- the distance of the box to the player, filled by the selection (the array is full from the start)
 		end
 	end
 
@@ -465,69 +496,366 @@ local function flatten(map)
 	return flat
 end
 
--- Draws the boxes within DEBUG_RANGE of `pos` (anything with x, y, z), at most DEBUG_MAX, and returns how many. No table or Vector is made per box.
-function Z.Draw(pos)
-	local map = S.map
-
-	if not map or not istable(pos) and not isvector(pos) then
-		return 0
-	end
-
-	local px, py, pz = pos.x, pos.y, pos.z
-
-	if not isnumber(px) or not isnumber(py) or not isnumber(pz) then
-		return 0
-	end
-
+-- the flat boxes of the map held (made when they are first needed), or nil when there is no map
+local function flatBoxes()
 	local flat = S.flat
 
-	if not flat then
-		flat = flatten(map)
+	if not flat and S.map then
+		flat = flatten(S.map)
 		S.flat = flat
 	end
 
-	local minX, maxX, minY, maxY, minZ, maxZ = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.minZ, flat.maxZ
-	local baseZ, states, ceils = flat.baseZ, flat.state, flat.ceil
-	local rangeSquared = DEBUG_RANGE * DEBUG_RANGE
-	local drawn = 0
+	return flat
+end
 
-	render.SetColorMaterial()
+-- x, y, z of a position (a Vector or anything with those numbers), or nil when it is not one (or not a finite one)
+local function position(pos)
+	if not istable(pos) and not isvector(pos) then
+		return nil
+	end
+
+	local x, y, z = pos.x, pos.y, pos.z
+
+	if not isnumber(x) or not isnumber(y) or not isnumber(z) then
+		return nil
+	end
+
+	-- NaN and infinity: their difference with themselves is not 0
+	if x - x ~= 0 or y - y ~= 0 or z - z ~= 0 then
+		return nil
+	end
+
+	return x, y, z
+end
+
+-- The range of the debug drawing in units (the convar is in metres).
+function Z.DebugRangeUnits()
+	local shared = GryMod.RadarShared
+	local metresPerUnit = shared and shared.METRES_PER_UNIT or FALLBACK_METRES_PER_UNIT
+
+	return math.Clamp(rangeConVar:GetFloat(), RANGE_MIN, RANGE_MAX) / metresPerUnit
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The box the player is in
+-- ---------------------------------------------------------------------------------------------------------
+
+-- The index of the box that contains the position, or 0. The player's own layer first, then the layer above, then the one below (like GryMod.ZoneMap.Lookup, so that
+-- the HUD and Indoor agree). The answer is kept for the cell and the layer it was found in: a scan of the boxes only when the player changes cell or layer.
+local function findBox(flat, x, y, z)
+	local cx, cy, layer = floor(x * INV_CELL), floor(y * INV_CELL), floor((z + HALF_BAND) * INV_BAND)
+	local cache = S.boxCache
+
+	if cache then
+		if cache.cx == cx and cache.cy == cy and cache.layer == layer then
+			return cache.index
+		end
+	else
+		cache = {cx = 0, cy = 0, layer = 0, index = 0}
+		S.boxCache = cache
+	end
+
+	local minX, maxX, minY, maxY, layers = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.layer
+	local best, bestRank = 0, 4
 
 	for i = 1, flat.n do
-		-- the distance from the player to the box (0 along an axis the player is inside)
-		local x1, x2 = minX[i], maxX[i]
-		local y1, y2 = minY[i], maxY[i]
-		local z1, z2 = minZ[i], maxZ[i]
-		local dx = px < x1 and x1 - px or (px > x2 and px - x2 or 0)
-		local dy = py < y1 and y1 - py or (py > y2 and py - y2 or 0)
-		local dz = pz < z1 and z1 - pz or (pz > z2 and pz - z2 or 0)
+		-- the cells x1 to x2 are the coordinates from x1 * CELL up to (x2 + 1) * CELL, not including it
+		if x >= minX[i] and x < maxX[i] and y >= minY[i] and y < maxY[i] then
+			local apart = layers[i] - layer
+			local rank = apart == 0 and 1 or (apart == 1 and 2 or (apart == -1 and 3 or 4))
 
-		if dx * dx + dy * dy + dz * dz <= rangeSquared then
-			boxMins.x, boxMins.y, boxMins.z = x1, y1, z1
-			boxMaxs.x, boxMaxs.y, boxMaxs.z = x2, y2, z2
-			render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, states[i] == 2 and RED or GREEN, false)
-
-			-- the ceiling class over the box: a cyan line up from the middle of the band by the height of the class (0 = no ceiling)
-			local height = CLASS_HEIGHT[ceils[i]]
-
-			if height then
-				lineFrom.x, lineFrom.y, lineFrom.z = (x1 + x2) * 0.5, (y1 + y2) * 0.5, baseZ[i]
-				lineTo.x, lineTo.y, lineTo.z = lineFrom.x, lineFrom.y, baseZ[i] + height
-				render.DrawLine(lineFrom, lineTo, CYAN, false)
-			end
-
-			drawn = drawn + 1
-
-			if drawn >= DEBUG_MAX then
-				break
+			if rank < 4 and rank <= bestRank then
+				best, bestRank = i, rank
 			end
 		end
 	end
 
-	return drawn
+	cache.cx, cache.cy, cache.layer, cache.index = cx, cy, layer, best
+
+	return best
 end
 
--- The hook's function: made once, so that Add and Remove name the same one.
+-- The fields of the box i of the flat boxes, in the module's order: layer, x1, y1, x2, y2, state, ceil (the cells are whole numbers: the world bounds over CELL, exact)
+local function boxFields(flat, i)
+	return flat.layer[i], flat.minX[i] * INV_CELL, flat.minY[i] * INV_CELL, flat.maxX[i] * INV_CELL - 1, flat.maxY[i] * INV_CELL - 1, flat.state[i], flat.ceil[i]
+end
+
+-- BoxAt(pos) -> index, layer, x1, y1, x2, y2, state, ceil of the box the position is in (the index is the box's place in the map), or nil. No table made.
+function Z.BoxAt(pos)
+	local x, y, z = position(pos)
+
+	if not x then
+		return nil
+	end
+
+	local flat = flatBoxes()
+
+	if not flat then
+		return nil
+	end
+
+	local index = findBox(flat, x, y, z)
+
+	if index == 0 then
+		return nil
+	end
+
+	return index, boxFields(flat, index)
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The boxes to draw: the nearest ones within the range
+-- ---------------------------------------------------------------------------------------------------------
+
+-- the sort puts the nearest first (a tie goes to the lower index, so the order is the same every time); the distances it reads are those of the selection being made
+local sortDist
+
+local function nearer(a, b)
+	local da, db = sortDist[a], sortDist[b]
+
+	return da < db or (da == db and a < b)
+end
+
+-- The selection kept (S.sel): the indices of the boxes within the range, the nearest DEBUG_MAX of them when there are more, in the table `idx` that is reused. It is made
+-- again when it is older than REFRESH_EVERY, when the player is more than MOVE_LIMIT units from where it was made, or when the range changed.
+local function refreshSelection(flat, x, y, z, range, now)
+	local sel = S.sel
+
+	if not sel then
+		sel = {n = 0, idx = {}, runs = 0, at = -math.huge, x = 0, y = 0, z = 0, range = -1}
+		S.sel = sel
+	end
+
+	local dx, dy, dz = x - sel.x, y - sel.y, z - sel.z
+	local age = now - sel.at
+
+	if sel.range == range and age >= 0 and age < REFRESH_EVERY and dx * dx + dy * dy + dz * dz <= MOVE_LIMIT * MOVE_LIMIT then
+		return sel
+	end
+
+	sel.at, sel.x, sel.y, sel.z, sel.range = now, x, y, z, range
+	sel.runs = sel.runs + 1
+
+	local minX, maxX, minY, maxY, minZ, maxZ, dist = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.minZ, flat.maxZ, flat.dist
+	local rangeSquared = range * range
+	local idx, n = sel.idx, 0
+
+	for i = 1, flat.n do
+		-- the distance from the player to the box (0 along an axis the player is inside)
+		local x1, x2, y1, y2, z1, z2 = minX[i], maxX[i], minY[i], maxY[i], minZ[i], maxZ[i]
+		local bx = x < x1 and x1 - x or (x > x2 and x - x2 or 0)
+		local by = y < y1 and y1 - y or (y > y2 and y - y2 or 0)
+		local bz = z < z1 and z1 - z or (z > z2 and z - z2 or 0)
+		local d = bx * bx + by * by + bz * bz
+
+		if d <= rangeSquared then
+			n = n + 1
+			idx[n] = i
+			dist[i] = d
+		end
+	end
+
+	-- the tail of the last selection that is not part of this one
+	for i = n + 1, sel.n do
+		idx[i] = nil
+	end
+
+	if n > DEBUG_MAX then
+		sortDist = dist
+		table.sort(idx, nearer)
+
+		for i = DEBUG_MAX + 1, n do
+			idx[i] = nil
+		end
+
+		n = DEBUG_MAX
+	end
+
+	sel.n = n
+
+	return sel
+end
+
+-- how many times the selection was made for the map held (a test reads it to see that it is not made at every frame)
+function Z.SelectionRuns()
+	local sel = S.sel
+
+	return sel and sel.runs or 0
+end
+
+-- Draws the boxes of the selection (the nearest within the range of the convar, DEBUG_MAX at most) around `pos` (anything with x, y, z) and returns how many. The box
+-- `pos` is in is drawn brighter. No table, Vector or Color is made per box.
+function Z.Draw(pos)
+	local x, y, z = position(pos)
+
+	if not x then
+		return 0
+	end
+
+	local flat = flatBoxes()
+
+	if not flat then
+		return 0
+	end
+
+	local sel = refreshSelection(flat, x, y, z, Z.DebugRangeUnits(), Z.Clock())
+	local here = findBox(flat, x, y, z)
+	local minX, maxX, minY, maxY, minZ, maxZ = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.minZ, flat.maxZ
+	local baseZ, states, ceils = flat.baseZ, flat.state, flat.ceil
+	local idx = sel.idx
+
+	render.SetColorMaterial()
+
+	for k = 1, sel.n do
+		local i = idx[k]
+		local x1, x2, y1, y2 = minX[i], maxX[i], minY[i], maxY[i]
+		local state = states[i] == 2 and 2 or 1
+
+		boxMins.x, boxMins.y, boxMins.z = x1, y1, minZ[i]
+		boxMaxs.x, boxMaxs.y, boxMaxs.z = x2, y2, maxZ[i]
+
+		-- the volume (no write to the depth buffer: two translucent boxes never hide each other), then its edges
+		if i == here then
+			render.DrawBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, FACE_HERE[state], false)
+			render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, WIRE_HERE[state], false)
+		else
+			render.DrawBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, FACE[state], false)
+			render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, WIRE[state], false)
+		end
+
+		-- the ceiling class over the box: a cyan line up from the middle of the band by the height of the class (0 = no ceiling)
+		local height = CLASS_HEIGHT[ceils[i]]
+
+		if height then
+			lineFrom.x, lineFrom.y, lineFrom.z = (x1 + x2) * 0.5, (y1 + y2) * 0.5, baseZ[i]
+			lineTo.x, lineTo.y, lineTo.z = lineFrom.x, lineFrom.y, baseZ[i] + height
+			render.DrawLine(lineFrom, lineTo, CYAN, false)
+		end
+	end
+
+	return sel.n
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The HUD block: the box the player is in
+-- ---------------------------------------------------------------------------------------------------------
+
+local FONT = "GryModZoneMapDebug"
+local BLOCK_DOWN = 80 -- pixels under the crosshair
+
+-- the font follows the height of the screen as it is when the file loads (20 pixels at 1080, 40 at a 4K screen)
+local FONT_SIZE = math.max(18, math.floor(ScrH() / 54))
+local LINE_HEIGHT = math.floor(FONT_SIZE * 1.2) -- pixels between two lines of the block
+
+surface.CreateFont(FONT, {font = "Tahoma", size = FONT_SIZE, weight = 600, antialias = true})
+
+local TEXT, TEXT_INDOOR, TEXT_OUTDOOR, SHADOW = Color(235, 235, 235), Color(255, 225, 130), Color(150, 255, 175), Color(0, 0, 0, 200)
+
+local NO_BOX = PREFIX .. "unknown here (no box): the automatic zoom uses its own rays"
+
+-- The lines of the block for a position: line 1, line 2 (nil when there is none), line 3, and the colour of line 2. With no map, the state's own line. The lines are kept
+-- for the box the player is in: the strings are made when he goes from one box to another, not at every frame.
+local function hudLines(pos)
+	local flat = flatBoxes()
+
+	if not flat then
+		return Z.StatusText()
+	end
+
+	local x, y, z = position(pos)
+	local index = x and findBox(flat, x, y, z) or 0
+	local hud = S.hud
+
+	if hud and hud.index == index then
+		return hud.line1, hud.line2, hud.line3, hud.colour
+	end
+
+	hud = hud or {}
+	S.hud = hud
+	hud.index = index
+	S.hudBuilds = S.hudBuilds + 1
+
+	if index == 0 then
+		hud.line1, hud.line2, hud.line3, hud.colour = NO_BOX, nil, nil, TEXT
+
+		return hud.line1, nil, nil, TEXT
+	end
+
+	local layer, x1, y1, x2, y2, state, ceil = boxFields(flat, index)
+	local height = CLASS_HEIGHT[ceil]
+	local indoor = state == 2
+
+	hud.line1 = PREFIX .. "box " .. index .. " / " .. flat.n
+	hud.line2 = (indoor and "indoor, " or "outdoor, ") .. (height and ("ceiling " .. height .. " units (class " .. ceil .. ")") or "open sky / ceiling over 512")
+	hud.line3 = "layer " .. layer .. ", cells x " .. x1 .. ".." .. x2 .. ", y " .. y1 .. ".." .. y2 .. " (" .. (x2 - x1 + 1) .. " x " .. (y2 - y1 + 1) .. ")"
+	hud.colour = indoor and TEXT_INDOOR or TEXT_OUTDOOR
+
+	return hud.line1, hud.line2, hud.line3, hud.colour
+end
+
+-- how many times the lines of the block were made (a test reads it to see that they are made when the box changes, not at every frame)
+function Z.HudBuilds()
+	return S.hudBuilds
+end
+
+-- a line with its shadow (one pixel right and down) under it
+local function shadowed(text, x, y, colour)
+	draw.SimpleText(text, FONT, x + 1, y + 1, SHADOW, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+	draw.SimpleText(text, FONT, x, y, colour, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+end
+
+-- Draws the block under the crosshair for the position `pos`.
+function Z.DrawHud(pos)
+	local line1, line2, line3, colour = hudLines(pos)
+	local x, y = ScrW() * 0.5, ScrH() * 0.5 + BLOCK_DOWN
+
+	shadowed(line1, x, y, TEXT)
+
+	if line2 then
+		shadowed(line2, x, y + LINE_HEIGHT, colour)
+	end
+
+	if line3 then
+		shadowed(line3, x, y + 2 * LINE_HEIGHT, TEXT)
+	end
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The hooks: there while the debug convar is 1, not otherwise
+-- ---------------------------------------------------------------------------------------------------------
+
+-- A debug hook must never spam: both hooks run their drawing under pcall. The first error is printed ONCE (with its stack), the switch is put to 0 (its callback takes
+-- both hooks off) and the player is told once. `stopped` is reset when the switch goes on again, so that the next error is reported again.
+local setDebugHook
+local stopped = false
+
+local function stopDebug(err)
+	if stopped then
+		return
+	end
+
+	stopped = true
+
+	local text = tostring(err)
+
+	ErrorNoHaltWithStack("[GryMod] In/out map debug drawing: " .. text .. "\n")
+
+	-- the hooks go at once (the callback of the switch would take them off too, but a stopped drawing must not wait for it)
+	setDebugHook(false)
+
+	local convar = GetConVar(DEBUG_CONVAR)
+
+	if convar then
+		convar:SetString("0")
+	end
+
+	-- the first line of the error, without the path of the file, cut short
+	local short = string.gsub(string.match(text, "[^\r\n]*") or text, "^[%w_%.%-/\\:]*[/\\]", "")
+
+	notice("The in/out map debug drawing stopped: " .. string.sub(short, 1, 100))
+end
+
+-- The hooks' functions: made once, so that Add and Remove name the same one.
 local function drawHook(_, drawingSkybox, drawing3DSkybox)
 	if drawingSkybox or drawing3DSkybox then
 		return
@@ -536,19 +864,38 @@ local function drawHook(_, drawingSkybox, drawing3DSkybox)
 	local ply = LocalPlayer()
 
 	if IsValid(ply) then
-		Z.Draw(ply:GetPos())
+		local ok, err = pcall(Z.Draw, ply:GetPos())
+
+		if not ok then
+			stopDebug(err)
+		end
 	end
 end
 
-local function setDebugHook(on)
+local function hudHook()
+	local ply = LocalPlayer()
+
+	if IsValid(ply) then
+		local ok, err = pcall(Z.DrawHud, ply:GetPos())
+
+		if not ok then
+			stopDebug(err)
+		end
+	end
+end
+
+function setDebugHook(on)
 	if on then
+		stopped = false
 		hook.Add("PostDrawTranslucentRenderables", DEBUG_HOOK, drawHook)
+		hook.Add("HUDPaint", HUD_HOOK, hudHook)
 	else
 		hook.Remove("PostDrawTranslucentRenderables", DEBUG_HOOK)
+		hook.Remove("HUDPaint", HUD_HOOK)
 	end
 end
 
--- Puts the hook in line with the convar: added when it is 1, removed when it is 0 (called at load; the change callback does the same later).
+-- Puts the hooks in line with the convar: added when it is 1, removed when it is 0 (called at load; the change callback does the same later).
 function Z.SyncDebugHook()
 	local convar = GetConVar(DEBUG_CONVAR)
 

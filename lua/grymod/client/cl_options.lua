@@ -417,7 +417,7 @@ function GryMod.RadarZoomOptions(Panel)
 end
 
 -- The in/out map the server makes (cl_zonemap.lua): the line with its state (as it is when the panel is built: nothing runs while the panel is
--- open) and the check box of the debug drawing. The switch and the button that makes the map again are the administrators' (the server section of the Radar and map menu).
+-- open), the check box of the debug drawing and how far it draws (metres). The switch and the button that makes the map again are the administrators' (the server section of the Radar and map menu).
 function GryMod.ZoneMapOptions(Panel)
 	Panel:Help("In/out map")
 
@@ -425,6 +425,7 @@ function GryMod.ZoneMapOptions(Panel)
 
 	Panel:Help(Zone and Zone.StatusText() or "In/out map: not available")
 	Panel:CheckBox("Draw the in/out map in the world (debug)", "gry_zonemap_debug")
+	Panel:NumSlider("In/out map debug: display distance (metres)", "gry_zonemap_debug_range", 20, 300, 0)
 end
 
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
