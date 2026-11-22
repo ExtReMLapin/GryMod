@@ -22,9 +22,9 @@ GryMod.RadarZoom = Zoom
 local AutoConVar = CreateClientConVar("gry_radar_autozoom", "0", true, false,
 	"Automatic radar zoom (0 or 1): the radar's range follows three modes, in a vehicle, on foot outside, and indoors (under a ceiling in a narrow place), each with its own range", 0, 1)
 local ModeConVars = {
-	vehicle = CreateClientConVar("gry_radar_zoom_vehicle", "100", true, false,
+	vehicle = CreateClientConVar("gry_radar_zoom_vehicle", "36", true, false,
 		"Radar range in metres (5 to 100) while the player drives, with the automatic zoom on", 5, 100),
-	foot = CreateClientConVar("gry_radar_zoom_foot", "40", true, false,
+	foot = CreateClientConVar("gry_radar_zoom_foot", "26", true, false,
 		"Radar range in metres (5 to 100) on foot outside, with the automatic zoom on", 5, 100),
 	indoor = CreateClientConVar("gry_radar_zoom_indoor", "13", true, false,
 		"Radar range in metres (5 to 100) indoors (under a ceiling in a narrow place), with the automatic zoom on", 5, 100)

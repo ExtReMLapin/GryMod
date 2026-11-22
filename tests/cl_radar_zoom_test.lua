@@ -65,14 +65,14 @@ return {
 	end,
 	cases = {
 		{
-			name = "the options exist and are saved: automatic zoom off, ranges 100 / 40 / 13 metres from 5 to 100, delay 0.7 s from 0.1 to 5",
+			name = "the options exist and are saved: automatic zoom off, ranges 36 / 26 / 13 metres from 5 to 100, delay 0.7 s from 0.1 to 5",
 			func = function()
 				local auto = GetConVar("gry_radar_autozoom")
 
 				expect(auto ~= nil).to.beTrue()
 				expect(auto:GetDefault()).to.equal("0")
 
-				for name, default in pairs({gry_radar_zoom_vehicle = "100", gry_radar_zoom_foot = "40", gry_radar_zoom_indoor = "13"}) do
+				for name, default in pairs({gry_radar_zoom_vehicle = "36", gry_radar_zoom_foot = "26", gry_radar_zoom_indoor = "13"}) do
 					local c = GetConVar(name)
 
 					expect(c ~= nil).to.beTrue()

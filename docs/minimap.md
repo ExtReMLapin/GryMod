@@ -60,8 +60,8 @@ number gives the default).
 | `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: the automatic definition goes up to 64 pixels per metre by itself, or raise `gry_minimap_definition` (with the automatic definition off) for a sharp picture. |
 
 | `gry_radar_autozoom` | 0 | 0 or 1 | Automatic zoom: the radar's range follows three modes instead of the slider `gry_radar_range` (greyed in the menu while it is on). See "Automatic zoom" below. |
-| `gry_radar_zoom_vehicle` | 100 | 5 to 100 | Range in metres while the player drives a vehicle (automatic zoom on). |
-| `gry_radar_zoom_foot` | 40 | 5 to 100 | Range in metres on foot outside. |
+| `gry_radar_zoom_vehicle` | 36 | 5 to 100 | Range in metres while the player drives a vehicle (automatic zoom on). |
+| `gry_radar_zoom_foot` | 26 | 5 to 100 | Range in metres on foot outside. |
 | `gry_radar_zoom_indoor` | 13 | 5 to 100 | Range in metres indoors (under a ceiling in a narrow place). |
 | `gry_radar_zoom_delay` | 0.7 | 0.1 to 5 | Seconds a mode has to hold before the radar goes to its range. |
 
@@ -187,7 +187,7 @@ places before you get there, so that a walk outside finds them ready.
   changes one plan. A map with no in/out map (no node graph and no navigation mesh) has no preload: it stays as it was, made as you play.
 - **What:** the tiles that cover the OUTDOOR boxes of the in/out map, for the open level of each place (the camera goes where an up ray from the place hits,
   see Limits), at the definitions the radar can use: with the automatic definition, the level in use plus the level the rule gives for each of the
-  three zoom ranges (shared ones once; the default ranges are 100 / 40 / 13 m); with a manual definition, the slider's. The screen
+  three zoom ranges (shared ones once; the default ranges are 36 / 26 / 13 m); with a manual definition, the slider's. The screen
   constant that gives the level of a range (the density at a range r is k / r) is recorded by the radar at each draw (`Settings.ScreenConstant`).
   A place whose level would be higher than the sky of the playable area (a cell at the fringe of a box) makes no tile.
 - **The floors:** when the map has a node graph (`.ain`), each ground node is a place: `Floors.PeekAt` gives the level a player standing there would get (the
