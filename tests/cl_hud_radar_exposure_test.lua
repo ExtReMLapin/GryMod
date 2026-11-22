@@ -40,7 +40,15 @@ local function hexFrame(panel)
 	return panel.hex.clip:Child("Icons"):Child("StealthExposure"):CurrentFrame()
 end
 
-local fakePly = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end}
+-- the player the feed looks at: the real one when there is one (the automatic zoom, if the player has it on, asks it things a fake one cannot answer: that
+-- would be an error printed at every test), else a stand-in. Where the contacts are does not matter here: only their kind and their state do.
+local standIn = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end, InVehicle = function() return true end}
+
+local function feedPly()
+	local ply = LocalPlayer()
+
+	return IsValid(ply) and ply or standIn
+end
 
 -- Runs fn with the radar's feed set up the way the feed tests do: no net message sent, no entity found, the options as given. Everything put back after.
 local function withFeed(options, fn)
@@ -372,7 +380,7 @@ return {
 					R.Stealth = 0
 					R.Snapshot = {contact(3, 4)}
 
-					for _ = 1, 90 do R.Feed(panel, fakePly, 1 / 30) end
+					for _ = 1, 90 do R.Feed(panel, feedPly(), 1 / 30) end
 
 					expect(hexFrame(panel)).to.equal(100)
 					expect(bar:CurrentFrame()).to.equal(1)
@@ -381,7 +389,7 @@ return {
 					-- he is gone: the exposure falls fast, the memory slowly
 					R.Snapshot = {}
 
-					for _ = 1, 150 do R.Feed(panel, fakePly, 1 / 30) end -- 5 s
+					for _ = 1, 150 do R.Feed(panel, feedPly(), 1 / 30) end -- 5 s
 
 					expect(hexFrame(panel) < 100).to.beTrue()
 					expect(hexFrame(panel) > 55).to.beTrue()
@@ -391,7 +399,7 @@ return {
 					bar = panel.view:Child("StealthBar")
 					R.Snapshot = {contact(1, 4)}
 
-					for _ = 1, 90 do R.Feed(panel, fakePly, 1 / 30) end
+					for _ = 1, 90 do R.Feed(panel, feedPly(), 1 / 30) end
 
 					expect(bar:CurrentFrame()).to.equal(101)
 					expect(hexFrame(panel)).to.equal(1)
@@ -408,7 +416,7 @@ return {
 					R.Stealth = 0
 					R.Snapshot = {contact(3, 4)}
 
-					for _ = 1, 90 do R.Feed(panel, fakePly, 1 / 30) end
+					for _ = 1, 90 do R.Feed(panel, feedPly(), 1 / 30) end
 
 					expect(bar:CurrentFrame()).to.equal(101)
 					expect(hexFrame(panel)).to.equal(1)
@@ -417,7 +425,7 @@ return {
 
 					-- and a forced level (the event of an addon) shows nothing either
 					R.Hex.Force(90, 5)
-					R.Feed(panel, fakePly, 1 / 30)
+					R.Feed(panel, feedPly(), 1 / 30)
 					expect(hexFrame(panel)).to.equal(1)
 				end)
 
@@ -425,7 +433,7 @@ return {
 				withFeed({}, function()
 					local panel = newPanel()
 					R.Snapshot = {}
-					R.Feed(panel, fakePly, 1 / 30)
+					R.Feed(panel, feedPly(), 1 / 30)
 					expect(panel.hexShown).to.beTrue()
 					expect(hexFrame(panel)).to.equal(1)
 				end)
@@ -439,7 +447,7 @@ return {
 					local panel = newPanel()
 					R.Hex.State.exposure, R.Hex.State.level, R.Hex.State.timeout = 1, 3, 16
 					R.Snapshot = {contact(3, 4)}
-					R.Feed(panel, fakePly, 1 / 30)
+					R.Feed(panel, feedPly(), 1 / 30)
 
 					-- nothing feeds the meter any more: it is forgotten at once, not held for the 56 s of the memory
 					expect(hexFrame(panel)).to.equal(1)
@@ -455,14 +463,14 @@ return {
 					local panel = newPanel()
 					R.Snapshot = {}
 					R.Hex.Force(80, 1)
-					R.Feed(panel, fakePly, 1 / 30)
+					R.Feed(panel, feedPly(), 1 / 30)
 					expect(hexFrame(panel)).to.equal(80)
 
-					for _ = 1, 20 do R.Feed(panel, fakePly, 1 / 30) end
+					for _ = 1, 20 do R.Feed(panel, feedPly(), 1 / 30) end
 
 					expect(hexFrame(panel)).to.equal(80)
 
-					for _ = 1, 30 do R.Feed(panel, fakePly, 1 / 30) end -- past its second
+					for _ = 1, 30 do R.Feed(panel, feedPly(), 1 / 30) end -- past its second
 
 					expect(hexFrame(panel) < 80).to.beTrue()
 					R.Hex.Reset()
@@ -470,16 +478,16 @@ return {
 					-- the model's level is not lowered by a smaller forced one
 					R.Snapshot = {contact(3, 4)}
 
-					for _ = 1, 60 do R.Feed(panel, fakePly, 1 / 30) end
+					for _ = 1, 60 do R.Feed(panel, feedPly(), 1 / 30) end
 
 					R.Hex.Force(20, 5)
-					R.Feed(panel, fakePly, 1 / 30)
+					R.Feed(panel, feedPly(), 1 / 30)
 					expect(hexFrame(panel)).to.equal(100)
 
 					R.Hex.Reset()
 					R.Snapshot = {}
 					expect(GryMod.API.HUDEvent("radar_exposure", {level = 70, seconds = 2})).to.beTrue()
-					R.Feed(panel, fakePly, 1 / 30)
+					R.Feed(panel, feedPly(), 1 / 30)
 					expect(hexFrame(panel)).to.equal(70)
 
 					-- bad data: a level out of range is cut, the seconds are bounded
@@ -505,19 +513,19 @@ return {
 					withFeed({}, function()
 						local panel = newPanel()
 						R.Snapshot = {}
-						R.Feed(panel, fakePly, 1 / 30)
+						R.Feed(panel, feedPly(), 1 / 30)
 						expect(#calls).to.equal(0) -- 0 stays 0
 
 						R.Hex.Force(60, 5)
-						R.Feed(panel, fakePly, 1 / 30)
+						R.Feed(panel, feedPly(), 1 / 30)
 						expect(#calls).to.equal(1)
 						expect(calls[1][1]).to.equal(60)
 						expect(calls[1][2]).to.equal(0)
-						R.Feed(panel, fakePly, 1 / 30)
+						R.Feed(panel, feedPly(), 1 / 30)
 						expect(#calls).to.equal(1)
 
 						R.Hex.Force(75, 5)
-						R.Feed(panel, fakePly, 1 / 30)
+						R.Feed(panel, feedPly(), 1 / 30)
 						expect(#calls).to.equal(2)
 						expect(calls[2][1]).to.equal(75)
 						expect(calls[2][2]).to.equal(60)
