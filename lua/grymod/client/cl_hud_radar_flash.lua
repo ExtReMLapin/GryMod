@@ -473,6 +473,42 @@ local function coveredByPrevious(Settings, Cache, tile, px, py, res, ppm)
 	return found and true or false
 end
 
+-- Whether the discovery mode is wanted: Settings.VeilInDiscovery exists and says no veil. A Settings without it, one that raises, or one that answers anything but false
+-- is the old behaviour (the veil as soon as the tile under the player is missing).
+local function discoveryWanted(Settings)
+	local read = Settings.VeilInDiscovery
+
+	if type(read) ~= "function" then
+		return false
+	end
+
+	local ok, veil = pcall(read)
+
+	return ok and veil == false
+end
+
+-- Whether there is something to show of the map around the player although the tile under them is missing: some tile of the level (or of the place) lies under the
+-- range circle (View.Coverage, no drawing). A view without Coverage, one that raises, or that answers nothing above 0 is "nothing to show" (the veil: the old, safe
+-- answer). `range` is the range the map is drawn with, in units.
+local function somethingToShow(M, px, py, range, level, own)
+	local View = M.View
+	local coverage = View and View.Coverage
+
+	if type(coverage) ~= "function" then
+		return false
+	end
+
+	local ok, share = pcall(coverage, px, py, range, level, own)
+
+	if not ok then
+		reportError("View.Coverage: " .. tostring(share))
+
+		return false
+	end
+
+	return type(share) == "number" and share > 0
+end
+
 -- Asks the minimap for its tiles and draws them (called with pcall by Draw, so no closure and no table made here when nothing changes).
 local function drawMap(self, x, y, scale)
 	local M = GryMod.Minimap
@@ -644,7 +680,10 @@ local function drawMap(self, x, y, scale)
 	-- already cover the player: no veil then
 	local covered = present
 
-	if not present then
+	if present then
+		-- the level whose tile is drawn under the player: the picture the discovery mode keeps if the next level's tile is not there yet
+		self.mapKept = tile.level == level.id and level or own
+	else
 		local ok, found = pcall(coveredByPrevious, Settings, M.Cache, tile, px, py, res, ppm)
 
 		if ok then
@@ -654,11 +693,53 @@ local function drawMap(self, x, y, scale)
 		end
 	end
 
+	-- THE DISCOVERY MODE (setting gry_minimap_veil_discovery off, the default). The map is made as the player walks: the veil is for a real loading, not for a tile that
+	-- is a few seconds late. The states, told in self.mapState:
+	--   "ready":     the tile under the player is drawn (the level's, the place's, or the previous definition's);
+	--   "discovery": that tile is missing but a picture is shown: the level just left (kept while the generator makes the new tile: a stair, a lift) or the tiles around
+	--                that exist (View.Coverage above 0): no veil, no percentage; the new tile comes over it when it is ready;
+	--   "loading":   nothing to show (no tile of the map under the range circle, or the in/out map of the server is still being made): the noise veil and the percentage.
+	-- With the setting on (or no such setting) every missing tile under the player is "loading", as it was before.
+	local state = covered and "ready" or "loading"
+
+	if not covered and discoveryWanted(Settings) then
+		local kept = self.mapKept
+
+		-- the picture of the level just left, drawn instead of the empty tile while the generator works on the new one (idle: nothing is coming, it would lie for good)
+		if active and type(kept) == "table" and kept.id ~= level.id and not (own and kept.id == own.id) then
+			tile.level = kept.id
+
+			if M.Cache.Has(tile) then
+				-- the kept level is shown, the place's level (the one the generator was asked for) is the base that stands in where the kept one has no tile
+				own = own or level
+				level = kept
+				covered, state = true, "discovery"
+
+				if belowOpacity > 0 then
+					belowOwn = belowOwn or below
+					below = M.Floors.Below(level)
+
+					if not below then
+						belowOpacity, belowOwn = 0, nil
+					end
+				end
+			end
+		end
+
+		if not covered and somethingToShow(M, px, py, range, level, own) then
+			covered, state = true, "discovery"
+		end
+	end
+
+	self.mapState = state
+
 	-- the in/out map comes first: the radar is veiled from the moment the player is in the game until the server has made it and sent it (the server's percentage),
 	-- then the veil is the tiles' own (the client's percentage), as before
 	local inOut, inOutPercent, inOutPhase = inOutLoading()
 
 	if inOut then
+		self.mapState = "loading"
+
 		if inOutPhase == "wait" then
 			-- the server waits for the navigation mesh: the engine gives no progress, so no percentage
 			self:_mapProgress(false, 0, "Navigation mesh", true)

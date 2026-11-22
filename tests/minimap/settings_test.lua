@@ -844,6 +844,79 @@ return {
 					expect(S.ParseTileRes(text) >= 512 and S.ParseTileRes(text) <= 2048).to.beTrue()
 				end
 			end
+		},
+		{
+			-- the discovery mode of the map is optional (every feature has its switch): archived, 0 by default (no veil while the map is discovered), 1 gives back the old behaviour.
+			-- breaks if: the convar is missing, not archived, or its default is 1
+			name = "gry_minimap_veil_discovery: an archived convar, 0 by default (no noise veil while the map is discovered); VeilInDiscovery follows it",
+			func = function(state)
+				local S = GryMod.Minimap.Settings
+				local c = convar("gry_minimap_veil_discovery")
+
+				expect(c ~= nil).to.beTrue()
+				expect(c:GetDefault()).to.equal("0")
+				expect(isfunction(S.VeilInDiscovery)).to.beTrue()
+
+				-- created saved (the engine's flag is not readable from Lua for these convars): the file is run again with the convar hidden, and what it asks for is read
+				local created
+				state.realGetConVar, state.realCreate = GetConVar, CreateClientConVar
+
+				GetConVar = function(name)
+					if name == "gry_minimap_veil_discovery" then
+						return nil
+					end
+
+					return state.realGetConVar(name)
+				end
+
+				CreateClientConVar = function(name, default, shouldsave, userinfo, help, min, max)
+					if name == "gry_minimap_veil_discovery" then
+						created = {default = default, save = shouldsave, userinfo = userinfo, help = help, min = min, max = max}
+					end
+
+					return state.realCreate(name, default, shouldsave, userinfo, help, min, max)
+				end
+
+				include(SETTINGS_FILE)
+
+				expect(created ~= nil).to.beTrue()
+				expect(created.default).to.equal("0")
+				expect(created.save).to.equal(true)
+				expect(created.userinfo).to.equal(false)
+				expect(created.min).to.equal(0)
+				expect(created.max).to.equal(1)
+				expect(isstring(created.help) and #created.help > 10).to.beTrue()
+				S = GryMod.Minimap.Settings
+
+				local before = c:GetString()
+				local ok, err = pcall(function()
+					c:SetString("0")
+					expect(S.VeilInDiscovery()).to.equal(false)
+					c:SetString("1")
+					expect(S.VeilInDiscovery()).to.equal(true)
+				end)
+
+				c:SetString(before)
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- a text that is no number is the default (no veil): the pure rule the accessor is made of
+			name = "ParseVeilDiscovery: 0 and 0.4 are false, 1, 2, -1 are true, a text that is no number is the default (false)",
+			func = function()
+				local P = GryMod.Minimap.Settings.ParseVeilDiscovery
+
+				expect(isfunction(P)).to.beTrue()
+				expect(P("0")).to.equal(false)
+				expect(P("0.4")).to.equal(false)
+				expect(P("1")).to.equal(true)
+				expect(P("2")).to.equal(true)
+				expect(P("-1")).to.equal(true)
+
+				for _, text in ipairs({"", "banana", "nan"}) do
+					expect(P(text)).to.equal(false)
+				end
+			end
 		}
 	}
 }

@@ -929,6 +929,77 @@ return {
 				expect(near(turned, quarter, 1e-9)).to.beTrue()
 			end
 		},
+		-- Coverage: the same share, asked without drawing (the radar uses it to tell "nothing to show" from "a picture with a hole", the discovery mode) --------
+		{
+			-- breaks if: Coverage does not exist, answers another number than Draw's, or draws
+			name = "Coverage: the same share of the range circle as Draw gives (none, all, a half, a quadrant), and nothing is drawn",
+			func = function(state)
+				local V = GryMod.Minimap.View
+
+				expect(type(V.Coverage)).to.equal("function")
+				expect(V.Coverage(32, 32, RANGE, level())).to.equal(0)
+
+				state.all = true
+				expect(near(V.Coverage(32, 32, RANGE, level()), 1, 1e-9)).to.beTrue()
+
+				state.all = false
+				state.existing = {["1,-1"] = true, ["1,0"] = true, ["1,1"] = true, ["1,2"] = true}
+				local half = V.Coverage(64, 64, RANGE, level())
+				expect(near(half, 0.5, 0.03)).to.beTrue()
+				expect(near(half, draw(state, IDENTITY, {px = 64, py = 64}), 1e-9)).to.beTrue()
+
+				state.existing = {["1,1"] = true}
+				expect(near(V.Coverage(64, 64, RANGE, level()), draw(state, IDENTITY, {px = 64, py = 64}), 1e-9)).to.beTrue()
+
+				-- the draws above are the only ones that made polygons: Coverage made none of its own
+				recorded.polys = {}
+				V.Coverage(64, 64, RANGE, level())
+				expect(#recorded.polys).to.equal(0)
+			end
+		},
+		{
+			-- the base level (the place's) stands in for the held one, tile by tile, as for Draw. breaks if: only the level's own tiles count
+			name = "Coverage: a tile of the base level counts where the level has none, and it costs Cache.Has only (no Material)",
+			func = function(state)
+				local V = GryMod.Minimap.View
+
+				state.baseAll = true
+				expect(V.Coverage(32, 32, RANGE, level())).to.equal(0)
+				expect(near(V.Coverage(32, 32, RANGE, level(), baseLevel()), 1, 1e-9)).to.beTrue()
+				expect(#state.materialCalls).to.equal(0)
+				expect(#state.baseCalls).to.equal(0)
+				expect(#state.hasCalls > 0).to.beTrue()
+			end
+		},
+		{
+			-- the definition is the current one: the previous definition's tiles do not count (that case has its own rule in the radar). breaks if: they count
+			name = "Coverage: only the tiles of the current definition count, not the previous one's",
+			func = function(state)
+				local V = GryMod.Minimap.View
+
+				state.previous = 4
+				state.allAt[4] = true
+				expect(V.Coverage(32, 32, RANGE, level())).to.equal(0)
+			end
+		},
+		{
+			-- the radar calls it from its draw: it must never raise whatever it is given, and answers 0 (nothing to show) for what it cannot use
+			name = "Coverage: bad arguments (nil, NaN, no level, a range of 0 or less) answer 0 and never raise",
+			func = function(state)
+				local V = GryMod.Minimap.View
+
+				state.all = true
+
+				for _, c in ipairs({
+					{nil, 32, RANGE, level()}, {32, nil, RANGE, level()}, {0 / 0, 32, RANGE, level()}, {32, 32, 0, level()}, {32, 32, -5, level()},
+					{32, 32, RANGE, nil}, {32, 32, RANGE, {}}, {32, 32, math.huge, level()}
+				}) do
+					local ok, value = pcall(V.Coverage, c[1], c[2], c[3], c[4], c[5])
+					expect(ok).to.beTrue()
+					expect(value).to.equal(0)
+				end
+			end
+		},
 		{
 			name = "Draw: the coverage counts the tiles under the range circle even when they are outside the frame or the Cache has them but they are not drawn (alpha 0)",
 			func = function(state)

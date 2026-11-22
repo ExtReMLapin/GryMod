@@ -38,6 +38,7 @@ local function install(state)
 	-- the state table is shared by the cases of the group: what an earlier case made the stand-ins do is cleared
 	state.requestError, state.requestResult, state.requestReason, state.drawError, state.viewLastError = nil, nil, nil, nil, nil
 	state.autoForError = nil
+	state.coverage, state.coverageCalls, state.veilDiscovery = 0, 0, false
 
 	GryMod.Minimap.Settings = {
 		Enabled = function() return state.enabled end,
@@ -94,6 +95,13 @@ local function install(state)
 			end
 
 			return 1
+		end,
+		-- the share of the range circle on existing tiles (the discovery mode asks it when the tile under the player is missing); nothing to show by default
+		Coverage = function(...)
+			state.coverageCalls = state.coverageCalls + 1
+			state.args.coverage = {...}
+
+			return state.coverage
 		end
 	}
 
@@ -144,6 +152,12 @@ local function uninstall(state)
 	if state.savedSetDrawColor then
 		surface.SetDrawColor = state.savedSetDrawColor
 	end
+end
+
+-- The setting of the discovery mode, on top of the stand-in settings of install: state.veilDiscovery false (the default of the real setting) is "no veil while the map
+-- is discovered". The stand-in of the other cases has no such function: the radar then keeps the old veil.
+local function discoveryOn(state)
+	GryMod.Minimap.Settings.VeilInDiscovery = function() return state.veilDiscovery end
 end
 
 -- The settings' side of the automatic definition, as stand-ins on top of the ones install made: the level in use (state.definition), the level the rule will
@@ -1335,6 +1349,335 @@ return {
 				-- neither: the veil
 				has.held, has.place = false, false
 				expect(veil()).to.beTrue()
+			end
+		},
+		-- the discovery mode (2026-11-22, the owner: "on se balade dans la carte et il y a des trucs qui chargent, c'est chiant"): while the map is DISCOVERED (the tile under the
+		-- player is missing but something of the map is drawn, or the picture of the level just left can be kept) there is no noise veil and no percentage; the veil stays for a
+		-- real loading (the in/out map, or nothing at all to show). The setting gry_minimap_veil_discovery = 1 gives back the old veil.
+		{
+			name = "discovery: a missing tile under the player with part of the map drawn (coverage above 0) shows no noise and no text; the map is still asked and drawn",
+			func = function(state)
+				discoveryOn(state)
+				state.has, state.coverage = false, 0.4
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:SetSector("gm_bigcity")
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+				expect(panel.progressText).to.beNil()
+				expect(panel.zone:Child("Zone").text).to.equal("gm_bigcity")
+				expect(panel.mapState).to.equal("discovery")
+
+				local requests, draws = 0, 0
+
+				for _, call in ipairs(state.calls) do
+					if call == "Gen.Request" then requests = requests + 1 end
+					if call == "View.Draw" then draws = draws + 1 end
+				end
+
+				expect(requests).to.equal(2)
+				expect(draws).to.equal(2)
+			end
+		},
+		{
+			-- breaks if: the veil is dropped whenever the tile is missing (a map with nothing on it and no veil: the player sees a black hole)
+			name = "discovery: nothing to show (coverage 0) is a real loading: the veil with the percentage, state 'loading'",
+			func = function(state)
+				discoveryOn(state)
+				state.has, state.coverage = false, 0
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.progressText).to.equal("25%")
+				expect(panel.mapState).to.equal("loading")
+			end
+		},
+		{
+			-- breaks if: the setting is not read (the old behaviour cannot be had back), or the coverage is asked for nothing
+			name = "discovery: with gry_minimap_veil_discovery on the veil comes with a missing tile whatever the coverage (the old behaviour), and the coverage is not asked",
+			func = function(state)
+				discoveryOn(state)
+				state.veilDiscovery = true
+				state.has, state.coverage = false, 0.9
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.progressText).to.equal("25%")
+				expect(state.coverageCalls).to.equal(0)
+			end
+		},
+		{
+			-- the radar must go on with what it has: the veil (the old, safe behaviour) when the setting, the coverage or the view is missing, and a word only once when the coverage raises
+			name = "discovery: no VeilInDiscovery in Settings, no View.Coverage, or a View.Coverage that raises: the old veil, and the radar still draws",
+			func = function(state)
+				state.has, state.coverage = false, 0.9
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0}
+
+				-- a Settings without the setting (the stand-in of the other cases)
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+
+				-- the setting is there, the view has no Coverage
+				discoveryOn(state)
+				GryMod.Minimap.View.Coverage = nil
+				panel = newPanel()
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+
+				-- a Coverage that raises
+				GryMod.Minimap.View.Coverage = function() error("coverage blew up", 0) end
+				panel = newPanel()
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				panel:Draw(0, 0, 1)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+			end
+		},
+		{
+			-- breaks if: the veil is not taken away when the picture is there, not brought back when it goes, or the state is not told
+			name = "discovery: the veil follows what can be shown: gone with a picture, back when nothing is left, gone when the tile comes; the noise is set once per change",
+			func = function(state)
+				discoveryOn(state)
+				state.has, state.coverage = false, 0.3
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0}
+
+				local panel = newPanel()
+				local noiseCalls = 0
+				local real = panel.SetNoise
+
+				panel.SetNoise = function(self, v, keep)
+					noiseCalls = noiseCalls + 1
+
+					return real(self, v, keep)
+				end
+
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(noiseCalls).to.equal(0)
+
+				-- the player walked on: the picture is gone
+				state.coverage = 0
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.mapState).to.equal("loading")
+				expect(noiseCalls).to.equal(1)
+
+				-- the tile came
+				state.has = true
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(panel.progressText).to.beNil()
+				expect(panel.mapState).to.equal("ready")
+			end
+		},
+		{
+			-- the cost: the coverage is asked only when the tile under the player is missing and nothing else can stand in (the common frame pays nothing)
+			name = "discovery: View.Coverage is not asked while the tile under the player is there",
+			func = function(state)
+				discoveryOn(state)
+				state.has = true
+				newPanel():Draw(0, 0, 1)
+				expect(state.coverageCalls).to.equal(0)
+			end
+		},
+		{
+			-- the coverage is asked for the circle the map shows: the player's position, the range in units, the level shown and the level of the place
+			name = "discovery: View.Coverage gets the player's position, the range the map is drawn with in units and the shown level and the place's",
+			func = function(state)
+				discoveryOn(state)
+
+				local held, place = {id = "held"}, {id = "place"}
+
+				GryMod.Minimap.Floors.CurrentAt = function() return held, place end
+				state.has, state.coverage = false, 0.2
+
+				local pos = LocalPlayer():GetPos()
+				newPanel():Draw(0, 0, 1)
+
+				local c = state.args.coverage
+
+				expect(c[1]).to.aboutEqual(pos.x, 0.01)
+				expect(c[2]).to.aboutEqual(pos.y, 0.01)
+				expect(c[3]).to.aboutEqual(GryMod.FlashRadar.Range() / GryMod.RadarShared.METRES_PER_UNIT, 0.001)
+				expect(c[4]).to.equal(held)
+				expect(c[5]).to.equal(place)
+			end
+		},
+		{
+			-- the real initial loading keeps its veil and its percentage whatever the discovery says (nothing is changed for the in/out map's loading)
+			name = "discovery: the in/out map still loading veils the radar with its percentage even with a picture drawn",
+			func = function(state)
+				local realZone = GryMod.ZoneMapClient
+				local ok, err = pcall(function()
+					discoveryOn(state)
+					GryMod.ZoneMapClient = {Loading = function() return true, 40 end}
+					state.has, state.coverage = false, 1
+
+					local panel = newPanel()
+					panel:Draw(0, 0, 1)
+					expect(panel.main:Child("Noise").visible).to.beTrue()
+					expect(panel.progressText).to.equal("In/out 40%")
+					expect(panel.mapState).to.equal("loading")
+				end)
+
+				GryMod.ZoneMapClient = realZone
+				if not ok then error(err, 0) end
+			end
+		},
+		-- the last picture is kept when the level changes (a stair, a lift): the tile of the new level is missing, the one just left is there
+		{
+			-- breaks if: the veil comes at each change of level, the old picture is not drawn, the generator is asked for the old level instead of the new, or the new level's tile
+			-- does not replace it as soon as it exists
+			name = "discovery: the new level's tile is missing and the previous picture's tile is there: the previous level is drawn (the new one as base), the veil does not come, the generator is asked for the new one; then the new level takes over",
+			func = function(state)
+				discoveryOn(state)
+
+				local l1, l2 = {id = "l1", zlo = 0, zhi = 100}, {id = "l2", zlo = 128, zhi = 228}
+				local has = {l1 = true, l2 = false}
+				local shown = l1
+
+				GryMod.Minimap.Floors.CurrentAt = function() return shown end
+				GryMod.Minimap.Cache.Has = function(tile) return has[tile.level] == true end
+				state.coverage = 0
+				state.progress = {done = 0, total = 4, percent = 0, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				expect(panel.mapState).to.equal("ready")
+				expect(state.args.draw[6]).to.equal(l1)
+
+				-- the player went up: the place is l2, its tile is not made yet
+				shown = l2
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(panel.progressText).to.beNil()
+				expect(panel.mapState).to.equal("discovery")
+				expect(state.args.draw[6]).to.equal(l1)
+				expect(state.args.draw[12]).to.equal(l2)
+				expect(state.args.request[1]).to.equal(l2)
+
+				-- the tile of l2 is there: it takes over at once, nothing is kept
+				has.l2 = true
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[6]).to.equal(l2)
+				expect(state.args.draw[12]).to.beNil()
+				expect(panel.mapState).to.equal("ready")
+			end
+		},
+		{
+			-- the kept picture is a picture of a tile the generator is making: with the generator idle nothing is coming, so the old picture would lie for good
+			name = "discovery: the previous picture is kept only while the generator works on the new tile (idle generator: the new level is drawn and the veil rules apply)",
+			func = function(state)
+				discoveryOn(state)
+
+				local l1, l2 = {id = "l1", zlo = 0, zhi = 100}, {id = "l2", zlo = 128, zhi = 228}
+				local has = {l1 = true, l2 = false}
+				local shown = l1
+
+				GryMod.Minimap.Floors.CurrentAt = function() return shown end
+				GryMod.Minimap.Cache.Has = function(tile) return has[tile.level] == true end
+				state.coverage = 0
+				state.progress = {done = 0, total = 4, percent = 0, active = false, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				shown = l2
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[6]).to.equal(l2)
+				expect(state.args.draw[12]).to.beNil()
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.mapState).to.equal("loading")
+			end
+		},
+		{
+			-- breaks if: a level whose tile is not there under the player is kept (an empty picture)
+			name = "discovery: a previous level whose tile under the player is not there any more (nothing to keep) is not drawn",
+			func = function(state)
+				discoveryOn(state)
+
+				local l1, l2 = {id = "l1", zlo = 0, zhi = 100}, {id = "l2", zlo = 128, zhi = 228}
+				local has = {l1 = true, l2 = false}
+				local shown = l1
+
+				GryMod.Minimap.Floors.CurrentAt = function() return shown end
+				GryMod.Minimap.Cache.Has = function(tile) return has[tile.level] == true end
+				state.coverage = 0
+				state.progress = {done = 0, total = 4, percent = 0, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				has.l1 = false -- the cache dropped it (a clear, a trim)
+				shown = l2
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[6]).to.equal(l2)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+			end
+		},
+		{
+			-- the old behaviour is all of the old behaviour: no kept picture with the setting on
+			name = "discovery: with gry_minimap_veil_discovery on a change of level draws the new level and veils, nothing is kept",
+			func = function(state)
+				discoveryOn(state)
+				state.veilDiscovery = true
+
+				local l1, l2 = {id = "l1", zlo = 0, zhi = 100}, {id = "l2", zlo = 128, zhi = 228}
+				local has = {l1 = true, l2 = false}
+				local shown = l1
+
+				GryMod.Minimap.Floors.CurrentAt = function() return shown end
+				GryMod.Minimap.Cache.Has = function(tile) return has[tile.level] == true end
+				state.coverage = 1
+				state.progress = {done = 0, total = 4, percent = 0, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				shown = l2
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[6]).to.equal(l2)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+			end
+		},
+		{
+			-- the hold of the display (Floors) gives a held level and the place's: the kept picture is only for the case where NEITHER tile is there
+			name = "discovery: with a held level whose tile is there, or the place's tile there, the previous picture is not used",
+			func = function(state)
+				discoveryOn(state)
+
+				local old, held, place = {id = "old"}, {id = "held"}, {id = "place"}
+				local has = {old = true, held = true, place = false}
+				local pair = {old}
+
+				GryMod.Minimap.Floors.CurrentAt = function() return pair[1], pair[2] end
+				GryMod.Minimap.Cache.Has = function(tile) return has[tile.level] == true end
+				state.coverage = 0
+				state.progress = {done = 0, total = 4, percent = 0, active = true, failed = 0}
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+
+				-- the held level's tile is there
+				pair[1], pair[2] = held, place
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[6]).to.equal(held)
+				expect(state.args.draw[12]).to.equal(place)
+
+				-- only the place's tile is there
+				has.held, has.place = false, true
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[6]).to.equal(held)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
 			end
 		},
 		-- the map is drawn in the middle of the movie, between the glass and the rest (a map drawn before the film is dimmed by the glass)
