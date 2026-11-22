@@ -55,6 +55,7 @@ number gives the default).
 | `gry_minimap_outside` | 30 | 0 to 100, whole numbers | Opacity in percent of the outside (the open level, the whole height of the map) behind the floors, drawn under the floor below. 0 turns it off (and it is not generated). It is drawn only when the player is inside; outdoors the current level is already the open level. |
 | `gry_minimap_preload` | 1 | 0 or 1 | Make the map tiles of the outdoor places in advance, from the in/out map (see "Tile preload" below). 0: tiles are only made as you play. |
 | `gry_minimap_preload_around` | 1 | 0 or 1 | Also make in advance the places a step from each ground node of the map's graph and the open ground of the outdoor boxes (see "Tile preload" below): fewer veils on ramps, at doors and under roofs, in exchange for a longer plan (about 0.2 to 1.2 s of work in all, spread over frames of about 1 ms) and 15 to 65 % more tiles. 0: the nodes' own places only. |
+| `gry_minimap_veil_discovery` | 0 | 0 or 1 | The noise veil and the percentage while the map is made. 0 (the default, the discovery mode): the veil only comes when there is nothing to show (see "What the player sees while the map is made" below); while you walk the map keeps its last picture and a new tile comes over it when it is ready. 1: the old behaviour, a veil as soon as the tile under the player is missing. |
 | `gry_minimap_cache_mb` | 256 | 16 to 4096 | Size limit of the cache of one map, in megabytes. |
 | `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: the automatic definition goes up to 64 pixels per metre by itself, or raise `gry_minimap_definition` (with the automatic definition off) for a sharp picture. |
 
@@ -253,11 +254,44 @@ level's tile exists made fewer tiles than before with the same veils, but it can
 
 ## What the player sees while the map is made
 
-While the tile under the player does not exist, the map area of the radar is covered by noise (the contacts stay clear) and the zone
-field of the radar, which normally shows the name of the sector, shows the percentage, for example `40%`. The percentage is the share of
-the wanted tiles (the ones around the player, plus one tile of margin) that exist. As soon as the tile under the player exists, the
-noise and the text go away, even if tiles farther away are still being made. After that the map fills in around the player as they walk.
-With the automatic definition, a tile of the previous level that covers the player also removes the noise (see "Automatic definition").
+The map is made as the player walks, so a tile is sometimes late. What the radar shows then depends on which of three states it is in (the radar tells it to itself in
+`panel.mapState`; setting `gry_minimap_veil_discovery`, 0 by default):
+
+- **Ready.** The tile under the player is drawn (the level's, the place's, or the previous definition's). Nothing to say: no veil, no text, the sector name in the zone field.
+- **Discovery.** The tile under the player is missing, but the map has something to show. Then there is **no noise veil and no percentage**: the map keeps its last picture
+  and the new tile comes over it when it is ready (the generator is never made to hurry). Two cases: (1) the tiles around the player that exist cover a part of the radar's
+  circle (`View.Coverage` above 0), for example just across the border between two tiles: that part of the map shows and the rest is empty until its tile comes; (2) the level
+  changed (a stair, a lift, a ramp under a roof) and the tile of the new level is not made yet while the picture of the level just left still has its tile under the player: that
+  picture stays on screen while the generator works on the new one (the radar keeps the last level that had its tile under the player, `panel.mapKept`; with an idle generator
+  nothing is coming, so the old picture is not kept for good). The generator is asked for the NEW level at once, the old picture is only what is drawn meanwhile.
+- **Loading.** There is nothing to show: no tile of the level lies under the radar's circle (the first moments on a map with an empty cache, a jump to the other end of the map,
+  the cache just cleared), or the in/out map of the server is still being made ("In/out 40%" or "Navigation mesh..."). Then the map area is covered by noise (the contacts stay
+  clear) and the zone field, which normally shows the name of the sector, shows the percentage, for example `40%`: the share of the wanted tiles (the ones around the player, plus
+  one tile of margin) that exist. As soon as the tile under the player exists the veil goes, even if tiles farther away are still being made.
+
+With `gry_minimap_veil_discovery 1` every missing tile under the player is "loading", as before the discovery mode. The same happens when the settings module does not have the
+setting, or when the view has no `Coverage` (or it raises): the radar falls back on the veil. The tile preload never shows in the veil.
+
+With the automatic definition, a tile of the previous level that covers the player also removes the noise (see "Automatic definition"): it is the same idea for a change of
+definition, and it was there before the discovery mode.
+
+**Measured** (2026-11-22, `tests/minimap/discovery_walk_job.lua` and `discovery_walk_server.lua`: the player is really moved along a walk over the centres of the navigation mesh at
+266 units a second, 60000 units, 226 s; the real radar of a test client draws every frame at the density of a 4K screen and the real generator makes the tiles in real time, in a
+scratch cache; the old and the new verdicts are read in the same frames of the same walk). An episode is one run of frames with the veil; the frames and the seconds are those with it:
+
+| map, conditions | old rule: episodes / frames (seconds) | discovery mode: episodes / frames (seconds) |
+| --- | --- | --- |
+| gm_funkis, no preload, 120 fps | 9 / 38 (0.7 s) | 1 / 4 (0.1 s) |
+| gm_funkis, no preload, 30 fps | 11 / 44 (1.5 s) | 1 / 4 (0.1 s) |
+| gm_funkis, preload done first, 120 fps | 5 / 20 (0.2 s) | 0 |
+| gm_construct, no preload, 120 fps | 4 / 24 (0.3 s) | 1 / 13 (0.2 s) |
+| gm_construct, preload done first, 120 fps | 0 | 0 |
+
+The one veil left without preload is the first moment on the map (the cache is empty at the start: "loading"); the other episodes became discovery frames (at most 40 frames of a partial
+map in these walks, with no veil). The numbers are small because a walk at that pace seldom outruns the generator: a tile is 512 m wide at the 2 pixels per metre of a 75 m range on a
+4K screen and the radar asks one tile of margin. The veils of a walk are mostly changes of level, which the "kept picture" case covers: in the simulation of `display_walk_tool.lua`
+(the generator is supposed to keep up) 28 to 30 of the 31 to 32 events of a walk without preload were that case and 2 to 3 would still veil; after the preload all the 2 and 3 events
+were that case. Not measured: the automatic zoom modes (the walks stayed at the foot range, one definition), a vehicle, a slow disk, other maps.
 
 ## For developers
 
@@ -271,7 +305,7 @@ A **level** is a table `{id, zlo, zhi, ...}`. A **tile** is `{level = <level id>
 
 | Module | Main public functions |
 | --- | --- |
-| `Settings` | `Enabled()`, `Definition()` (the level in use: the automatic one or the slider's), `DefinitionAuto()`, `TileRes()`, `BudgetMs()`, `Below()` (0 to 1), `Outside()` (0 to 1), `CacheBytes()`, `Opacity()`: the convars, clamped, never nil. `ParseSwitch`, `ParseDefinition`, `ParseDefinitionAuto`, `ParseTileRes`, `ParseBudgetMs`, `ParseBelow`, `ParseOutside`, `ParseCacheMB`, `ParseOpacity`: the same rules on any text (pure). The automatic definition: `AUTO_LEVELS` (2, 4, 8, 16, 32, 64), `AutoDefinitionFor(screenPixelsPerMetre, previousPpm)` (pure: the rule and the hysteresis), `SetAutoDefinition(ppm)` (the radar gives the level it calculated; a level outside the pyramid is ignored and answers false), `PreviousDefinition()`, and the state `AutoState = {current, previous}`. |
+| `Settings` | `Enabled()`, `Definition()` (the level in use: the automatic one or the slider's), `DefinitionAuto()`, `TileRes()`, `BudgetMs()`, `Below()` (0 to 1), `Outside()` (0 to 1), `CacheBytes()`, `Opacity()`: the convars, clamped, never nil. `ParseSwitch`, `ParseDefinition`, `ParseDefinitionAuto`, `ParseTileRes`, `ParseBudgetMs`, `ParseBelow`, `ParseOutside`, `ParseCacheMB`, `ParseOpacity`: the same rules on any text (pure). The automatic definition: `AUTO_LEVELS` (2, 4, 8, 16, 32, 64), `AutoDefinitionFor(screenPixelsPerMetre, previousPpm)` (pure: the rule and the hysteresis), `SetAutoDefinition(ppm)` (the radar gives the level it calculated; a level outside the pyramid is ignored and answers false), `PreviousDefinition()`, and the state `AutoState = {current, previous}`. `VeilInDiscovery()` (true: the old veil whenever the tile under the player is missing; false, the default: the discovery mode) and `ParseVeilDiscovery(text)` (pure; no number is the default, false). |
 | `Floors` | `CurrentAt(pos)`: two answers, the level to SHOW for the feet at `pos` (a Vector; the held level while it is held) and the level of the PLACE (the same table when nothing is held; the generator is asked for this one), with the rays up; it remembers its last answer and does not shoot again for a second unless the feet moved 48 units. `LevelFor(feet, ceiling)`: the level of a place (id `c<top>t<thickness>`, pure). `TileReady(level, x, y)`: is its tile under (x, y) in the cache (the hold of the display). `Below(level)`: the slab of 192 under the bottom of the level (`nil, "open"` for an outdoor level). `Outside(level)`: the open level of the map (the whole height of the world, id `open`, the same table every time, read-only) for any level that is not open; `nil, "open"` for an open level (nothing behind it), `nil, "no world bounds"` when the world is unknown. `Current(z)` and `Fallback(z)`: the slab of the feet height alone, in steps of 32 units. `Reset()`. |
 | `Capture` | `Render(tile, level)`: one tile as BGRA bytes (`res * res * 4`), or `nil, reason`; needs the render context of a hook. `IsCapturing()`: true during a render (other render hooks of GryMod return early). `IsVoid(b, g, r, a)`: the void rule. `IsBlackOpaque(b, g, r, a)`, `BlackOpaqueToVoid(bgra)` and `IsAllBlackOpaque(bgra)`: the rule of the opaque black of "nothing" (pure, used by `Gen`). `HideNonMap()` and `Restore(list)`. `GetRT(res)`. |
 | `DXT1` | `Compress(bgra, w, h, opts)` and `CompressRows(bgra, w, h, firstBlockRow, lastBlockRow, opts)`: BGRA to DXT1, `opts.alpha = true` makes void pixels transparent. `Decode(dxt, w, h)`, `Error(a, b)`: for tests. |
@@ -279,7 +313,7 @@ A **level** is a table `{id, zlo, zhi, ...}`. A **tile** is `{level = <level id>
 | `AIN` | `Parse(bytes)` and `Load(mapName)`: the node graph of the map (`maps/graphs/<map>.ain`, version 37). Used by `Floors.FromNodes`, which today is not used to choose the level. |
 | `Cache` | `Key()`, `Dir(key)`, `Name(tile)`, `Path(tile)`, `TileUnits(res, ppm)`, `TileOf(x, y, res, ppm)`, `TileBounds(tile)`: naming and geometry. `Has(tile)` (from memory, safe at every frame), `Store(tile, data, format)`, `Material(tile)`, `Forget(tile)`, `Count()`, `KnownLevels()`. `Clear(key)`, `Prune()`, `Trim(maxBytes)`: the cleaning. |
 | `Gen` | `Request(level, cx, cy, extentUnits, below, outside)`: wants the tiles around a point (plus one tile of margin) for the level, and optionally for the floor below and for the outside (the open level), made in that order; it does nothing when the request is the same as the previous one, so it is cheap to call at every draw. `Progress()`, `Pending()`, `Cancel()`. `Step(now)`: the body of the hook. Between the capture and the compression it applies the rule of the opaque black (see Known traps). When the work is over and in `Cancel` it calls `Cache.Flush()`. |
-| `View` | `ToRadar(px, py, yawDeg, x, y, rangeUnits, rotate)`: world to radar pixels. `VisibleTiles(level, px, py, extentUnits, res, ppm)`. `Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase)`: draws the tiles of the outside, the floor below and the level (in that order) through the matrix `xf = {a, b, c, d, tx, ty}`; `base` and `belowBase` (the level of the place and its floor below, when `level` is a held one) stand in tile by tile where the cache has no tile of `level` (resp. `below`); it returns the share of the range circle of the level that is covered (the other two do not count). With a previous definition (`Settings.PreviousDefinition()`) and tiles missing at the current one, it first draws the same three passes with the tiles of the previous definition (at most half the materials budget). `MapFrame()`. |
+| `View` | `ToRadar(px, py, yawDeg, x, y, rangeUnits, rotate)`: world to radar pixels. `VisibleTiles(level, px, py, extentUnits, res, ppm)`. `Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase)`: draws the tiles of the outside, the floor below and the level (in that order) through the matrix `xf = {a, b, c, d, tx, ty}`; `base` and `belowBase` (the level of the place and its floor below, when `level` is a held one) stand in tile by tile where the cache has no tile of `level` (resp. `below`); it returns the share of the range circle of the level that is covered (the other two do not count). With a previous definition (`Settings.PreviousDefinition()`) and tiles missing at the current one, it first draws the same three passes with the tiles of the previous definition (at most half the materials budget). `MapFrame()`. `Coverage(px, py, rangeUnits, level, base)`: the share (0..1) of the range circle around (px, py) that lies on existing tiles of `level` (the tile of `base` standing in where it has none), at the current tile size and definition, without drawing: `Cache.Has` only, no material; 0 for anything it cannot use, never raises. The radar asks it, only when the tile under the player is missing, to tell a map with a hole in it from a map with nothing to show. |
 
 The radar side is in `lua/grymod/client/cl_hud_radar_flash.lua`: `Panel:MapTransform(x, y, scale)` builds `xf` from the live matrices of the
 radar film, `Panel:SetNoise(v, keepUnits)` and `Panel:SetProgressText(text)` show the noise and the percentage.
@@ -335,6 +369,9 @@ header says how to check that a prop added at run time does not end in the pictu
 
 `display_walk_tool.lua` / `display_walk_job.lua` / `display_walk_stairs_job.lua` measure what the radar makes and what it shows during a simulated walk (see "Made and
 shown"; load `preload_coverage_job.lua` first, they use a scratch cache `zz_dl_<map>_v5`, never the real one, and the comments of the files say how to run them).
+
+`discovery_walk_job.lua` (client) with `discovery_walk_server.lua` (server, async) measure how long the veil would show during a real walk with the old rule and with the discovery mode (see
+"What the player sees while the map is made"; their headers say the order), and `discovery_shots_tool.lua` stages the three states of the radar for screenshots.
 
 Every test that replaces a module or a global puts it back in a `pcall` in `afterEach`, and the files a test writes go under
 `grymod/minimap/test_*` and are deleted after.

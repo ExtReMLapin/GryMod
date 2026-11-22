@@ -21,12 +21,19 @@ if begun.error then
 	return begun
 end
 
-job:sleep(2)
-job:wait(function()
-	local p = G.PreloadProgress()
+if job.args and job.args.nopreload then
+	-- pure discovery: the preload is stopped and its queue emptied, the walk meets an empty cache (args.nopreload, measured 2026-11-22 for the discovery mode)
+	GryMod.Minimap.Preload.Stop()
+	G.SetPreload({})
+	G.Cancel()
+else
+	job:sleep(2)
+	job:wait(function()
+		local p = G.PreloadProgress()
 
-	return p and p.total and p.total > 0 and G.Pending() == 0 and (p.done or 0) + (p.failed or 0) >= p.total
-end, 2400)
+		return p and p.total and p.total > 0 and G.Pending() == 0 and (p.done or 0) + (p.failed or 0) >= p.total
+	end, 2400)
+end
 
 local prog = G.PreloadProgress()
 local res = {begun = begun, preload = {total = prog.total, failed = prog.failed, seconds = math.floor((SysTime() - COV.t0) * 10) / 10}}

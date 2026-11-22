@@ -475,7 +475,8 @@ function COV.finish()
 		Mm.Gen._frameTime = COV.real.gFrame
 		Mm.Settings.ScreenConstant = COV.real.screenK
 		Mm.Preload._convar = COV.real.convar
-		Mm.Preload._hookAdd = COV.realHookAdd
+		-- only when COV.begin wrapped it: the display walk (DW.begin) never does, and an assignment of nil would leave the preload without its hook function (found 2026-11-22)
+		Mm.Preload._hookAdd = COV.realHookAdd or Mm.Preload._hookAdd
 		Mm.Cache.Clear(COV.scratch)
 		Mm.Cache.Key = COV.real.key
 		Mm.Cache.Reset()
