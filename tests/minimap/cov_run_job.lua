@@ -1,11 +1,11 @@
 -- One whole run of the preload coverage tool (preload_coverage_job.lua, which must be loaded first with lua_exec_file) on the current map, as a lua_job in the CLIENT
 -- realm: waits for the in/out map, begins (scratch cache, baseline walk), waits for the preload to finish, measures again, puts everything back. args.points: "nav" to read
--- data/grymod_tmp/centres.txt (the server writes it), else the ground nodes of the graph. Returns the baseline, the result and the counts of the reasons.
+-- data/grymod_tmp/<args.name, default cov_centres_<map>>.txt (cov_centres_job.lua writes it, server realm), else the ground nodes of the graph. Returns the baseline, the result and the counts of the reasons.
 local Z = GryMod.ZoneMapClient
 
 job:wait(function() return Z and Z.Boxes and type(Z.Boxes()) == "table" end, 120)
 
-local pts = (job.args and job.args.points == "nav") and COV.readCentres() or nil
+local pts = (job.args and job.args.points == "nav") and COV.readCentres("grymod_tmp/" .. (job.args.name or ("cov_centres_" .. game.GetMap())) .. ".txt") or nil
 local begun = COV.begin({points = pts})
 local G = GryMod.Minimap.Gen
 

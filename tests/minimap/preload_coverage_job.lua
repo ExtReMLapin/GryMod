@@ -342,6 +342,11 @@ function COV.begin(opts)
 			return 1
 		end
 
+		-- COV.around (0 / 1): the ring of places around the nodes forced on or off for a run; nil: the player's own setting
+		if name == "gry_minimap_preload_around" and COV.around ~= nil then
+			return COV.around
+		end
+
 		return realConvar(name)
 	end
 
@@ -376,14 +381,73 @@ function COV.begin(opts)
 		pts = thinned
 	end
 
+	COV.dropped = nil
 	COV.nav = COV.tour(pts, 96, 600)
+
+	-- opts.snap: the feet go on the ground the way a player stands. The steps between two places are interpolated in a straight line, so over a stair or a ramp they are in the air or
+	-- in the floor: each step takes the height of the ground found by a ray down from 40 over it (GroundAt), and a step with no ground within 40 units is left out
+	if opts.snap then
+		local snapped, dropped = {}, 0
+
+		for _, p in ipairs(COV.nav) do
+			local g = Mm.Floors.GroundAt(p.x, p.y, p.z + 40)
+
+			if g and math.abs(g - p.z) <= 40 then
+				snapped[#snapped + 1] = {x = p.x, y = p.y, z = g, jump = p.jump}
+			else
+				dropped = dropped + 1
+			end
+		end
+
+		COV.nav = snapped
+		COV.dropped = dropped
+	end
+
 	COV.base = COV.eval(COV.nav)
+
+	-- the cost of the plan: the Think hook of the planning is timed (the whole plan, the frames it took, the slowest frame)
+	COV.plan = {ms = 0, frames = 0, maxMs = 0, lastMs = 0, maxBeforeLastMs = 0, prevMs = 0}
+	COV.realHookAdd = COV.realHookAdd or Mm.Preload._hookAdd
+
+	Mm.Preload._hookAdd = function(event, name, fn)
+		if event ~= "Think" then
+			return COV.realHookAdd(event, name, fn)
+		end
+
+		return COV.realHookAdd(event, name, function(...)
+			local t = SysTime()
+			local mem = collectgarbage("count")
+
+			fn(...)
+
+			local ms = (SysTime() - t) * 1000
+
+			-- a slow frame during which the memory went DOWN had a garbage collection step in it (the memory is the heap of the whole Lua state)
+			if ms > COV.plan.maxMs then
+				COV.plan.maxMemDelta = collectgarbage("count") - mem
+			end
+
+			COV.plan.ms, COV.plan.frames = COV.plan.ms + ms, COV.plan.frames + 1
+			COV.plan.lastMs = ms
+
+			if ms > COV.plan.maxMs then
+				COV.plan.maxMs = ms
+			end
+
+			-- the frame before this one (the last frame is the one that sorts the tiles and hands them to the generator: it is told apart)
+			if COV.plan.prevMs > COV.plan.maxBeforeLastMs then
+				COV.plan.maxBeforeLastMs = COV.plan.prevMs
+			end
+
+			COV.plan.prevMs = ms
+		end)
+	end
 
 	local ok, why = Mm.Preload.Start()
 
 	COV.t0 = SysTime()
 
-	return {points = #pts, steps = #COV.nav, baseline = {veil = COV.base.veilEventsUnderPlayer, open = COV.base.veilOpen, floor = COV.base.veilFloor, levels = COV.base.levels}, start = {ok, why}}
+	return {points = #pts, steps = #COV.nav, dropped = COV.dropped, baseline = {veil = COV.base.veilEventsUnderPlayer, open = COV.base.veilOpen, floor = COV.base.veilFloor, levels = COV.base.levels}, start = {ok, why}}
 end
 
 function COV.result()
@@ -392,6 +456,7 @@ function COV.result()
 	local prog = M.Gen.PreloadProgress()
 
 	return {
+		planMs = math.floor(COV.plan.ms * 10) / 10, planFrames = COV.plan.frames, planMaxFrameMs = math.floor(COV.plan.maxMs * 100) / 100, planLastFrameMs = math.floor(COV.plan.lastMs * 100) / 100, planSlowestFrameMemDeltaKb = COV.plan.maxMemDelta and math.floor(COV.plan.maxMemDelta), planMaxOtherFrameMs = math.floor(COV.plan.maxBeforeLastMs * 100) / 100,
 		preloadTiles = prog.total, preloadFailed = prog.failed, seconds = math.floor((SysTime() - COV.t0) * 10) / 10,
 		veilBefore = COV.base.veilEventsUnderPlayer, veilAfter = e.veilEventsUnderPlayer, openAfter = e.veilOpen, floorAfter = e.veilFloor, levels = e.levels,
 		why = w.counts, examples = w.examples
@@ -410,6 +475,7 @@ function COV.finish()
 		Mm.Gen._frameTime = COV.real.gFrame
 		Mm.Settings.ScreenConstant = COV.real.screenK
 		Mm.Preload._convar = COV.real.convar
+		Mm.Preload._hookAdd = COV.realHookAdd
 		Mm.Cache.Clear(COV.scratch)
 		Mm.Cache.Key = COV.real.key
 		Mm.Cache.Reset()
