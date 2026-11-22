@@ -1007,6 +1007,13 @@ local function feed(ply)
 	end
 end
 
+-- The jump of a heavy hit (stage pixels) as whole screen pixels. The images of the panel's groups are made for a position, and a
+-- jump that is a fraction of a pixel made every one of them again at every frame of the shaking (up to 30 images, 0.4 to 2 ms);
+-- a whole number of pixels only moves the images that are kept (cl_flash_draw.lua).
+function Module.JumpPixels(jump, scale)
+	return math.floor(jump * scale + 0.5)
+end
+
 -- gry_xadd spreads the two panels apart (the left one goes left), gry_xdist shifts both.
 local function xOffsets()
 	local add, distance = GetConVar("gry_xadd"), GetConVar("gry_xdist")
@@ -1099,7 +1106,7 @@ function Module.Paint()
 		damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
 
 		jumpX, jumpY = damageFx.HudOffset(damageFx.State, dt)
-		jumpX, jumpY = jumpX * scale, jumpY * scale
+		jumpX, jumpY = Module.JumpPixels(jumpX, scale), Module.JumpPixels(jumpY, scale)
 	end
 
 	-- each panel has its own switch (gry_hud_status, gry_hud_radar); a hidden one keeps running so that it is

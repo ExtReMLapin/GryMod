@@ -245,9 +245,161 @@ local function morphingMovie(ratio)
 	return m
 end
 
+-- A shape of 30 x 20 pixels in a clip that is drawn as a group (blend mode "add"), inside a holder.
+local function groupMovie()
+	return {
+		w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+		chars = {
+			[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 30, dh = 20},
+			[2] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Shape"}}}},
+			[3] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 2, n = "Group", bl = 8}}}}
+		},
+		root = {{{d = 1, c = 3, n = "Holder"}}}
+	}
+end
+
+-- The same inside another group: the holder's group holds a group.
+local function nestedGroupMovie()
+	return {
+		w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+		chars = {
+			[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 30, dh = 20},
+			[2] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Shape"}}}},
+			[3] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 2, n = "Inner", bl = 8, m = {1, 0, 0, 1, 4, 3}}, {d = 2, c = 1, m = {1, 0, 0, 1, 50, 0}}}}},
+			[4] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 3, n = "Outer", bl = 8}}}}
+		},
+		root = {{{d = 1, c = 4, n = "Holder"}}}
+	}
+end
+
+-- Draws `root` with groups made for real as far as the drawing code goes, but with the engine calls replaced by recorders (no render
+-- context needed). Returns how many group images were made and the triangles drawn on the screen itself (not into an image), as a list of
+-- numbers (x, y of each vertex). The real functions are put back whatever happens.
+local function drawGroups(root, x, y, scale)
+	local replaced = {}
+	local function replace(library, name, fake)
+		replaced[#replaced + 1] = {library, name, library[name]}
+		library[name] = fake
+	end
+
+	local F = GryMod.Flash
+	local renders = F.Stats.groupRenders
+	local inside, screen, targets = 0, {}, 0
+	local current
+
+	replace(_G, "GetRenderTargetEx", function()
+		targets = targets + 1
+
+		return {GetName = function() return "fake_target_" .. targets end}
+	end)
+	replace(_G, "CreateMaterial", function() return {} end)
+	replace(render, "PushRenderTarget", function() inside = inside + 1 end)
+	replace(render, "PopRenderTarget", function() inside = inside - 1 end)
+	replace(render, "Clear", function() end)
+	replace(render, "SetMaterial", function() end)
+	replace(render, "OverrideBlend", function() end)
+	replace(cam, "Start2D", function() end)
+	replace(cam, "End2D", function() end)
+	replace(mesh, "Begin", function() end)
+	replace(mesh, "Position", function(position) current = position end)
+	replace(mesh, "TexCoord", function() end)
+	replace(mesh, "Color", function() end)
+	replace(mesh, "End", function() end)
+	replace(mesh, "AdvanceVertex", function()
+		if inside == 0 then
+			screen[#screen + 1] = current.x
+			screen[#screen + 1] = current.y
+		end
+	end)
+
+	local ok, err = pcall(F.Draw, root, x or 0, y or 0, scale or 1)
+
+	for i = #replaced, 1, -1 do
+		local r = replaced[i]
+		r[1][r[2]] = r[3]
+	end
+
+	F.ClearGroupCache() -- the pool and the group materials hold fakes
+
+	assert(ok and err ~= false, "the drawing failed: " .. tostring(err))
+
+	return {renders = F.Stats.groupRenders - renders, screen = screen}
+end
+
 return {
 	groupName = "GryMod Flash drawing (no render context)",
 	cases = {
+		-- the cached image of a group follows the clip when it is drawn a whole number of pixels away (the HUD's jolt after a hit)
+		{
+			name = "a cached group image is drawn again, not made again, when the clip is a whole number of pixels away; a fraction of a pixel makes it again",
+			func = function(state)
+				local F = GryMod.Flash
+				local root = F.NewRoot(groupMovie())
+				local first = drawGroups(root, 10.25, 20.5)
+				expect(first.renders).to.equal(1)
+				local again = drawGroups(root, 10.25, 20.5)
+				expect(again.renders).to.equal(0)
+				-- a whole number of pixels, either way and both axes: no new image, and the picture is where a new image would put it
+				for _, shift in ipairs({{3, -5}, {-7, 0}, {0, 12}, {40, 30}}) do
+					local x, y = 10.25 + shift[1], 20.5 + shift[2]
+					local moved = drawGroups(root, x, y)
+					expect(moved.renders).to.equal(0)
+					local fresh = drawGroups(F.NewRoot(groupMovie()), x, y)
+					expect(fresh.renders).to.equal(1)
+					expect(#moved.screen).to.equal(#fresh.screen)
+
+					for i = 1, #fresh.screen do
+						expect(moved.screen[i]).to.aboutEqual(fresh.screen[i], 1e-6)
+					end
+				end
+
+				-- a fraction of a pixel (in either axis) changes what the image holds
+				expect(drawGroups(root, 10.5, 20.5).renders).to.equal(1)
+				expect(drawGroups(root, 10.5, 20.75).renders).to.equal(1)
+				expect(drawGroups(root, 10.5, 20.75).renders).to.equal(0)
+				F.ClearGroupCache()
+			end
+		},
+		{
+			name = "a shift of a whole number of pixels with a rounding error of the matrix additions is still a whole shift, and a different scale is not",
+			func = function(state)
+				local F = GryMod.Flash
+				local root = F.NewRoot(groupMovie())
+				drawGroups(root, 100.1, 200.3)
+				expect(drawGroups(root, 100.1 + 17, 200.3 - 9).renders).to.equal(0) -- the addition rounds: 117.1 is not exactly 100.1 + 17
+				expect(drawGroups(root, 100.1 + 17, 200.3 - 9, 1.0000001).renders).to.equal(1)
+				F.ClearGroupCache()
+			end
+		},
+		{
+			name = "a group inside a group is not made again either when the whole clip moves by whole pixels, and both are when it moves by a fraction",
+			func = function(state)
+				local F = GryMod.Flash
+				local root = F.NewRoot(nestedGroupMovie())
+				expect(drawGroups(root, 5.5, 6.5).renders).to.equal(2)
+				expect(drawGroups(root, 5.5 + 9, 6.5 - 4).renders).to.equal(0)
+				local fresh = drawGroups(F.NewRoot(nestedGroupMovie()), 5.5 + 9, 6.5 - 4)
+				local moved = drawGroups(root, 5.5 + 9, 6.5 - 4)
+
+				for i = 1, #fresh.screen do
+					expect(moved.screen[i]).to.aboutEqual(fresh.screen[i], 1e-6)
+				end
+
+				expect(drawGroups(root, 5.75 + 9, 6.5 - 4).renders).to.equal(2)
+				F.ClearGroupCache()
+			end
+		},
+		{
+			name = "a changed clip makes its group image again even when the clip also moved by whole pixels",
+			func = function(state)
+				local F = GryMod.Flash
+				local root = F.NewRoot(groupMovie())
+				drawGroups(root, 10, 10)
+				root:Child("Holder"):Child("Group"):_touch() -- what it holds changed
+				expect(drawGroups(root, 12, 11).renders).to.equal(1)
+				F.ClearGroupCache()
+			end
+		},
 		{
 			name = "an outline is cut into few convex pieces, a convex one stays whole, a bow tie (no simple polygon) is refused",
 			func = function(state)
