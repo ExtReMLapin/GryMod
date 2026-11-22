@@ -54,6 +54,17 @@ local function buildRadarMenu()
 	return panel
 end
 
+-- a folding category with this title (cl_options.lua): the sections of the menus are categories, their title is the header
+local function hasCategory(panel, title)
+	for _, p in ipairs(walk(panel)) do
+		if p.ClassName == "ControlPanel" and p.Header and p.Header:GetText() == title then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function hasLabel(panel, text)
 	for _, p in ipairs(walk(panel)) do
 		if p.ClassName == "DLabel" and p:GetText() == text then
@@ -170,7 +181,7 @@ return {
 				expect(isfunction(GryMod.MinimapOptions)).to.beTrue()
 
 				state.panel = build()
-				expect(hasLabel(state.panel, "Minimap")).to.beTrue()
+				expect(hasCategory(state.panel, "Minimap")).to.beTrue()
 				expect(#state.writes).to.equal(0)
 			end
 		},
@@ -219,9 +230,9 @@ return {
 				expect(range:GetMin()).to.equal(5)
 				expect(range:GetMax()).to.equal(100)
 				expect(range:GetDecimals()).to.equal(0)
-				-- the short label of the Radar section, unchanged
-				expect(string.find(range:GetText(), "75", 1, true) ~= nil).to.beTrue()
-				expect(string.find(range:GetText(), "down to 5", 1, true) ~= nil).to.beTrue()
+				-- a short label; the advice (75 is the original's, down to 5 zooms right in) is the text under it
+				expect(string.find(range:GetText(), "Radar range", 1, true)).to.equal(1)
+				expect(hasLabel(state.panel, "75 is the original's, 40 to 75 are good values; down to 5 it zooms the map right in (raise the map definition for a sharp picture).")).to.beTrue()
 
 				local box = checkBoxOn(state.panel, AUTO)
 				expect(box ~= nil).to.beTrue()
@@ -684,13 +695,13 @@ return {
 
 				state.panel = buildRadarMenu()
 				expect(count(state.panel)).to.equal(1)
-				expect(hasLabel(state.panel, "Minimap")).to.beTrue()
+				expect(hasCategory(state.panel, "Minimap")).to.beTrue()
 				state.panel:Remove()
 
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.GryOptionschute(state.panel)
 				expect(count(state.panel)).to.equal(0)
-				expect(hasLabel(state.panel, "Minimap")).to.beFalse()
+				expect(hasCategory(state.panel, "Minimap")).to.beFalse()
 				expect(#state.writes).to.equal(0)
 			end
 		}

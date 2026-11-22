@@ -253,6 +253,9 @@ return {
 						for _, child in ipairs(p:GetChildren()) do
 							if child.ClassName == "DBinder" then
 								order[#order + 1] = "binder"
+							elseif child.ClassName == "ControlPanel" and child.Header then
+								-- a folding category (cl_options.lua): its title is its header
+								order[#order + 1] = "label:" .. child.Header:GetText()
 							elseif child.ClassName == "DCheckBoxLabel" and child.Button then
 								order[#order + 1] = "box:" .. tostring(child.Button.m_strConVar)
 							elseif child.ClassName == "DLabel" and child.GetText and #child:GetText() > 0 and child:GetParent() ~= nil and child:GetParent().ClassName ~= "DCheckBoxLabel" then

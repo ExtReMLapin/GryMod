@@ -191,22 +191,30 @@ local function install(panel)
 	end
 end
 
--- The title of the section and the line that says whether the player is an admin.
-function UI.Section(Panel, title)
+-- The title of the section and the line that says whether the player is an admin. `into` (optional): a category of the panel (a nested control panel) that holds
+-- the controls: it is its folding title that names the section, so only the status line is written there; the state of the options stays on `Panel`.
+function UI.Section(Panel, title, into)
 	install(Panel)
 
-	Panel:Help(title)
+	if not into then
+		Panel:Help(title)
+	end
+
 	Panel.GryAdminStatusShown = UI.IsAdmin()
-	Panel.GryAdminStatus = Panel:Help(UI.StatusText(Panel.GryAdminStatusShown))
+	Panel.GryAdminStatus = (into or Panel):Help(UI.StatusText(Panel.GryAdminStatusShown))
 end
 
 -- One option of the server. kind: "bool" (a check box on the setting `convarName`), "choice" (a selector, opts.choices = {{text, value}, ...}),
 -- "button" (a button that runs the server command opts.command, which checks the admin itself), "action" (a button, an action is never a check box: a click
 -- asks GryMod.Confirm(opts.confirm) and on yes runs opts.onTick() or sends the net message opts.message with no payload; the server checks the right
 -- again). Returns the control.
+-- opts.into: a category of the panel that holds the control (the options of the server are still looked after by `Panel`); opts.help: the explanation, in a
+-- small wrapped text under the control, so that the label can be short.
 function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 	opts = opts or {}
 	install(Panel)
+
+	local into = opts.into or Panel
 
 	local entry = {
 		name = convarName,
@@ -222,10 +230,10 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 	local control
 
 	if kind == "bool" then
-		control = vgui.Create("DCheckBoxLabel", Panel)
+		control = vgui.Create("DCheckBoxLabel", into)
 		control:SetText(label)
 		control:SetDark(true)
-		Panel:AddItem(control)
+		into:AddItem(control)
 
 		control.OnChange = function(_, value)
 			request(entry, value and "1" or "0")
@@ -235,9 +243,9 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 		entry.inner = {control.Button}
 		entry.holders = {control:GetParent()}
 	elseif kind == "choice" then
-		local title = Panel:Help(label)
+		local title = into:Help(label)
 
-		control = vgui.Create("DComboBox", Panel)
+		control = vgui.Create("DComboBox", into)
 		control:SetSortItems(false)
 
 		for _, choice in ipairs(opts.choices) do
@@ -248,12 +256,12 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 			request(entry, data)
 		end
 
-		Panel:AddItem(control)
+		into:AddItem(control)
 
 		entry.parts = {control, title}
 		entry.holders = {control:GetParent(), title:GetParent()}
 	elseif kind == "action" then
-		control = vgui.Create("DButton", Panel)
+		control = vgui.Create("DButton", into)
 		control:SetText(label)
 
 		-- the front prediction: a click that gets through for a player who is not an admin asks nothing and sends nothing (the server checks again)
@@ -271,12 +279,12 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 			end)
 		end
 
-		Panel:AddItem(control)
+		into:AddItem(control)
 
 		entry.parts = {control}
 		entry.holders = {control:GetParent()}
 	else
-		control = vgui.Create("DButton", Panel)
+		control = vgui.Create("DButton", into)
 		control:SetText(label)
 
 		control.DoClick = function()
@@ -285,7 +293,7 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 			end
 		end
 
-		Panel:AddItem(control)
+		into:AddItem(control)
 
 		entry.parts = {control}
 		entry.holders = {control:GetParent()}
@@ -298,6 +306,10 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 	-- the item that holds it (and the one of its title) is how the tests and the tooltip find the control
 	for _, holder in ipairs(entry.holders) do
 		holder.GryAdminItem = true
+	end
+
+	if opts.help then
+		into:ControlHelp(opts.help)
 	end
 
 	syncValue(entry)

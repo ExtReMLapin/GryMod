@@ -29,9 +29,11 @@ end
 
 -- The HUD switches of the radar: the compass and radar panel, and its contacts. Same list, same labels, same settings as the other elements.
 local function radarHUDSwitches(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Radar and compass", true)
+
 	for _, option in ipairs(GryMod.HUDOptions.List) do
 		if GryMod.RadarHUDElements[option.name] then
-			Panel:CheckBox(option.label, "gry_hud_" .. option.name)
+			form:CheckBox(option.label, "gry_hud_" .. option.name)
 		end
 	end
 end
@@ -39,14 +41,17 @@ end
 -- The settings of the server about the radar and the in/out map, for the administrators only: four check boxes (a request to the server each) and the
 -- button that deletes the in/out map and makes it again (the server checks the right again).
 local function serverOptions(Panel)
-	GryMod.AdminUI.Section(Panel, "Server (administrators only)")
+	local form = GryMod.OptionsCategory(Panel, "Server (administrators only)")
 
-	GryMod.AdminOption(Panel, "Radar: allies (NPCs that like you) show in blue from the start (off: only when alerted, fighting or scanned)", "gry_radar_allies_always", "bool")
-	GryMod.AdminOption(Panel, "Radar: vehicles and Combine mines show once the binoculars have scanned them", "gry_radar_objects", "bool")
-	GryMod.AdminOption(Panel, "In/out map: the server makes it (the automatic zoom and other features use it)", "gry_zonemap", "bool")
-	GryMod.AdminOption(Panel, "In/out map: make it from the map's navigation mesh (off: from the AI node graph)", "gry_zonemap_navmesh", "bool")
+	GryMod.AdminUI.Section(Panel, "Server (administrators only)", form)
 
-	local reset = GryMod.AdminOption(Panel, "Delete the in/out map and make it again", nil, "action", {
+	GryMod.AdminOption(Panel, "Allies in blue from the start", "gry_radar_allies_always", "bool", {into = form, help = "NPCs that like you. Off: they show only when alerted, fighting or scanned."})
+	GryMod.AdminOption(Panel, "Vehicles and mines once scanned", "gry_radar_objects", "bool", {into = form, help = "Vehicles and Combine mines show on the radar once the binoculars have scanned them."})
+	GryMod.AdminOption(Panel, "The server makes the in/out map", "gry_zonemap", "bool", {into = form, help = "The automatic zoom and other features use it."})
+	GryMod.AdminOption(Panel, "In/out map from the navigation mesh", "gry_zonemap_navmesh", "bool", {into = form, help = "Off: it is made from the AI node graph."})
+
+	local reset = GryMod.AdminOption(Panel, "Delete and remake the in/out map", nil, "action", {
+		into = form,
 		message = "gry_zonemap_reset",
 		confirm = "Delete the in/out map of this map and make it again? The server computes it again from the map's navigation mesh or its node graph (the box above); the automatic zoom uses its own rays meanwhile."
 	})
@@ -54,7 +59,8 @@ local function serverOptions(Panel)
 	reset.GryZoneMapReset = true
 end
 
--- The menu, in this order: the title, the HUD switches of the radar, the minimap (and its cache button), the automatic zoom, the in/out map, the server.
+-- The menu, in this order: the title, then the categories: the HUD switches of the radar, the minimap and its speed and cache (with the cache button), the
+-- automatic zoom, the in/out map, the server.
 function GryMod.RadarOptionsPanel(Panel)
 	Panel:AddControl("Label", {
 		Text = "GryMod Radar and map"
@@ -62,9 +68,9 @@ function GryMod.RadarOptionsPanel(Panel)
 
 	radarHUDSwitches(Panel)
 
-	GryMod.MinimapOptions(Panel)
+	local speed = GryMod.MinimapOptions(Panel)
 
-	local clear = GryMod.ActionButton(Panel, "Clear the minimap cache", function()
+	local clear = GryMod.ActionButton(speed, "Clear the minimap cache", function()
 		GryMod.ClearMinimapCache()
 	end, "Clear the minimap cache of this level? The map is made again as you play.")
 

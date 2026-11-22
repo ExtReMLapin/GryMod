@@ -195,7 +195,7 @@ return {
 			-- the slider lives in the Radar and map menu (next to the automatic definition, which follows it); the Config menu has none and only says where the radar options went
 			name = "the Radar and map menu has ONE slider for the range, in the Minimap section, with the recommended values in its label; the Config menu has none and points to the menu",
 			func = function()
-				local found, sliderMin, sliderMax
+				local found, sliderMin, sliderMax, advice
 				local count, position, minimapAt, sliderAt = 0, 0, nil, nil
 				local panel = vgui.Create("ControlPanel")
 				local config = vgui.Create("ControlPanel")
@@ -212,8 +212,12 @@ return {
 								sliderMin, sliderMax = child:GetMin(), child:GetMax()
 								count = count + 1
 								sliderAt = position
-							elseif child.ClassName == "DLabel" and child:GetText() == "Minimap" then
+							elseif child.ClassName == "ControlPanel" and child.Header and child.Header:GetText() == "Minimap" then
+								-- the section is a folding category (cl_options.lua): its title is the header
 								minimapAt = position
+							elseif child.ClassName == "DLabel" and string.find(child:GetText(), "down to 5", 1, true) then
+								-- the recommended values are the text under the slider (its label is short: a panel cuts a long one)
+								advice = child:GetText()
 							end
 
 							walk(child)
@@ -249,9 +253,10 @@ return {
 				expect(configSliders).to.equal(0)
 				expect(configLine).to.beTrue()
 				expect(found ~= nil).to.beTrue()
-				expect(string.find(found, "40", 1, true) ~= nil).to.beTrue()
-				expect(string.find(found, "75", 1, true) ~= nil).to.beTrue()
-				expect(string.find(found, "down to 5", 1, true) ~= nil).to.beTrue()
+				expect(string.find(found, "Radar range", 1, true)).to.equal(1)
+				expect(advice ~= nil).to.beTrue()
+				expect(string.find(advice, "40", 1, true) ~= nil).to.beTrue()
+				expect(string.find(advice, "75", 1, true) ~= nil).to.beTrue()
 				expect(sliderMin).to.equal(5)
 				expect(sliderMax).to.equal(100)
 			end

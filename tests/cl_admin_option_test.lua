@@ -33,6 +33,14 @@ local function walk(root, visit, flag)
 	end
 end
 
+local function indexOf(list, value)
+	for i, v in ipairs(list) do
+		if v == value then
+			return i
+		end
+	end
+end
+
 local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DNumSlider = true, DBinder = true, DColorMixer = true}
 
 -- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
@@ -321,9 +329,12 @@ return {
 					-- order: the title, then all of the admin controls; no other control comes after the title
 					local order, titleAt = {}, nil
 					walk(panel, function(child, admin)
-						if child.ClassName == "DLabel" and child.GetText and child:GetText() == "Server (administrators only)" then
+						-- the section is a folding category (cl_options.lua): its title is the header of the category, and the Development category follows it
+						if child.ClassName == "ControlPanel" and child.Header and child.Header:GetText() == "Server (administrators only)" then
 							titleAt = #order + 1
 							order[#order + 1] = "title"
+						elseif child.ClassName == "ControlPanel" and child.Header and child.Header:GetText() == "Development" then
+							order[#order + 1] = "development"
 						elseif child.GryDebugOpen then
 							order[#order + 1] = "debug" -- the button that opens the effects test window (cl_debug_window.lua)
 						elseif INTERACTIVE[child.ClassName] then
@@ -337,8 +348,16 @@ return {
 					expect(order[#order]).to.equal("debug")
 					table.remove(order)
 
-					for i = titleAt + 1, #order do
+					-- between the title and the Development category: the administrators' controls and nothing else; after it: the development tools
+					local developmentAt = indexOf(order, "development")
+					expect(developmentAt ~= nil).to.beTrue()
+
+					for i = titleAt + 1, developmentAt - 1 do
 						expect(order[i]).to.equal("admin")
+					end
+
+					for i = developmentAt + 1, #order do
+						expect(order[i]).to.equal("other")
 					end
 
 					for i = 1, titleAt - 1 do
@@ -377,8 +396,8 @@ return {
 						expect(control.Button.m_strConVar).to.beNil() -- never a client convar: the server decides
 					end
 
-					expect(regen:GetText()).to.equal("Health regeneration: the suit repairs the health over time (off: no regeneration)")
-					expect(armor:GetText()).to.equal("Infinite armor: the suit never loses energy and no malfunction happens (off: the normal rules)")
+					expect(regen:GetText()).to.equal("Health regeneration")
+					expect(armor:GetText()).to.equal("Infinite armor")
 
 					-- they show what the server has
 					expect(regen:GetChecked()).to.equal(GetConVar("gry_health_regen"):GetBool())

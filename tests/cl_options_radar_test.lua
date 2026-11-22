@@ -20,7 +20,9 @@ end
 
 local TITLES = {
 	["GryMod Radar and map"] = true,
+	["Radar and compass"] = true,
 	["Minimap"] = true,
+	["Minimap speed and cache"] = true,
 	["Map tile size (pixels)"] = true,
 	["Automatic zoom"] = true,
 	["In/out map"] = true,
@@ -41,6 +43,9 @@ local function markers(panel)
 	for _, p in ipairs(walk(panel)) do
 		if byControl[p] then
 			order[#order + 1] = "admin:" .. byControl[p]
+		elseif p.ClassName == "ControlPanel" and p.Header and TITLES[p.Header:GetText()] then
+			-- a folding category (cl_options.lua): its title is the header
+			order[#order + 1] = "label:" .. p.Header:GetText()
 		elseif p.ClassName == "DLabel" and TITLES[p:GetText()] then
 			local parent = p:GetParent()
 
@@ -209,6 +214,7 @@ return {
 
 				local expected = {
 					"label:GryMod Radar and map",
+					"label:Radar and compass",
 					"box:gry_hud_radar",
 					"box:gry_hud_radarunits",
 					"label:Minimap",
@@ -220,6 +226,7 @@ return {
 					"slider:gry_minimap_below",
 					"slider:gry_minimap_outside",
 					-- the two preload boxes were added to the menu without this list (red since then); the third is the discovery mode's
+					"label:Minimap speed and cache",
 					"box:gry_minimap_preload",
 					"box:gry_minimap_preload_around",
 					"box:gry_minimap_veil_discovery",
@@ -263,7 +270,7 @@ return {
 
 				expect(control ~= nil).to.beTrue()
 				expect(control.ClassName).to.equal("DCheckBoxLabel")
-				expect(control:GetText()).to.equal("In/out map: make it from the map's navigation mesh (off: from the AI node graph)")
+				expect(control:GetText()).to.equal("In/out map from the navigation mesh")
 				expect(control.Button:GetTable().m_strConVar).to.beNil()
 
 				local order = markers(state.panel)
@@ -301,10 +308,10 @@ return {
 				GryMod.RadarOptionsPanel(state.panel)
 
 				local labels = {
-					gry_zonemap_debug_in = "In/out map debug: show the IN zones (indoor, red)",
-					gry_zonemap_debug_out = "In/out map debug: show the OUT zones (outdoor, green)",
-					gry_zonemap_debug_faces = "In/out map debug: draw the faces (the filled translucent volumes)",
-					gry_zonemap_debug_edges = "In/out map debug: draw the edges (the lines around each box and the ceiling height line)"
+					gry_zonemap_debug_in = "Show the IN zones (indoor, red)",
+					gry_zonemap_debug_out = "Show the OUT zones (outdoor, green)",
+					gry_zonemap_debug_faces = "Draw the faces",
+					gry_zonemap_debug_edges = "Draw the edges"
 				}
 
 				for name, text in pairs(labels) do
@@ -346,7 +353,7 @@ return {
 				end
 
 				expect(slider ~= nil).to.beTrue()
-				expect(slider:GetText()).to.equal("In/out map debug: display distance (metres)")
+				expect(slider:GetText()).to.equal("Display distance (m)")
 				expect(slider:GetMin()).to.equal(20)
 				expect(slider:GetMax()).to.equal(300)
 				expect(slider:GetDecimals()).to.equal(0)
@@ -391,7 +398,7 @@ return {
 							end
 						end
 
-						expect(table.concat(buttons, "|")).to.equal("Clear the minimap cache|Delete the in/out map and make it again")
+						expect(table.concat(buttons, "|")).to.equal("Clear the minimap cache|Delete and remake the in/out map")
 						expect(table.concat(flags, "|")).to.equal("clear|reset")
 
 						panel:Remove()
@@ -571,7 +578,7 @@ return {
 
 					expect(box ~= nil).to.beTrue()
 					expect(box.ClassName).to.equal("DButton")
-					expect(box:GetText()).to.equal("Delete the in/out map and make it again")
+					expect(box:GetText()).to.equal("Delete and remake the in/out map")
 					expect(box:IsEnabled()).to.beTrue()
 					expect(box.GryZoneMapReset).to.beTrue()
 

@@ -85,6 +85,17 @@ local function hasLabel(panel, text)
 	return false
 end
 
+-- the section is a folding category (cl_options.lua): its title is the header of the category
+local function hasCategory(panel, title)
+	for _, p in ipairs(walk(panel)) do
+		if p.ClassName == "ControlPanel" and p.Header and p.Header:GetText() == title then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function checkBoxOn(panel, convarName)
 	for _, p in ipairs(walk(panel)) do
 		if p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == convarName then
@@ -2695,13 +2706,13 @@ return {
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.ZoneMapOptions(state.panel)
 
-				expect(hasLabel(state.panel, "In/out map")).to.beTrue()
+				expect(hasCategory(state.panel, "In/out map")).to.beTrue()
 				expect(hasLabel(state.panel, "In/out map: computing 42 %")).to.beTrue()
 
 				local box = checkBoxOn(state.panel, DEBUG)
 
 				expect(box ~= nil).to.beTrue()
-				expect(string.find(box:GetText(), "Draw the in/out map in the world (debug)", 1, true) == 1).to.beTrue()
+				expect(string.find(box:GetText(), "Draw the map in the world", 1, true) == 1).to.beTrue()
 				expect(GetConVar(DEBUG):GetString()).to.equal(state.debug)
 			end
 		},
@@ -2725,7 +2736,7 @@ return {
 				expect(boxAt ~= nil).to.beTrue()
 				expect(slider ~= nil).to.beTrue()
 				expect(sliderAt > boxAt).to.beTrue()
-				expect(slider:GetText()).to.equal("In/out map debug: display distance (metres)")
+				expect(slider:GetText()).to.equal("Display distance (m)")
 				expect(slider:GetMin()).to.equal(20)
 				expect(slider:GetMax()).to.equal(300)
 				expect(slider:GetDecimals()).to.equal(0)
@@ -2775,14 +2786,14 @@ return {
 
 				expect(control ~= nil).to.beTrue()
 				expect(control.ClassName).to.equal("DCheckBoxLabel")
-				expect(control:GetText()).to.equal("In/out map: the server makes it (the automatic zoom and other features use it)")
+				expect(control:GetText()).to.equal("The server makes the in/out map")
 				expect(control.Button:GetTable().m_strConVar).to.beNil()
 
 				local box = resetButton(state.panel)
 
 				expect(box ~= nil).to.beTrue()
 				expect(box.ClassName).to.equal("DButton")
-				expect(box:GetText()).to.equal("Delete the in/out map and make it again")
+				expect(box:GetText()).to.equal("Delete and remake the in/out map")
 				state.panel:Remove()
 
 				-- the administrators' section of the Config menu
