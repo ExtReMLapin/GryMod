@@ -17,7 +17,7 @@ GryMod.Minimap.Gen = GryMod.Minimap.Gen or {}
 --   * it may also ask for the OUTSIDE (the open level of the map, the whole height of the world): same range, made after the main level and the floor
 --     below, counted apart (outsideDone, outsideTotal, outsideFailed), and never in the main level's numbers;
 --   * every tile is compressed with the 1-bit alpha option and stored in the DXT1A format (20): the void of a floor is transparent.
---   * the opaque black the engine draws for "nothing" ((0, 0, 0, 255), see Capture.IsBlackOpaque) is turned into void before the compression, in the tiles of every set
+--   * the background the engine draws for "nothing" (a flat colour with alpha 255, see Capture.IsBackground) is turned into void before the compression, in the tiles of every set
 --     (a solid black erased the passes behind it, and the cache gives one file to a level whatever its role): see voidTheFill and Gen.VOID_FILL_SETS.
 -- The three SETS of tiles (main, below, outside) are handled by the same code: S.sets[name] = {level, queue, done, total, failed, ...}, and SET_ORDER
 -- is the order in which their queues are emptied.
@@ -521,15 +521,17 @@ local function storeIfEmpty(cur, bgra)
 	return false
 end
 
--- The opaque black of "nothing" (see Capture.IsBlackOpaque): the engine draws exactly (0, 0, 0, 255) where the slab of a level has nothing to show (inside earth, a sky
--- brush). By the void rule that is a solid pixel, so a tile drawn over what is behind it would be a black wall hiding it.
---   * every pixel (0, 0, 0, 255) of the tile becomes void (transparent) before the compression, whichever set asked for the tile. A tile is stored under the name of its level
---     and not of its role: the main level of today is the floor below or the outside of tomorrow, and the cache hands the same file to all of them, so the content of a
---     tile must not depend on who asked for it first. Black geometry (alpha 1) and every coloured pixel stay as they are. A tile that has nothing else is then an empty tile
---     (storeIfEmpty);
---   * Gen.VOID_FILL_SETS says which sets get that treatment. A set left out is compressed as it is, except that a tile that is nothing but opaque black is a picture of
---     nothing and becomes all void, hence an empty tile (before the main level followed that rule alone).
--- Without the functions of Capture, or when one of them raises or gives something that is not a picture of the same size, the picture is used as it is.
+-- The background of the engine (see the comment of Capture.IsBackground): where the slab of a level has nothing to show (inside earth, a sky brush, the sky) the engine paints a
+-- flat colour with alpha 255, black on most maps, a sky blue on gm_boreas. By the void rule that is a solid pixel, so a tile drawn over what is behind it would be a wall hiding it.
+--   * every pixel of that colour (alpha 255) of the tile becomes void (transparent) before the compression, whichever set asked for the tile. The colour is read from the picture
+--     (Capture.FindBackground: it drifts with the time, so it is not kept per map; black when the picture gives none). A tile is stored under the name of its level and not of its
+--     role: the main level of today is the floor below or the outside of tomorrow, and the cache hands the same file to all of them, so the content of a tile must not depend on who
+--     asked for it first. Geometry (alpha 1), every other colour at alpha 255 (the dark edge pixels of translucent geometry) and the alphas 2 to 254 stay as they are. A tile that
+--     has nothing else is then an empty tile (storeIfEmpty);
+--   * Gen.VOID_FILL_SETS says which sets get that treatment. A set left out is compressed as it is, except that a tile that is nothing but the fill is a picture of nothing and
+--     becomes all void, hence an empty tile (before the main level followed that rule alone).
+-- Without the functions of Capture, or when one of them raises or gives something that is not a picture of the same size, the picture is used as it is (a FindBackground that
+-- raises or gives nothing: the black).
 Gen.VOID_FILL_SETS = {main = true, below = true, outside = true, preload = true}
 
 local function voidTheFill(set, bgra)
@@ -539,12 +541,22 @@ local function voidTheFill(set, bgra)
 		return bgra
 	end
 
+	local bg
+
+	if type(C.FindBackground) == "function" then
+		local found, colour = pcall(C.FindBackground, bgra)
+
+		if found and type(colour) == "string" then
+			bg = colour
+		end
+	end
+
 	if Gen.VOID_FILL_SETS[set] ~= true then
-		if type(C.IsAllBlackOpaque) ~= "function" then
+		if type(C.IsAllBackground) ~= "function" then
 			return bgra
 		end
 
-		local ok, all = pcall(C.IsAllBlackOpaque, bgra)
+		local ok, all = pcall(C.IsAllBackground, bgra, bg)
 
 		if ok and all == true then
 			return string.rep("\0", #bgra)
@@ -553,11 +565,11 @@ local function voidTheFill(set, bgra)
 		return bgra
 	end
 
-	if type(C.BlackOpaqueToVoid) ~= "function" then
+	if type(C.BackgroundToVoid) ~= "function" then
 		return bgra
 	end
 
-	local ok, out = pcall(C.BlackOpaqueToVoid, bgra)
+	local ok, out = pcall(C.BackgroundToVoid, bgra, bg)
 
 	if ok and type(out) == "string" and #out == #bgra then
 		return out

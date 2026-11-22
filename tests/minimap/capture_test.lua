@@ -929,106 +929,181 @@ return {
 				expect(IsVoid(0, 0, 0)).to.equal(false)
 			end
 		},
-		-- the opaque black the engine draws for "nothing" (measured on gm_funkis: exactly (0, 0, 0, 255), where the geometry's own alpha is 1) --------
+		-- the background the engine paints for "nothing": alpha 255, whatever the colour (black on gm_funkis, d1_canals_01, gm_everpine_mall; a sky blue that drifts with the time on gm_boreas) -----
+		-- the geometry's own alpha is 1, so the alpha 255 is the engine's fill. A few alpha-255 pixels of other colours exist at the edges of translucent geometry (0.01 to 0.7 % of the alpha-255 pixels,
+		-- measured on funkis, canals, coast_07, everpine): only the colour of the fill is void.
 		{
-			-- fails if the rule takes the black of the geometry (alpha 1), a coloured opaque pixel, a near-black opaque pixel or the void for the engine's fill
-			name = "IsBlackOpaque(b, g, r, a): only exactly (0, 0, 0, 255); black geometry (alpha 1), the void, near-black and coloured pixels are not",
+			-- fails if the rule reads only black, ignores a channel, or takes the geometry's alpha (1), the void (0), an alpha of 254 or a near colour for the fill
+			name = "IsBackground(b, g, r, a, bg): only exactly the colour of bg with alpha 255 (black when no bg is given); other colours, other alphas, missing channels are not",
 			func = function()
-				local IsBlackOpaque = need("IsBlackOpaque")
+				local IsBackground = need("IsBackground")
+				local BLUE = "\227\181\139\255" -- (r, g, b) = (139, 181, 227)
 
-				expect(IsBlackOpaque(0, 0, 0, 255)).to.equal(true)
-				expect(IsBlackOpaque(0, 0, 0, 1)).to.equal(false) -- black geometry
-				expect(IsBlackOpaque(0, 0, 0, 0)).to.equal(false) -- the void
-				expect(IsBlackOpaque(0, 0, 0, 254)).to.equal(false)
-				expect(IsBlackOpaque(1, 0, 0, 255)).to.equal(false)
-				expect(IsBlackOpaque(0, 1, 0, 255)).to.equal(false)
-				expect(IsBlackOpaque(0, 0, 1, 255)).to.equal(false)
-				expect(IsBlackOpaque(2, 3, 3, 255)).to.equal(false)
-				expect(IsBlackOpaque(200, 120, 40, 255)).to.equal(false)
-				expect(IsBlackOpaque(nil, nil, nil, nil)).to.equal(false)
-				expect(IsBlackOpaque(0, 0, 0)).to.equal(false)
+				expect(IsBackground(227, 181, 139, 255, BLUE)).to.equal(true)
+				expect(IsBackground(227, 181, 139, 1, BLUE)).to.equal(false) -- geometry of that colour
+				expect(IsBackground(227, 181, 139, 0, BLUE)).to.equal(false)
+				expect(IsBackground(227, 181, 139, 254, BLUE)).to.equal(false)
+				expect(IsBackground(228, 181, 139, 255, BLUE)).to.equal(false)
+				expect(IsBackground(227, 182, 139, 255, BLUE)).to.equal(false)
+				expect(IsBackground(227, 181, 140, 255, BLUE)).to.equal(false)
+				expect(IsBackground(0, 0, 0, 255, BLUE)).to.equal(false) -- black is not the fill of a blue map
+				expect(IsBackground(255, 255, 255, 255, "\255\255\255\255")).to.equal(true)
+				expect(IsBackground(nil, nil, nil, nil, BLUE)).to.equal(false)
+				expect(IsBackground(227, 181, 139, nil, BLUE)).to.equal(false)
+
+				-- no bg: black
+				expect(IsBackground(0, 0, 0, 255)).to.equal(true)
+				expect(IsBackground(0, 0, 0, 1)).to.equal(false)
+				expect(IsBackground(0, 0, 1, 255)).to.equal(false)
+				expect(IsBackground(227, 181, 139, 255)).to.equal(false)
 			end
 		},
 		{
-			-- fails if BlackOpaqueToVoid touches anything but the exact opaque black pixels, or does not return how many it changed
-			name = "BlackOpaqueToVoid: the opaque black pixels become void (0, 0, 0, 0); black geometry, void, coloured and near-black pixels stay as they are",
+			-- fails if BackgroundToVoid touches anything but the exact pixels of the fill, or does not return how many it changed, for any colour of fill (a colour with a 255 byte included)
+			name = "BackgroundToVoid: the pixels of the fill become void (0, 0, 0, 0) whatever its colour; geometry, void, other colours and near colours stay as they are",
 			func = function()
-				local BlackOpaqueToVoid = need("BlackOpaqueToVoid")
-				local K, V = "\0\0\0\255", "\0\0\0\0"
-				local keep = {"\0\0\0\1", V, "\9\8\7\255", "\2\3\3\255", "\0\0\1\255", "\200\100\50\0", "\0\0\0\254"}
-				local list = {K, keep[1], K, keep[2], K, K, keep[3], keep[4], K, keep[5], keep[6], keep[7], K}
-				local want = {}
+				local BackgroundToVoid = need("BackgroundToVoid")
+				local V = "\0\0\0\0"
 
-				for i = 1, #list do
-					want[i] = list[i] == K and V or list[i]
+				for _, K in ipairs({"\0\0\0\255", "\227\181\139\255", "\255\255\255\255", "\1\2\3\255", "\255\0\7\255"}) do
+					local function near(i) -- the colour of the fill with one channel one step off
+						local t = {K:byte(1, 4)}
+
+						t[i] = (t[i] + 1) % 256
+
+						return string.char(t[1], t[2], t[3], 255)
+					end
+
+					local keep = {K:sub(1, 3) .. "\1", V, near(1), near(2), near(3), K:sub(1, 3) .. "\254", K:sub(1, 3) .. "\0", "\9\8\7\255"}
+					local list = {K, keep[1], K, keep[2], K, K, keep[3], keep[4], K, keep[5], keep[6], keep[7], K, keep[8]}
+					local want = {}
+
+					for i = 1, #list do
+						want[i] = list[i] == K and V or list[i]
+					end
+
+					local out, n = BackgroundToVoid(table.concat(list), K)
+
+					expect(out == table.concat(want)).to.beTrue()
+					expect(n).to.equal(6)
 				end
-
-				local out, n = BlackOpaqueToVoid(table.concat(list))
-
-				expect(out == table.concat(want)).to.beTrue()
-				expect(n).to.equal(6)
 			end
 		},
 		{
-			-- fails if the bytes are matched without the alignment of the pixels: the sequence 0, 0, 0, 255 also appears across two pixels
-			name = "BlackOpaqueToVoid: a 0, 0, 0, 255 that straddles two pixels is not an opaque black pixel and is not changed",
+			-- fails if a black pixel at alpha 255 is changed when the fill is another colour (the dark edge pixels of geometry), or a coloured one when the fill is black
+			name = "BackgroundToVoid: only the colour of bg is changed; the other opaque colours stay (a black pixel of a blue map, a blue pixel of a black map)",
 			func = function()
-				local BlackOpaqueToVoid = need("BlackOpaqueToVoid")
-				-- pixel 1 = (5, 0, 0, 0), pixel 2 = (255, 0, 0, 0): the bytes 3, 4, 5 and 6 of the string are 0, 0, 255... and 2, 3, 4, 5 are 0, 0, 0, 255
-				local s = "\5\0\0\0" .. "\255\0\0\0" .. "\0\0\0\255" .. "\0\0\0\255"
-				local out, n = BlackOpaqueToVoid(s)
+				local BackgroundToVoid = need("BackgroundToVoid")
+				local BLUE, BLACK = "\227\181\139\255", "\0\0\0\255"
+				local s = BLUE .. BLACK .. BLUE .. BLACK .. BLACK
 
-				expect(out == "\5\0\0\0" .. "\255\0\0\0" .. "\0\0\0\0" .. "\0\0\0\0").to.beTrue()
+				local out, n = BackgroundToVoid(s, BLUE)
+
+				expect(out == "\0\0\0\0" .. BLACK .. "\0\0\0\0" .. BLACK .. BLACK).to.beTrue()
 				expect(n).to.equal(2)
 
-				local s2 = "\5\0\0\0" .. "\255\0\0\0" .. "\7\7\7\7"
-				local out2, n2 = BlackOpaqueToVoid(s2)
+				out, n = BackgroundToVoid(s, BLACK)
+				expect(out == BLUE .. "\0\0\0\0" .. BLUE .. "\0\0\0\0\0\0\0\0").to.beTrue()
+				expect(n).to.equal(3)
 
-				expect(out2 == s2).to.beTrue()
-				expect(n2).to.equal(0)
+				-- no bg given: black, like the first version of the rule
+				out, n = BackgroundToVoid(s)
+				expect(out == BLUE .. "\0\0\0\0" .. BLUE .. "\0\0\0\0\0\0\0\0").to.beTrue()
+				expect(n).to.equal(3)
 			end
 		},
 		{
-			-- fails if a long run is cut at the size of the chunk the scan jumps by, or if the pixel after a run is lost
-			name = "BlackOpaqueToVoid: runs of every length (1 pixel to a whole 64 x 64 picture, around every power of two) are replaced completely, and what follows is kept",
+			-- fails if the bytes are matched without the alignment of the pixels: the colour bytes of the fill followed by 255 also appear across two pixels
+			name = "BackgroundToVoid: the bytes of the fill that straddle two pixels are not a pixel of the fill and are not changed",
 			func = function()
-				local BlackOpaqueToVoid = need("BlackOpaqueToVoid")
-				local K, V, X = "\0\0\0\255", "\0\0\0\0", "\9\9\9\1"
+				local BackgroundToVoid = need("BackgroundToVoid")
+
+				for _, K in ipairs({"\0\0\0\255", "\227\181\139\255"}) do
+					-- pixel 1 = (x, c1, c2, c3), pixel 2 = (255, y, z, w): the bytes c1, c2, c3, 255 are at offset 2 of the string
+					local straddle = "\5" .. K:sub(1, 3) .. "\255\7\7\7"
+					local s = straddle .. K .. K
+					local out, n = BackgroundToVoid(s, K)
+
+					expect(out == straddle .. "\0\0\0\0\0\0\0\0").to.beTrue()
+					expect(n).to.equal(2)
+
+					local out2, n2 = BackgroundToVoid(straddle, K)
+
+					expect(out2 == straddle).to.beTrue()
+					expect(n2).to.equal(0)
+				end
+			end
+		},
+		{
+			-- fails if a long run is cut at the size of the group the scan jumps by (four pixels), or if the pixel after a run is lost
+			name = "BackgroundToVoid: runs of every length (1 pixel to a whole 64 x 64 picture, around every power of two) are replaced completely, and what follows is kept",
+			func = function()
+				local BackgroundToVoid = need("BackgroundToVoid")
+				local V, X = "\0\0\0\0", "\9\9\9\1"
 				local total = 64 * 64
-				local lengths = {1, 2, 3, 4, 5, 15, 16, 17, 63, 64, 65, 255, 256, 257, 258, 259, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096, 16383, 16384, 16385, 16389}
+				local lengths = {1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 63, 64, 65, 255, 256, 257, 1023, 1024, 1025, 4095, 4096, 4097, 4099}
 
-				for _, len in ipairs(lengths) do
-					for _, start in ipairs({0, 1, 3}) do
-						-- `start` coloured pixels, then `len` opaque black pixels, then a coloured pixel, then opaque black pixels up to the end
-						local head = string.rep(X, start)
-						local tail = math.max(0, total - start - len - 1)
-						local s = head .. string.rep(K, len) .. X .. string.rep(K, tail)
-						local want = head .. string.rep(V, len) .. X .. string.rep(V, tail)
-						local out, n = BlackOpaqueToVoid(s)
+				for _, K in ipairs({"\0\0\0\255", "\227\181\139\255"}) do
+					for _, len in ipairs(lengths) do
+						for _, start in ipairs({0, 1, 3}) do
+							-- `start` coloured pixels, then `len` pixels of the fill, then a coloured pixel, then the fill up to the end
+							local head = string.rep(X, start)
+							local tail = math.max(0, total - start - len - 1)
+							local s = head .. string.rep(K, len) .. X .. string.rep(K, tail)
+							local want = head .. string.rep(V, len) .. X .. string.rep(V, tail)
+							local out, n = BackgroundToVoid(s, K)
 
-						expect(out == want).to.beTrue()
-						expect(n).to.equal(len + tail)
+							expect(out == want).to.beTrue()
+							expect(n).to.equal(len + tail)
+						end
+					end
+
+					local out, n = BackgroundToVoid(string.rep(K, total), K)
+
+					expect(out == string.rep(V, total)).to.beTrue()
+					expect(n).to.equal(total)
+
+					-- a pixel one step off in one channel inside a long run ends the run (it is geometry): the run is cut there and goes on after it
+					for i = 1, 3 do
+						local t = {K:byte(1, 4)}
+
+						t[i] = (t[i] + 1) % 256
+
+						local off = string.char(t[1], t[2], t[3], 255)
+						local out2, n2 = BackgroundToVoid(string.rep(K, 37) .. off .. string.rep(K, 40), K)
+
+						expect(out2 == string.rep(V, 37) .. off .. string.rep(V, 40)).to.beTrue()
+						expect(n2).to.equal(77)
+					end
+
+					-- the geometry of the same colour (alpha 1) ends a run too, also when fewer than four pixels are left to look at
+					local geo = K:sub(1, 3) .. "\1"
+
+					for _, len in ipairs({1, 2, 3, 5, 6, 7}) do
+						local out3, n3 = BackgroundToVoid(string.rep(K, len) .. geo, K)
+
+						expect(out3 == string.rep(V, len) .. geo).to.beTrue()
+						expect(n3).to.equal(len)
 					end
 				end
-
-				local out, n = BlackOpaqueToVoid(string.rep(K, total))
-
-				expect(out == string.rep(V, total)).to.beTrue()
-				expect(n).to.equal(total)
 			end
 		},
 		{
-			-- fails if a picture without opaque black is copied, changed, or counted wrongly
-			name = "BlackOpaqueToVoid: a picture with no opaque black gives the same string and 0; an empty string too",
+			-- fails if a picture without the fill is copied, changed, or counted wrongly
+			name = "BackgroundToVoid: a picture with no pixel of the fill gives the same string and 0; an empty string too",
 			func = function()
-				local BlackOpaqueToVoid = need("BlackOpaqueToVoid")
-				local s = string.rep("\0\0\0\0", 100) .. string.rep("\3\4\4\1", 50) .. "\0\0\0\1"
-				local out, n = BlackOpaqueToVoid(s)
+				local BackgroundToVoid = need("BackgroundToVoid")
+				local s = string.rep("\0\0\0\0", 100) .. string.rep("\3\4\4\1", 50) .. "\0\0\0\1" .. string.rep("\227\181\139\255", 3)
+				local out, n = BackgroundToVoid(s)
 
+				expect(out == s .. "").to.beTrue()
+				expect(n).to.equal(0)
+
+				out, n = BackgroundToVoid(s, "\5\5\5\255")
 				expect(out == s).to.beTrue()
 				expect(n).to.equal(0)
 
-				local e, ne = BlackOpaqueToVoid("")
+				local e, ne = BackgroundToVoid("")
 
 				expect(e).to.equal("")
 				expect(ne).to.equal(0)
@@ -1036,64 +1111,232 @@ return {
 		},
 		{
 			-- fails if a bad argument raises an error or is accepted
-			name = "BlackOpaqueToVoid refuses what is not a picture: a value that is not a string, a length that is not a multiple of 4 (nil, reason)",
+			name = "BackgroundToVoid refuses what is not a picture (a value that is not a string, a length that is not a multiple of 4) and a bg that is not a pixel of alpha 255 (nil, reason)",
 			func = function()
-				local BlackOpaqueToVoid = need("BlackOpaqueToVoid")
+				local BackgroundToVoid = need("BackgroundToVoid")
 
 				for _, bad in ipairs({5, true, {}, "\0\0\0\255\0"}) do
-					local out, why = BlackOpaqueToVoid(bad)
+					local out, why = BackgroundToVoid(bad)
 
 					expect(out).to.beNil()
 					expect(type(why)).to.equal("string")
 				end
 
-				local out, why = BlackOpaqueToVoid(nil)
+				local out, why = BackgroundToVoid(nil)
 
 				expect(out).to.beNil()
 				expect(type(why)).to.equal("string")
+
+				for _, bad in ipairs({5, true, {}, "", "\0\0\0", "\0\0\0\255\255", "\0\0\0\0", "\0\0\0\1"}) do
+					out, why = BackgroundToVoid("\0\0\0\255", bad)
+					expect(out).to.beNil()
+					expect(type(why)).to.equal("string")
+				end
 			end
 		},
 		{
-			-- fails if one pixel that is not opaque black is overlooked (first, last, in the middle, around the chunk sizes) or if an all-black picture is not recognised
-			name = "IsAllBlackOpaque: true only when every pixel is exactly (0, 0, 0, 255); one other pixel anywhere gives false",
+			-- fails if one pixel that is not the fill is overlooked (first, last, in the middle, around the groups of four) or if a picture of nothing but the fill is not recognised
+			name = "IsAllBackground: true only when every pixel is exactly the fill; one other pixel anywhere gives false",
 			func = function()
-				local IsAllBlackOpaque = need("IsAllBlackOpaque")
-				local K = "\0\0\0\255"
+				local IsAllBackground = need("IsAllBackground")
 				local total = 64 * 64
 
-				expect(IsAllBlackOpaque(string.rep(K, total))).to.equal(true)
-				expect(IsAllBlackOpaque(K)).to.equal(true)
+				for _, K in ipairs({"\0\0\0\255", "\227\181\139\255", "\255\255\255\255"}) do
+					expect(IsAllBackground(string.rep(K, total), K)).to.equal(true)
+					expect(IsAllBackground(K, K)).to.equal(true)
 
-				for _, other in ipairs({"\0\0\0\0", "\0\0\0\1", "\1\0\0\255", "\0\0\0\254", "\9\9\9\255"}) do
-					for _, at in ipairs({0, 1, 15, 16, 255, 256, 1023, 1024, 2047, 2048, 4094, 4095}) do
-						local s = string.rep(K, at) .. other .. string.rep(K, total - at - 1)
+					-- the colour of the fill with one channel one step off (blue, green, red)
+					local function near(i)
+						local t = {K:byte(1, 4)}
 
-						expect(IsAllBlackOpaque(s)).to.equal(false)
+						t[i] = (t[i] + 1) % 256
+
+						return string.char(t[1], t[2], t[3], 255)
+					end
+
+					for _, other in ipairs({"\0\0\0\0", K:sub(1, 3) .. "\1", K:sub(1, 3) .. "\254", near(1), near(2), near(3), "\9\9\9\255"}) do
+						for _, at in ipairs({0, 1, 3, 4, 5, 15, 16, 255, 256, 1023, 1024, 4094, 4095}) do
+							local s = string.rep(K, at) .. other .. string.rep(K, total - at - 1)
+
+							expect(IsAllBackground(s, K)).to.equal(false)
+						end
 					end
 				end
 
-				-- opaque black bytes found at an offset that is not a multiple of 4 are not opaque black pixels
-				expect(IsAllBlackOpaque("\5\0\0\0" .. string.rep("\255\0\0\0", 3))).to.equal(false)
-				expect(IsAllBlackOpaque("\0\0\0\255" .. "\5\0\0\0" .. "\255\0\0\0")).to.equal(false)
+				-- no bg: black
+				expect(IsAllBackground(string.rep("\0\0\0\255", total))).to.equal(true)
+				expect(IsAllBackground(string.rep("\227\181\139\255", total))).to.equal(false)
+				-- the fill found at an offset that is not a multiple of 4 is not a pixel of the fill
+				expect(IsAllBackground("\5\0\0\0" .. string.rep("\255\0\0\0", 3))).to.equal(false)
+				expect(IsAllBackground("\0\0\0\255" .. "\5\0\0\0" .. "\255\0\0\0")).to.equal(false)
 			end
 		},
 		{
-			-- fails if an empty picture or a bad argument is called all-black, or raises
-			name = "IsAllBlackOpaque: an empty string, a string whose length is not a multiple of 4 or a value that is not a string is not an all-black picture (nil, reason)",
+			-- fails if an empty picture or a bad argument is called a picture of the fill, or raises
+			name = "IsAllBackground: an empty string, a length that is not a multiple of 4, a value that is not a string or a bad bg is not a picture of nothing (nil, reason)",
 			func = function()
-				local IsAllBlackOpaque = need("IsAllBlackOpaque")
+				local IsAllBackground = need("IsAllBackground")
 
 				for _, bad in ipairs({"", "\0\0\0\255\0", 7, true, {}}) do
-					local r, why = IsAllBlackOpaque(bad)
+					local r, why = IsAllBackground(bad)
 
 					expect(r).to.beNil()
 					expect(type(why)).to.equal("string")
 				end
 
-				local r, why = IsAllBlackOpaque(nil)
+				local r, why = IsAllBackground(nil)
 
 				expect(r).to.beNil()
 				expect(type(why)).to.equal("string")
+
+				r, why = IsAllBackground("\0\0\0\255", "\0\0\0")
+				expect(r).to.beNil()
+				expect(type(why)).to.equal("string")
+			end
+		},
+		-- FindBackground: the colour of the fill of a picture. The fill is the colour that most of the alpha-255 pixels have, measured on a sample of the pixels (one in BACKGROUND_STEP).
+		-- It drifts with the time on gm_boreas (123, 161, 201 then 128, 168, 209 within seconds), so it is read from the picture itself and not once per map.
+		{
+			-- fails if the fill is not found when it covers the picture, with a colour that has a 255 byte, or if it is not a pixel string of alpha 255
+			name = "FindBackground: a picture that is mostly one colour at alpha 255 gives that colour as a pixel (alpha 255), whatever the geometry around it",
+			func = function()
+				local FindBackground = need("FindBackground")
+				local total = 64 * 64
+
+				for _, K in ipairs({"\0\0\0\255", "\227\181\139\255", "\255\255\255\255", "\255\0\7\255"}) do
+					local pic = string.rep(K, total)
+
+					expect(FindBackground(pic) == K).to.beTrue()
+
+					-- 70 % of the fill, geometry of alpha 1 and a few dark opaque edge pixels
+					local parts = {}
+
+					for i = 0, total - 1 do
+						parts[#parts + 1] = (i % 10 < 7) and K or ((i % 10 == 9 and i % 3 == 0) and "\20\30\22\255" or "\30\60\90\1")
+					end
+
+					expect(FindBackground(table.concat(parts)) == K).to.beTrue()
+				end
+			end
+		},
+		{
+			-- fails if the sample is not the documented one (positions 0, STEP, 2 * STEP...), or if the thresholds are not the documented ones (a strict majority of the alpha-255 samples, at least MIN of them)
+			name = "FindBackground: needs at least BACKGROUND_MIN_SAMPLES samples of that colour and a strict majority of the alpha-255 samples; otherwise nil (the picture has no fill)",
+			func = function()
+				local FindBackground = need("FindBackground")
+				local C = capture()
+				local step, min = C.BACKGROUND_STEP, C.BACKGROUND_MIN_SAMPLES
+
+				expect(type(step)).to.equal("number")
+				expect(type(min)).to.equal("number")
+
+				local total = 64 * 64
+				local K, L = "\227\181\139\255", "\9\8\7\255"
+
+				-- a picture of geometry (alpha 1) with the sampled pixels set by index: set[sampleIndex] = pixel string (the first sample is the pixel 0)
+				local function picture(set)
+					local t = {}
+
+					for i = 0, total - 1 do
+						t[i + 1] = "\30\60\90\1"
+					end
+
+					for k, px in pairs(set) do
+						t[k * step + 1] = px
+					end
+
+					return table.concat(t)
+				end
+
+				local function same(n, px)
+					local set = {}
+
+					for k = 0, n - 1 do
+						set[k] = px
+					end
+
+					return set
+				end
+
+				expect(FindBackground(picture(same(min, K))) == K).to.beTrue()
+				expect(FindBackground(picture(same(min - 1, K)))).to.beNil()
+				expect(FindBackground(picture({}))).to.beNil()
+
+				-- a strict majority of the alpha-255 samples: 20 against 20 is no answer, 21 against 20 is
+				local tie = same(20, K)
+
+				for k = 20, 39 do
+					tie[k] = L
+				end
+
+				expect(FindBackground(picture(tie))).to.beNil()
+				tie[40] = K
+				expect(FindBackground(picture(tie)) == K).to.beTrue()
+
+				-- strays only: every sampled pixel a different colour
+				local strays = {}
+
+				for k = 0, 40 do
+					strays[k] = string.char(k, 2 * k, 3, 255)
+				end
+
+				expect(FindBackground(picture(strays))).to.beNil()
+
+				-- pixels of the fill that are not sampled do not count
+				local t = {}
+
+				for i = 0, total - 1 do
+					t[i + 1] = (i % step == 0) and "\30\60\90\1" or K
+				end
+
+				expect(FindBackground(table.concat(t))).to.beNil()
+
+				-- alpha 0 (void) and alpha 254 samples are not alpha-255 samples: they neither help nor count against
+				local mixed = same(min, K)
+
+				for k = min, min + 30 do
+					mixed[k] = (k % 2 == 0) and "\0\0\0\0" or "\227\181\139\254"
+				end
+
+				expect(FindBackground(picture(mixed)) == K).to.beTrue()
+			end
+		},
+		{
+			-- fails if a bad picture raises, or is answered with a colour
+			name = "FindBackground refuses what is not a picture (a value that is not a string, a length that is not a multiple of 4, an empty string): nil, reason",
+			func = function()
+				local FindBackground = need("FindBackground")
+
+				for _, bad in ipairs({5, true, {}, "\0\0\0\255\0", ""}) do
+					local r, why = FindBackground(bad)
+
+					expect(r).to.beNil()
+					expect(type(why)).to.equal("string")
+				end
+
+				local r, why = FindBackground(nil)
+
+				expect(r).to.beNil()
+				expect(type(why)).to.equal("string")
+			end
+		},
+		{
+			-- fails if the names of the first version of the rule (the opaque black) stop working: they are IsBackground, BackgroundToVoid and IsAllBackground with the black as bg
+			name = "the names of the first version (IsBlackOpaque, BlackOpaqueToVoid, IsAllBlackOpaque) are the rule with a black fill",
+			func = function()
+				local C = capture()
+				local K = "\0\0\0\255"
+
+				expect(C.IsBlackOpaque(0, 0, 0, 255)).to.equal(true)
+				expect(C.IsBlackOpaque(0, 0, 0, 1)).to.equal(false)
+				expect(C.IsBlackOpaque(227, 181, 139, 255)).to.equal(false)
+
+				local out, n = C.BlackOpaqueToVoid(K .. "\227\181\139\255" .. K)
+
+				expect(out == "\0\0\0\0\227\181\139\255\0\0\0\0").to.beTrue()
+				expect(n).to.equal(2)
+				expect(C.IsAllBlackOpaque(K .. K)).to.equal(true)
+				expect(C.IsAllBlackOpaque(K .. "\227\181\139\255")).to.equal(false)
 			end
 		},
 		-- GetRT -----------------------------------------------------------------------------------------------------------------
