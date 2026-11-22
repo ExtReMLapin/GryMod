@@ -29,6 +29,28 @@ return {
 	end,
 	cases = {
 		{
+			name = "the jump of a heavy hit moves the panels by whole screen pixels, so that their cached images are only moved (cl_flash_draw.lua)",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				expect(M.JumpPixels(0, 2.8)).to.equal(0)
+				expect(M.JumpPixels(1, 1)).to.equal(1)
+				expect(M.JumpPixels(-1, 1)).to.equal(-1)
+				expect(M.JumpPixels(1.4, 1)).to.equal(1)
+				expect(M.JumpPixels(1.6, 1)).to.equal(2)
+				expect(M.JumpPixels(-1.6, 1)).to.equal(-2)
+				-- the stage pixels are scaled to the screen first: 3.1 stage pixels at 2.8 are 8.68 screen pixels
+				expect(M.JumpPixels(3.1, 2.8)).to.equal(9)
+
+				for _ = 1, 200 do
+					local jump = (math.random() - 0.5) * 12
+					local scale = 0.4 + math.random() * 3
+					local pixels = M.JumpPixels(jump, scale)
+					expect(pixels).to.equal(math.floor(pixels))
+					expect(math.abs(pixels - jump * scale)).to.beLessThan(0.5000001)
+				end
+			end
+		},
+		{
 			name = "the HUD starts on the steady frames of the original (SkipSequence)",
 			func = function(state)
 				local hud = newHud()
