@@ -774,16 +774,24 @@ local function previousDefinition(Settings)
 	return nil
 end
 
--- Whether one of the tiles of the box (tx0..tx1, ty0..ty1) of level `levelId` is missing from the cache (Cache.Has: from memory, no material is loaded).
-local function anyMissing(Cache, levelId, tx0, tx1, ty0, ty1, res, ppm)
-	scratchTile.level, scratchTile.res, scratchTile.ppm = levelId, res, ppm
-
+-- Whether one of the tiles of the box (tx0..tx1, ty0..ty1) of level `levelId` is missing from the cache (Cache.Has: from memory, no material is loaded). A tile that
+-- `altId` (the base level standing in for it, or nil) has is not missing.
+local function anyMissing(Cache, levelId, altId, tx0, tx1, ty0, ty1, res, ppm)
 	for txi = tx0, tx1 do
 		for tyi = ty0, ty1 do
+			scratchTile.level, scratchTile.res, scratchTile.ppm = levelId, res, ppm
 			scratchTile.tx, scratchTile.ty = txi, tyi
 
 			if not Cache.Has(scratchTile) then
-				return true
+				if not altId then
+					return true
+				end
+
+				scratchTile.level = altId
+
+				if not Cache.Has(scratchTile) then
+					return true
+				end
 			end
 		end
 	end
@@ -793,7 +801,7 @@ end
 
 -- `ppmOverride` (the fallback below) draws the three passes with the tiles of another definition and returns 0, then the number of materials it asked for; `budgetCap`
 -- is the most it may ask for. The normal call (no override) first draws the fallback when it is needed and gets the budget that is left.
-local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, ppmOverride, budgetCap)
+local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase, ppmOverride, budgetCap)
 	if type(xf) ~= "table" then
 		return 0
 	end
@@ -860,12 +868,14 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 		if previous and previous ~= ppm then
 			local belowShown = drawingBelow(below, belowAlpha, level)
 			local outsideShown = drawingOutside(outside, outsideAlpha, level, below)
-			local missing = alpha > 0 and anyMissing(Cache, level.id, tx0, tx1, ty0, ty1, res, ppm)
-				or belowShown and anyMissing(Cache, below.id, tx0, tx1, ty0, ty1, res, ppm)
-				or outsideShown and anyMissing(Cache, outside.id, tx0, tx1, ty0, ty1, res, ppm)
+			local baseAlt = validLevel(base) and base.id ~= level.id and base.id or nil
+			local belowAlt = belowShown and validLevel(belowBase) and belowBase.id ~= below.id and belowBase.id ~= level.id and belowBase.id or nil
+			local missing = alpha > 0 and anyMissing(Cache, level.id, baseAlt, tx0, tx1, ty0, ty1, res, ppm)
+				or belowShown and anyMissing(Cache, below.id, belowAlt, tx0, tx1, ty0, ty1, res, ppm)
+				or outsideShown and anyMissing(Cache, outside.id, nil, tx0, tx1, ty0, ty1, res, ppm)
 
 			if missing then
-				local ok, err, spent = pcall(drawImpl, xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, previous, floor(budget / 2))
+				local ok, err, spent = pcall(drawImpl, xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase, previous, floor(budget / 2))
 
 				if ok then
 					budget = budget - (spent or 0)
@@ -944,6 +954,10 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 	-- 3. the materials: only for a tile of which a polygon will really be sent, the main level first, then the floor below, then the outside, within the budget
 	scratchTile.level, scratchTile.res, scratchTile.ppm = id, res, ppm
 
+	-- the BASE level (the level of the place) stands in, tile by tile, for a held level whose tile is missing: the tile of the held level is drawn when the cache has it
+	-- (an empty one too: it is the held level's picture of nothing there), else the base's. One material a tile, whichever level it comes from.
+	local baseId = validLevel(base) and base.id ~= id and base.id or nil
+
 	if drawing then
 		for i = 1, slotCount do
 			if budget > 0 and slotVisible[i] then
@@ -952,13 +966,21 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 				if quadShows(pieces) then
 					budget = budget - 1
 					scratchTile.tx, scratchTile.ty = slotTx[i], slotTy[i]
-					mainMat[i] = Cache.Material(scratchTile) or false
+
+					if baseId and not Cache.Has(scratchTile) then
+						scratchTile.level = baseId
+						mainMat[i] = Cache.Material(scratchTile) or false
+						scratchTile.level = id
+					else
+						mainMat[i] = Cache.Material(scratchTile) or false
+					end
 				end
 			end
 		end
 	end
 
 	local belowOn = drawingBelow(below, belowAlpha, level)
+	local belowBaseId = belowOn and validLevel(belowBase) and belowBase.id ~= below.id and belowBase.id ~= id and belowBase.id or nil
 
 	if belowOn then
 		scratchTile.level = below.id
@@ -970,7 +992,14 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 				if quadShows(pieces) then
 					budget = budget - 1
 					scratchTile.tx, scratchTile.ty = slotTx[i], slotTy[i]
-					belowMat[i] = Cache.Material(scratchTile) or false
+
+					if belowBaseId and not Cache.Has(scratchTile) then
+						scratchTile.level = belowBaseId
+						belowMat[i] = Cache.Material(scratchTile) or false
+						scratchTile.level = below.id
+					else
+						belowMat[i] = Cache.Material(scratchTile) or false
+					end
 				end
 			end
 		end
@@ -1053,6 +1082,12 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 			if found == nil then
 				scratchTile.tx, scratchTile.ty = slotTx[i], slotTy[i]
 				found = Cache.Has(scratchTile)
+
+				if not found and baseId then
+					scratchTile.level = baseId
+					found = Cache.Has(scratchTile)
+					scratchTile.level = id
+				end
 			end
 
 			if found then
@@ -1101,13 +1136,16 @@ end
 -- materials is shared in the order main level, floor below, outside.
 -- `below` (a level table) with `belowAlpha` > 0 (clamped to 1) draws the floor below before the main level: the same visible tiles and the same clip, tinted
 -- (150, 165, 190) with belowAlpha; the main level comes after, white with `alpha`, and the voids of its tiles (their alpha) show what is under.
+-- `base` (a level table, the level of the PLACE when the display holds another: `level` is the held one) stands in for `level` tile by tile: where the cache has no tile
+-- of `level` the tile of `base` is drawn (an empty tile of `level` is its picture of nothing there and stays). `belowBase` does the same for the floor below. The
+-- generator only makes the base's tiles, so the held level's are those it already had. A base of the same id as `level` (or as `below`), or a bad one, is no base.
 -- A `below` of the same id as `level` is not drawn (it would be the same tiles twice). The tiles of `below` are asked from the cache only when
 -- one of their polygons is about to be drawn, so the LRU of materials is not loaded with tiles that show nothing. Never creates a tile, never
 -- raises (0 and View.LastError when something inside broke).
-function View.Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha)
+function View.Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase)
 	View.LastError = nil
 
-	local ok, coverage = pcall(drawImpl, xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha)
+	local ok, coverage = pcall(drawImpl, xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase)
 
 	if ok and finite(coverage) then
 		return coverage

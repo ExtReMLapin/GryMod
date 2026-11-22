@@ -63,6 +63,10 @@ local function replaceModules(state)
 	state.outsideAll = false
 	state.outsideCalls = {}
 	state.hasCalls = {}
+	-- the base level of the held display (level "b2", its floor below "y0") and the tiles of the held level that exist but are empty
+	state.baseExisting, state.baseAll, state.baseCalls = {}, false, {}
+	state.belowBaseExisting, state.belowBaseCalls = {}, {}
+	state.emptyExisting = {}
 	-- the definitions of the pyramid of the automatic definition: which ppm has ALL its tiles (true) or fails when asked (the string "error"), how many
 	-- times each was asked for a material, and the previous definition the settings stand-in reports
 	state.allAt = {}
@@ -90,6 +94,27 @@ local function replaceModules(state)
 				state.outsideCalls[#state.outsideCalls + 1] = tile.tx .. "," .. tile.ty
 
 				if state.outsideAll or state.outsideExisting[tile.tx .. "," .. tile.ty] then
+					return {token = tile.tx .. "," .. tile.ty, level = tile.level, res = tile.res, ppm = tile.ppm}
+				end
+
+				return nil
+			end
+
+			-- the base level is "b2" and its floor below "y0": their own sets
+			if tile.level == "b2" then
+				state.baseCalls[#state.baseCalls + 1] = tile.tx .. "," .. tile.ty
+
+				if state.baseAll or state.baseExisting[tile.tx .. "," .. tile.ty] then
+					return {token = tile.tx .. "," .. tile.ty, level = tile.level, res = tile.res, ppm = tile.ppm}
+				end
+
+				return nil
+			end
+
+			if tile.level == "y0" then
+				state.belowBaseCalls[#state.belowBaseCalls + 1] = tile.tx .. "," .. tile.ty
+
+				if state.belowBaseExisting[tile.tx .. "," .. tile.ty] then
 					return {token = tile.tx .. "," .. tile.ty, level = tile.level, res = tile.res, ppm = tile.ppm}
 				end
 
@@ -130,7 +155,15 @@ local function replaceModules(state)
 				return state.belowAll or state.belowExisting[tile.tx .. "," .. tile.ty] == true
 			end
 
-			return state.all or state.existing[tile.tx .. "," .. tile.ty] == true
+			if tile.level == "b2" then
+				return state.baseAll or state.baseExisting[tile.tx .. "," .. tile.ty] == true
+			end
+
+			if tile.level == "y0" then
+				return state.belowBaseExisting[tile.tx .. "," .. tile.ty] == true
+			end
+
+			return state.all or state.existing[tile.tx .. "," .. tile.ty] == true or state.emptyExisting[tile.tx .. "," .. tile.ty] == true
 		end,
 		Store = function() error("the view must never write a tile") end,
 		Clear = function() error("the view must never clear the cache") end,
@@ -201,6 +234,15 @@ local function lower()
 	return {id = "z0", zlo = -160, zhi = 0}
 end
 
+-- the level of the place, drawn where the held level (level()) has no tile, and the floor below that
+local function baseLevel()
+	return {id = "b2", zlo = -20, zhi = 140}
+end
+
+local function lowerBase()
+	return {id = "y0", zlo = -180, zhi = -20}
+end
+
 -- the outside (the open level of the map) under the floor below
 local function open()
 	return {id = "open", open = true, zlo = -600, zhi = 900}
@@ -226,7 +268,7 @@ end
 local function draw(state, xf, extra)
 	extra = extra or {}
 
-	return GryMod.Minimap.View.Draw(xf or IDENTITY, extra.px or 32, extra.py or 32, extra.yaw or 0, extra.range or RANGE, extra.level or level(), extra.alpha or 1, extra.below, extra.belowAlpha, extra.outside, extra.outsideAlpha)
+	return GryMod.Minimap.View.Draw(xf or IDENTITY, extra.px or 32, extra.py or 32, extra.yaw or 0, extra.range or RANGE, extra.level or level(), extra.alpha or 1, extra.below, extra.belowAlpha, extra.outside, extra.outsideAlpha, extra.base, extra.belowBase)
 end
 
 local function projected(xf, rx, ry)
@@ -1584,6 +1626,121 @@ return {
 				expect(#state.outsideCalls).to.equal(3)
 			end
 		},
+		-- the base level: the level of the place, drawn where the held level has no tile ----------------------------------------------------
+		{
+			-- the display holds a level (level) whose tiles may be missing here: the level of the place (base) fills them. breaks if: the base's tile is drawn over a held tile
+			-- that exists, the held tile is not preferred, or a tile with neither is drawn
+			name = "Base: a tile the held level has is drawn from it, a tile it lacks from the base level (the level of the place), a tile neither has is not drawn",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.baseExisting["0,0"], state.baseExisting["0,-1"], state.baseExisting["-1,0"] = true, true, true
+				draw(state, IDENTITY, {base = baseLevel()})
+
+				local byToken = {}
+
+				for _, poly in ipairs(recorded.polys) do
+					byToken[poly.material.token] = poly.material.level
+				end
+
+				expect(byToken["0,0"]).to.equal("a1")
+				expect(byToken["0,-1"]).to.equal("b2")
+				expect(byToken["-1,0"]).to.equal("b2")
+				expect(#recorded.polys).to.equal(3)
+			end
+		},
+		{
+			-- a tile that exists but is empty (no file: the Cache gives no material) is the held level's picture of nothing there: the base's tile does not replace it.
+			-- breaks if: the base is chosen by the material instead of by Has
+			name = "Base: an empty tile of the held level (it exists, it has no material) is not replaced by the base's tile",
+			func = function(state)
+				state.emptyExisting["0,0"] = true
+				state.baseAll = true
+				draw(state, IDENTITY, {px = 32, py = 32, base = baseLevel()})
+
+				for _, poly in ipairs(recorded.polys) do
+					expect(poly.material.token ~= "0,0").to.beTrue()
+				end
+
+				expect(#recorded.polys > 0).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the base is asked about a tile the held level has (the cost of the display would double), or adds to the materials of the frame
+			name = "Base: the base level is asked for a material only where the held level has no tile, and a tile costs one material",
+			func = function(state)
+				state.existing["0,0"], state.existing["1,0"] = true, true
+				state.baseAll = true
+				draw(state, IDENTITY, {px = 64, py = 32, base = baseLevel()})
+
+				for _, token in ipairs(state.baseCalls) do
+					expect(token ~= "0,0" and token ~= "1,0").to.beTrue()
+				end
+
+				expect(#state.baseCalls > 0).to.beTrue()
+
+				-- the 96 materials of the budget are shared by the held level and the base: no tile asks twice
+				local seen = {}
+
+				for _, token in ipairs(state.materialCalls) do
+					expect(seen[token]).to.beNil()
+					seen[token] = true
+				end
+
+				for _, token in ipairs(state.baseCalls) do
+					expect(seen[token]).to.beNil()
+					seen[token] = true
+				end
+			end
+		},
+		{
+			-- breaks if: a base of the same id as the level, a bad base, or none changes what is drawn, asks the cache for more, or raises
+			name = "Base: none, the same level, or a bad table is the same draw as before (no call for a base)",
+			func = function(state)
+				state.existing["0,0"], state.existing["0,-1"] = true, true
+				draw(state)
+
+				local polys, has = #recorded.polys, #state.hasCalls
+
+				for _, base in ipairs({{id = "a1", zlo = 0, zhi = 1}, {}, {id = 7}, "x"}) do
+					recorded.polys, state.hasCalls, state.baseCalls = {}, {}, {}
+					expect(pcall(draw, state, IDENTITY, {base = base})).to.beTrue()
+					expect(#recorded.polys).to.equal(polys)
+					expect(#state.hasCalls).to.equal(has)
+					expect(#state.baseCalls).to.equal(0)
+				end
+			end
+		},
+		{
+			-- the coverage says how much of the range circle is on tiles that are SHOWN, held or base. breaks if: only the held level's tiles count
+			name = "Base: the coverage counts the tiles shown from the base level",
+			func = function(state)
+				state.baseAll = true
+
+				expect(near(draw(state, IDENTITY, {base = baseLevel()}), 1, 1e-9)).to.beTrue()
+				expect(draw(state)).to.equal(0)
+			end
+		},
+		{
+			-- the floor below is held with the same rule: the tile of the held one's below where it exists, else the below of the base
+			name = "Base: the floor below follows the same rule, the below of the held level where its tile exists, else the below of the base level",
+			func = function(state)
+				state.existing["0,0"], state.existing["0,-1"] = true, true
+				state.belowExisting["0,0"] = true
+				state.belowBaseExisting["0,0"], state.belowBaseExisting["0,-1"] = true, true
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4, base = baseLevel(), belowBase = lowerBase()})
+
+				local byToken = {}
+
+				for _, poly in ipairs(recorded.polys) do
+					if poly.material.level ~= "a1" and poly.material.level ~= "b2" then
+						byToken[poly.material.token] = poly.material.level
+					end
+				end
+
+				expect(byToken["0,0"]).to.equal("z0")
+				expect(byToken["0,-1"]).to.equal("y0")
+			end
+		},
 		-- the extent of the tiles asked for -------------------------------------------------------------------------------------------
 		{
 			name = "ExtentFactor: the farthest vertex of the map frame from the player in ranges, rounded UP to the hundredth (original polygon: 1.75; the real glass: its own value)",
@@ -2109,6 +2266,31 @@ return {
 				end
 
 				expect(state.callsByPpm[4]).to.beNil()
+			end
+		},
+		{
+			-- the generator makes the base's tiles only: a held level's tile that is missing but is there for the base is a tile the window HAS. breaks if: the previous
+			-- definition is drawn (and its materials asked, half the budget) for ever under a held level whose new definition is never made
+			name = "Fallback: a tile the held level lacks but the base level has is not a missing tile: nothing of the previous definition is asked or drawn",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = true
+				state.baseAll = true
+
+				draw(state, IDENTITY, {base = baseLevel()})
+				expect(#recorded.polys > 0).to.beTrue()
+
+				for _, poly in ipairs(recorded.polys) do
+					expect(poly.material.level).to.equal("b2")
+					expect(poly.material.ppm).to.equal(8)
+				end
+
+				expect(state.callsByPpm[4]).to.beNil()
+
+				-- without the base the same window is missing and the previous definition is drawn
+				recorded.polys, state.callsByPpm = {}, {}
+				draw(state, IDENTITY)
+				expect(state.callsByPpm[4] ~= nil).to.beTrue()
 			end
 		},
 		{
