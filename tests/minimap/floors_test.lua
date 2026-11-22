@@ -1658,6 +1658,55 @@ return {
 			end
 		},
 		{
+			-- PeekAt is what the preload asks for each ground place of the node graph (the floors): the level CurrentAt would give a player standing there, with no player: no
+			-- memory of a last shot, none made. breaks if: it gives another level than CurrentAt for the same rays, it spoils the remembered shot of the player (the next
+			-- CurrentAt would shoot again, or give another level), or it holds a bigger class back as the player's clock does
+			name = "PeekAt: the level CurrentAt gives for the same place (an anchor under a ceiling, the open level under the sky), without touching the remembered shot, and no hold",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+				standIn(state, {})
+				expect(isfunction(F().PeekAt)).to.beTrue()
+
+				-- the player's own shot first: under a ceiling at 150
+				state.ray = ceil(150)
+
+				local mine = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(mine.id).to.equal("f0c120")
+				expect(rounds(state)).to.equal(1)
+
+				-- a place far away, on another floor (feet at 100: the floor 96), under a ceiling at 300: the class is taken at once, 160 (the biggest that fits under 300 - 96 - 8)
+				-- (a hold is for a player who may be passing under a pipe)
+				state.ray = ceil(300)
+
+				local other = F().PeekAt(2000, 0, 100)
+
+				expect(other.id).to.equal("f96c160")
+				expect(rounds(state)).to.equal(2) -- five rays for the peek
+
+				-- the remembered shot is the player's: no new ray, the same level
+				expect(F().CurrentAt(Vector(1, 0, 0))).to.equal(mine)
+				expect(rounds(state)).to.equal(2)
+
+				-- the same place as the player's gives the same table (the registry is shared)
+				state.ray = ceil(150)
+				expect(F().PeekAt(0, 0, 0)).to.equal(mine)
+
+				-- under the sky: the open level, the same table as OpenAt gives
+				state.ray = {Hit = true, HitSky = true, HitPos = Vector(0, 0, 5000)}
+				expect(F().PeekAt(0, 0, 0).id).to.equal("open_t4928")
+
+				-- bad numbers, and a centre ray that fails (the plain slab of the step)
+				local bad, why = F().PeekAt(0 / 0, 0, 0)
+
+				expect(bad).to.beNil()
+				expect(why).to.equal("bad position")
+
+				util.TraceLine = function() error("no ray") end
+				expect(F().PeekAt(0, 0, 0).id).to.equal("z0")
+			end
+		},
+		{
 			-- the preload asks the top of the map's own open level to leave out the places whose ray goes above the playable area (the cells at the fringe of a box, where the
 			-- spread of the in/out map is wider than the ground). breaks if: it gives the world's top when the map's open level is cut at the sky, or nothing without a world
 			name = "MapOpenTop: the top of the map's open level (cut at the sky seen by the nodes, else the world's top with the margin), nil without world bounds",

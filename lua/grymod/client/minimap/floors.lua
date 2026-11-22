@@ -718,6 +718,62 @@ local function chooseAnchor(f, c, last, now)
 	return addAnchor(a, classFor(a, c)), nil
 end
 
+-- The five up rays and the choice of the level for feet at (x, y, f): the part of CurrentAt that is the same for a player and for a place asked about (PeekAt). `last` is
+-- the remembered shot of the player (nil for a place: no hold) and `now` the clock; `map` the map name. Gives level, since (the time since when a bigger class has been
+-- available, or nil), or nil when the engine failed for the centre ray. Changes nothing but the registry of anchors (and the open levels): not the remembered shot.
+local function decide(x, y, f, last, now, map)
+	rayParams = rayParams or makeRayParams()
+
+	local ceiling -- the highest ceiling hit by a ray that is not in the sky
+	local centreOpen = false
+	local centreSky -- the height of the sky the centre ray saw, if it saw the sky
+
+	for i = 1, 5 do
+		-- the same five parameter tables at every shot: only the two Vectors are written again
+		local params = rayParams[i]
+		local start, endpos = params.start, params.endpos
+
+		start.x, start.y, start.z = x + RAY_DX[i], y + RAY_DY[i], f + RAY_START
+		endpos.x, endpos.y, endpos.z = x + RAY_DX[i], y + RAY_DY[i], f + RAY_LENGTH
+
+		local ok, tr = pcall(util.TraceLine, params)
+
+		if i == 1 and (not ok or type(tr) ~= "table") then
+			return nil -- the engine failed for the centre ray
+		end
+
+		if ok and type(tr) == "table" then
+			local hit = tr.HitPos
+			local z = hit and hit.z
+
+			if tr.HitSky or not tr.Hit or not isFinite(z) then
+				if i == 1 then
+					centreOpen = true
+
+					if tr.HitSky and isFinite(z) then
+						centreSky = z
+					end
+				end
+			elseif not ceiling or z > ceiling then
+				ceiling = z
+			end
+		end
+	end
+
+	if centreOpen or not ceiling or ceiling - f > MAX_RISE then
+		local zmin = worldHeights(map, centreSky)
+
+		if zmin then
+			-- the camera goes where the up ray hit: the sky seen by the centre ray, or the highest solid when it hit one far over the feet. One table per top
+			return openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil), nil
+		end
+
+		return Floors.Fallback(f), nil
+	end
+
+	return chooseAnchor(f, ceiling, last, now)
+end
+
 -- CurrentAt(pos) -> level | nil, "bad position". pos = the Vector of the player's feet. See the block above.
 function Floors.CurrentAt(pos)
 	if type(pos) ~= "table" and type(pos) ~= "Vector" then
@@ -749,67 +805,42 @@ function Floors.CurrentAt(pos)
 		last = nil
 	end
 
-	rayParams = rayParams or makeRayParams()
+	local level, since = decide(x, y, f, last, now, map)
 
-	local ceiling -- the highest ceiling hit by a ray that is not in the sky
-	local centreOpen = false
-	local centreSky -- the height of the sky the centre ray saw, if it saw the sky
+	if not level then
+		-- the engine failed for the centre ray: the plain slab of the step, and the next call tries again
+		memo.valid, memo.level, memo.since = false, nil, nil
 
-	for i = 1, 5 do
-		-- the same five parameter tables at every shot: only the two Vectors are written again
-		local params = rayParams[i]
-		local start, endpos = params.start, params.endpos
-
-		start.x, start.y, start.z = x + RAY_DX[i], y + RAY_DY[i], f + RAY_START
-		endpos.x, endpos.y, endpos.z = x + RAY_DX[i], y + RAY_DY[i], f + RAY_LENGTH
-
-		local ok, tr = pcall(util.TraceLine, params)
-
-		if i == 1 and (not ok or type(tr) ~= "table") then
-			-- the engine failed for the centre ray: the plain slab of the step, and the next call tries again
-			memo.valid, memo.level, memo.since = false, nil, nil
-
-			return Floors.Fallback(f)
-		end
-
-		if ok and type(tr) == "table" then
-			local hit = tr.HitPos
-			local z = hit and hit.z
-
-			if tr.HitSky or not tr.Hit or not isFinite(z) then
-				if i == 1 then
-					centreOpen = true
-
-					if tr.HitSky and isFinite(z) then
-						centreSky = z
-					end
-				end
-			elseif not ceiling or z > ceiling then
-				ceiling = z
-			end
-		end
+		return Floors.Fallback(f)
 	end
 
-	local level, since
-
-	if centreOpen or not ceiling or ceiling - f > MAX_RISE then
-		local zmin = worldHeights(map, centreSky)
-
-		if zmin then
-			-- the camera goes where the up ray hit: the sky seen by the centre ray, or the highest solid when it hit one far over the feet. One table per top
-			-- (only its z, the feet, changes)
-			level = openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil)
-			level.z = f
-		else
-			level = Floors.Fallback(f)
-		end
-	else
-		level, since = chooseAnchor(f, ceiling, last, now)
+	if level.open then
+		level.z = f -- the open level of a map is one table per top (only its z, the feet, changes)
 	end
 
 	memo.valid, memo.x, memo.y, memo.z, memo.t, memo.level, memo.since = true, x, y, f, now, level, since
 
 	return level
+end
+
+-- PeekAt(x, y, z) -> level | nil, "bad position". The level CurrentAt would give a player standing at (x, y) with the feet at z, for the tile preload (which asks it for the
+-- ground places of the node graph, the floors). The same rays and the same choice, with no player: the remembered shot is not read and not changed (the player's own level
+-- goes on), and a bigger class is taken at once (there is no clock to hold it: a place is not passed under in a moment). The anchors it makes are the ones the player would
+-- make there, so the preloaded tiles are the ones the player finds. A centre ray that fails gives the plain slab of the step.
+function Floors.PeekAt(x, y, z)
+	if not (isFinite(x) and isFinite(y) and isFinite(z)) then
+		return nil, "bad position"
+	end
+
+	local map = game.GetMap()
+
+	if anchors.map ~= map then
+		startMap(map)
+	end
+
+	local level = decide(x, y, z, nil, RealTime(), map)
+
+	return level or Floors.Fallback(z)
 end
 
 -- OpenAt(x, y, z) -> level | nil, reason. The open level a player standing at (x, y) with the ground at height z would get from CurrentAt, found with ONE
