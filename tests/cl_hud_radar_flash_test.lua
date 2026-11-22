@@ -148,6 +148,25 @@ return {
 			end
 		},
 		{
+			-- the cone is a morph shape: the drawing code only draws a morph marked as a fill (cl_flash_draw.lua), and the converter does not say which are
+			name = "the view cone's morph shape is marked as a fill, so that it is drawn (it never was: no cone showed on the map, with the binoculars or without)",
+			func = function(state)
+				local panel = newPanel()
+				local cone = panel.view:Find("View2.Pov")
+				expect(cone).toNot.beNil()
+				local morphs = 0
+
+				for _, entry in pairs(cone.list) do
+					if entry.kind == "morph" then
+						morphs = morphs + 1
+						expect(cone.movie.chars[entry.id].fill).to.beTrue()
+					end
+				end
+
+				expect(morphs).to.equal(1)
+			end
+		},
+		{
 			name = "the view cone frame is half the vertical field of view of a 4:3 screen, in degrees",
 			func = function(state)
 				local R = GryMod.FlashRadar

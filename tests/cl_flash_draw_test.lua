@@ -401,6 +401,53 @@ return {
 			end
 		},
 		{
+			-- the radar's view cone is a morph shape (a triangle that opens from p at ratio 0 to pe at ratio 65535); the converter only keeps its outline, so it was never drawn
+			name = "a morph marked as a fill is drawn as a flat triangle between its start and end outlines at the ratio of its entry, one not marked is not drawn",
+			func = function(state)
+				local F = GryMod.Flash
+				local function coneMovie(ratio, fill)
+					return {
+						w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+						chars = {
+							[1] = {k = "morph", ox = 0, oy = 0, w = 10, h = 10, ex = -10, ey = 0, ew = 30, eh = 10, fill = fill, p = {0, 0, 10, 0, 5, 10}, pe = {-10, 0, 20, 0, 5, 10}},
+							[2] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Cone", r = ratio}}}}
+						},
+						root = {{{d = 1, c = 2, n = "Holder"}}}
+					}
+				end
+
+				local function points(ratio, fill)
+					local triangles = drawnTriangles(F.NewRoot(coneMovie(ratio, fill)), 0, 0, 1)
+
+					return triangles
+				end
+
+				local function hasPoint(triangle, x, y)
+					for i = 1, 5, 2 do
+						if math.abs(triangle[i] - x) < 1e-3 and math.abs(triangle[i + 1] - y) < 1e-3 then
+							return true
+						end
+					end
+
+					return false
+				end
+
+				expect(#points(0, nil)).to.equal(0)
+
+				local start = points(0, true)
+				expect(#start).to.equal(1)
+				expect(hasPoint(start[1], 0, 0) and hasPoint(start[1], 10, 0) and hasPoint(start[1], 5, 10)).to.beTrue()
+
+				local finish = points(65535, true)
+				expect(#finish).to.equal(1)
+				expect(hasPoint(finish[1], -10, 0) and hasPoint(finish[1], 20, 0) and hasPoint(finish[1], 5, 10)).to.beTrue()
+
+				local middle = points(32767.5, true)
+				expect(#middle).to.equal(1)
+				expect(hasPoint(middle[1], -5, 0) and hasPoint(middle[1], 15, 0) and hasPoint(middle[1], 5, 10)).to.beTrue()
+			end
+		},
+		{
 			name = "an outline is cut into few convex pieces, a convex one stays whole, a bow tie (no simple polygon) is refused",
 			func = function(state)
 				local F = GryMod.Flash

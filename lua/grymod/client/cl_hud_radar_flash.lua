@@ -93,6 +93,18 @@ function Panel:_resolve()
 		indicator:SetVisible(false)
 	end
 
+	-- the view cone (View2.Pov) is a morph shape, which the drawing code only draws when it is marked as a fill (drawMorph in cl_flash_draw.lua):
+	-- the converter keeps just the outlines of the morphs, it does not say which of them are mask layers and which are shapes to see
+	local cone = self.view and self.view:Find("View2.Pov")
+
+	if cone then
+		for _, entry in pairs(cone.list) do
+			if entry.kind == "morph" then
+				cone.movie.chars[entry.id].fill = true
+			end
+		end
+	end
+
 	self.mainFrame = main:CurrentFrame()
 end
 
