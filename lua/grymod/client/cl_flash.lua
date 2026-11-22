@@ -615,6 +615,18 @@ function Clip:SetText(name, text)
 	return true
 end
 
+-- The definition of the text field with this instance name (at this level) as it is drawn: the movie's own, or this clip's copy
+-- when its width was changed (FitTextWidth). nil when there is no such text field.
+function Clip:Field(name)
+	local entry = self.names[name]
+
+	if not entry or entry.kind ~= "text" then
+		return nil
+	end
+
+	return entry.field or self.movie.chars[entry.id]
+end
+
 -- Replaces the text of every text field in this clip and in the clips inside it by fn(text) (the fields the
 -- engine fills with localised strings carry a "@ui_..." key as their initial text).
 function Clip:MapText(fn)
@@ -803,6 +815,37 @@ function Flash.LayoutLines(font, field, text)
 	end
 
 	return lines, clips
+end
+
+-- Widens the text field with this instance name (at this level) on THIS clip only, so that `text` is not cut: the width is
+-- the text's plus the two margins, never less than the movie's own width and never more than `maxWidth` (the room the caller
+-- knows the field has; a `maxWidth` under the movie's width leaves the movie's). The field keeps its left edge and grows to the
+-- right; the movie's definition is never changed (the other clips made from it keep their width). Only single line fields.
+-- The clip draws again only when the width changes. Returns whether the field was found.
+function Clip:FitTextWidth(name, text, maxWidth)
+	local entry = self.names[name]
+
+	if not entry or entry.kind ~= "text" then
+		return false
+	end
+
+	local definition = self.movie.chars[entry.id]
+	local font = self.movie.fonts and self.movie.fonts[definition.f]
+	local width = definition.w
+
+	if font and not definition.ml and text and text ~= "" then
+		local _, _, textWidth = Flash.LayoutText(font, definition, text)
+		width = math.min(math.max(width, textWidth + 2 * TEXT_MARGIN), math.max(maxWidth or width, width))
+	end
+
+	local current = entry.field and entry.field.w or definition.w
+
+	if width ~= current then
+		entry.field = width ~= definition.w and setmetatable({w = width}, {__index = definition}) or nil
+		self:_touch()
+	end
+
+	return true
 end
 
 -- Where the text starts inside its field: returns x (from the field's left), the baseline (from its top)

@@ -1165,7 +1165,7 @@ function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
 			elseif entry.kind == "shape" then
 				drawShape(movie, movie.chars[entry.id], ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
 			elseif entry.kind == "text" then
-				drawText(movie, movie.chars[entry.id], entry.text, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
+				drawText(movie, entry.field or movie.chars[entry.id], entry.text, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
 			end
 		end
 	end

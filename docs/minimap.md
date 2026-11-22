@@ -269,6 +269,15 @@ The map is made as the player walks, so a tile is sometimes late. What the radar
   clear) and the zone field, which normally shows the name of the sector, shows the percentage, for example `40%`: the share of the wanted tiles (the ones around the player, plus
   one tile of margin) that exist. As soon as the tile under the player exists the veil goes, even if tiles farther away are still being made.
 
+**How the text is kept readable.** The zone field of the movie is only 23 pixels wide (the original shows a short sector code there) and, like every text field of
+the movie, it cuts its text to its rectangle: "In/out 40%" was seen as "In/o", and a name such as `gm_construct` was cut in the same way. The radar therefore widens the field
+of its own clip to the text it shows, plus the two 2 pixel margins, never less than the movie's width and never more than `Radar.ZONE_MAX_WIDTH` (110 stage pixels,
+about 50 screen pixels at 640x360; "Navigation mesh..." is 86, `gm_everpine_mall` 87). The field keeps its left edge and grows to the right, inside the map area (measured on a
+screenshot of the radar: the 86 pixel text ends well before the right edge of the area). When the field is empty again it goes back to the movie's width. A name longer than
+110 pixels is still cut at that width, at the right edge of the area (`Clip:FitTextWidth` in `cl_flash.lua`, called by `Panel:_applyZoneText`; the movie's definition of the
+field is never changed, only the copy of the clip, and a rebuilt clip is widened again by `_refresh`). The tests (`tests/cl_hud_radar_flash_test.lua`) measure the width of the
+text with the font of the field and require it to fit.
+
 With `gry_minimap_veil_discovery 1` every missing tile under the player is "loading", as before the discovery mode. The same happens when the settings module does not have the
 setting, or when the view has no `Coverage` (or it raises): the radar falls back on the veil. The tile preload never shows in the veil.
 
