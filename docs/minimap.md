@@ -189,7 +189,7 @@ places before you get there, so that a walk outside finds them ready.
   gm_construct) and works on a map that has only a navigation mesh. Measured on gm_construct on positions that are not the graph's (the centres of the navigation mesh areas): the tiles
   missing under the player go from 98 to 66 with the graph's floors (outdoors 18 to 6, floors 80 to 60), and to 48 with the indoor boxes' floors too. The floors stay half missed because a level is named by the exact floor height and
   ceiling class at each place: another point of the same staircase gives another level (see the stairs note in the to-do list).
-- **How:** the plan is made in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
+- **How:** the plan is made in two passes over the same places (the level of a place is the usable anchor of the biggest class among the known ones, so the first pass lets every place put its anchor in the registry and the second asks again with the complete registry; only the second pass's tiles are kept), in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
   player first, and tiles the cache already has are left out. The generator makes them after every tile the radar asks for, with a smaller budget
   (`Gen.PRELOAD_BUDGET_MS`, 2 ms), and not at all in a frame that follows a frame slower than 25 ms: it comes back when frames are fast again. The
   preload never shows in the veil (no percentage).
