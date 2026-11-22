@@ -474,20 +474,19 @@ return {
 			end
 		},
 		{
-			-- The level of a place is "the usable anchor of the biggest class among those known": it depends on which anchors the registry holds when the place is asked. At the start of
-			-- a plan it holds few, at the end all of them, and a player arriving later gets the choice of the complete registry. Measured on gm_everpine_mall: the floors left missing were
-			-- places prepared under a level chosen early. breaks if: the plan is made once (the early places are named with an incomplete registry), or the tiles of the first pass are handed over too
-			name = "driver: the plan is made in two passes over the same places (the first fills the registry of levels, the second asks again with the complete one) and only the second pass's tiles are handed over",
+			-- The level of a place is a function of the place only (Floors.LevelFor, rule of 2026-11-22): what PeekAt answers does not depend on what was asked before, so the plan
+			-- is made once (it was made twice while the level depended on the registry of anchors known so far). breaks if: the places are asked twice (twice the rays for
+			-- nothing), or the tiles of the plan are not handed over
+			name = "driver: the plan is made in one pass over the places (the level of a place depends on nothing asked before), each place asked once, its tiles handed over",
 			func = function()
 				local env = makeEnv()
 
 				local ok, err = pcall(function()
-					-- a PeekAt whose answer depends on how many places it has seen: the first pass answers "early", the second "late" (as the registry fills)
 					local seenPlaces = 0
 					GryMod.Minimap.Floors.PeekAt = function(x, y, z)
 						seenPlaces = seenPlaces + 1
 
-						return {id = seenPlaces <= 2 and "early" or "late", zlo = z - 56, zhi = z + 120}
+						return {id = "c128t192", zlo = z - 64, zhi = z + 128}
 					end
 
 					env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = "outdoor", nodes = {
@@ -503,15 +502,16 @@ return {
 						frames = frames + 1
 					end
 
-					local seen = {}
+					local count = 0
 
 					for _, e in ipairs(env.handed) do
-						seen[e.tile.level] = true
+						if e.tile.level == "c128t192" then
+							count = count + 1
+						end
 					end
 
-					expect(seenPlaces).to.equal(4) -- two places, two passes
-					expect(seen.late).to.beTrue() -- what the complete registry says
-					expect(seen.early).to.beNil() -- what the first pass said is not handed over
+					expect(seenPlaces).to.equal(2) -- two places, one pass
+					expect(count > 0).to.beTrue()
 				end)
 
 				env.restore()
@@ -532,7 +532,7 @@ return {
 
 				local job = P().NewJob(boxes, options({
 					places = places,
-					placeLevelAt = function() return {id = "f0c120", zlo = -56, zhi = 120} end
+					placeLevelAt = function() return {id = "c128t192", zlo = -64, zhi = 128} end
 				}))
 
 				expect(job.Step(3)).to.equal(3) -- two boxes and one place
@@ -578,8 +578,8 @@ return {
 					expect(seen[2] ~= nil and seen[2] > 0).to.beTrue()
 					expect(seen[4] ~= nil and seen[4] > 0).to.beTrue()
 					expect(seen[8]).to.beNil()
-					-- the air node made no place; the plan is made in two passes (see the next case), so each of the two places is asked twice
-					expect(env.peeks).to.equal(4)
+					-- the air node made no place; the plan is made in one pass (see the next case), so each of the two places is asked once
+					expect(env.peeks).to.equal(2)
 
 					-- no graph: the boxes alone, nothing raises
 					env.set({nodes = {}})

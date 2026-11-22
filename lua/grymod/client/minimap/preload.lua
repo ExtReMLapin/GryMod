@@ -330,10 +330,7 @@ end
 local job = nil -- the plan being made
 local retries = 0
 
--- The plan is made in two passes over the same places. The level of a place is "the usable anchor of the biggest class among the known ones": it depends on
--- the anchors the registry holds when the place is asked, few at the start of a plan, all of them at the end, and a player who arrives later gets the choice of the
--- complete registry. The first pass lets every place put its anchor in the registry (its tiles are not kept), the second asks again.
-local planBoxes, planOpts, pass = nil, nil, 0
+-- The plan is made in one pass: the level of a place depends on the place only (Floors.LevelFor), not on what was asked before.
 
 local function removeFrameHook()
 	Preload._hookRemove("Think", NAME)
@@ -360,18 +357,10 @@ local function frame()
 		job.Step(STEP_BOXES)
 	until job.Done() or Preload._clock() - started >= FRAME_SHARE
 
-	if job.Done() and pass == 1 then
-		job = Preload.NewJob(planBoxes, planOpts)
-		pass = 2
-
-		return
-	end
-
 	if job.Done() then
 		local entries = job.Entries()
 
 		job = nil
-		planBoxes, planOpts, pass = nil, nil, 0
 		removeFrameHook()
 
 		if Gen and Gen.SetPreload then
@@ -383,7 +372,6 @@ end
 -- Stop(): the plan in progress is dropped, the frame hook and the timer go, and the generator forgets the preload tiles that wait.
 function Preload.Stop()
 	job = nil
-	planBoxes, planOpts, pass = nil, nil, 0
 	removeFrameHook()
 	Preload._timerRemove(NAME)
 
@@ -401,7 +389,6 @@ function Preload.Start()
 	local M = GryMod.Minimap
 
 	job = nil
-	planBoxes, planOpts, pass = nil, nil, 0
 	removeFrameHook()
 
 	local Settings, Cache, Floors, Gen = M.Settings, M.Cache, M.Floors, M.Gen
@@ -473,8 +460,7 @@ function Preload.Start()
 		end
 	end
 
-	planBoxes = boxes
-	planOpts = {
+	local planOpts = {
 		definitions = definitions,
 		res = Settings.TileRes(),
 		tileUnits = Cache.TileUnits,
@@ -495,8 +481,7 @@ function Preload.Start()
 			return indoors and indoorDefs or footDefs
 		end
 	}
-	pass = 1
-	job = Preload.NewJob(planBoxes, planOpts)
+	job = Preload.NewJob(boxes, planOpts)
 
 	Preload._hookAdd("Think", NAME, frame)
 
