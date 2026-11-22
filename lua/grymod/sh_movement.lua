@@ -2,9 +2,10 @@
 -- positions:
 --   0 (default)  GryMod's own speeds: walk 200 and sprint 400, and 400 / 600 in the speed mode.
 --   1  "Crysis vanilla speed": the original game's speeds, read from its code (research-mech/SPEEDS.md; 1 metre = 52.49 units): walk 177 and sprint 266 in
---      every mode; the speed mode's walk gry_move_speed_walk (177 x 1.25 = 221.25: a PLACEHOLDER, the original's bonus of the speed mode's walk is not
---      found in its code yet) and its sprint a climb from x1.3 to x2.85 of the plain sprint in one second (gry_move_speed_run is the top, 757), x1.4 under
---      a fifth of the bar and x1.3 empty (Mech.SpeedRunSpeed in sv_mechanics.lua).
+--      every mode; the speed mode's walk gry_move_speed_walk and its sprint a climb from x1.3 to x2.85 of the plain sprint in one second
+--      (gry_move_speed_run is the top, 757), x1.4 under a fifth of the bar and x1.3 empty (Mech.SpeedRunSpeed in sv_mechanics.lua).
+--      The speed mode's walk is 221.25 (177 x 1.25) BY THE OWNER'S CHOICE: the demo's code gives no bonus to the walk in the speed mode (research-mech/
+--      SPEEDS_WALK_BONUS.md: x1.0, so 177), but he remembers the full game faster there. Set gry_move_speed_walk to 177 for the demo's own value.
 --   2  "Crysis ratios": GMod's own walk and sprint (200 / 400) with the same RATIOS: the speed mode's walk is x(gry_move_speed_walk / gry_move_walk) and its
 --      sprint climbs to x(gry_move_speed_run / gry_move_run) of 400.
 -- On 1 and 2 the energy rules are the original's too (Mech.IsCrysis in sv_mechanics.lua). The values are convars an administrator can change, cut to the
@@ -21,7 +22,7 @@ local enabled = CreateConVar("gry_movement", "0", flags,
 	"Base speeds: 0 GMod's own (200 / 400, speed mode 400 / 600), 1 the original Crysis speeds, 2 GMod's walk and sprint with the original's ratios; on 1 and 2 the energy rules are the original's too", 0, 2)
 local walk = CreateConVar("gry_move_walk", "177", flags, "Walk speed in the armor, strength and cloak modes, with gry_movement 1 (units a second); the reference of the ratios with 2")
 local run = CreateConVar("gry_move_run", "266", flags, "Sprint speed in the armor, strength and cloak modes, with gry_movement 1 (units a second); the reference of the ratios with 2")
-local speedWalk = CreateConVar("gry_move_speed_walk", "221.25", flags, "Walk speed in the speed mode, with gry_movement 1 (units a second; 177 x 1.25, a placeholder); with 2 its ratio to gry_move_walk")
+local speedWalk = CreateConVar("gry_move_speed_walk", "221.25", flags, "Walk speed in the speed mode, with gry_movement 1 (units a second; 221.25 = 177 x 1.25, the owner's choice, the demo's code says 177); with 2 its ratio to gry_move_walk")
 local speedRun = CreateConVar("gry_move_speed_run", "757", flags, "Top sprint speed in the speed mode with energy, with gry_movement 1 (units a second); with 2 its ratio to gry_move_run")
 
 Movement.MODE_OFF = 0

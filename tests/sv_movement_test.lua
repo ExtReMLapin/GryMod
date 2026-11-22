@@ -1,7 +1,7 @@
 -- Tests of the base speeds option (GryMod.Movement, sh_movement.lua and sv_movement.lua), GLuaTest format, server realm. gry_movement has three
 -- positions. 0 (default): the walk and run speeds are GryMod's own (200 / 400, and 400 / 600 in the speed mode). 1, "Crysis vanilla speed": the
 -- original game's speeds, read from its code (research-mech/SPEEDS.md, 1 metre = 52.49 units): walk 177 and sprint 266 in every mode, the speed
--- mode's walk 221.25 (177 x 1.25: PLACEHOLDER, the bonus of the speed mode's walk is not found in the code yet) and its sprint a ramp from x1.3 to
+-- mode's walk 221.25 (177 x 1.25: the owner's choice, the demo's code gives 177) and its sprint a ramp from x1.3 to
 -- the top 757 (x2.85 of 266) in one second, x1.4 under a fifth of the bar and x1.3 empty. 2, "Crysis ratios": GMod's own walk and sprint (200 / 400)
 -- with the same ratios (the speed mode's walk x1.25, its sprint x1.3 to x2.85 of 400). In 1 and 2 the energy rules are the original's too.
 
@@ -86,7 +86,7 @@ return {
 			end
 		},
 		{
-			name = "mode 1: walk 177 and sprint 266 in the armor, strength and cloak modes; in the speed mode the walk is 177 x 1.25 (placeholder) and the sprint is 757",
+			name = "mode 1: walk 177 and sprint 266 in the armor, strength and cloak modes; in the speed mode the walk is 177 x 1.25 (the owner's choice) and the sprint is 757",
 			func = function()
 				local M = GryMod.Movement
 				GetConVar("gry_movement"):SetString("1")
