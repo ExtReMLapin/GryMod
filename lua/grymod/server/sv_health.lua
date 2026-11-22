@@ -132,7 +132,7 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 end)
 
 hook.Add("Think", "GryMod health think", function()
-	for k, ply in pairs(player.GetAll()) do
+	for _, ply in ipairs(GryMod.Players.All()) do
 		if not ply:Alive() then continue end
 
 		-- The repair sound is not tied to the regeneration or to its steps (the game checks it every frame, with no
@@ -266,7 +266,7 @@ hook.Add("Think", "GryMod energy net", function()
 		return
 	end
 
-	for _, ply in ipairs(player.GetHumans()) do
+	for _, ply in ipairs(GryMod.Players.Humans()) do
 		local energy = ply:GetNW2Float("GryEnergy")
 		local rate = GryMod.EnergyRate(ply)
 		local sent = ply.gryEnergySent

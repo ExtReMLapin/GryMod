@@ -310,7 +310,7 @@ function GryMod.IsSpeedSprinting(ply)
 end
 
 hook.Add("Think", "GrySpeedThink", function()
-	for k, v in pairs(player.GetAll()) do
+	for _, v in ipairs(GryMod.Players.All()) do
 		local amnt = v:GetNW2Float("GryEnergy")
 		local amnt_to_drain = GryMod.Mech.SpeedDrain(amnt) * FrameTime()
 
@@ -325,7 +325,7 @@ hook.Add("Think", "GrySpeedThink", function()
 end)
 
 hook.Add("Think", "GryCloakThink", function()
-	for k, v in pairs(player.GetAll()) do
+	for _, v in ipairs(GryMod.Players.All()) do
 		if v.Nanosuit_mode == GryMod.Modes.CLOAK and not GryMod.Config.InfiniteArmor then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
 			local amnt = v:GetNW2Float("GryEnergy")

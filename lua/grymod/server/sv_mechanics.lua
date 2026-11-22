@@ -107,7 +107,7 @@ end
 hook.Add("Think", "GryMod run speed", function()
 	local movement = GryMod.Movement and GryMod.Movement.Enabled()
 
-	for _, ply in ipairs(player.GetAll()) do
+	for _, ply in ipairs(GryMod.Players.All()) do
 		if ply.Nanosuit_mode == GryMod.Modes.SPEED then
 			-- the seconds of the sprint (only the base speeds option climbs): the start is stamped when the key is held, forgotten when it is let go
 			local seconds
