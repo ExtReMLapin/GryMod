@@ -14,9 +14,11 @@ the minimap never keeps the radar from drawing.
 2. **A slice of height is rendered.** Under a ceiling, the level is a slab whose top is the "roundest" height between the head (72 units
    over the feet) and the ceiling minus 8: the multiple of the biggest power of two in that window (a ceiling 150 over the feet gives a top at
    128). Its thickness is the smallest of 192, 320 and 576 that keeps the feet 8 units over its bottom. The level depends on the place only
-   (the feet and the ceiling), never on the way the player came, so the preload can make it in advance. The map keeps showing the level it
-   shows while that level still holds the feet and the head under the ceiling and its tile under the player is there (no flip at each
-   doorway). The slab is rendered in an orthographic view from above into a render target, one square tile at a time
+   (the feet and the ceiling), never on the way the player came, so the preload can make it in advance. What the map MAKES and what it
+   SHOWS are two things. It makes only the level of the place (the generator is never asked for another). It shows the level it showed
+   before while that level still holds the feet and the head under the ceiling and its tile under the player is there (no flip at each
+   doorway), and tile by tile: the held level's tile where the cache has it, the level of the place's elsewhere (see "Made and shown"
+   below). The slab is rendered in an orthographic view from above into a render target, one square tile at a time
    (`gry_minimap_tile` pixels wide). The tiles are laid on a fixed grid of the map, so the same tile is never made twice.
 3. **What the map did not create is hidden.** During a capture every visible entity for which `Entity:CreatedByMap()` is false (props a
    server added, players, effects) is hidden, plus the halos, the sky box, the view model and the fog. They are restored right after,
@@ -202,6 +204,28 @@ places before you get there, so that a walk outside finds them ready.
 - **Cost:** no hook stays: the planning frame hook exists only while a plan is made, and the generator's hook only while tiles wait. A plan for
   gm_construct (927 boxes) costs about 11 ms of rays in all and makes about 28 tiles at two definitions.
 
+## Made and shown (the level of the place against the level held on screen)
+
+The map is made for places and shown with a memory. `Floors.CurrentAt` answers the level to show and the level of the place. The radar asks the generator
+(`Gen.Request`) for the level of the place and its floor below only, so every tile the radar makes while the player walks is one the preload can predict (a level that
+depends on the way the player came cannot be predicted). `View.Draw` is given the held level as `level` and the level of the place as `base`: for each tile of the window it
+draws the held level's tile when the cache has it (an empty one too: that is its picture of nothing), else the base's. The floor below follows the same rule (`below`,
+`belowBase`). The veil is decided by the tile that is drawn under the player: the held level's, else the place's. The hold itself is unchanged (it needs the held level's tile
+under the player). Measured on 2026-11-22 (simulated walks over the centres of the navigation mesh, or the ground nodes where there is none, forward and backward, each step put on the
+ground; `tests/minimap/display_walk_job.lua`; the radar's work is supposed to keep up with the walk), before then after, for gm_construct, gm_boreas, gm_funkis:
+
+| | before | after |
+|---|---|---|
+| changes of picture for 1000 units | 0.5 to 0.6 / 0.1 / 0.6 to 0.7 | the same |
+| veils (tile under the player missing) | 10 / 8 / 2 | the same |
+| tiles of a level that is not the level of the place, made by the radar | 14 and 0 / 7 and 11 / 0 and 0 (forward and backward) | 0 |
+| tiles made by the radar (level of the main set) | 690 and 724 / 651 and 663 / 304 and 314 | 718 and 740 / 673 and 704 / 347 and 333 |
+
+On the recorded stairs and ramps (17 stretches, up and down) the radar never made a tile of a level that was not the level of the place, before or after, and the changes of
+picture and the veils are the same; the radar makes more tiles after (the held level's window is no more reused: from 0 to 100 % more on a short stair, 2 to 7 % on a whole map).
+The cost of the clean rule is that extra work, all of it on levels of places that a wider preload could make. A pass of the walk that did not make the place's tile where the held
+level's tile exists made fewer tiles than before with the same veils, but it can leave the place's tile missing when the hold ends: it is not in the addon.
+
 ## What the player sees while the map is made
 
 While the tile under the player does not exist, the map area of the radar is covered by noise (the contacts stay clear) and the zone
@@ -223,14 +247,14 @@ A **level** is a table `{id, zlo, zhi, ...}`. A **tile** is `{level = <level id>
 | Module | Main public functions |
 | --- | --- |
 | `Settings` | `Enabled()`, `Definition()` (the level in use: the automatic one or the slider's), `DefinitionAuto()`, `TileRes()`, `BudgetMs()`, `Below()` (0 to 1), `Outside()` (0 to 1), `CacheBytes()`, `Opacity()`: the convars, clamped, never nil. `ParseSwitch`, `ParseDefinition`, `ParseDefinitionAuto`, `ParseTileRes`, `ParseBudgetMs`, `ParseBelow`, `ParseOutside`, `ParseCacheMB`, `ParseOpacity`: the same rules on any text (pure). The automatic definition: `AUTO_LEVELS` (2, 4, 8, 16, 32, 64), `AutoDefinitionFor(screenPixelsPerMetre, previousPpm)` (pure: the rule and the hysteresis), `SetAutoDefinition(ppm)` (the radar gives the level it calculated; a level outside the pyramid is ignored and answers false), `PreviousDefinition()`, and the state `AutoState = {current, previous}`. |
-| `Floors` | `CurrentAt(pos)`: the level for the feet at `pos` (a Vector), with the rays up; it remembers its last answer and does not shoot again for a second unless the feet moved 48 units. `LevelFor(feet, ceiling)`: the level of a place (id `c<top>t<thickness>`, pure). `TileReady(level, x, y)`: is its tile under (x, y) in the cache (the hold of the display). `Below(level)`: the slab of 192 under the bottom of the level (`nil, "open"` for an outdoor level). `Outside(level)`: the open level of the map (the whole height of the world, id `open`, the same table every time, read-only) for any level that is not open; `nil, "open"` for an open level (nothing behind it), `nil, "no world bounds"` when the world is unknown. `Current(z)` and `Fallback(z)`: the slab of the feet height alone, in steps of 32 units. `Reset()`. |
+| `Floors` | `CurrentAt(pos)`: two answers, the level to SHOW for the feet at `pos` (a Vector; the held level while it is held) and the level of the PLACE (the same table when nothing is held; the generator is asked for this one), with the rays up; it remembers its last answer and does not shoot again for a second unless the feet moved 48 units. `LevelFor(feet, ceiling)`: the level of a place (id `c<top>t<thickness>`, pure). `TileReady(level, x, y)`: is its tile under (x, y) in the cache (the hold of the display). `Below(level)`: the slab of 192 under the bottom of the level (`nil, "open"` for an outdoor level). `Outside(level)`: the open level of the map (the whole height of the world, id `open`, the same table every time, read-only) for any level that is not open; `nil, "open"` for an open level (nothing behind it), `nil, "no world bounds"` when the world is unknown. `Current(z)` and `Fallback(z)`: the slab of the feet height alone, in steps of 32 units. `Reset()`. |
 | `Capture` | `Render(tile, level)`: one tile as BGRA bytes (`res * res * 4`), or `nil, reason`; needs the render context of a hook. `IsCapturing()`: true during a render (other render hooks of GryMod return early). `IsVoid(b, g, r, a)`: the void rule. `IsBlackOpaque(b, g, r, a)`, `BlackOpaqueToVoid(bgra)` and `IsAllBlackOpaque(bgra)`: the rule of the opaque black of "nothing" (pure, used by `Gen`). `HideNonMap()` and `Restore(list)`. `GetRT(res)`. |
 | `DXT1` | `Compress(bgra, w, h, opts)` and `CompressRows(bgra, w, h, firstBlockRow, lastBlockRow, opts)`: BGRA to DXT1, `opts.alpha = true` makes void pixels transparent. `Decode(dxt, w, h)`, `Error(a, b)`: for tests. |
 | `VTF` | `Build(w, h, format, data)` and `Write(path, w, h, format, data)`: a VTF 7.2 file (formats `FORMAT_BGRA8888` 12, `FORMAT_DXT1` 13, `FORMAT_DXT1A` 20). `VMTText(path)`, `WriteVMT(path, basetexturePath)`, `Parse(bytes)`. |
 | `AIN` | `Parse(bytes)` and `Load(mapName)`: the node graph of the map (`maps/graphs/<map>.ain`, version 37). Used by `Floors.FromNodes`, which today is not used to choose the level. |
 | `Cache` | `Key()`, `Dir(key)`, `Name(tile)`, `Path(tile)`, `TileUnits(res, ppm)`, `TileOf(x, y, res, ppm)`, `TileBounds(tile)`: naming and geometry. `Has(tile)` (from memory, safe at every frame), `Store(tile, data, format)`, `Material(tile)`, `Forget(tile)`, `Count()`, `KnownLevels()`. `Clear(key)`, `Prune()`, `Trim(maxBytes)`: the cleaning. |
 | `Gen` | `Request(level, cx, cy, extentUnits, below, outside)`: wants the tiles around a point (plus one tile of margin) for the level, and optionally for the floor below and for the outside (the open level), made in that order; it does nothing when the request is the same as the previous one, so it is cheap to call at every draw. `Progress()`, `Pending()`, `Cancel()`. `Step(now)`: the body of the hook. Between the capture and the compression it applies the rule of the opaque black (see Known traps). When the work is over and in `Cancel` it calls `Cache.Flush()`. |
-| `View` | `ToRadar(px, py, yawDeg, x, y, rangeUnits, rotate)`: world to radar pixels. `VisibleTiles(level, px, py, extentUnits, res, ppm)`. `Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha)`: draws the tiles of the outside, the floor below and the level (in that order) through the matrix `xf = {a, b, c, d, tx, ty}` and returns the share of the range circle of the level that is covered (the other two do not count). With a previous definition (`Settings.PreviousDefinition()`) and tiles missing at the current one, it first draws the same three passes with the tiles of the previous definition (at most half the materials budget). `MapFrame()`. |
+| `View` | `ToRadar(px, py, yawDeg, x, y, rangeUnits, rotate)`: world to radar pixels. `VisibleTiles(level, px, py, extentUnits, res, ppm)`. `Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase)`: draws the tiles of the outside, the floor below and the level (in that order) through the matrix `xf = {a, b, c, d, tx, ty}`; `base` and `belowBase` (the level of the place and its floor below, when `level` is a held one) stand in tile by tile where the cache has no tile of `level` (resp. `below`); it returns the share of the range circle of the level that is covered (the other two do not count). With a previous definition (`Settings.PreviousDefinition()`) and tiles missing at the current one, it first draws the same three passes with the tiles of the previous definition (at most half the materials budget). `MapFrame()`. |
 
 The radar side is in `lua/grymod/client/cl_hud_radar_flash.lua`: `Panel:MapTransform(x, y, scale)` builds `xf` from the live matrices of the
 radar film, `Panel:SetNoise(v, keepUnits)` and `Panel:SetProgressText(text)` show the noise and the percentage.
@@ -283,6 +307,9 @@ tests_run  realm=client  path=tests/minimap/gen_test.lua
 Two files, `capture_job.lua` and `dxt1_job.lua` (also `vtf_job.lua`), are not tests but jobs: they need a render hook or real timings.
 Run them with `lua_job` in the client realm, for example `lua_job realm=client path=.../tests/minimap/dxt1_job.lua`. The `capture_job.lua`
 header says how to check that a prop added at run time does not end in the picture.
+
+`display_walk_tool.lua` / `display_walk_job.lua` / `display_walk_stairs_job.lua` measure what the radar makes and what it shows during a simulated walk (see "Made and
+shown"; load `preload_coverage_job.lua` first, they use a scratch cache `zz_dl_<map>_v5`, never the real one, and the comments of the files say how to run them).
 
 Every test that replaces a module or a global puts it back in a `pcall` in `afterEach`, and the files a test writes go under
 `grymod/minimap/test_*` and are deleted after.
