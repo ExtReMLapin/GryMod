@@ -138,14 +138,22 @@ end
 -- marker, big}: {id, x, y, rotation, frame, scale, alpha, tint}, in the movie's coordinates (tint: the colour multipliers of an
 -- ally, nil for the movie's own colours). A unit outside the frame or more
 -- than 500 m above or below is left out, except a marker (the unit that hurt the player), which is put on the border of
--- the frame. `phase` is the pulse of the alerted icons.
-function Radar.Contacts(pos, yaw, contacts, phase, range)
-	local list = {}
+-- the frame. `phase` is the pulse of the alerted icons. `reuse` (optional) is a table to fill instead of a new one: it and its entries
+-- are kept from one call to the next (the HUD asks every frame), so the list is only good until the next call with it.
+function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
+	local list = reuse or {}
 
 	if not contacts or not pos or not (yaw == yaw) then
+		if reuse then
+			for i = #list, 1, -1 do
+				list[i] = nil
+			end
+		end
+
 		return list
 	end
 
+	local count = 0
 	local radians = math.rad(yaw)
 	local cos, sin = math.cos(radians), math.sin(radians)
 	local pixels = S.METRES_PER_UNIT * S.PIXELS / (range or S.RANGE)
@@ -172,18 +180,37 @@ function Radar.Contacts(pos, yaw, contacts, phase, range)
 
 			if show then
 				local ally = c.sub == S.SUB_ALLY
+				local entry = reuse and list[count + 1]
+				count = count + 1
 
-				list[#list + 1] = {
-					id = c.id,
-					x = Radar.UNITS_CENTRE_X + x * Radar.UNITS_PIXEL,
-					y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL,
-					rotation = (yaw - c.yaw + 180) % 360,
-					frame = c.type * 5 + (ally and 0 or c.sub),
-					scale = sizeFor(dz * S.METRES_PER_UNIT, c.big),
-					alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA,
-					tint = ally and Radar.ALLY_TINT or nil
-				}
+				if entry then
+					entry.id = c.id
+					entry.x = Radar.UNITS_CENTRE_X + x * Radar.UNITS_PIXEL
+					entry.y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL
+					entry.rotation = (yaw - c.yaw + 180) % 360
+					entry.frame = c.type * 5 + (ally and 0 or c.sub)
+					entry.scale = sizeFor(dz * S.METRES_PER_UNIT, c.big)
+					entry.alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
+					entry.tint = ally and Radar.ALLY_TINT or nil
+				else
+					list[count] = {
+						id = c.id,
+						x = Radar.UNITS_CENTRE_X + x * Radar.UNITS_PIXEL,
+						y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL,
+						rotation = (yaw - c.yaw + 180) % 360,
+						frame = c.type * 5 + (ally and 0 or c.sub),
+						scale = sizeFor(dz * S.METRES_PER_UNIT, c.big),
+						alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA,
+						tint = ally and Radar.ALLY_TINT or nil
+					}
+				end
 			end
+		end
+	end
+
+	if reuse then
+		for i = #list, count + 1, -1 do
+			list[i] = nil
 		end
 	end
 
@@ -296,13 +323,30 @@ function Panel:SetObjects(list)
 			image:GotoAndStop(e.frame)
 		end
 
+		-- The size and the turn of an icon rarely change, and the clip replaces its placement table (entry.m) at every change, so an icon whose table is
+		-- still the one left here last time, with the same size and turn asked, has nothing to compute (the same goes for the colour table and the alpha).
+		-- Done in this order (the position never touches the size and the turn, and the other way round): the result is that of the plain calls.
+		local entry = icon.entry
+		local sameShape = icon.placedM == entry.m and icon.placedScale == e.scale and icon.placedRotation == e.rotation
+		local sameAlpha = icon.placedCx == entry.cx and icon.placedAlpha == e.alpha
+
 		icon:SetX(e.x)
 		icon:SetY(e.y)
-		icon:SetScale(e.scale, e.scale)
-		icon:SetRotation(e.rotation)
-		icon:SetAlpha(e.alpha)
+
+		if not sameShape then
+			icon:SetScale(e.scale, e.scale)
+			icon:SetRotation(e.rotation)
+			icon.placedScale, icon.placedRotation = e.scale, e.rotation
+		end
+
+		if not sameAlpha then
+			icon:SetAlpha(e.alpha)
+			icon.placedAlpha = e.alpha
+		end
+
 		setTint(icon, e.tint)
 		icon:SetVisible(true)
+		icon.placedM, icon.placedCx = entry.m, entry.cx
 	end
 
 	for i = count + 1, #icons do
@@ -487,6 +531,9 @@ Radar.Stealth = 0
 -- Each frame the HUD draws: the phase of the pulse, the contacts of the server placed for this frame, the stealth bar.
 local phase = 0
 
+-- the entries of this frame's contacts, filled again every frame (Radar.Contacts' last argument): no table is made for them
+local placed = {}
+
 local zoomError
 
 function Radar.Feed(panel, ply, dt)
@@ -531,7 +578,7 @@ function Radar.Feed(panel, ply, dt)
 		return
 	end
 
-	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase, Radar.Range()))
+	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase, Radar.Range(), placed))
 
 	local bar, hexagon = 0, 0
 
