@@ -2,9 +2,10 @@
 -- Design: docs/superpowers/specs/2026-11-21-minimap-design.md. Everything here is client side; the cache holds the map AS SHIPPED.
 --
 -- Decisions (the design leaves them to the builder):
---   * Key = sanitised "<map name>_<size of maps/<map>.bsp in bytes>_v2" (size 0 when the .bsp is unknown: file.Size gives -1). Sanitised = lowercase, every byte outside
+--   * Key = sanitised "<map name>_<size of maps/<map>.bsp in bytes>_v4" (size 0 when the .bsp is unknown: file.Size gives -1). Sanitised = lowercase, every byte outside
 --     [a-z0-9_] becomes "_" (so the key is safe in a path). A map that changes size gets a new key, hence a new directory; Prune removes the old ones. "_v1" tiles were
---     written without alpha and must not be reused (Prune removes them too).
+--     written without alpha, and "_v2" tiles (and the "_v3" ones of a development build, which only cleared it for the floor below and the outside) hold the opaque black that the engine draws for "nothing" (a solid black over the
+--     other passes): neither must be reused (Prune removes them too, so a cache of an old version is made again by itself).
 --   * Directory = "grymod/minimap/<key>" (relative to data/). Files: "<base>.vtf", "<base>.vmt" and "index.json".
 --   * Base name = "t_<level>_<tx>_<ty>_<res>_<ppm>"; a negative number is written with an "n" prefix ("n3"), a fractional ppm has "p" for the point; the level id
 --     is sanitised like the key. The last four fields are always numbers, so the name can be read from the right: two different tiles never share a name.
@@ -45,7 +46,7 @@ local floor, sfind, smatch, sgsub, slower, sformat, ssub = math.floor, string.fi
 local band = bit.band
 
 local ROOT = "grymod/minimap"
-local VERSION_TAG = "v2" -- v1 tiles had no alpha: they are stale (Prune removes their directories)
+local VERSION_TAG = "v4" -- v1 tiles had no alpha, v2 and v3 tiles keep the engine's opaque black as a solid (v3 only in the main level): they are stale (Prune removes their directories)
 local INDEX_FILE = "index.json"
 local MAX_COORD = 2 ^ 31 -- larger tile indices are not tiles any more (and would print with an exponent)
 local HEADER_BYTES = 208 -- 80 bytes of VTF header + 128 of thumbnail, before the image data
@@ -904,8 +905,8 @@ function Cache.Clear(key)
 	return true
 end
 
--- Prune() -> number of cache directories removed: the other keys of the same map name, whatever their size or version (a map that changed size, and the opaque
--- "_v1" tiles of before the alpha). Never another map, never the current key. The version part is matched as "_v<digits>" on purpose.
+-- Prune() -> number of cache directories removed: the other keys of the same map name, whatever their size or version (a map that changed size, the opaque
+-- "_v1" tiles of before the alpha, the "_v2" and "_v3" tiles of before the opaque black was turned into void in every set). Never another map, never the current key. The version part is matched as "_v<digits>" on purpose.
 function Cache.Prune()
 	local key = currentKey()
 	local mapName = smatch(key, "^(.+)_%d+_v%d+$")

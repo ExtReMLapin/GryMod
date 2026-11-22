@@ -166,6 +166,165 @@ function Capture.IsVoid(b, g, r, a)
 	return a == 0 and b == 0 and g == 0 and r == 0
 end
 
+-- THE OPAQUE BLACK OF "NOTHING" (measured on gm_funkis): where the slab of a floor below, or of the outside, is inside solid earth or looks at a sky brush, the engine
+-- sometimes draws exactly (0, 0, 0, 255) instead of leaving the cleared (0, 0, 0, 0). The same tile came back void from one render and entirely (0, 0, 0, 255) from
+-- the next (seen: the first capture of a frame gave it and a second one in the same frame did not; it also came and went with where the player stood). The geometry never has that alpha: it writes 1 (black geometry is
+-- (0, 0, 0, 1)). By the void rule above that black is solid, so a tile of the floor below stored with it was a black wall painted over the outside: an invisible thing
+-- erasing a visible one. IsBlackOpaque is the rule; BlackOpaqueToVoid and IsAllBlackOpaque apply it to a whole picture (the Gen module decides for which set of tiles).
+-- Pure: no engine call. The pictures are strings of BGRA pixels; only a whole pixel at a position that is a multiple of 4 counts (the bytes 0, 0, 0, 255 also
+-- appear across two pixels). A pixel that is almost that (a blue of 1, an alpha of 254, a near-black colour with alpha 255) is geometry and is never touched.
+function Capture.IsBlackOpaque(b, g, r, a)
+	return a == 255 and b == 0 and g == 0 and r == 0
+end
+
+local sfind, ssub, srep, sbyte, concat = string.find, string.sub, string.rep, string.byte, table.concat
+local OPAQUE_PIXEL, VOID_PIXEL = "\0\0\0\255", "\0\0\0\0"
+-- the sizes (bytes) of the chunks IsAllBlackOpaque compares, largest first: a string of opaque black pixels of each size
+local RUN_SIZES = {65536, 16384, 4096, 1024, 256, 64, 16, 4}
+local RUN_STRINGS = {}
+local VOID_RUNS = {} -- number of pixels (up to 512) -> a string of that many void pixels: the short runs are the most frequent, and the same ones come back
+
+for i = 1, #RUN_SIZES do
+	RUN_STRINGS[i] = srep(OPAQUE_PIXEL, RUN_SIZES[i] / 4)
+end
+
+-- the position after the run of opaque black pixels that starts at `q` (a multiple of 4, plus 1). The run is read four pixels at a time with string.byte, which makes no
+-- string (measured: 8 ns per step once compiled, a whole 1024 x 1024 picture in 2 ms; comparing chunks made megabytes of garbage and cost ten times more): the sum of the four
+-- alphas is 1020 and the sum of the twelve colour bytes is 0 only for four opaque black pixels.
+local function runEnd(s, q)
+	local n = #s
+
+	while q + 15 <= n do
+		local b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3, b4, g4, r4, a4 = sbyte(s, q, q + 15)
+
+		if a1 + a2 + a3 + a4 ~= 1020 or b1 + g1 + r1 + b2 + g2 + r2 + b3 + g3 + r3 + b4 + g4 + r4 ~= 0 then
+			break
+		end
+
+		q = q + 16
+	end
+
+	-- the last pixels (fewer than four, or the first of the block that was not all opaque black), one at a time
+	while q + 3 <= n do
+		local b, g, r, a = sbyte(s, q, q + 3)
+
+		if a ~= 255 or b ~= 0 or g ~= 0 or r ~= 0 then
+			break
+		end
+
+		q = q + 4
+	end
+
+	return q
+end
+
+local function checkPicture(bgra)
+	if type(bgra) ~= "string" then
+		return false, "the picture is not a string"
+	end
+
+	if #bgra % 4 ~= 0 then
+		return false, "the length of the picture is not a multiple of 4"
+	end
+
+	return true
+end
+
+-- BlackOpaqueToVoid(bgra) -> the picture with every opaque black pixel (0, 0, 0, 255) turned into a void pixel (0, 0, 0, 0), the number of pixels changed | nil, reason.
+-- The same string and 0 when there is none (nothing is copied). The scan looks for the alpha byte (255), which is rare in the void and in the geometry (the search for the
+-- bytes 0, 0, 0, 255 would stop at every zero of the void), and checks the three bytes before it.
+function Capture.BlackOpaqueToVoid(bgra)
+	local valid, why = checkPicture(bgra)
+
+	if not valid then
+		return nil, why
+	end
+
+	local pos = sfind(bgra, "\255", 1, true)
+
+	if not pos then
+		return bgra, 0
+	end
+
+	local parts, n, last, count = {}, 0, 1, 0
+
+	while pos do
+		local b, g, r
+
+		if pos % 4 == 0 then
+			b, g, r = sbyte(bgra, pos - 3, pos - 1)
+		end
+
+		if b == 0 and g == 0 and r == 0 then
+			-- the pixel at pos - 3 .. pos is opaque black: follow the run, then replace all of it at once
+			local start, stop = pos - 3, runEnd(bgra, pos + 1)
+
+			if start > last then
+				n = n + 1
+				parts[n] = ssub(bgra, last, start - 1)
+			end
+
+			local pixels = (stop - start) / 4
+			local void = VOID_RUNS[pixels]
+
+			if not void then
+				void = srep(VOID_PIXEL, pixels)
+
+				if pixels <= 512 then
+					VOID_RUNS[pixels] = void
+				end
+			end
+
+			n = n + 1
+			parts[n] = void
+			count = count + pixels
+			last = stop
+			pos = sfind(bgra, "\255", stop, true)
+		else
+			-- a 255 that is not the alpha of an opaque black pixel (geometry, a colour, or a byte of another pixel)
+			pos = sfind(bgra, "\255", pos + 1, true)
+		end
+	end
+
+	if count == 0 then
+		return bgra, 0
+	end
+
+	if last <= #bgra then
+		parts[n + 1] = ssub(bgra, last)
+	end
+
+	return concat(parts), count
+end
+
+-- IsAllBlackOpaque(bgra) -> true when every pixel is (0, 0, 0, 255), false as soon as one is not | nil, reason (an empty picture is not a picture of anything)
+function Capture.IsAllBlackOpaque(bgra)
+	local valid, why = checkPicture(bgra)
+
+	if not valid then
+		return nil, why
+	end
+
+	local n = #bgra
+
+	if n == 0 then
+		return nil, "the picture is empty"
+	end
+
+	local pos = 1
+
+	-- from the largest chunk to the smallest: after the last loop pos is n + 1 only when the whole picture matched
+	for level = 1, #RUN_SIZES do
+		local size, chunk = RUN_SIZES[level], RUN_STRINGS[level]
+
+		while pos + size - 1 <= n and ssub(bgra, pos, pos + size - 1) == chunk do
+			pos = pos + size
+		end
+	end
+
+	return pos == n + 1
+end
+
 local function answerTrue()
 	return true
 end

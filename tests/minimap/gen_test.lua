@@ -63,7 +63,9 @@ local function install(st)
 		sinceTrim = G and G._state and G._state.storedSinceTrim,
 		View = M.View,
 		realTime = G and G._realTime,
-		getMap = game.GetMap
+		getMap = game.GetMap,
+		-- the sets that Gen changes pixel by pixel: a case may switch one off, afterEach puts all three back
+		fillSets = G and type(G.VOID_FILL_SETS) == "table" and {main = G.VOID_FILL_SETS.main, below = G.VOID_FILL_SETS.below, outside = G.VOID_FILL_SETS.outside} or nil
 	}
 
 	st.res = 512
@@ -245,6 +247,10 @@ local function restore()
 	game.GetMap = saved.getMap
 	M.View = saved.View
 
+	if saved.fillSets and G and type(G.VOID_FILL_SETS) == "table" then
+		G.VOID_FILL_SETS.main, G.VOID_FILL_SETS.below, G.VOID_FILL_SETS.outside = saved.fillSets.main, saved.fillSets.below, saved.fillSets.outside
+	end
+
 	saved = nil
 end
 
@@ -290,6 +296,31 @@ end
 
 local function request9(st)
 	return gen().Request(LEVEL, 500, 500, 100)
+end
+
+-- The pictures of the "opaque black" cases: 64 x 64 pixels. FILL_K is what the engine draws for "nothing" in the slab of a floor below (exactly (0, 0, 0, 255)); the picture
+-- also holds one coloured opaque pixel, three pixels of black geometry (alpha 1) and one pixel of alpha 0 that carries a colour (its blue channel is tx + 10, so that the
+-- tiles differ), all of which are solid.
+local FILL_K, FILL_V = "\0\0\0\255", "\0\0\0\0"
+
+local function fillPicture(tx, k)
+	k = k or FILL_K
+
+	return string.rep(k, 100) .. "\9\8\7\255" .. string.rep("\0\0\0\1", 3) .. string.rep(k, 200) .. string.char(tx + 10, 0, 0, 0) .. string.rep(k, 64 * 64 - 305)
+end
+
+-- the same picture once the opaque black is void
+local function fillExpected(tx)
+	return fillPicture(tx, FILL_V)
+end
+
+-- the real functions of the rule in the stand-in Capture (the stand-in of install has only Render and IsCapturing)
+local function useFill(st)
+	expect(type(saved.Capture.BlackOpaqueToVoid)).to.equal("function")
+	expect(type(saved.Capture.IsAllBlackOpaque)).to.equal("function")
+
+	GryMod.Minimap.Capture.BlackOpaqueToVoid = saved.Capture.BlackOpaqueToVoid
+	GryMod.Minimap.Capture.IsAllBlackOpaque = saved.Capture.IsAllBlackOpaque
 end
 
 -- the expected order of the 25 tiles of BIG, worked out by hand: distance from the point (1500, 500) to the tile centre, then tx, then ty
@@ -2316,6 +2347,281 @@ return {
 				expect(p.outsideDone).to.equal(9)
 				expect(p.outsideFailed).to.equal(0)
 				expect(join(state.events):sub(-11)).to.equal("P 9 9 R B O")
+			end
+		},
+		-- the opaque black of "nothing" (the engine draws exactly (0, 0, 0, 255) where the slab of the floor below or of the outside is inside solid earth) -------
+		-- Pictures of 64 x 64 pixels (st.res = 64), one 16-row chunk per tile: the real Capture.BlackOpaqueToVoid / IsAllBlackOpaque and the real DXT1.IsAllVoid run on them.
+		-- fails if the opaque black of a tile is compressed as it is (a tile is stored under the name of its level, whatever set asked for it first: the main level of today is the
+		-- floor below of tomorrow, and its black would be drawn as a solid wall over the outside), or if a coloured pixel, a pixel of black geometry (alpha 1) is touched
+		{
+			name = "opaque black: the tiles of the main level, of the floor below and of the outside get their opaque black turned into void before the compression",
+			func = function(state)
+				local G = gen()
+
+				useFill(state)
+				state.res = 64
+
+				state.onCapture = function(tile)
+					local s = fillPicture(tile.tx)
+
+					state.bgras[#state.bgras + 1] = s
+
+					return s
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+
+				expect(#state.compress).to.equal(18)
+
+				for i = 1, #state.renders do
+					local r = state.renders[i]
+					local sent = state.compress[i].bgra
+
+					expect(r.level == "a1" or r.level == "a0").to.beTrue()
+					expect(sent == fillExpected(r.tx)).to.beTrue() -- the main level as well as the floor below
+					expect(sent == fillPicture(r.tx)).to.beFalse()
+				end
+
+				expect(#state.empties).to.equal(0)
+				expect(G.Progress().belowDone).to.equal(9)
+				expect(G.Progress().done).to.equal(9)
+			end
+		},
+		-- fails if the outside is left out of the rule (it is drawn under everything: its opaque black would hide nothing less than the whole picture)
+		{
+			name = "opaque black: the tiles of the outside get the same treatment (all three sets, the outside included)",
+			func = function(state)
+				local G = gen()
+
+				useFill(state)
+				state.res = 64
+
+				state.onCapture = function(tile)
+					return fillPicture(tile.tx)
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				stepAll(state)
+
+				expect(#state.compress).to.equal(27)
+
+				for i = 1, #state.renders do
+					expect(state.compress[i].bgra == fillExpected(state.renders[i].tx)).to.beTrue()
+				end
+
+				expect(G.Progress().outsideDone).to.equal(9)
+			end
+		},
+		-- fails if a tile of the floor below that is only opaque black is stored as a file (the whole picture is "nothing": it is an empty tile), or if it is not counted as done
+		{
+			name = "opaque black: a tile of the floor below or of the outside that is all opaque black is an empty tile (StoreEmpty, no compression), counted as done",
+			func = function(state)
+				local G = gen()
+
+				useFill(state)
+				state.res = 64
+				state.isVoid = function(bgra, w, h) return saved.DXT1.IsAllVoid(bgra, w, h) end
+
+				state.onCapture = function(tile)
+					if tile.level == "a1" then
+						return fillPicture(tile.tx) -- the main level has some content
+					end
+
+					return string.rep(FILL_K, 64 * 64)
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				stepAll(state)
+
+				expect(#state.empties).to.equal(18)
+
+				for i = 1, #state.empties do
+					expect(state.empties[i].level == "a0" or state.empties[i].level == "open").to.beTrue()
+				end
+
+				expect(#state.stores).to.equal(9)
+				expect(#state.compress).to.equal(9)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(9)
+				expect(p.belowDone).to.equal(9)
+				expect(p.outsideDone).to.equal(9)
+				expect(join(state.events):sub(-11)).to.equal("P 9 9 R B O")
+			end
+		},
+		-- fails if a main tile that is only opaque black is stored as a file, or if a main tile with a single other pixel is emptied, or loses that pixel
+		{
+			name = "opaque black: a tile of the main level that is entirely opaque black is an empty tile; one other pixel keeps it a normal tile with that pixel",
+			func = function(state)
+				local G = gen()
+
+				useFill(state)
+				state.res = 64
+				state.isVoid = function(bgra, w, h) return saved.DXT1.IsAllVoid(bgra, w, h) end
+
+				local almost = string.rep(FILL_K, 64 * 64 - 1) .. "\0\0\0\1" -- one pixel of black geometry (alpha 1)
+
+				state.onCapture = function(tile)
+					if tile.tx == 0 and tile.ty == 0 then
+						return almost
+					end
+
+					return string.rep(FILL_K, 64 * 64)
+				end
+
+				request9(state)
+				stepAll(state)
+
+				expect(#state.empties).to.equal(8)
+				expect(#state.stores).to.equal(1)
+				expect(#state.compress).to.equal(1)
+				expect(state.compress[1].bgra == string.rep(FILL_V, 64 * 64 - 1) .. "\0\0\0\1").to.beTrue() -- the black geometry stays, the rest is void
+				expect(G.Progress().done).to.equal(9)
+				expect(G.Progress().failed).to.equal(0)
+			end
+		},
+		-- fails if the table of the sets is not read (the main level is changed pixel by pixel whatever it says), or if the all-opaque-black tile of a set that is left out is kept as a file
+		{
+			name = "opaque black: Gen.VOID_FILL_SETS decides which sets are changed pixel by pixel; a set left out is compressed as it is, except a tile that is nothing but opaque black",
+			func = function(state)
+				local G = gen()
+
+				useFill(state)
+				state.res = 64
+				state.isVoid = function(bgra, w, h) return saved.DXT1.IsAllVoid(bgra, w, h) end
+
+				expect(type(G.VOID_FILL_SETS)).to.equal("table")
+				expect(G.VOID_FILL_SETS.main).to.equal(true)
+				expect(G.VOID_FILL_SETS.below).to.equal(true)
+				expect(G.VOID_FILL_SETS.outside).to.equal(true)
+
+				G.VOID_FILL_SETS.main = false
+
+				state.onCapture = function(tile)
+					if tile.tx == 0 and tile.ty == 0 then
+						return fillPicture(tile.tx) -- some content: stays as it is in the main level
+					end
+
+					return string.rep(FILL_K, 64 * 64)
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+
+				-- the main level: 8 tiles of nothing but opaque black are empty, the one with content is compressed untouched
+				-- the floor below: the same pictures, every opaque black pixel is void (8 empty tiles, one compressed with its content changed)
+				expect(#state.empties).to.equal(16)
+				expect(#state.compress).to.equal(2)
+
+				for i = 1, #state.renders do
+					if state.renders[i].tx == 0 and state.renders[i].ty == 0 then
+						local sent = state.compress[state.renders[i].level == "a1" and 1 or 2].bgra
+
+						if state.renders[i].level == "a1" then
+							expect(sent == fillPicture(0)).to.beTrue()
+						else
+							expect(sent == fillExpected(0)).to.beTrue()
+						end
+					end
+				end
+			end
+		},
+		-- fails if the picture before the change, or the one after it, is kept in the state of the generator once the tile is stored (a megabyte per tile)
+		{
+			name = "opaque black: nothing of the picture stays in the module's state after the tile is stored",
+			func = function(state)
+				local G = gen()
+
+				useFill(state)
+				state.res = 64
+				state.onCapture = function(tile)
+					return fillPicture(tile.tx)
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+
+				local seen, found = {}, 0
+
+				local function scan(v, depth)
+					if depth > 12 then
+						return
+					end
+
+					if type(v) == "string" then
+						if #v >= 64 * 64 * 4 then
+							found = found + 1
+						end
+					elseif type(v) == "table" and not seen[v] then
+						seen[v] = true
+
+						for k, x in pairs(v) do
+							scan(k, depth + 1)
+							scan(x, depth + 1)
+						end
+					end
+				end
+
+				scan(G._state, 0)
+				expect(found).to.equal(0)
+			end
+		},
+		-- fails if a Capture without the two functions, or a function that raises or answers something else, loses the tile or counts a failure
+		{
+			name = "opaque black: without the functions, or with ones that raise or give nothing usable, the picture takes the normal path and nothing fails",
+			func = function(state)
+				local G = gen()
+
+				state.res = 64
+				state.onCapture = function(tile)
+					return fillPicture(tile.tx)
+				end
+
+				-- the stand-in Capture of this file has no BlackOpaqueToVoid and no IsAllBlackOpaque
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+				expect(#state.compress).to.equal(18)
+
+				for i = 1, #state.renders do
+					expect(state.compress[i].bgra == fillPicture(state.renders[i].tx)).to.beTrue()
+				end
+
+				expect(G.Progress().belowDone).to.equal(9)
+				G.Cancel()
+
+				for _, how in ipairs({"raise", "nil", "number"}) do
+					state.compress, state.renders, state.stores, state.stored = {}, {}, {}, {}
+
+					GryMod.Minimap.Capture.BlackOpaqueToVoid = function()
+						if how == "raise" then
+							error("BlackOpaqueToVoid broke")
+						elseif how == "nil" then
+							return nil, "no"
+						end
+
+						return 5
+					end
+
+					GryMod.Minimap.Capture.IsAllBlackOpaque = function()
+						error("IsAllBlackOpaque broke")
+					end
+
+					G.Request(LEVEL, 500, 500, 100, BELOW)
+					stepAll(state)
+
+					expect(#state.compress).to.equal(18)
+
+					for i = 1, #state.renders do
+						expect(state.compress[i].bgra == fillPicture(state.renders[i].tx)).to.beTrue()
+					end
+
+					expect(G.Progress().belowDone).to.equal(9)
+					expect(G.Progress().belowFailed).to.equal(0)
+					expect(G.Progress().failed).to.equal(0)
+					G.Cancel()
+				end
 			end
 		},
 		-- fails if an error in the handler of OutsideReady stops the generation

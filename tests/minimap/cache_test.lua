@@ -236,35 +236,35 @@ return {
 		-- (1) the key ---------------------------------------------------------------------------------------------------------------
 		{
 			-- fails if KeyFor does not lowercase, does not turn each odd byte into "_", does not add the size or the version
-			name = "KeyFor sanitises the map name: lowercase, every byte outside [a-z0-9_] becomes an underscore, then _<size>_v2",
+			name = "KeyFor sanitises the map name: lowercase, every byte outside [a-z0-9_] becomes an underscore, then _<size>_v4",
 			func = function()
-				expect(C().KeyFor("GM_Construct", 1234)).to.equal("gm_construct_1234_v2")
-				expect(C().KeyFor("My Map-v2!", 7)).to.equal("my_map_v2__7_v2")
-				expect(C().KeyFor("ab\xC3\xA9", 0)).to.equal("ab___0_v2") -- the two bytes of an accented letter give two underscores
-				expect(C().KeyFor("../../x", 1)).to.equal("______x_1_v2") -- no path character survives
+				expect(C().KeyFor("GM_Construct", 1234)).to.equal("gm_construct_1234_v4")
+				expect(C().KeyFor("My Map-v2!", 7)).to.equal("my_map_v2__7_v4")
+				expect(C().KeyFor("ab\xC3\xA9", 0)).to.equal("ab___0_v4") -- the two bytes of an accented letter give two underscores
+				expect(C().KeyFor("../../x", 1)).to.equal("______x_1_v4") -- no path character survives
 			end
 		},
 		{
 			-- fails if a negative, missing or odd size is written as it is, or if an empty name makes an empty key
 			name = "KeyFor: an unknown size (negative, nil, not a number) is 0, an empty or missing name is 'unknown'",
 			func = function()
-				expect(C().KeyFor("a", -1)).to.equal("a_0_v2")
-				expect(C().KeyFor("a", nil)).to.equal("a_0_v2")
-				expect(C().KeyFor("a", "12")).to.equal("a_0_v2")
-				expect(C().KeyFor("", 5)).to.equal("unknown_5_v2")
-				expect(C().KeyFor(nil, 5)).to.equal("unknown_5_v2")
+				expect(C().KeyFor("a", -1)).to.equal("a_0_v4")
+				expect(C().KeyFor("a", nil)).to.equal("a_0_v4")
+				expect(C().KeyFor("a", "12")).to.equal("a_0_v4")
+				expect(C().KeyFor("", 5)).to.equal("unknown_5_v4")
+				expect(C().KeyFor(nil, 5)).to.equal("unknown_5_v4")
 			end
 		},
 		{
 			-- fails if Key does not read the .bsp size (here a map that is not on disk: size 0, file.Size says -1)
-			name = "Key: the size is 0 when the .bsp is unknown, the name comes from game.GetMap, the version is v2",
+			name = "Key: the size is 0 when the .bsp is unknown, the name comes from game.GetMap, the version is v4",
 			func = function()
 				game.GetMap = function()
 					return "Test_Bogus Map"
 				end
 				C().Reset()
 
-				expect(C().Key()).to.equal("test_bogus_map_0_v2")
+				expect(C().Key()).to.equal("test_bogus_map_0_v4")
 			end
 		},
 		{
@@ -280,7 +280,7 @@ return {
 				end
 				C().Reset()
 
-				expect(C().Key()).to.equal("gm_construct_" .. size .. "_v2")
+				expect(C().Key()).to.equal("gm_construct_" .. size .. "_v4")
 			end
 		},
 		{
@@ -1367,6 +1367,49 @@ return {
 				expect(file.Exists(paths.current, "DATA")).to.beTrue()
 				expect(file.Exists(paths.otherMapV1, "DATA")).to.beTrue()
 				expect(file.Exists(paths.otherMapV2, "DATA")).to.beTrue()
+				expect(C().Has(t)).to.beTrue()
+			end
+		},
+		{
+			-- fails if the version of the format is still v3 (the v2 and v3 tiles hold the opaque black that the engine draws for "nothing": they must be made again), or if
+			-- Prune keeps the v2 directory of the current map, with the same size or another one
+			name = "version v4: the key of the format is v4, and Prune deletes the v3, v2 and v1 keys of the same map (same size included), sparing the v2 keys of other maps",
+			func = function(state)
+				installVTF(state)
+
+				expect(C().KeyFor("test_mapa", 100)).to.equal("test_mapa_100_v4")
+
+				local t = tile("a1", 1, 1)
+				local keys = {
+					current = "test_mapa_100_v4",
+					sameSizeV3 = "test_mapa_100_v3",
+					sameSizeV2 = "test_mapa_100_v2",
+					otherSizeV2 = "test_mapa_90_v2",
+					sameSizeV1 = "test_mapa_100_v1",
+					otherMapV2 = "test_mapb_100_v2",
+					otherMapV3 = "test_mapb_100_v3",
+					otherMapV4 = "test_mapb_100_v4"
+				}
+				local paths = {}
+
+				for name, key in pairs(keys) do
+					useKey(state, key)
+					expect(store(t)).to.beTrue()
+					paths[name] = C().Path(t) .. ".vtf"
+				end
+
+				useKey(state, keys.current)
+
+				expect(C().Prune()).to.equal(4)
+
+				expect(file.Exists(paths.sameSizeV3, "DATA")).to.beFalse()
+				expect(file.Exists(paths.sameSizeV2, "DATA")).to.beFalse()
+				expect(file.Exists(paths.otherSizeV2, "DATA")).to.beFalse()
+				expect(file.Exists(paths.sameSizeV1, "DATA")).to.beFalse()
+				expect(file.Exists(paths.current, "DATA")).to.beTrue()
+				expect(file.Exists(paths.otherMapV2, "DATA")).to.beTrue()
+				expect(file.Exists(paths.otherMapV3, "DATA")).to.beTrue()
+				expect(file.Exists(paths.otherMapV4, "DATA")).to.beTrue()
 				expect(C().Has(t)).to.beTrue()
 			end
 		},

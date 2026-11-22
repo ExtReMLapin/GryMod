@@ -17,6 +17,8 @@ GryMod.Minimap.Gen = GryMod.Minimap.Gen or {}
 --   * it may also ask for the OUTSIDE (the open level of the map, the whole height of the world): same range, made after the main level and the floor
 --     below, counted apart (outsideDone, outsideTotal, outsideFailed), and never in the main level's numbers;
 --   * every tile is compressed with the 1-bit alpha option and stored in the DXT1A format (20): the void of a floor is transparent.
+--   * the opaque black the engine draws for "nothing" ((0, 0, 0, 255), see Capture.IsBlackOpaque) is turned into void before the compression, in the tiles of every set
+--     (a solid black erased the passes behind it, and the cache gives one file to a level whatever its role): see voidTheFill and Gen.VOID_FILL_SETS.
 -- The three SETS of tiles (main, below, outside) are handled by the same code: S.sets[name] = {level, queue, done, total, failed, ...}, and SET_ORDER
 -- is the order in which their queues are emptied.
 -- Events (hook.Run), all about the MAIN level only except the last two: GryMod_MinimapProgress(done, total) once per change of those two numbers,
@@ -483,6 +485,51 @@ local function storeIfEmpty(cur, bgra)
 	return false
 end
 
+-- The opaque black of "nothing" (see Capture.IsBlackOpaque): the engine draws exactly (0, 0, 0, 255) where the slab of a level has nothing to show (inside earth, a sky
+-- brush). By the void rule that is a solid pixel, so a tile drawn over what is behind it would be a black wall hiding it.
+--   * every pixel (0, 0, 0, 255) of the tile becomes void (transparent) before the compression, whichever set asked for the tile. A tile is stored under the name of its level
+--     and not of its role: the main level of today is the floor below or the outside of tomorrow, and the cache hands the same file to all of them, so the content of a
+--     tile must not depend on who asked for it first. Black geometry (alpha 1) and every coloured pixel stay as they are. A tile that has nothing else is then an empty tile
+--     (storeIfEmpty);
+--   * Gen.VOID_FILL_SETS says which sets get that treatment. A set left out is compressed as it is, except that a tile that is nothing but opaque black is a picture of
+--     nothing and becomes all void, hence an empty tile (before the main level followed that rule alone).
+-- Without the functions of Capture, or when one of them raises or gives something that is not a picture of the same size, the picture is used as it is.
+Gen.VOID_FILL_SETS = {main = true, below = true, outside = true}
+
+local function voidTheFill(set, bgra)
+	local C = GryMod.Minimap.Capture
+
+	if type(C) ~= "table" then
+		return bgra
+	end
+
+	if Gen.VOID_FILL_SETS[set] ~= true then
+		if type(C.IsAllBlackOpaque) ~= "function" then
+			return bgra
+		end
+
+		local ok, all = pcall(C.IsAllBlackOpaque, bgra)
+
+		if ok and all == true then
+			return string.rep("\0", #bgra)
+		end
+
+		return bgra
+	end
+
+	if type(C.BlackOpaqueToVoid) ~= "function" then
+		return bgra
+	end
+
+	local ok, out = pcall(C.BlackOpaqueToVoid, bgra)
+
+	if ok and type(out) == "string" and #out == #bgra then
+		return out
+	end
+
+	return bgra
+end
+
 -- the work of one unit; returns "capture" when a capture was attempted (success or not), "retry" when the capture gave nothing and must be retried
 -- at the next Step, nil otherwise
 local function work(cur)
@@ -506,8 +553,12 @@ local function work(cur)
 			fail(cur, err or "capture returned nothing")
 		elseif type(bgra) ~= "string" then
 			fail(cur, "capture returned a " .. type(bgra))
-		elseif not storeIfEmpty(cur, bgra) then
-			cur.bgra, cur.chunks, cur.row, cur.phase = bgra, {}, 0, PHASE_COMPRESS
+		else
+			bgra = voidTheFill(cur.set, bgra)
+
+			if not storeIfEmpty(cur, bgra) then
+				cur.bgra, cur.chunks, cur.row, cur.phase = bgra, {}, 0, PHASE_COMPRESS
+			end
 		end
 
 		return "capture"
