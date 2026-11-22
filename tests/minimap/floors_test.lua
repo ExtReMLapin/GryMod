@@ -995,6 +995,65 @@ return {
 			end
 		},
 		{
+			-- what the generator MAKES is the level of the place (the preload predicts it), what the view SHOWS may be the held level: CurrentAt answers both, the level shown first
+			-- and the level of the place second, on a new shot and on the remembered one. breaks if: the second answer is missing, is the held level, differs between a new shot and
+			-- the remembered one, or is not the very table of the level of the place
+			name = "CurrentAt: the second answer is the level of the place, whatever the display holds, on a new shot and on the remembered one; the same level when nothing is held",
+			func = function(state)
+				local ready = {}
+
+				F().TileReady = function(level) return ready[level.id] == true end
+
+				-- nothing held: both answers are the level of the place, the very table
+				state.ray = ceil(192)
+
+				local shown, own = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(shown.id).to.equal("c128t192")
+				expect(rawequal(own, shown)).to.beTrue()
+
+				-- out into the hall (ceiling 272) with the shop's tile ready: the shop's level is shown, the hall's is the place's
+				ready["c128t192"] = true
+				state.ray = ceil(272)
+				state.now = state.now + 2
+
+				local shown2, own2 = F().CurrentAt(Vector(100, 0, 0))
+
+				expect(rawequal(shown2, shown)).to.beTrue()
+				expect(own2.id).to.equal("c256t320")
+				expect(rawequal(own2, F().PeekAt(100, 0, 0))).to.beTrue()
+
+				-- the remembered shot (no new ray, the feet 10 units on within the second): the same pair
+				local traces0 = #state.traces
+
+				state.now = state.now + 0.1
+
+				local shown3, own3 = F().CurrentAt(Vector(110, 0, 0))
+
+				expect(#state.traces).to.equal(traces0)
+				expect(rawequal(shown3, shown2)).to.beTrue()
+				expect(rawequal(own3, own2)).to.beTrue()
+
+				-- the sky: the open level, shown and of the place
+				state.ray = sky()
+				state.now = state.now + 2
+
+				local open, openOwn = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(open.open).to.beTrue()
+				expect(rawequal(openOwn, open)).to.beTrue()
+
+				-- a centre ray that fails: the plain level of the step, the same for both answers
+				util.TraceLine = function() error("no ray") end
+				state.now = state.now + 2
+
+				local plain, plainOwn = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(plain ~= nil).to.beTrue()
+				expect(rawequal(plainOwn, plain)).to.beTrue()
+			end
+		},
+		{
 			-- breaks if: the default test of a ready tile asks something else than the cache's tile under the player at the definition in use, or raises
 			name = "TileReady (default): the cache's Has for the tile under (x, y) at the tile size and definition in use; false when anything is missing or raises",
 			func = function(state)

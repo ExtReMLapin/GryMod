@@ -680,7 +680,8 @@ end
 
 -- The five up rays and the choice of the level for feet at (x, y, f): the part of CurrentAt that is the same for a player and for a place asked about (PeekAt). `last` is
 -- the level shown at the remembered shot of the player (nil for a place: no hold); `map` the map name. Gives the level, or nil when the engine failed for the
--- centre ray. Changes nothing but the kept levels (LevelFor, the open levels): not the remembered shot.
+-- centre ray. Changes nothing but the kept levels (LevelFor, the open levels): not the remembered shot. Gives TWO levels: the one to show (the held level when it is held,
+-- else the level of the place) and the level of the place (the same table when nothing is held, and for an open level and a plain step level).
 local function decide(x, y, f, held, map)
 	rayParams = rayParams or makeRayParams()
 
@@ -725,23 +726,29 @@ local function decide(x, y, f, held, map)
 
 		if zmin then
 			-- the camera goes where the up ray hit: the sky seen by the centre ray, or the highest solid when it hit one far over the feet. One table per top
-			return openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil)
+			local open = openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil)
+
+			return open, open
 		end
 
-		return Floors.Fallback(f)
+		local plain = Floors.Fallback(f)
+
+		return plain, plain
 	end
 
 	local own = Floors.LevelFor(f, ceiling)
 
 	-- the display hold: the level shown stays while it still holds the player and its tile is there (an open or step level is never held)
 	if held and held ~= own and held.thick and holds(held, f, ceiling, own) and Floors.TileReady(held, x, y) then
-		return held
+		return held, own
 	end
 
-	return own
+	return own, own
 end
 
--- CurrentAt(pos) -> level | nil, "bad position". pos = the Vector of the player's feet. See the block above.
+-- CurrentAt(pos) -> level, own | nil, "bad position". pos = the Vector of the player's feet. `level` is the level to SHOW (the held one when it is held), `own` the level of
+-- the PLACE (the same table when nothing is held): the generator is asked for `own` only (the preload predicts it), the view draws `level` where its tile is and `own`
+-- elsewhere. See the block above.
 function Floors.CurrentAt(pos)
 	if type(pos) ~= "table" and type(pos) ~= "Vector" then
 		return nil, "bad position"
@@ -760,7 +767,7 @@ function Floors.CurrentAt(pos)
 		local dx, dy, dz = x - last.x, y - last.y, f - last.z
 
 		if dx * dx + dy * dy + dz * dz <= RAY_MOVE_SQ then
-			return last.level
+			return last.level, last.own
 		end
 	end
 
@@ -772,22 +779,24 @@ function Floors.CurrentAt(pos)
 		last = nil
 	end
 
-	local level = decide(x, y, f, last and last.level, map)
+	local level, own = decide(x, y, f, last and last.level, map)
 
 	if not level then
 		-- the engine failed for the centre ray: the plain slab of the step, and the next call tries again
-		memo.valid, memo.level = false, nil
+		memo.valid, memo.level, memo.own = false, nil, nil
 
-		return Floors.Fallback(f)
+		local plain = Floors.Fallback(f)
+
+		return plain, plain
 	end
 
 	if level.open then
 		level.z = f -- the open level of a map is one table per top (only its z, the feet, changes)
 	end
 
-	memo.valid, memo.x, memo.y, memo.z, memo.t, memo.level = true, x, y, f, now, level
+	memo.valid, memo.x, memo.y, memo.z, memo.t, memo.level, memo.own = true, x, y, f, now, level, own
 
-	return level
+	return level, own
 end
 
 -- PeekAt(x, y, z) -> level | nil, "bad position". The level CurrentAt would give a player standing at (x, y) with the feet at z, for the tile preload (which asks it for the
