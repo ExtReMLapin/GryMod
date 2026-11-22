@@ -2790,6 +2790,160 @@ return {
 				expect(pcall(G.Cancel)).to.beTrue()
 				expect(#state.flushes).to.equal(2)
 			end
+		},
+		-- The preload (the tiles made in advance, from the in/out map): a fourth set, made after the main level, the floor below and the outside, and never wiped by a request.
+		-- fails if a preload tile is made before a tile somebody is waiting for, or with another level than its own, or if the hook is not there while only preload tiles wait
+		{
+			name = "preload: the tiles come after every tile of the main, below and outside sets, each with its own level table, in the order given; the hook is there only while something waits",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+				local entries = {}
+
+				for i = 1, 3 do
+					entries[i] = {tile = {level = P1.id, tx = i, ty = 0, res = 512, ppm = 2}, level = P1, d = i}
+				end
+
+				expect(isfunction(G.SetPreload)).to.beTrue()
+				G.SetPreload(entries)
+				expect(G.Pending()).to.equal(3)
+				expect((hook.GetTable()[HOOK_EVENT] or {})[HOOK_NAME] ~= nil).to.beTrue()
+
+				request9(state) -- nine main tiles, asked after the preload
+				expect(G.Pending()).to.equal(12)
+				stepAll(state)
+
+				expect(#state.renders).to.equal(12)
+
+				for i = 1, 9 do
+					expect(state.renders[i].level).to.equal("a1")
+				end
+
+				for i = 1, 3 do
+					local r = state.renders[9 + i]
+
+					expect(r.level).to.equal("open_t960")
+					expect(r.levelTable).to.equal(P1)
+					expect(r.tx).to.equal(i)
+				end
+
+				expect(#state.stores).to.equal(12)
+				expect(state.stores[12].format).to.equal(20)
+				expect((hook.GetTable()[HOOK_EVENT] or {})[HOOK_NAME]).to.beNil()
+			end
+		},
+		-- fails if a request (the radar makes one at every draw) wipes the preload queue, or if the preload tile that a new request pushes aside is lost
+		{
+			name = "preload: a Request does not wipe the queue, and the preload tile in progress that a new request pushes aside is made later, not lost",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+				local entries = {}
+
+				for i = 1, 3 do
+					entries[i] = {tile = {level = P1.id, tx = i, ty = 0, res = 512, ppm = 2}, level = P1, d = i}
+				end
+
+				G.SetPreload(entries)
+				G.Step(state.t) -- the first tile is made, the second one is in progress (not captured yet)
+				expect(#state.stores).to.equal(1)
+
+				request9(state) -- the main tiles take the lead; the tile in progress is not needed by the request
+				expect(request9(state)).to.beFalse() -- the same request again: nothing is redone
+
+				stepAll(state)
+
+				-- nine main tiles and the three preload tiles, each made once
+				expect(#state.renders).to.equal(12)
+
+				local seen = {}
+
+				for i = 1, #state.renders do
+					local r = state.renders[i]
+					local key = r.level .. "|" .. r.tx .. "," .. r.ty
+
+					expect(seen[key]).to.beNil()
+					seen[key] = true
+				end
+
+				expect(seen["open_t960|1,0"] and seen["open_t960|2,0"] and seen["open_t960|3,0"]).to.beTrue()
+			end
+		},
+		-- fails if the preload shows in the veil (Progress is about the main level only) or has no numbers of its own
+		{
+			name = "preload: Progress (the veil) is about the main level only; PreloadProgress gives done, total and failed",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+				local entries = {}
+
+				for i = 1, 3 do
+					entries[i] = {tile = {level = P1.id, tx = i, ty = 0, res = 512, ppm = 2}, level = P1, d = i}
+				end
+
+				G.SetPreload(entries)
+
+				local p = G.Progress()
+
+				expect(p.total).to.equal(0)
+				expect(p.active).to.beFalse()
+
+				local before = G.PreloadProgress()
+
+				expect(before.done).to.equal(0)
+				expect(before.total).to.equal(3)
+
+				stepAll(state)
+
+				local after = G.PreloadProgress()
+
+				expect(after.done).to.equal(3)
+				expect(after.total).to.equal(3)
+				expect(after.failed).to.equal(0)
+				expect(G.Progress().total).to.equal(0)
+			end
+		},
+		-- fails if a tile the cache has (made meanwhile by a request, or there from the start) is made again
+		{
+			name = "preload: a tile the cache has is left out when the preload is set, and one it got meanwhile is not made again (it still counts as done)",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+				local entries = {}
+
+				for i = 1, 3 do
+					entries[i] = {tile = {level = P1.id, tx = i, ty = 0, res = 512, ppm = 2}, level = P1, d = i}
+				end
+
+				state.stored[cacheKey(entries[1].tile)] = true -- there from the start
+				G.SetPreload(entries)
+				expect(G.PreloadProgress().total).to.equal(2)
+
+				state.stored[cacheKey(entries[3].tile)] = true -- made by somebody else while it waited
+				stepAll(state)
+
+				expect(#state.renders).to.equal(1)
+				expect(state.renders[1].tx).to.equal(2)
+				expect(G.PreloadProgress().done).to.equal(2)
+			end
+		},
+		-- fails if Cancel keeps the preload queue (the radar cancels when the minimap is switched off)
+		{
+			name = "preload: Cancel forgets the queue and removes the hook; the preload tiles get the same black-to-void treatment as the main ones",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+
+				G.SetPreload({{tile = {level = P1.id, tx = 1, ty = 0, res = 512, ppm = 2}, level = P1, d = 1}})
+				expect(G.Pending()).to.equal(1)
+				G.Cancel()
+				expect(G.Pending()).to.equal(0)
+				expect(G.PreloadProgress().total).to.equal(0)
+				expect((hook.GetTable()[HOOK_EVENT] or {})[HOOK_NAME]).to.beNil()
+
+				-- a tile is stored under the name of its level, not of its role: the content must not depend on who asked first
+				expect(G.VOID_FILL_SETS.preload).to.equal(true)
+			end
 		}
 	}
 }

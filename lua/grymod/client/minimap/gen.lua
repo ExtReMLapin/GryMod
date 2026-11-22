@@ -73,7 +73,9 @@ local function resetState()
 	S.sigLevel, S.sigBelow, S.sigOutside = nil, nil, nil -- the ids of its levels
 	S.sigTx0, S.sigTx1, S.sigTy0, S.sigTy1, S.sigRes, S.sigPpm = 0, 0, 0, 0, 0, 0
 	S.wanted = {} -- scratch: the level tables of a request by set (written and cleared inside Request, so that a request makes no table for them)
-	S.sets = {main = newSet(), below = newSet(), outside = newSet()} -- the below queue is made only after the main queue is empty, the outside's after both
+	-- the below queue is made only after the main queue is empty, the outside's after both; the preload's (Gen.SetPreload, not in SET_ORDER: a request never touches it)
+	-- after the three
+	S.sets = {main = newSet(), below = newSet(), outside = newSet(), preload = newSet()}
 	S.current = nil -- the tile in progress: {tile =, key =, set =, phase =, row =, nrows =, bgra =, chunks =, tries =}; set is "main", "below" or "outside"
 	S.failedAt = nil -- RealTime of the last abandoned tile of the request (they are asked for again 30 s later)
 	S.firedDone = nil -- the (done, total) of the last Progress event
@@ -366,9 +368,18 @@ function Gen.Request(level, cx, cy, extentUnits, below, outside)
 
 	wanted.main, wanted.below, wanted.outside = nil, nil, nil
 
-	if cur and not kept then
+	-- the preload is made after everything that is asked for, and is never lost: a preload tile not captured yet gives way and goes back to the front of its queue,
+	-- one that is under way (its image is being compressed) is finished first
+	if cur and not kept and cur.set == "preload" then
+		if cur.phase == PHASE_CAPTURE then
+			table.insert(S.sets.preload.queue, 1, {tile = cur.tile, key = cur.key, level = cur.level, d = 0})
+			S.current = nil
+		end
+	elseif cur and not kept then
 		S.current = nil -- not needed any more: its image and chunks are left to the garbage collector
 	end
+
+	pending = pending or #S.sets.preload.queue > 0
 
 	S.failedAt = nil
 
@@ -414,7 +425,7 @@ end
 local function queued()
 	local sets = S.sets
 
-	return #sets.main.queue + #sets.below.queue + #sets.outside.queue
+	return #sets.main.queue + #sets.below.queue + #sets.outside.queue + #sets.preload.queue
 end
 
 local function nextTile()
@@ -431,10 +442,29 @@ local function nextTile()
 	end
 
 	if not entry then
+		-- the preload, last of all. A tile the cache got meanwhile (a request made it) is counted as done and skipped.
+		local pre = S.sets.preload
+		local Cache = GryMod.Minimap.Cache
+
+		while #pre.queue > 0 do
+			local candidate = table.remove(pre.queue, 1)
+
+			if Cache and type(Cache.Has) == "function" and Cache.Has(candidate.tile) then
+				pre.done = pre.done + 1
+			else
+				entry, set = candidate, "preload"
+
+				break
+			end
+		end
+	end
+
+	if not entry then
 		return nil
 	end
 
-	S.current = {tile = entry.tile, key = entry.key, set = set, phase = PHASE_CAPTURE, row = 0, nrows = entry.tile.res / 4, bgra = nil, chunks = nil, tries = 0}
+	-- `level` is the preload tile's own level table (a preload makes tiles of many levels); the other sets use the level of their request
+	S.current = {tile = entry.tile, key = entry.key, set = set, level = entry.level, phase = PHASE_CAPTURE, row = 0, nrows = entry.tile.res / 4, bgra = nil, chunks = nil, tries = 0}
 
 	return S.current
 end
@@ -494,7 +524,7 @@ end
 --   * Gen.VOID_FILL_SETS says which sets get that treatment. A set left out is compressed as it is, except that a tile that is nothing but opaque black is a picture of
 --     nothing and becomes all void, hence an empty tile (before the main level followed that rule alone).
 -- Without the functions of Capture, or when one of them raises or gives something that is not a picture of the same size, the picture is used as it is.
-Gen.VOID_FILL_SETS = {main = true, below = true, outside = true}
+Gen.VOID_FILL_SETS = {main = true, below = true, outside = true, preload = true}
 
 local function voidTheFill(set, bgra)
 	local C = GryMod.Minimap.Capture
@@ -537,7 +567,7 @@ local function work(cur)
 
 	if cur.phase == PHASE_CAPTURE then
 		local C = M.Capture
-		local ok, bgra, err = pcall(C and C.Render, cur.tile, S.sets[cur.set].level)
+		local ok, bgra, err = pcall(C and C.Render, cur.tile, cur.level or S.sets[cur.set].level)
 
 		if not ok then
 			fail(cur, bgra)
@@ -689,7 +719,47 @@ function Gen.Progress()
 	}
 end
 
--- how many tiles are left to make (the one in progress and those of the floor below and of the outside included)
+-- SetPreload(entries): the tiles to make in advance, nearest first, each {tile = {level, tx, ty, res, ppm}, level = the level table (its heights are the
+-- camera's), d = the order key}. They are made after every tile of the main level, the floor below and the outside, never show in Progress (no veil), and are not
+-- wiped by a request. A tile the cache has is left out. Replaces the previous preload. Returns true, or false for something that is not a list.
+function Gen.SetPreload(entries)
+	local pre = S.sets.preload
+
+	pre.queue, pre.done, pre.total, pre.failed = {}, 0, 0, 0
+
+	if type(entries) ~= "table" then
+		return false
+	end
+
+	local Cache = GryMod.Minimap.Cache
+
+	for i = 1, #entries do
+		local e = entries[i]
+
+		if type(e) == "table" and type(e.tile) == "table" and type(e.level) == "table" and not (Cache and type(Cache.Has) == "function" and Cache.Has(e.tile)) then
+			local t = e.tile
+
+			pre.queue[#pre.queue + 1] = {tile = t, key = tileKey(t.level, t.tx, t.ty, t.res, t.ppm), level = e.level, d = e.d or 0}
+		end
+	end
+
+	pre.total = #pre.queue
+
+	if pre.total > 0 then
+		addHook()
+	end
+
+	return true
+end
+
+-- {done, total, failed} of the preload (the tiles that were already there when a turn came count as done)
+function Gen.PreloadProgress()
+	local pre = S.sets.preload
+
+	return {done = pre.done, total = pre.total, failed = pre.failed}
+end
+
+-- how many tiles are left to make (the one in progress and those of the floor below, of the outside and of the preload included)
 function Gen.Pending()
 	return queued() + (S.current and 1 or 0)
 end
