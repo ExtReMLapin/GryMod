@@ -1320,25 +1320,6 @@ return {
 				expect(type(why)).to.equal("string")
 			end
 		},
-		{
-			-- fails if the names of the first version of the rule (the opaque black) stop working: they are IsBackground, BackgroundToVoid and IsAllBackground with the black as bg
-			name = "the names of the first version (IsBlackOpaque, BlackOpaqueToVoid, IsAllBlackOpaque) are the rule with a black fill",
-			func = function()
-				local C = capture()
-				local K = "\0\0\0\255"
-
-				expect(C.IsBlackOpaque(0, 0, 0, 255)).to.equal(true)
-				expect(C.IsBlackOpaque(0, 0, 0, 1)).to.equal(false)
-				expect(C.IsBlackOpaque(227, 181, 139, 255)).to.equal(false)
-
-				local out, n = C.BlackOpaqueToVoid(K .. "\227\181\139\255" .. K)
-
-				expect(out == "\0\0\0\0\227\181\139\255\0\0\0\0").to.beTrue()
-				expect(n).to.equal(2)
-				expect(C.IsAllBlackOpaque(K .. K)).to.equal(true)
-				expect(C.IsAllBlackOpaque(K .. "\227\181\139\255")).to.equal(false)
-			end
-		},
 		-- GetRT -----------------------------------------------------------------------------------------------------------------
 		{
 			-- fails if: the render target is created again at each call, or with another name, size or depth mode

@@ -176,8 +176,7 @@ end
 --     alpha-255 pixels on the maps above, never a whole area). Only the colour of the fill is void; those pixels stay solid;
 --   * by the void rule above a pixel of the fill is solid, so a tile of the floor below stored with it was a wall painted over the outside: an invisible thing erasing a visible one.
 -- IsBackground is the rule; BackgroundToVoid and IsAllBackground apply it to a whole picture and FindBackground finds the colour (the Gen module decides for which set of tiles).
--- A background (`bg`) is a pixel as a string of four bytes B, G, R, 255 (the format of the pictures); none given means black, the first version of the rule (IsBlackOpaque,
--- BlackOpaqueToVoid and IsAllBlackOpaque are kept under their old names). Pure: no engine call. The pictures are strings of BGRA pixels; only a whole pixel at a position that is a
+-- A background (`bg`) is a pixel as a string of four bytes B, G, R, 255 (the format of the pictures); none given means black. Pure: no engine call. The pictures are strings of BGRA pixels; only a whole pixel at a position that is a
 -- multiple of 4 counts (the bytes of a colour followed by 255 also appear across two pixels). A pixel that is almost the fill (a channel off by one, an alpha of 254) is geometry and
 -- is never touched.
 local BLACK_BACKGROUND = "\0\0\0\255"
@@ -391,19 +390,6 @@ function Capture.FindBackground(bgra)
 	end
 
 	return string.char(math.floor(bestKey / 65536), math.floor(bestKey / 256) % 256, bestKey % 256, 255)
-end
-
--- the first version of the rule, with the black as the fill: kept under its names
-function Capture.IsBlackOpaque(b, g, r, a)
-	return Capture.IsBackground(b, g, r, a)
-end
-
-function Capture.BlackOpaqueToVoid(bgra)
-	return Capture.BackgroundToVoid(bgra)
-end
-
-function Capture.IsAllBlackOpaque(bgra)
-	return Capture.IsAllBackground(bgra)
 end
 
 local function answerTrue()
