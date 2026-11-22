@@ -323,8 +323,13 @@ Every test that replaces a module or a global puts it back in a `pcall` in `afte
   upper piece (it is the map's one), and a tile has one camera height, so a tile that holds both tall roofs and free sky shows the slab of the place
   where the player was.
 - **Sloped floors.** The floor of a level is the feet height rounded to 16 units, and a level may be reused by the player when the feet
-  stay within 24 units under and 40 over its floor. On a long slope the map changes level every few steps; the levels already made are
-  reused (they are known from the disk), but a long ramp makes several sets of tiles.
+  stay within 36 units under its floor and, over it, 40 units (the lowest class) or class - 72 (the other classes: a taller slab lets the feet
+  go higher, the head cut still has to be inside). On a long slope the map changes level every few steps; the levels already made are
+  reused (they are known from the disk), but a long ramp makes several sets of tiles. Measured on the long ramp of gm_construct
+  (400 units of height over 600, under a flat roof): with the old window (24 under, 40 over) one descent changed level 12 times, 24 sets of
+  tiles with the floor below of each; with this window 14 sets and 1 change of level on the way back up; over a walk through every ground node of the
+  graph, 46 sets of tiles became 26. The rule of exactness (the slab holds the feet and the head and stays under the ceiling) is the same at every shot
+  of the game. Still open: a level per slope, and bands of floors cut in the valleys of the histogram of heights (see the to-do list).
 - **A room whose ceiling changes height** (a gallery, a room with a lowered part) can give two sets of tiles, one for each ceiling
   class, because the slab is cut at the class that fits under the highest ceiling.
 - **Props placed afterwards.** The map shows only what the level creates. A prop a server added, or one the player spawned, is not on the

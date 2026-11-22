@@ -49,12 +49,13 @@ local function isClass(c)
 end
 
 -- the rule of the design for an anchor level (floor A, class C) to be usable with feet at f and a highest ceiling at c (written here again, independent
--- of the module): the floor window, the class under the ceiling (or the lowest class, 56, when there is no room), and the head cut inside (not for
+-- of the module): the floor window (36 under, over: 40 for the class 56, else max(40, C - 72)), the class under the ceiling (or the lowest class, 56, when there is no room), and the head cut inside (not for
 -- the class 56: a cut under the head in a low duct)
 local function compatible(level, f, c)
 	local A, C = level.fz, level.cls
+	local above = (C == 56) and 40 or math.max(40, C - 72) -- the window of the feet follows the class (the rule of 2026-11-22: 36 under, 40 or class - 72 over)
 
-	return A - 24 <= f and f <= A + 40 and (C == 56 or A + C >= f + 72) and (C == 56 or C <= c - A - 8)
+	return A - 36 <= f and f <= A + above and (C == 56 or A + C >= f + 72) and (C == 56 or C <= c - A - 8)
 end
 
 -- what a ray gives: a ceiling at height h, the sky, or nothing (the Vector is the hit position the engine gives)
@@ -933,7 +934,7 @@ return {
 		},
 		{
 			-- breaks if: a usable current level is not kept, or one that is no longer usable is
-			name = "CurrentAt: the current level is kept while it is usable (feet in A - 24 .. A + 40, class under the ceiling); the feet out of the window make a new anchor",
+			name = "CurrentAt: the current level is kept while it is usable (feet in A - 36 .. A + max(40, class - 72), class under the ceiling); the feet out of the window make a new anchor",
 			func = function(state)
 				state.ray = ceil(150)
 
@@ -942,15 +943,17 @@ return {
 				-- 60 units away, feet 30 up, ceiling 180 (a bigger class would fit, it is not taken at once): still f0c120, the same table
 				state.ray = ceil(180)
 				expect(F().CurrentAt(Vector(60, 0, 30))).to.equal(first)
-				-- 24 under A, ceiling 150
+				-- 36 under A (the lower end of the window since 2026-11-22; it was 24), ceiling 150
 				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(120, 0, -24))).to.equal(first)
+				expect(F().CurrentAt(Vector(120, 0, -36))).to.equal(first)
+				-- 48 over A: the window of the class 120 goes to A + max(40, 120 - 72) = A + 48, and the head cut is inside (0 + 120 >= 48 + 72)
+				expect(F().CurrentAt(Vector(150, 0, 48))).to.equal(first)
 				expect(#F().Known()).to.equal(1)
 
-				-- feet at 45 (over A + 40): a new anchor, A = floor(45 / 16 + 0.5) * 16 = 48, room = 195 - 48 - 8 = 139: 120
+				-- feet at 52 (over A + 48, and the head cut is no longer inside): a new anchor, A = floor(52 / 16 + 0.5) * 16 = 48, room = 195 - 48 - 8 = 139: 120
 				state.ray = ceil(195)
 
-				local second = F().CurrentAt(Vector(180, 0, 45))
+				local second = F().CurrentAt(Vector(300, 0, 52)) -- far enough from the last shot (over 48 units) for new rays
 
 				expect(second.id).to.equal("f48c120")
 				expect(#F().Known()).to.equal(2)

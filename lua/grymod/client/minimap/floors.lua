@@ -391,8 +391,11 @@ end
 --     zlo = A - 56 .. zhi = A + C.
 --   * C is the biggest class <= (highest ceiling - A) - 8, and 56 at least (with a ceiling under A + 64, no room for a player, the slab goes 56 up all
 --     the same: there is no lower class).
---   * An anchor is USABLE with feet at f and a highest ceiling at c when A - 24 <= f <= A + 40, and C == 56, or A + C >= f + 72 (the head cut is
---     inside) and C <= c - A - 8. The class 56 is always usable on its floor: the head cut does not apply to it (a cut under the head in a low duct).
+--   * An anchor is USABLE with feet at f and a highest ceiling at c when A - 36 <= f and f <= A + 40 for the class 56, or A + max(40, C - 72) for the other
+--     classes, and C == 56, or A + C >= f + 72 (the head cut is inside) and C <= c - A - 8. The class 56 is always usable on its floor: the head cut does not
+--     apply to it (a cut under the head in a low duct). A bigger class has a taller slab, so its window of feet follows it (measured on the ramp of
+--     gm_construct, 2026-11-22: 24 units under and 40 over gave a new level every 24 to 32 units of a slope of 0.67, 12 levels for one descent; 36 under and the
+--     window that follows the class give 7, and 1 change of level on the way back up; no violation of the rule at the shots of the game).
 -- At each shot: (1) the level of the last shot stays while it is usable, and its class goes up only when a bigger class has stayed available at every
 -- shot for one second (RealTime) in a row, never at each shot; (2) else, among the known anchors that are usable the one with the biggest class, then the
 -- nearest floor; (3) else a new anchor, which enters the registry.
@@ -409,7 +412,7 @@ local RAY_LENGTH = 32768
 local RAY_MOVE_SQ = 48 * 48
 local RAY_INTERVAL = 1 -- seconds; also the time a bigger class has to stay available before it is taken
 local MAX_RISE = 512 -- a ceiling higher than this over the feet is the open sky
-local FLOOR_BELOW = 24 -- the window of the feet around an anchor's floor: A - 24 .. A + 40
+local FLOOR_BELOW = 36 -- the window of the feet around an anchor's floor: A - 36 .. A + 40 (class 56) or A + max(40, class - 72) (the other classes), see usable
 local FLOOR_ABOVE = 40
 local HEAD_CUT = 72
 local CEILING_GAP = 8
@@ -449,7 +452,13 @@ end
 local function usable(level, f, c)
 	local a, k = level.fz, level.cls
 
-	if a - FLOOR_BELOW > f or f > a + FLOOR_ABOVE then
+	local above = FLOOR_ABOVE
+
+	if k ~= MIN_CLASS and k - HEAD_CUT > above then
+		above = k - HEAD_CUT -- the slab of a big class is tall: the feet may be higher over its floor (the head cut below still decides)
+	end
+
+	if a - FLOOR_BELOW > f or f > a + above then
 		return false
 	end
 
