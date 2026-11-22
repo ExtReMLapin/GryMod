@@ -11,7 +11,7 @@ local Z = GryMod.ZoneMapClient
 
 job:wait(function() return Z and Z.Boxes and type(Z.Boxes()) == "table" end, 120)
 
-local pts = (job.args and job.args.points == "nav") and COV.readCentres("grymod_tmp/" .. (job.args.name or ("cov_centres_" .. game.GetMap())) .. ".txt") or nil
+local pts = (job.args and job.args.points == "nav") and COV.readCentres() or nil
 local begun = COV.begin({points = pts})
 local G = M.Gen
 

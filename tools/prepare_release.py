@@ -12,6 +12,7 @@ What it does, in this order, and stops at the first thing that is wrong (exit 1,
     --workshop, turns `GryMod.Workshop = false` into true (the Workshop package asks the clients to subscribe instead of sending every file);
   * checks that the Workshop id written in the code (GryMod.WSID) is the one given with --expect-wsid (the id of the repository's secret): a release of
     the wrong item is the mistake that cannot be taken back;
+  * with --final (a real release), refuses a GryMod.WSID that is the number of an item the addon has left (the old GryMod item: Remastered is a new one);
   * checks the size (--max-mb, 140 by default: what the Workshop took so far).
 The tree it reads is never changed. Nothing here talks to the network or to Steam.
 """
@@ -32,6 +33,9 @@ ADDON_TAGS = {"fun", "roleplay", "scenic", "movie", "realism", "cartoon", "water
 SHARED = "lua/autorun/grymod_shared.lua"
 VERSION = re.compile(r"^v?(\d+(?:\.\d+){1,2}(?:-[0-9A-Za-z.]+)?)$")
 PATH_CHARACTERS = re.compile(r"^[a-z0-9_./-]+$")
+# Workshop items this addon must never point at in a final release. GryMod Remastered is a NEW item (a new addon, to have its own subscribers): the id
+# of the first GryMod item left in GryMod.WSID would make the servers ask their players to subscribe to that old item.
+RETIRED_WSIDS = {153963150: "the old GryMod item (GryMod HUD), not GryMod Remastered"}
 
 
 class ReleaseError(Exception):
@@ -150,7 +154,7 @@ def stamp_shared(text, version, workshop):
     return text[: match.start()] + line + text[match.end():]
 
 
-def prepare(root, out, version, workshop=False, tracked=None, max_mb=140, expect_wsid=None):
+def prepare(root, out, version, workshop=False, tracked=None, max_mb=140, expect_wsid=None, final=False):
     """Builds `out` from `root`. Returns {"files", "bytes", "wsid", "version", "workshop"}; raises ReleaseError."""
     version = parse_version(version)
     wanted_wsid = parse_wsid(expect_wsid)
@@ -175,6 +179,9 @@ def prepare(root, out, version, workshop=False, tracked=None, max_mb=140, expect
         raise ReleaseError(f"{SHARED} has no `GryMod.WSID = <number>` line")
 
     wsid = int(found.group(1))
+
+    if final and wsid in RETIRED_WSIDS:
+        raise ReleaseError(f"GryMod.WSID is {wsid}, {RETIRED_WSIDS[wsid]}: put the number of the new item in {SHARED} (and in the WORKSHOP_ID secret) before a release")
 
     if wanted_wsid is not None and wanted_wsid != wsid:
         raise ReleaseError(f"the code says the Workshop item is {wsid} (GryMod.WSID) and the id given is {wanted_wsid}: one of them is wrong, nothing was built")
@@ -207,11 +214,12 @@ def main(argv=None):
     parser.add_argument("--workshop", action="store_true", help="the Workshop flavour (GryMod.Workshop = true)")
     parser.add_argument("--max-mb", type=float, default=140)
     parser.add_argument("--expect-wsid", default=None, help="the Workshop id of the repository's secret; refused when it is not the code's GryMod.WSID")
+    parser.add_argument("--final", action="store_true", help="a real release: refuses a Workshop id the addon has left (the old GryMod item)")
     parser.add_argument("--root", default=ROOT)
     args = parser.parse_args(argv)
 
     try:
-        report = prepare(args.root, args.out, args.version, args.workshop, max_mb=args.max_mb, expect_wsid=args.expect_wsid)
+        report = prepare(args.root, args.out, args.version, args.workshop, max_mb=args.max_mb, expect_wsid=args.expect_wsid, final=args.final)
     except ReleaseError as err:
         print(f"::error::{err}", file=sys.stderr)
 

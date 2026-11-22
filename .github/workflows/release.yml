@@ -16,6 +16,10 @@
 # built again from the same commit by the same script: the version is written in lua/autorun/grymod_shared.lua (GryMod.Version) and the Workshop one
 # gets GryMod.Workshop = true (the servers then ask the clients to subscribe instead of sending every file).
 #
+# GryMod Remastered is a NEW Workshop item (not an update of the first GryMod one). Before its first release: run the `Create Workshop item` workflow
+# (workshop-create.yml, a private item), then write the number it prints in GryMod.WSID and in the WORKSHOP_ID secret. Until then a real release stops
+# in `verify`: GryMod.WSID is still the old item's number, which the release tool refuses (--final).
+#
 # A rehearsal that publishes nothing: Actions > Release > Run workflow, with a version (it builds both packages and keeps them as artifacts for 3 days).
 # The release notes become the Workshop change note. The upload action writes them into a VDF file without escaping: a double quote (") makes the upload
 # fail, which the `verify` job refuses before. To retry a failed upload without deleting anything: `gh release edit TAG --draft=true`, then `--draft=false`.
@@ -41,6 +45,8 @@ jobs:
       VERSION: ${{ github.event.release.tag_name || inputs.version }}
       WORKSHOP_ID: ${{ secrets.WORKSHOP_ID }}
       RELEASE_BODY: ${{ github.event.release.body }}
+      # a real release also refuses the id of the old GryMod item; a rehearsal does not (it would always fail until the new item exists)
+      FINAL: ${{ github.event_name == 'release' && '--final' || '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -59,9 +65,9 @@ jobs:
       - name: Tests of the release tools and of the shipped resources
         run: python -m unittest tools.test_prepare_release tools.test_check_lua_syntax tools.test_shipped_resources tools.test_sound_files
       - name: Build the zip package (checks the files, the version and the size)
-        run: python tools/prepare_release.py --version "$VERSION" --out dist/zip
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/zip $FINAL
       - name: Build the Workshop package (also checks the Workshop id against the secret)
-        run: python tools/prepare_release.py --version "$VERSION" --out dist/workshop --workshop --expect-wsid "$WORKSHOP_ID"
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/workshop --workshop --expect-wsid "$WORKSHOP_ID" $FINAL
       - name: Keep both packages (rehearsal only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -84,7 +90,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build the zip package
-        run: python tools/prepare_release.py --version "$VERSION" --out dist/grymod
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/grymod --final
       - name: Zip it (everything under a grymod/ folder) and attach it to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,7 +113,7 @@ jobs:
           python-version: "3.12"
       # the Workshop flavour of the package, with the version written and the Workshop id checked against the secret once more
       - name: Build the Workshop package
-        run: python tools/prepare_release.py --version "$VERSION" --out dist/workshop --workshop --expect-wsid "$WORKSHOP_ID"
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/workshop --workshop --expect-wsid "$WORKSHOP_ID" --final
       # addon.json "ignore" is applied again by the action when it packs the .gma
       - uses: gmod-workshop/workshop-upload@8588ccf539eca957904547557454b4dd96bf5fa2 # v1.2.0
         with:

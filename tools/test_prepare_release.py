@@ -172,6 +172,24 @@ class Refusals(unittest.TestCase):
         finally:
             a.cleanup()
 
+    def test_a_final_release_refuses_the_id_of_the_old_item(self):
+        # GryMod Remastered is a new Workshop item: the code must not still point at the old GryMod item (the servers would ask their players to subscribe to it)
+        self.check("old GryMod item", final=True)
+
+    def test_a_final_release_with_the_new_id_passes(self):
+        a = Addon(shared=SHARED.replace("153963150", "3500000001"))
+        try:
+            self.assertEqual(a.prepare(final=True, expect_wsid="3500000001")["wsid"], 3500000001)
+        finally:
+            a.cleanup()
+
+    def test_without_final_the_old_id_is_allowed_(self):
+        a = Addon()
+        try:
+            self.assertEqual(a.prepare()["wsid"], 153963150)
+        finally:
+            a.cleanup()
+
     def test_too_big(self):
         self.check("MB", files={"materials/grymod/big.vtf": b"0" * 3_000_000}, max_mb=2)
 
