@@ -291,3 +291,129 @@ function COV.why(route, maxExamples)
 
 	return {counts = counts, examples = examples}
 end
+
+-- ---------------------------------------------------------------------------------------------------------------------------------------
+-- One map from start to finish (the exploration of 2026-11-22, a test client that is not the owner's game):
+--   server:  navmesh centres to a file (see COV.readCentres), or nothing when the map has no navigation mesh;
+--   client:  COV.begin{points = COV.readCentres(), k = 141.5}  -- scratch cache, a radar that asks nothing, frame guards off (a test client runs at 20 fps), baseline, then the preload starts
+--            (wait until GryMod.Minimap.Gen.Pending() == 0 and PreloadProgress().total > 0, or the plan found nothing)
+--            COV.result()                                     -- the same walk after the preload, and the why
+--            COV.finish()                                     -- everything back, the scratch folder deleted
+function COV.readCentres(path)
+	local text = file.Read(path or "grymod_tmp/centres.txt", "DATA")
+	local pts = {}
+
+	if text then
+		for x, y, z in string.gmatch(text, "(-?%d+),(-?%d+),(-?%d+)") do
+			pts[#pts + 1] = {x = tonumber(x), y = tonumber(y), z = tonumber(z)}
+		end
+	end
+
+	return pts
+end
+
+function COV.begin(opts)
+	opts = opts or {}
+
+	local Mm = GryMod.Minimap
+
+	COV.real = COV.real or {key = Mm.Cache.Key, request = Mm.Gen.Request, pFrame = Mm.Preload._frameTime, gFrame = Mm.Gen._frameTime, screenK = Mm.Settings.ScreenConstant, convar = Mm.Preload._convar}
+	COV.scratch = "zz_cov_" .. string.lower(game.GetMap()) .. "_v4"
+	Mm.Cache.Key = function() return COV.scratch end
+	Mm.Cache.Reset()
+	Mm.Gen.Request = function() return false end
+	Mm.Gen.Cancel()
+	Mm.Preload.Stop()
+	Mm.Cache.Clear(COV.scratch)
+	Mm.Cache.Reset()
+	Mm.Preload._frameTime = function() return 0.005 end
+	Mm.Gen._frameTime = function() return 0.005 end
+
+	-- the owner's setup, without writing any saved setting: a screen constant of his 4K screen (the radar of a small test window records another one at every draw), and the
+	-- automatic zoom on with his ranges (the convars are read through Preload._convar)
+	local k = opts.k or 141.5
+
+	Mm.Settings.ScreenConstant = function() return k end
+
+	local realConvar = COV.real.convar
+
+	Mm.Preload._convar = function(name)
+		if name == "gry_radar_autozoom" then
+			return 1
+		end
+
+		return realConvar(name)
+	end
+
+	local pts = opts.points
+
+	if not pts or #pts == 0 then
+		pts = {}
+
+		local graph = GryMod.AIN.Load(game.GetMap())
+
+		for _, n in ipairs(graph and graph.nodes or {}) do
+			if n.type == 2 then
+				pts[#pts + 1] = {x = n.x, y = n.y, z = n.z}
+			end
+		end
+	end
+
+	if #pts == 0 then
+		return {error = "no points (no navigation mesh centres and no graph)"}
+	end
+
+	-- the tour is O(n^2): a map with a huge navigation mesh is sampled (every k-th point, in the order of the list, which follows the mesh's own order)
+	local maxPoints = opts.maxPoints or 3000
+
+	if #pts > maxPoints then
+		local thinned, stride = {}, #pts / maxPoints
+
+		for i = 0, maxPoints - 1 do
+			thinned[#thinned + 1] = pts[math.floor(i * stride) + 1]
+		end
+
+		pts = thinned
+	end
+
+	COV.nav = COV.tour(pts, 96, 600)
+	COV.base = COV.eval(COV.nav)
+
+	local ok, why = Mm.Preload.Start()
+
+	COV.t0 = SysTime()
+
+	return {points = #pts, steps = #COV.nav, baseline = {veil = COV.base.veilEventsUnderPlayer, open = COV.base.veilOpen, floor = COV.base.veilFloor, levels = COV.base.levels}, start = {ok, why}}
+end
+
+function COV.result()
+	local e = COV.eval(COV.nav)
+	local w = COV.why(COV.nav, 4)
+	local prog = M.Gen.PreloadProgress()
+
+	return {
+		preloadTiles = prog.total, preloadFailed = prog.failed, seconds = math.floor((SysTime() - COV.t0) * 10) / 10,
+		veilBefore = COV.base.veilEventsUnderPlayer, veilAfter = e.veilEventsUnderPlayer, openAfter = e.veilOpen, floorAfter = e.veilFloor, levels = e.levels,
+		why = w.counts, examples = w.examples
+	}
+end
+
+function COV.finish()
+	local Mm = GryMod.Minimap
+
+	Mm.Gen.Cancel()
+	Mm.Preload.Stop()
+
+	if COV.real then
+		Mm.Gen.Request = COV.real.request
+		Mm.Preload._frameTime = COV.real.pFrame
+		Mm.Gen._frameTime = COV.real.gFrame
+		Mm.Settings.ScreenConstant = COV.real.screenK
+		Mm.Preload._convar = COV.real.convar
+		Mm.Cache.Clear(COV.scratch)
+		Mm.Cache.Key = COV.real.key
+		Mm.Cache.Reset()
+	end
+
+	Mm.Floors.Reset()
+end

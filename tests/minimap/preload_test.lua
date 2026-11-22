@@ -474,6 +474,52 @@ return {
 			end
 		},
 		{
+			-- The level of a place is "the usable anchor of the biggest class among those known": it depends on which anchors the registry holds when the place is asked. At the start of
+			-- a plan it holds few, at the end all of them, and a player arriving later gets the choice of the complete registry. Measured on gm_everpine_mall: the floors left missing were
+			-- places prepared under a level chosen early. breaks if: the plan is made once (the early places are named with an incomplete registry), or the tiles of the first pass are handed over too
+			name = "driver: the plan is made in two passes over the same places (the first fills the registry of levels, the second asks again with the complete one) and only the second pass's tiles are handed over",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					-- a PeekAt whose answer depends on how many places it has seen: the first pass answers "early", the second "late" (as the registry fills)
+					local seenPlaces = 0
+					GryMod.Minimap.Floors.PeekAt = function(x, y, z)
+						seenPlaces = seenPlaces + 1
+
+						return {id = seenPlaces <= 2 and "early" or "late", zlo = z - 56, zhi = z + 120}
+					end
+
+					env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = "outdoor", nodes = {
+						{x = 100, y = 100, z = 0, type = 2},
+						{x = 3100, y = 100, z = 0, type = 2}
+					}})
+					expect(P().Start()).to.beTrue()
+
+					local frames = 0
+
+					while #env.hooks > 0 and frames < 100 do
+						env.frame()
+						frames = frames + 1
+					end
+
+					local seen = {}
+
+					for _, e in ipairs(env.handed) do
+						seen[e.tile.level] = true
+					end
+
+					expect(seenPlaces).to.equal(4) -- two places, two passes
+					expect(seen.late).to.beTrue() -- what the complete registry says
+					expect(seen.early).to.beNil() -- what the first pass said is not handed over
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			-- breaks if: the places are not part of the steps (a step would do all of them at once), or the job is done before them
 			name = "NewJob: the boxes come first, then the places, in the same steps; the job is done when both are done",
 			func = function()
@@ -532,7 +578,8 @@ return {
 					expect(seen[2] ~= nil and seen[2] > 0).to.beTrue()
 					expect(seen[4] ~= nil and seen[4] > 0).to.beTrue()
 					expect(seen[8]).to.beNil()
-					expect(env.peeks).to.equal(2) -- the air node made no place
+					-- the air node made no place; the plan is made in two passes (see the next case), so each of the two places is asked twice
+					expect(env.peeks).to.equal(4)
 
 					-- no graph: the boxes alone, nothing raises
 					env.set({nodes = {}})
