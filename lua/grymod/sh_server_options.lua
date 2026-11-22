@@ -17,7 +17,7 @@ Settings.List = {
 	{name = "gry_mechanics", kind = "choice", values = {"crysis", "classic"}},
 	{name = "gry_cloak_ai", kind = "bool"},
 	{name = "gry_radar_allies_always", kind = "bool"},
-	{name = "gry_movement", kind = "bool"},
+	{name = "gry_movement", kind = "choice", values = {"0", "1", "2"}},
 	{name = "gry_radar_objects", kind = "bool"},
 	{name = "gry_zonemap", kind = "bool"},
 	{name = "gry_zonemap_navmesh", kind = "bool"},

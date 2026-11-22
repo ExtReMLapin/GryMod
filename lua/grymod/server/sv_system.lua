@@ -306,7 +306,7 @@ hook.Add("KeyRelease", "keyreleasestrengthgry", GryMod.RSuperJump)
 -- Is the player really using the Speed mode (sprinting fast enough, on the ground or swimming)? The one test of the
 -- sprint drain below and of the rate told to the client (GryMod.EnergyRate in sv_health.lua).
 function GryMod.IsSpeedSprinting(ply)
-	return ply:IsSprinting() == true and ply:GetVelocity():LengthSqr() > 170000 and (ply:IsOnGround() or ply:WaterLevel() > 1) and ply.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor
+	return ply:IsSprinting() == true and ply:GetVelocity():LengthSqr() > GryMod.Movement.SprintSpeedSqr() and (ply:IsOnGround() or ply:WaterLevel() > 1) and ply.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor
 end
 
 hook.Add("Think", "GrySpeedThink", function()

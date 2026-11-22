@@ -2,7 +2,8 @@
 -- made of folding categories (one subject each), every control has a SHORT label (a long one is cut by the panel) and its explanation sits under it in a small
 -- wrapped text. None of the settings was lost on the way, and opening a menu writes nothing.
 
--- the controls of a panel as "kind:convar" (sorted): what the menus held before they were put in categories (listed by hand from the game, 2026-11-22)
+-- the controls of a panel as "kind:convar" (sorted): what the menus held before they were put in categories (listed by hand from the game, 2026-11-22),
+-- and the movement speeds choice of the server section (a third combo box, 2026-11-22)
 local CONFIG = [[binder
 binder
 box:gry_binoculars_aim
@@ -51,6 +52,7 @@ box:gry_zoom_follow_fov
 box:gry_zoom_own
 button:Open the effects test window
 button:Switch every element back on
+combo:?
 combo:?
 combo:?
 mixer

@@ -351,7 +351,15 @@ function GryMod.AdminOptions(Panel)
 		}
 	})
 	GryMod.AdminOption(Panel, "Camouflage: enemies forget you", "gry_cloak_ai", "bool", {into = form, help = "Striders, hunters and manhacks forget you."})
-	GryMod.AdminOption(Panel, "Original movement speeds", "gry_movement", "bool", {into = form, help = "The original game's walk and run speeds (177 and 266 units a second, the speed mode's sprint 757) instead of GryMod's own; the energy is not touched."})
+	GryMod.AdminOption(Panel, "Movement speeds", "gry_movement", "choice", {
+		into = form,
+		choices = {
+			{"GMod's own speeds", "0"},
+			{"Crysis vanilla speeds", "1"},
+			{"Crysis ratios on GMod's speeds", "2"}
+		}
+	})
+	form:ControlHelp("Crysis vanilla: the original game's walk 177 and sprint 266 units a second, the speed mode's sprint climbing to 757 in a second. Ratios: GMod's walk 200 and sprint 400 with the same increases in the speed mode. Both also use the original's energy rules.")
 	GryMod.AdminOption(Panel, "Grenade warning: armed ones only", "gry_grenade_armed_only", "bool", {into = form, help = "Only armed grenades, mines in the air... Off: also the ones lying around."})
 	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
 	GryMod.AdminOption(Panel, "Health regeneration", "gry_health_regen", "bool", {into = form, help = "The suit repairs the health over time. Off: no regeneration."})

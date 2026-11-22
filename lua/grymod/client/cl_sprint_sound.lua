@@ -33,7 +33,8 @@ SS.AIR_GRACE = 0.5
 -- how long the stop sounds play (a sound that is still playing is not played again, as in the game)
 SS.STOP_LENGTH = {ground = 2.45, underwater = 2.15}
 
--- the speed (squared, units/s) the client counts as moving for the sprint: the server's rule (GryMod.IsSpeedSprinting)
+-- the speed (squared, units/s) the client counts as moving for the sprint: the server's rule (GryMod.IsSpeedSprinting), which follows the base speeds
+-- option (GryMod.Movement.SprintSpeedSqr, sh_movement.lua); this is the old rule's value, kept as the fallback
 SS.SPRINT_SPEED_SQR = 170000
 
 -- Quirks of the original that are kept because they are what the game does (set to false to leave them out):
@@ -265,7 +266,7 @@ function SS.Sample(ply, energy, wasOnGround)
 
 	return {
 		speed = ply.NanosuitMode == GryMod.Modes.SPEED,
-		sprint = ply:IsSprinting() == true and velocity:LengthSqr() > SS.SPRINT_SPEED_SQR,
+		sprint = ply:IsSprinting() == true and velocity:LengthSqr() > (GryMod.Movement and GryMod.Movement.SprintSpeedSqr() or SS.SPRINT_SPEED_SQR),
 		onGround = onGround,
 		jumped = wasOnGround == true and not onGround and velocity.z > 0,
 		waterLevel = ply:WaterLevel(),

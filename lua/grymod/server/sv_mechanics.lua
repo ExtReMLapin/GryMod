@@ -11,8 +11,13 @@ GryMod.Mech = Mech
 local convar = CreateConVar("gry_mechanics", "crysis", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
 	"Suit rules: crysis (the original game's numbers) or classic (GryMod's earlier ones)")
 
--- GryMod.Config.Mechanics wins over the convar (the tests use it, and so can another addon)
+-- GryMod.Config.Mechanics wins over the convar (the tests use it, and so can another addon). The base speeds option on 1 or 2 (gry_movement, sh_movement.lua)
+-- means the original's rules too: its speeds and its energy go together.
 function Mech.IsCrysis()
+	if GryMod.Movement and GryMod.Movement.Enabled() then
+		return true
+	end
+
 	local choice = GryMod.Config and GryMod.Config.Mechanics or convar:GetString()
 
 	return choice ~= "classic"
@@ -56,7 +61,8 @@ end
 -- above a fifth of the bar, x1.4 from empty to a fifth, x1.3 empty; research-mech/SPEEDS.md). The plain sprint is 400 and the
 -- top is 600 here, so the multipliers are put on that line (1 -> 400, 2.85 -> 600): x1.4 is 443.2 and x1.3 is 432.4, always
 -- above the plain sprint. The earlier rule kept the top speed until the bar was empty, then fell back to 400.
--- With the base speeds option (gry_movement, sv_movement.lua) the line is the original's own: the plain sprint 266 and the top 757.
+-- With the base speeds option (gry_movement 1 or 2, sh_movement.lua) the line is the original's own (or its ratios on GMod's 400) and, above a fifth of
+-- the bar, the multiplier CLIMBS from x1.3 to x2.85 in the first second of the sprint (`seconds`; without it the climb is taken as done).
 local function bounds()
 	if GryMod.Movement then
 		return GryMod.Movement.Bounds()
@@ -71,7 +77,7 @@ local function multiplierSpeed(multiplier)
 	return plain + (multiplier - 1) / (2.85 - 1) * (top - plain)
 end
 
-function Mech.SpeedRunSpeed(energy)
+function Mech.SpeedRunSpeed(energy, seconds)
 	local plain, top = bounds()
 
 	if not Mech.IsCrysis() then
@@ -79,6 +85,10 @@ function Mech.SpeedRunSpeed(energy)
 	end
 
 	if energy > 20 then
+		if GryMod.Movement and GryMod.Movement.Enabled() and seconds then
+			return multiplierSpeed(GryMod.Movement.SprintMultiplier(seconds))
+		end
+
 		return top
 	elseif energy > 0 then
 		return multiplierSpeed(1.4)
@@ -87,12 +97,32 @@ function Mech.SpeedRunSpeed(energy)
 	return multiplierSpeed(1.3)
 end
 
+-- Whether the player holds the sprint key and moves (a field so that a test can say it): the climb of the speed mode's sprint counts from there.
+function Mech.SprintHeld(ply)
+	return ply:KeyDown(IN_SPEED) and ply:GetVelocity():Length2DSqr() > 100
+end
+
 -- The run speed of a player in the speed mode follows the energy at every frame (the one place that sets it while in the mode:
 -- the mode change sets the top speed, see SetNanosuitMode).
 hook.Add("Think", "GryMod run speed", function()
+	local movement = GryMod.Movement and GryMod.Movement.Enabled()
+
 	for _, ply in ipairs(player.GetAll()) do
 		if ply.Nanosuit_mode == GryMod.Modes.SPEED then
-			local run = Mech.SpeedRunSpeed(ply:GetNW2Float("GryEnergy"))
+			-- the seconds of the sprint (only the base speeds option climbs): the start is stamped when the key is held, forgotten when it is let go
+			local seconds
+
+			if movement then
+				if Mech.SprintHeld(ply) then
+					ply.gry_sprint_since = ply.gry_sprint_since or CurTime()
+					seconds = CurTime() - ply.gry_sprint_since
+				else
+					ply.gry_sprint_since = nil
+					seconds = 0
+				end
+			end
+
+			local run = Mech.SpeedRunSpeed(ply:GetNW2Float("GryEnergy"), seconds)
 
 			if ply:GetRunSpeed() ~= run then
 				ply:SetRunSpeed(run)
