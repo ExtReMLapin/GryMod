@@ -425,6 +425,10 @@ function GryMod.ZoneMapOptions(Panel)
 
 	Panel:Help(Zone and Zone.StatusText() or "In/out map: not available")
 	Panel:CheckBox("Draw the in/out map in the world (debug)", "gry_zonemap_debug")
+	Panel:CheckBox("In/out map debug: show the IN zones (indoor, red)", "gry_zonemap_debug_in")
+	Panel:CheckBox("In/out map debug: show the OUT zones (outdoor, green)", "gry_zonemap_debug_out")
+	Panel:CheckBox("In/out map debug: draw the faces (the filled translucent volumes)", "gry_zonemap_debug_faces")
+	Panel:CheckBox("In/out map debug: draw the edges (the lines around each box and the ceiling height line)", "gry_zonemap_debug_edges")
 	Panel:NumSlider("In/out map debug: display distance (metres)", "gry_zonemap_debug_range", 20, 300, 0)
 end
 

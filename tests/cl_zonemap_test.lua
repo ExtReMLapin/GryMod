@@ -16,7 +16,53 @@ local HOOK = "GryMod zonemap debug"
 local HUD_HOOK = "GryMod zonemap debug hud"
 local DEBUG = "gry_zonemap_debug"
 local RANGE = "gry_zonemap_debug_range"
+local SHOW_IN = "gry_zonemap_debug_in"
+local SHOW_OUT = "gry_zonemap_debug_out"
+local FACES = "gry_zonemap_debug_faces"
+local EDGES = "gry_zonemap_debug_edges"
 local METRES_PER_UNIT = 0.01905
+
+-- a convar that must exist (a missing one is a failed case, not a crash in the middle of it)
+local function needConVar(name)
+	local convar = GetConVar(name)
+
+	expect(convar ~= nil).to.beTrue()
+
+	return convar
+end
+
+-- Runs fn with the test runner's step hook (a count hook that checks the time of a step) taken off, and puts it back, also when fn raises. The hook allocates a
+-- few KB each time it fires, and how often it fires depends on whether the JIT compiled the loop being measured (a compiled loop never fires it): a memory
+-- measure under it says more about the JIT than about the code. Without it the measure is what the code allocates.
+local function withoutRunnerHook(fn)
+	local hookFn, mask, count = debug.gethook()
+
+	debug.sethook()
+
+	local ok, result = pcall(fn)
+
+	if hookFn then
+		debug.sethook(hookFn, mask, count)
+	end
+
+	if not ok then
+		error(result, 0)
+	end
+
+	return result
+end
+
+-- three indoor boxes (cells x 0 to 2, ceiling class 3 = 120 units) then two outdoor ones (cells x 3 and 4, ceiling class 5 = 224 units), all on row 0, layer 0.
+-- The cyan line of a box tells its kind by its height. A position at y = 500 is over no box.
+local function mixedBoxes()
+	return {boxes = {
+		{0, 0, 0, 0, 0, 2, 3},
+		{0, 1, 0, 1, 0, 2, 3},
+		{0, 2, 0, 2, 0, 2, 3},
+		{0, 3, 0, 3, 0, 1, 5},
+		{0, 4, 0, 4, 0, 1, 5}
+	}}
+end
 
 local function walk(panel, found)
 	found = found or {}
@@ -227,6 +273,18 @@ return {
 		state.realConfirm = GryMod.Confirm
 		state.realIsAdmin = GryMod.AdminUI and GryMod.AdminUI.IsAdmin
 		state.debug = GetConVar(DEBUG) and GetConVar(DEBUG):GetString()
+		state.showIn = GetConVar(SHOW_IN) and GetConVar(SHOW_IN):GetString()
+		state.showOut = GetConVar(SHOW_OUT) and GetConVar(SHOW_OUT):GetString()
+
+		state.faces = GetConVar(FACES) and GetConVar(FACES):GetString()
+		state.edges = GetConVar(EDGES) and GetConVar(EDGES):GetString()
+
+		-- every case starts with both kinds shown, faces and edges drawn (the owner may have switched one off)
+		for _, name in ipairs({SHOW_IN, SHOW_OUT, FACES, EDGES}) do
+			if GetConVar(name) then
+				GetConVar(name):SetString("1")
+			end
+		end
 
 		state.sent = {}
 		state.notices = {}
@@ -302,6 +360,22 @@ return {
 			-- the range goes back, then the switch (its callback puts the hooks back in line), then the module's own state
 			if state.range and GetConVar(RANGE) then
 				GetConVar(RANGE):SetString(state.range)
+			end
+
+			if state.showIn and GetConVar(SHOW_IN) then
+				GetConVar(SHOW_IN):SetString(state.showIn)
+			end
+
+			if state.showOut and GetConVar(SHOW_OUT) then
+				GetConVar(SHOW_OUT):SetString(state.showOut)
+			end
+
+			if state.faces and GetConVar(FACES) then
+				GetConVar(FACES):SetString(state.faces)
+			end
+
+			if state.edges and GetConVar(EDGES) then
+				GetConVar(EDGES):SetString(state.edges)
 			end
 
 			if state.debug and GetConVar(DEBUG) then
@@ -1556,6 +1630,461 @@ return {
 			end
 		},
 		{
+			-- breaks if: a convar is missing, is not saved with the settings, has another default (a hidden kind by default would surprise the player) or has no limits
+			name = "gry_zonemap_debug_in and gry_zonemap_debug_out are client convars, 1 by default, 0 or 1, saved with the settings",
+			func = function(state)
+				for _, name in ipairs({SHOW_IN, SHOW_OUT}) do
+					local convar = needConVar(name)
+
+					expect(convar:GetDefault()).to.equal("1")
+					expect(convar:GetMin()).to.equal(0)
+					expect(convar:GetMax()).to.equal(1)
+					-- the engine does not show the archive bit (see the test of gry_zonemap_debug): the flags are those of another saved setting
+					expect(convar:GetFlags()).to.equal(GetConVar("gry_minimap"):GetFlags())
+				end
+			end
+		},
+		{
+			-- breaks if: the filter is inverted, only one of the two convars is read, or the cyan line of a hidden box is still drawn
+			name = "each filter hides its own kind and only that kind: the faces, the wires and the ceiling line of the hidden boxes are not drawn",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local away = at(0, 500, 0)
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+
+				-- both on: the five boxes, five lines (three of 120, two of 224)
+				local rec = recordRender()
+
+				expect(Z.Draw(away)).to.equal(5)
+				expect(#rec.boxes).to.equal(5)
+				expect(#rec.wires).to.equal(5)
+				expect(#rec.lines).to.equal(5)
+
+				-- the indoor ones hidden: the two outdoor boxes (green), their two lines (224)
+				needConVar(SHOW_IN):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(away)).to.equal(2)
+				expect(#rec.boxes).to.equal(2)
+				expect(#rec.wires).to.equal(2)
+				expect(#rec.lines).to.equal(2)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.g > box.r).to.beTrue()
+					expect(box.x1 == 3 * 128 or box.x1 == 4 * 128).to.beTrue()
+				end
+
+				for _, wire in ipairs(rec.wires) do
+					expect(wire.g > wire.r).to.beTrue()
+				end
+
+				for _, line in ipairs(rec.lines) do
+					expect(line.z2 - line.z1).to.equal(224)
+				end
+
+				-- the outdoor ones hidden: the three indoor boxes (red), their three lines (120)
+				needConVar(SHOW_IN):SetString("1")
+				needConVar(SHOW_OUT):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(away)).to.equal(3)
+				expect(#rec.boxes).to.equal(3)
+				expect(#rec.wires).to.equal(3)
+				expect(#rec.lines).to.equal(3)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.r > box.g).to.beTrue()
+					expect(box.x1 <= 2 * 128).to.beTrue()
+				end
+
+				for _, wire in ipairs(rec.wires) do
+					expect(wire.r > wire.g).to.beTrue()
+				end
+
+				for _, line in ipairs(rec.lines) do
+					expect(line.z2 - line.z1).to.equal(120)
+				end
+			end
+		},
+		{
+			-- breaks if: the filter is applied after the selection of the nearest boxes and the cap (the hidden boxes then use up places of the cap)
+			name = "the cap of 800 counts only the boxes of the shown kind: 1200 indoor and 400 outdoor boxes, each kind alone fills (or does not exceed) what it should",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local boxes = {}
+
+				-- a grid of 40 by 40 cells: the outdoor ones on the cells where both numbers are even (400), the others indoor (1200)
+				for cy = 0, 39 do
+					for cx = 0, 39 do
+						local outdoor = cx % 2 == 0 and cy % 2 == 0
+
+						boxes[#boxes + 1] = {0, cx, cy, cx, cy, outdoor and 1 or 2, 0}
+					end
+				end
+
+				GetConVar(RANGE):SetString("300")
+				state.decoded = {boxes = boxes}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local middle = at(20 * 128 + 64, 20 * 128 + 64, 0)
+
+				-- both: capped at 800, of both kinds
+				local rec = recordRender()
+
+				expect(Z.Draw(middle)).to.equal(800)
+
+				-- the outdoor ones hidden: 800 of the 1200 indoor ones, and every drawn box is indoor (with the filter after the cap, about 600)
+				needConVar(SHOW_OUT):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(middle)).to.equal(800)
+				expect(#rec.boxes).to.equal(800)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.r > box.g).to.beTrue()
+				end
+
+				-- the indoor ones hidden: all 400 outdoor boxes (with the filter after the cap, about 200)
+				needConVar(SHOW_OUT):SetString("1")
+				needConVar(SHOW_IN):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(middle)).to.equal(400)
+				expect(#rec.boxes).to.equal(400)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.g > box.r).to.beTrue()
+				end
+			end
+		},
+		{
+			-- breaks if: the cached selection is not made again when a convar changes (the drawing waits a quarter of a second, or until the player moves)
+			name = "a change of either convar changes the drawn set at the next frame (the clock and the player do not move), and the selection is made again once for each change",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local away = at(0, 500, 0)
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+				recordRender()
+
+				expect(Z.Draw(away)).to.equal(5)
+				expect(Z.SelectionRuns()).to.equal(1)
+
+				-- the same frame again: the selection is kept
+				expect(Z.Draw(away)).to.equal(5)
+				expect(Z.SelectionRuns()).to.equal(1)
+
+				needConVar(SHOW_IN):SetString("0")
+				expect(Z.Draw(away)).to.equal(2)
+				expect(Z.SelectionRuns()).to.equal(2)
+				expect(Z.Draw(away)).to.equal(2)
+				expect(Z.SelectionRuns()).to.equal(2)
+
+				needConVar(SHOW_OUT):SetString("0")
+				expect(Z.Draw(away)).to.equal(0)
+
+				needConVar(SHOW_IN):SetString("1")
+				expect(Z.Draw(away)).to.equal(3)
+
+				needConVar(SHOW_OUT):SetString("1")
+				expect(Z.Draw(away)).to.equal(5)
+			end
+		},
+		{
+			-- breaks if: both off still scans, sorts and draws (a switch on with nothing to show would still cost)
+			name = "both kinds hidden draw nothing in 3D and do no work: no draw call, no material, the selection is not made",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+				needConVar(SHOW_IN):SetString("0")
+				needConVar(SHOW_OUT):SetString("0")
+
+				local rec = recordRender()
+
+				for _ = 1, 3 do
+					expect(Z.Draw(at(0, 0, 0))).to.equal(0)
+				end
+
+				expect(#rec.boxes + #rec.wires + #rec.lines).to.equal(0)
+				expect(rec.materials).to.equal(0)
+				expect(Z.SelectionRuns()).to.equal(0)
+
+				-- one of them back on: drawn again, the selection made
+				needConVar(SHOW_OUT):SetString("1")
+				expect(Z.Draw(at(0, 0, 0))).to.equal(2)
+				expect(Z.SelectionRuns()).to.equal(1)
+			end
+		},
+		{
+			-- breaks if: the highlight is chosen before the filter (a hidden box still lit), or the filter hides the highlight of a shown box
+			name = "the box the player is in follows the filter: not drawn and not lit when its kind is hidden, lit as before when it is shown, the other boxes stay at the normal alphas",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {
+					{0, 0, 0, 0, 0, 2, 0},   -- indoor, the player is in it
+					{0, 1, 0, 1, 0, 1, 0},   -- outdoor
+					{0, 2, 0, 2, 0, 1, 0}    -- outdoor
+				}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local indoorHere = at(64, 64, 0)
+
+				-- the player's own kind hidden: its box is not drawn, and nothing is lit
+				needConVar(SHOW_IN):SetString("0")
+
+				local rec = recordRender()
+
+				expect(Z.Draw(indoorHere)).to.equal(2)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.x1 ~= 0).to.beTrue()
+					expect(box.a).to.equal(38)
+				end
+
+				for _, wire in ipairs(rec.wires) do
+					expect(wire.x1 ~= 0).to.beTrue()
+					expect(wire.a).to.equal(90)
+				end
+
+				-- the other kind hidden: the player's box is drawn and lit, the outdoor ones are not drawn
+				needConVar(SHOW_IN):SetString("1")
+				needConVar(SHOW_OUT):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(indoorHere)).to.equal(1)
+				expect(rec.boxes[1].x1).to.equal(0)
+				expect(rec.boxes[1].a).to.equal(76)
+				expect(rec.wires[1].a).to.equal(255)
+
+				-- the player in an outdoor box, the outdoor kind hidden: no box is lit
+				needConVar(SHOW_OUT):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(at(128 + 64, 64, 0))).to.equal(1)
+				expect(rec.boxes[1].x1).to.equal(0)
+				expect(rec.boxes[1].a).to.equal(38)
+				expect(rec.wires[1].a).to.equal(90)
+
+				-- both shown: the outdoor box the player is in is lit
+				needConVar(SHOW_OUT):SetString("1")
+				rec = recordRender()
+				expect(Z.Draw(at(128 + 64, 64, 0))).to.equal(3)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.a).to.equal(box.x1 == 128 and 76 or 38)
+				end
+			end
+		},
+		{
+			-- breaks if: the filter reaches the HUD block (the block would then stop naming the box the player stands in)
+			name = "the HUD block still names the box the player is in when its kind is hidden, also with both kinds hidden",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local function linesAt(pos)
+					local calls = recordText()
+
+					Z.DrawHud(pos)
+
+					return textLines(calls)
+				end
+
+				needConVar(SHOW_IN):SetString("0")
+
+				local lines = linesAt(at(64, 64, 0))
+
+				expect(#lines).to.equal(3)
+				expect(lines[1].text).to.equal("In/out map: box 1 / 5")
+				expect(lines[2].text).to.equal("indoor, ceiling 120 units (class 3)")
+
+				needConVar(SHOW_IN):SetString("1")
+				needConVar(SHOW_OUT):SetString("0")
+				lines = linesAt(at(3 * 128 + 64, 64, 0))
+				expect(#lines).to.equal(3)
+				expect(lines[1].text).to.equal("In/out map: box 4 / 5")
+				expect(lines[2].text).to.equal("outdoor, ceiling 224 units (class 5)")
+
+				needConVar(SHOW_IN):SetString("0")
+				lines = linesAt(at(64, 64, 0))
+				expect(#lines).to.equal(3)
+				expect(lines[2].text).to.equal("indoor, ceiling 120 units (class 3)")
+			end
+		},
+		{
+			-- breaks if: a convar is missing, is not saved with the settings, has another default or has no limits
+			name = "gry_zonemap_debug_faces and gry_zonemap_debug_edges are client convars, 1 by default, 0 or 1, saved with the settings",
+			func = function(state)
+				for _, name in ipairs({FACES, EDGES}) do
+					local convar = needConVar(name)
+
+					expect(convar:GetDefault()).to.equal("1")
+					expect(convar:GetMin()).to.equal(0)
+					expect(convar:GetMax()).to.equal(1)
+					expect(convar:GetFlags()).to.equal(GetConVar("gry_minimap"):GetFlags())
+				end
+			end
+		},
+		{
+			-- breaks if: the two switches are swapped, one of them is ignored, or the ceiling line follows the faces instead of the edges
+			name = "faces off draws no filled box and keeps the wires and the ceiling lines; edges off draws no wire and no ceiling line and keeps the filled boxes",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local away = at(0, 500, 0)
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+
+				-- both on: five of each, five lines
+				local rec = recordRender()
+
+				expect(Z.Draw(away)).to.equal(5)
+				expect(#rec.boxes).to.equal(5)
+				expect(#rec.wires).to.equal(5)
+				expect(#rec.lines).to.equal(5)
+
+				needConVar(FACES):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(away)).to.equal(5)
+				expect(#rec.boxes).to.equal(0)
+				expect(#rec.wires).to.equal(5)
+				expect(#rec.lines).to.equal(5)
+
+				needConVar(FACES):SetString("1")
+				needConVar(EDGES):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(away)).to.equal(5)
+				expect(#rec.boxes).to.equal(5)
+				expect(#rec.wires).to.equal(0)
+				expect(#rec.lines).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: both off still scans and draws (the material is set, a selection is made)
+			name = "faces and edges both off draw nothing in 3D and do no work: no draw call, no material, the selection is not made; one back on draws again",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+				needConVar(FACES):SetString("0")
+				needConVar(EDGES):SetString("0")
+
+				local rec = recordRender()
+
+				for _ = 1, 3 do
+					expect(Z.Draw(at(0, 0, 0))).to.equal(0)
+				end
+
+				expect(#rec.boxes + #rec.wires + #rec.lines).to.equal(0)
+				expect(rec.materials).to.equal(0)
+				expect(Z.SelectionRuns()).to.equal(0)
+
+				needConVar(EDGES):SetString("1")
+				expect(Z.Draw(at(0, 0, 0))).to.equal(5)
+				expect(#rec.wires).to.equal(5)
+				expect(#rec.boxes).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the highlight is drawn whatever the switches say (a lit face with faces off, a lit wire with edges off)
+			name = "the box the player is in follows faces and edges: the double-alpha faces only with faces on, the full-alpha wire only with edges on",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				state.decoded = {boxes = {
+					{0, 0, 0, 0, 0, 2, 0},
+					{0, 1, 0, 1, 0, 1, 0},
+					{0, 2, 0, 2, 0, 1, 0}
+				}}
+				Z.OnData(0, 1, 4, "MAP1")
+
+				local here = at(128 + 64, 64, 0)
+
+				-- faces off: only the wires, the player's box at full alpha, the others at 90
+				needConVar(FACES):SetString("0")
+
+				local rec = recordRender()
+
+				expect(Z.Draw(here)).to.equal(3)
+				expect(#rec.boxes).to.equal(0)
+				expect(#rec.wires).to.equal(3)
+
+				for _, wire in ipairs(rec.wires) do
+					expect(wire.a).to.equal(wire.x1 == 128 and 255 or 90)
+				end
+
+				-- edges off: only the faces, the player's box at 76, the others at 38
+				needConVar(FACES):SetString("1")
+				needConVar(EDGES):SetString("0")
+				rec = recordRender()
+				expect(Z.Draw(here)).to.equal(3)
+				expect(#rec.wires).to.equal(0)
+				expect(#rec.boxes).to.equal(3)
+
+				for _, box in ipairs(rec.boxes) do
+					expect(box.a).to.equal(box.x1 == 128 and 76 or 38)
+				end
+			end
+		},
+		{
+			-- breaks if: a switch of the render changes the selection (a new scan for a change of the drawing), the IN / OUT filter or the cap
+			name = "faces and edges change only the drawing: no new selection when one changes, the IN / OUT filters and the cap of 800 work as before, the HUD block is the same",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local away = at(0, 500, 0)
+
+				state.decoded = mixedBoxes()
+				Z.OnData(0, 1, 4, "MAP1")
+				recordRender()
+
+				Z.Draw(away)
+				expect(Z.SelectionRuns()).to.equal(1)
+				needConVar(FACES):SetString("0")
+				Z.Draw(away)
+				needConVar(EDGES):SetString("0")
+				Z.Draw(away)
+				needConVar(EDGES):SetString("1")
+				Z.Draw(away)
+				expect(Z.SelectionRuns()).to.equal(1)
+
+				-- faces off, the IN zones hidden: the two outdoor boxes as wires
+				needConVar(SHOW_IN):SetString("0")
+
+				local rec = recordRender()
+
+				expect(Z.Draw(away)).to.equal(2)
+				expect(#rec.boxes).to.equal(0)
+				expect(#rec.wires).to.equal(2)
+				needConVar(SHOW_IN):SetString("1")
+
+				-- the HUD block names the box with both switches off
+				needConVar(EDGES):SetString("0")
+
+				local calls = recordText()
+
+				Z.DrawHud(at(64, 64, 0))
+
+				local lines = textLines(calls)
+
+				expect(#lines).to.equal(3)
+				expect(lines[1].text).to.equal("In/out map: box 1 / 5")
+				expect(lines[2].text).to.equal("indoor, ceiling 120 units (class 3)")
+
+				-- the cap: 900 boxes, faces off: 800 wires
+				needConVar(EDGES):SetString("1")
+				GetConVar(RANGE):SetString("300")
+				state.decoded = gridBoxes(30, 30, 0)
+				Z.OnData(0, 1, 4, "MAP1")
+				rec = recordRender()
+				expect(Z.Draw(at(15 * 128 + 64, 15 * 128 + 64, 0))).to.equal(800)
+				expect(#rec.boxes).to.equal(0)
+				expect(#rec.wires).to.equal(800)
+			end
+		},
+		{
 			name = "Draw with no map draws nothing, and with a position that is not a position too",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient
@@ -1579,7 +2108,7 @@ return {
 				GetConVar(RANGE):SetString("300")
 				silentRender()
 
-				local function grownOver(pos, advance)
+				local function measure(pos, advance)
 					-- warm up (the JIT compiles the loop meanwhile, and its own objects are not the drawing's)
 					for _ = 1, 300 do
 						if advance then
@@ -1613,6 +2142,13 @@ return {
 					return grown
 				end
 
+				-- the runner's step hook is off while the memory is measured (see withoutRunnerHook)
+				local function grownOver(pos, advance)
+					return withoutRunnerHook(function()
+						return measure(pos, advance)
+					end)
+				end
+
 				-- 20 frames of 400 boxes: a Vector per box would be 8000 * 40 bytes = 320 KB, a table per box more; the test runner's own step-budget hook allocates about 10 KB over the same instructions
 				state.decoded = gridBoxes(20, 20, 4)
 				Z.OnData(0, 1, 4, "MAP1")
@@ -1623,6 +2159,78 @@ return {
 				state.decoded = gridBoxes(30, 30, 4)
 				Z.OnData(0, 1, 4, "MAP1")
 				expect(grownOver(at(1984, 1984, 0), true)).to.beLessThan(64)
+			end
+		},
+		{
+			-- breaks if: the filter makes a table or a closure per selection or per box
+			name = "with one kind hidden the drawing allocates nothing either, also when the selection is made again at every frame",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+
+				GetConVar(RANGE):SetString("300")
+				silentRender()
+
+				local function measure(pos)
+					for _ = 1, 300 do
+						state.now = state.now + 1
+						Z.Draw(pos)
+					end
+
+					local grown = math.huge
+
+					for _ = 1, 5 do
+						collectgarbage("collect")
+						collectgarbage("stop")
+
+						local before = collectgarbage("count")
+
+						for _ = 1, 20 do
+							state.now = state.now + 1
+							Z.Draw(pos)
+						end
+
+						grown = math.min(grown, collectgarbage("count") - before)
+						collectgarbage("restart")
+					end
+
+					return grown
+				end
+
+				local function grownOver(pos)
+					return withoutRunnerHook(function()
+						return measure(pos)
+					end)
+				end
+
+				-- half indoor, half outdoor, one kind hidden: the filter reads the convars and the states at every selection
+				local mixed = {}
+
+				for cy = 0, 29 do
+					for cx = 0, 29 do
+						mixed[#mixed + 1] = {0, cx, cy, cx, cy, (cx + cy) % 2 == 0 and 1 or 2, 4}
+					end
+				end
+
+				state.decoded = {boxes = mixed}
+				Z.OnData(0, 1, 4, "MAP1")
+				needConVar(SHOW_IN):SetString("0")
+				expect(grownOver(at(1984, 1984, 0), true)).to.beLessThan(64)
+				needConVar(SHOW_IN):SetString("1")
+				needConVar(SHOW_OUT):SetString("0")
+				expect(grownOver(at(1984, 1984, 0), true)).to.beLessThan(64)
+
+				-- more shown boxes than the cap (1200 indoor of 1600): the sort runs at every selection, with one kind hidden
+				local many = {}
+
+				for cy = 0, 39 do
+					for cx = 0, 39 do
+						many[#many + 1] = {0, cx, cy, cx, cy, (cx % 2 == 0 and cy % 2 == 0) and 1 or 2, 4}
+					end
+				end
+
+				state.decoded = {boxes = many}
+				Z.OnData(0, 1, 4, "MAP1")
+				expect(grownOver(at(20 * 128, 20 * 128, 0), true)).to.beLessThan(64)
 			end
 		},
 		-- ----------------------------------------------------------------------------------------------------------------------

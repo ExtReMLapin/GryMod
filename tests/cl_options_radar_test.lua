@@ -97,7 +97,7 @@ local RADAR_CONVARS = {
 	"gry_hud_radar", "gry_hud_radarunits", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
 	"gry_minimap_below", "gry_minimap_outside", "gry_minimap_cache_mb", "gry_minimap_tile", "gry_minimap_budget_ms", "gry_radar_range",
 	"gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_zoom_delay", "gry_zonemap_debug",
-	"gry_zonemap_debug_range", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap", "gry_zonemap_navmesh"
+	"gry_zonemap_debug_range", "gry_zonemap_debug_in", "gry_zonemap_debug_out", "gry_zonemap_debug_faces", "gry_zonemap_debug_edges", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap", "gry_zonemap_navmesh"
 }
 
 return {
@@ -232,6 +232,10 @@ return {
 					"slider:gry_radar_zoom_delay",
 					"label:In/out map",
 					"box:gry_zonemap_debug",
+					"box:gry_zonemap_debug_in",
+					"box:gry_zonemap_debug_out",
+					"box:gry_zonemap_debug_faces",
+					"box:gry_zonemap_debug_edges",
 					"slider:gry_zonemap_debug_range",
 					"label:Server (administrators only)",
 					"admin:gry_radar_allies_always",
@@ -286,8 +290,45 @@ return {
 			end
 		},
 		{
+			-- breaks if: a box is bound to the wrong convar, has another label, is missing, or is placed after the distance slider or before the debug box
+			name = "the four in/out map debug check boxes (IN, OUT, faces, edges) are bound to their convars, labelled as agreed, in this order right after the debug check box and before the distance slider",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				local labels = {
+					gry_zonemap_debug_in = "In/out map debug: show the IN zones (indoor, red)",
+					gry_zonemap_debug_out = "In/out map debug: show the OUT zones (outdoor, green)",
+					gry_zonemap_debug_faces = "In/out map debug: draw the faces (the filled translucent volumes)",
+					gry_zonemap_debug_edges = "In/out map debug: draw the edges (the lines around each box and the ceiling height line)"
+				}
+
+				for name, text in pairs(labels) do
+					local found
+
+					for _, p in ipairs(walk(state.panel)) do
+						if p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == name then
+							found = p
+						end
+					end
+
+					expect(found ~= nil).to.beTrue()
+					expect(found:GetText()).to.equal(text)
+				end
+
+				local order = markers(state.panel)
+				local debug = indexOf(order, "box:gry_zonemap_debug")
+
+				expect(indexOf(order, "box:gry_zonemap_debug_in")).to.equal(debug + 1)
+				expect(indexOf(order, "box:gry_zonemap_debug_out")).to.equal(debug + 2)
+				expect(indexOf(order, "box:gry_zonemap_debug_faces")).to.equal(debug + 3)
+				expect(indexOf(order, "box:gry_zonemap_debug_edges")).to.equal(debug + 4)
+				expect(indexOf(order, "slider:gry_zonemap_debug_range")).to.equal(debug + 5)
+			end
+		},
+		{
 			-- breaks if: the slider is bound to another convar, has other limits or another label, or is a check box
-			name = "the in/out map debug distance is a slider on gry_zonemap_debug_range, 20 to 300 metres, right after the debug check box",
+			name = "the in/out map debug distance is a slider on gry_zonemap_debug_range, 20 to 300 metres, right after the debug check boxes",
 			func = function(state)
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.RadarOptionsPanel(state.panel)
@@ -308,7 +349,7 @@ return {
 
 				local order = markers(state.panel)
 
-				expect(indexOf(order, "slider:gry_zonemap_debug_range")).to.equal(indexOf(order, "box:gry_zonemap_debug") + 1)
+				expect(indexOf(order, "slider:gry_zonemap_debug_range")).to.equal(indexOf(order, "box:gry_zonemap_debug_edges") + 1)
 			end
 		},
 		{

@@ -33,6 +33,14 @@ CreateClientConVar(DEBUG_CONVAR, "0", true, false, "Draw the in/out map of the l
 
 local rangeConVar = CreateClientConVar(RANGE_CONVAR, "120", true, false, "In/out map debug: how far, in metres, the boxes are drawn around you (20 to 300)", RANGE_MIN, RANGE_MAX)
 
+-- which kinds of box the 3D drawing shows (the HUD block that names the box the player is in is not filtered)
+local showInConVar = CreateClientConVar("gry_zonemap_debug_in", "1", true, false, "In/out map debug: draw the IN zones (indoor, red)", 0, 1)
+local showOutConVar = CreateClientConVar("gry_zonemap_debug_out", "1", true, false, "In/out map debug: draw the OUT zones (outdoor, green)", 0, 1)
+
+-- what of a box is drawn: its filled translucent volume, and/or its edges (the wire and the ceiling height line). They change the drawing only, not the selection.
+local facesConVar = CreateClientConVar("gry_zonemap_debug_faces", "1", true, false, "In/out map debug: draw the faces (the filled translucent volumes)", 0, 1)
+local edgesConVar = CreateClientConVar("gry_zonemap_debug_edges", "1", true, false, "In/out map debug: draw the edges (the lines around each box and the ceiling height line)", 0, 1)
+
 -- ---------------------------------------------------------------------------------------------------------
 -- The state: one table, so that a test can save it and put it back
 -- ---------------------------------------------------------------------------------------------------------
@@ -468,7 +476,7 @@ end
 
 -- The boxes of the map as plain lists of numbers (the world bounds of each box), made once for a map, at the first frame that draws it.
 local function flatten(map)
-	local flat = {n = 0, minX = {}, maxX = {}, minY = {}, maxY = {}, minZ = {}, maxZ = {}, baseZ = {}, layer = {}, state = {}, ceil = {}, dist = {}}
+	local flat = {n = 0, minX = {}, maxX = {}, minY = {}, maxY = {}, minZ = {}, maxZ = {}, baseZ = {}, layer = {}, state = {}, kind = {}, ceil = {}, dist = {}}
 	local n = 0
 
 	for _, box in ipairs(map.boxes) do
@@ -486,6 +494,7 @@ local function flatten(map)
 			flat.baseZ[n] = layer * CELL
 			flat.layer[n] = layer
 			flat.state[n] = field(box, "state", 6)
+			flat.kind[n] = flat.state[n] == 2 and 2 or 1 -- 2 indoor, 1 outdoor (every other state is drawn as outdoor)
 			flat.ceil[n] = field(box, "ceil", 7)
 			flat.dist[n] = 0 -- the distance of the box to the player, filled by the selection (the array is full from the start)
 		end
@@ -618,26 +627,31 @@ end
 
 -- The selection kept (S.sel): the indices of the boxes within the range, the nearest DEBUG_MAX of them when there are more, in the table `idx` that is reused. It is made
 -- again when it is older than REFRESH_EVERY, when the player is more than MOVE_LIMIT units from where it was made, or when the range changed.
-local function refreshSelection(flat, x, y, z, range, now)
+local function refreshSelection(flat, x, y, z, range, now, showIn, showOut)
 	local sel = S.sel
 
 	if not sel then
-		sel = {n = 0, idx = {}, runs = 0, at = -math.huge, x = 0, y = 0, z = 0, range = -1}
+		-- limit: by kind (1 outdoor, 2 indoor), the squared distance up to which that kind is selected (-1: hidden)
+		sel = {n = 0, idx = {}, runs = 0, at = -math.huge, x = 0, y = 0, z = 0, range = -1, showIn = false, showOut = false, limit = {-1, -1}}
 		S.sel = sel
 	end
 
 	local dx, dy, dz = x - sel.x, y - sel.y, z - sel.z
 	local age = now - sel.at
 
-	if sel.range == range and age >= 0 and age < REFRESH_EVERY and dx * dx + dy * dy + dz * dz <= MOVE_LIMIT * MOVE_LIMIT then
+	if sel.range == range and sel.showIn == showIn and sel.showOut == showOut and age >= 0 and age < REFRESH_EVERY and dx * dx + dy * dy + dz * dz <= MOVE_LIMIT * MOVE_LIMIT then
 		return sel
 	end
 
-	sel.at, sel.x, sel.y, sel.z, sel.range = now, x, y, z, range
+	sel.at, sel.x, sel.y, sel.z, sel.range, sel.showIn, sel.showOut = now, x, y, z, range, showIn, showOut
 	sel.runs = sel.runs + 1
 
-	local minX, maxX, minY, maxY, minZ, maxZ, dist = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.minZ, flat.maxZ, flat.dist
+	local minX, maxX, minY, maxY, minZ, maxZ, dist, kinds = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.minZ, flat.maxZ, flat.dist, flat.kind
 	local rangeSquared = range * range
+	local limit = sel.limit
+
+	-- a kind that is hidden has a limit nothing reaches (a distance is never under 0), so it takes no place and counts for nothing in the cap
+	limit[1], limit[2] = showOut and rangeSquared or -1, showIn and rangeSquared or -1
 	local idx, n = sel.idx, 0
 
 	for i = 1, flat.n do
@@ -648,7 +662,8 @@ local function refreshSelection(flat, x, y, z, range, now)
 		local bz = z < z1 and z1 - z or (z > z2 and z - z2 or 0)
 		local d = bx * bx + by * by + bz * bz
 
-		if d <= rangeSquared then
+		-- only the kinds that are shown take a place (and count for the cap)
+		if d <= limit[kinds[i]] then
 			n = n + 1
 			idx[n] = i
 			dist[i] = d
@@ -684,7 +699,9 @@ function Z.SelectionRuns()
 end
 
 -- Draws the boxes of the selection (the nearest within the range of the convar, DEBUG_MAX at most) around `pos` (anything with x, y, z) and returns how many. The box
--- `pos` is in is drawn brighter. No table, Vector or Color is made per box.
+-- `pos` is in is drawn brighter. A kind hidden by gry_zonemap_debug_in / gry_zonemap_debug_out is left out of the selection (before the cap), its ceiling line
+-- and its highlight with it; both hidden draw nothing. gry_zonemap_debug_faces draws the filled volumes and gry_zonemap_debug_edges the wires and the ceiling lines (neither:
+-- nothing is drawn or selected); they change the drawing only, never the selection. No table, Vector or Color is made per box.
 function Z.Draw(pos)
 	local x, y, z = position(pos)
 
@@ -698,7 +715,16 @@ function Z.Draw(pos)
 		return 0
 	end
 
-	local sel = refreshSelection(flat, x, y, z, Z.DebugRangeUnits(), Z.Clock())
+	local showIn, showOut = showInConVar:GetBool(), showOutConVar:GetBool()
+
+	local showFaces, showEdges = facesConVar:GetBool(), edgesConVar:GetBool()
+
+	-- both kinds hidden, or neither faces nor edges: nothing to draw, nothing to select
+	if (not showIn and not showOut) or (not showFaces and not showEdges) then
+		return 0
+	end
+
+	local sel = refreshSelection(flat, x, y, z, Z.DebugRangeUnits(), Z.Clock(), showIn, showOut)
 	local here = findBox(flat, x, y, z)
 	local minX, maxX, minY, maxY, minZ, maxZ = flat.minX, flat.maxX, flat.minY, flat.maxY, flat.minZ, flat.maxZ
 	local baseZ, states, ceils = flat.baseZ, flat.state, flat.ceil
@@ -714,22 +740,31 @@ function Z.Draw(pos)
 		boxMins.x, boxMins.y, boxMins.z = x1, y1, minZ[i]
 		boxMaxs.x, boxMaxs.y, boxMaxs.z = x2, y2, maxZ[i]
 
-		-- the volume (no write to the depth buffer: two translucent boxes never hide each other), then its edges
-		if i == here then
-			render.DrawBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, FACE_HERE[state], false)
-			render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, WIRE_HERE[state], false)
-		else
-			render.DrawBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, FACE[state], false)
-			render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, WIRE[state], false)
+		-- the volume (no write to the depth buffer: two translucent boxes never hide each other), then its edges; the box the player is in is brighter in each
+		-- part that is drawn
+		if showFaces then
+			if i == here then
+				render.DrawBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, FACE_HERE[state], false)
+			else
+				render.DrawBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, FACE[state], false)
+			end
 		end
 
-		-- the ceiling class over the box: a cyan line up from the middle of the band by the height of the class (0 = no ceiling)
-		local height = CLASS_HEIGHT[ceils[i]]
+		if showEdges then
+			if i == here then
+				render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, WIRE_HERE[state], false)
+			else
+				render.DrawWireframeBox(ORIGIN, NO_ANGLE, boxMins, boxMaxs, WIRE[state], false)
+			end
 
-		if height then
-			lineFrom.x, lineFrom.y, lineFrom.z = (x1 + x2) * 0.5, (y1 + y2) * 0.5, baseZ[i]
-			lineTo.x, lineTo.y, lineTo.z = lineFrom.x, lineFrom.y, baseZ[i] + height
-			render.DrawLine(lineFrom, lineTo, CYAN, false)
+			-- the ceiling class over the box: a cyan line up from the middle of the band by the height of the class (0 = no ceiling)
+			local height = CLASS_HEIGHT[ceils[i]]
+
+			if height then
+				lineFrom.x, lineFrom.y, lineFrom.z = (x1 + x2) * 0.5, (y1 + y2) * 0.5, baseZ[i]
+				lineTo.x, lineTo.y, lineTo.z = lineFrom.x, lineFrom.y, baseZ[i] + height
+				render.DrawLine(lineFrom, lineTo, CYAN, false)
+			end
 		end
 	end
 
