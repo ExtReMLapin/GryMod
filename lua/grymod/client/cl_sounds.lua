@@ -182,6 +182,8 @@ local sprintState = GryMod.SprintSound.New()
 local sprintWasOnGround = true
 local sprintLastThink
 local sprintLoops = {}
+local sprintFrame = {}
+local sprintReuse = {actions = {}}
 
 local lastenergy
 
@@ -248,13 +250,13 @@ hook.Add("Think", "GryModSounds", function()
 		lastenergy = energy
 	end
 
-	-- the servo of the speed sprint
-	local frame = GryMod.SprintSound.Sample(ply, energy, sprintWasOnGround)
+	-- the servo of the speed sprint (the frame, the state and the list of actions are kept from a frame to the next: nothing is made each time)
+	local frame = GryMod.SprintSound.Sample(ply, energy, sprintWasOnGround, sprintFrame)
 	sprintWasOnGround = frame.onGround
 	local dt = sprintLastThink and math.Clamp(now - sprintLastThink, 0, 0.25) or 0
 	sprintLastThink = now
 	local actions
-	sprintState, actions = GryMod.SprintSound.Step(sprintState, frame, dt)
+	sprintState, actions = GryMod.SprintSound.Step(sprintState, frame, dt, sprintReuse)
 	sprintLoops.ground = speedLoopGround
 	sprintLoops.underwater = speedLoopUnderwater
 	GryMod.SprintSound.Apply(actions, sprintLoops)

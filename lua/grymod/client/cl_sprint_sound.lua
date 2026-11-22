@@ -156,10 +156,27 @@ end
 --   {type = "volume", loop, gain}             the level of the loop (0..1, times the mix's volume) this frame
 --   {type = "halt", loop}                     the loop is silent: pause it and rewind
 --   {type = "stopsound", sound}               the one-shot stop sound of the variant ("ground" or "underwater")
-function SS.Step(state, input, dt)
-	local s = copyState(state)
-	local actions = {}
-	local halted = {}
+-- With `reuse` (a table {actions = {}} that the caller keeps) the given state is advanced in place and the list of actions is `reuse.actions`, emptied
+-- first: the Think hook runs this every frame and made a kilobyte of tables each time for nothing. The state and the actions are the same numbers either way.
+local scratchHalted = {}
+
+function SS.Step(state, input, dt, reuse)
+	local s, actions, halted
+
+	if reuse then
+		s, actions, halted = state, reuse.actions, scratchHalted
+
+		for i = #actions, 1, -1 do
+			actions[i] = nil
+		end
+
+		for i = 1, #LOOPS do
+			halted[LOOPS[i]] = nil
+		end
+	else
+		s, actions, halted = copyState(state), {}, {}
+	end
+
 	dt = math.max(dt or 0, 0)
 	s.now = s.now + dt
 
@@ -259,22 +276,24 @@ function SS.Step(state, input, dt)
 end
 
 -- the frame of the player for the machine; wasOnGround: whether the previous frame was on the ground (a jump leaves it going up)
-function SS.Sample(ply, energy, wasOnGround)
+-- `into` (optional) is a table of an earlier call, filled again instead of making a new one.
+function SS.Sample(ply, energy, wasOnGround, into)
 	local velocity = ply:GetVelocity()
 	local onGround = ply:IsOnGround()
 	local minimum = GryMod.SprintLoopMinimum and GryMod.SprintLoopMinimum() or SS.ENERGY_MIN
+	local frame = into or {}
 
-	return {
-		speed = ply.NanosuitMode == GryMod.Modes.SPEED,
-		sprint = ply:IsSprinting() == true and velocity:LengthSqr() > (GryMod.Movement and GryMod.Movement.SprintSpeedSqr() or SS.SPRINT_SPEED_SQR),
-		onGround = onGround,
-		jumped = wasOnGround == true and not onGround and velocity.z > 0,
-		waterLevel = ply:WaterLevel(),
-		energy = energy,
-		energyMin = minimum,
-		alive = ply:Alive(),
-		suit = not ply:GetNW2Bool("GryMalfunction", false)
-	}
+	frame.speed = ply.NanosuitMode == GryMod.Modes.SPEED
+	frame.sprint = ply:IsSprinting() == true and velocity:LengthSqr() > (GryMod.Movement and GryMod.Movement.SprintSpeedSqr() or SS.SPRINT_SPEED_SQR)
+	frame.onGround = onGround
+	frame.jumped = wasOnGround == true and not onGround and velocity.z > 0
+	frame.waterLevel = ply:WaterLevel()
+	frame.energy = energy
+	frame.energyMin = minimum
+	frame.alive = ply:Alive()
+	frame.suit = not ply:GetNW2Bool("GryMalfunction", false)
+
+	return frame
 end
 
 -- Applies the actions to the channels of the loops ({ground = channel, underwater = channel}; a missing or invalid one is
