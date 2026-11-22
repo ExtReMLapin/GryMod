@@ -42,7 +42,7 @@ local anchors = {map = nil, list = {}, byId = {}}
 -- the last shot of CurrentAt; ONE table that is written again at each shot (valid = false: nothing remembered), so a shot allocates no table for it
 local memo = {valid = false, x = 0, y = 0, z = 0, t = 0, level = nil, since = nil}
 -- the world's bounds (once per map name) and the open level that goes with them (one table per map: only its z changes from one shot to the next)
-local worldBox = {map = nil, zmin = nil, zmax = nil, open = nil}
+local worldBox = {map = nil, zmin = nil, zmax = nil, worldTop = nil, byTop = nil, open = nil}
 -- the level under an anchor, by the floor of the anchor: Below gives the same table every time (see Below), and builds nothing after the first call
 local belowCache = {}
 local belowCount = 0
@@ -65,7 +65,7 @@ function Floors.Reset()
 	previousStep = nil
 	anchors.map, anchors.list, anchors.byId = nil, {}, {}
 	memo.valid, memo.level, memo.since = false, nil, nil
-	worldBox.map, worldBox.zmin, worldBox.zmax, worldBox.open = nil, nil, nil, nil
+	worldBox.map, worldBox.zmin, worldBox.zmax, worldBox.worldTop, worldBox.byTop, worldBox.open = nil, nil, nil, nil, nil, nil
 	clearBelow()
 end
 
@@ -583,6 +583,15 @@ local function playableTop(map, playerSky)
 	return top
 end
 
+-- The top of the slab of an open level for a ray that hit at height `hit`: 16 under the hit, down to a multiple of 64. The slab ends UNDER the hit, never over
+-- it (what is over the hit, the skybox room or the piece above, must stay out of the picture), and the rounding keeps the number of levels small (the same
+-- height, give or take a step, is the same level and so the same tiles).
+local OPEN_STEP = 64
+
+local function cappedTop(hit)
+	return mathFloor((hit - OPEN_MARGIN) / OPEN_STEP) * OPEN_STEP
+end
+
 -- the height of the world's bounds, asked once per map name; the top is cut to the playable area's sky when that is lower (see playableTop), and then the
 -- open level gets the id "open_t<top>" so that the tiles made with the whole height (the skybox in the picture) are never used again
 local function worldHeights(map, playerSky)
@@ -608,18 +617,51 @@ local function worldHeights(map, playerSky)
 		return nil
 	end
 
-	local id = "open"
+	local worldTop = zmax
+	local open = {id = "open", open = true, z = 0, zlo = zmin - OPEN_MARGIN, zhi = zmax + OPEN_MARGIN}
+	local byTop = {}
 	local top = playableTop(map, playerSky)
 
-	if top and top < zmax and top > zmin then
-		zmax = top
-		id = "open_t" .. sformat("%d", mathFloor(top))
+	if top and top < zmax then
+		local q = cappedTop(top)
+
+		if q > zmin then
+			zmax = q
+			open.id, open.zhi = "open_t" .. sformat("%d", q), q
+			byTop[q] = open
+		end
 	end
 
-	worldBox.map, worldBox.zmin, worldBox.zmax = map, zmin, zmax
-	worldBox.open = {id = id, open = true, z = 0, zlo = zmin - OPEN_MARGIN, zhi = zmax + OPEN_MARGIN}
+	-- worldTop: the bounds' own top (a hit under it makes a level of its own, see openAt); byTop: the open levels made for this map, by their top
+	worldBox.map, worldBox.zmin, worldBox.zmax, worldBox.worldTop, worldBox.byTop = map, zmin, zmax, worldTop, byTop
+	worldBox.open = open
 
 	return zmin, zmax
+end
+
+-- The open level for a place where the up ray (the player's) hit at `hit` (the sky, or a solid far over the feet; nil when it hit nothing): the camera goes
+-- where the ray hit, as the owner asked, so a piece of the map over another one with void between them is not hidden by the upper one. A hit that is not
+-- under the world's own top (or no hit) gives the open level of the map. One table per top (made once, then found by its number), shared with the map's own
+-- open level when it has the same top, so the tiles are made once.
+local function openAt(zmin, hit)
+	local box = worldBox
+
+	if hit and hit < box.worldTop then
+		local q = cappedTop(hit)
+
+		if q > zmin then
+			local level = box.byTop[q]
+
+			if not level then
+				level = {id = "open_t" .. sformat("%d", q), open = true, z = 0, zlo = zmin - OPEN_MARGIN, zhi = q}
+				box.byTop[q] = level
+			end
+
+			return level
+		end
+	end
+
+	return box.open
 end
 
 -- the five parameter tables of the rays, made once (a Vector for the start and one for the end of each, and a table util.TraceLine fills with its answer)
@@ -751,11 +793,12 @@ function Floors.CurrentAt(pos)
 	local level, since
 
 	if centreOpen or not ceiling or ceiling - f > MAX_RISE then
-		local zmin, zmax = worldHeights(map, centreSky)
+		local zmin = worldHeights(map, centreSky)
 
 		if zmin then
-			-- the open level of the map is one table (only its z, the feet, changes)
-			level = worldBox.open
+			-- the camera goes where the up ray hit: the sky seen by the centre ray, or the highest solid when it hit one far over the feet. One table per top
+			-- (only its z, the feet, changes)
+			level = openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil)
 			level.z = f
 		else
 			level = Floors.Fallback(f)

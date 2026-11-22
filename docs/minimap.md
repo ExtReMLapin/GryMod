@@ -284,12 +284,16 @@ Every test that replaces a module or a global puts it back in a `pcall` in `afte
 
 - **Maps without a ceiling.** On a map where the rays hit the sky (an open-air map), the level is the whole height of the world. Every
   room, roof and tree top is in one picture and the floors below are not separated: the floor below is not drawn for an open level.
-- **The 3D skybox.** Many maps hold a small room far above the map (the 3D skybox, the distant scenery). The bounds of the world include it, and
-  the camera of the open level would look at it first, so the minimap showed the little room and not the map (gm_construct: the world goes up
-  to 15360, the sky of the playable area is at 9984). The top of the open level is therefore the highest sky that up rays see from up to 96
-  ground nodes of the node graph (and from the player's own ray when there is no graph), when that is lower than the world's top. The level
-  is then named `open_t<top>` (so tiles made with the whole height are never reused). Once per map. Limit: on a map with no node graph,
-  the player must be outdoors the first time the level is asked, otherwise the whole height stays.
+- **Where the camera of an open level goes: the first hit of the up ray.** The camera of an open level used to go above the whole height of the world.
+  That fails when something is above the playable area: the 3D skybox (a small room far over the map: on gm_construct the world goes up to 15360
+  and the sky of the playable area is at 9984), or a piece of the map over another with void between them. Now the slab of an open level ends under
+  the place where the player's up ray hits, the sky or a solid (the underside of the piece above), 16 units under the hit and rounded down to a
+  multiple of 64. The level is named `open_t<top>`: the same height (give or take a step) is the same level and the same tiles, another height is
+  another level. A hit that is not under the world's own top (or no hit) gives the level of the whole height, `open`. The map's own open level
+  (the "outside" drawn under the floors) takes its top from the sky seen by up rays from up to 96 ground nodes of the node graph, or from the player's
+  ray when there is no graph, once per map. Known limits: the "outside" under the floors of a piece that has another one over it still shows the
+  upper piece (it is the map's one), and a tile has one camera height, so a tile that holds both tall roofs and free sky shows the slab of the place
+  where the player was.
 - **Sloped floors.** The floor of a level is the feet height rounded to 16 units, and a level may be reused by the player when the feet
   stay within 24 units under and 40 over its floor. On a long slope the map changes level every few steps; the levels already made are
   reused (they are known from the disk), but a long ramp makes several sets of tiles.

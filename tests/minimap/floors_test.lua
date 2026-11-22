@@ -1507,7 +1507,8 @@ return {
 			-- sky of the playable area is at 9984. The open level took the whole height, so the camera looked at the little skybox room first: no map in the minimap.
 			-- breaks if: the open level keeps the world's top when ground nodes see the sky lower than it, or the cap is not the highest sky seen, or the id stays "open"
 			-- (the tiles already made with the wrong slab, under that id, would be used again)
-			name = "open level: the top of the slab is the highest SKY seen by the ground nodes' up rays when it is lower than the world's top (id open_t<top>)",
+			-- The top is rounded DOWN to a multiple of 64 after taking 16 off (the slab ends under the hit, never over it): a sky at 1000 gives 960.
+			name = "Outside: the map's open level ends at the highest SKY seen by the ground nodes' up rays when that is lower than the world's top (id open_t960 for a sky at 1000)",
 			func = function(state)
 				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
 
@@ -1519,29 +1520,12 @@ return {
 				end
 
 				standIn(state, {[state.map] = {nodes = nodes}})
-				-- the nodes' rays and the player's: the sky, at the height of the place
-				util.TraceLine = function(t)
-					state.traces[#state.traces + 1] = t
-
-					return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, skyAt[t.start.x] or 950)}
-				end
-
-				local level = F().CurrentAt(Vector(0, 0, 0))
-
-				expect(level.open).to.beTrue()
-				expect(level.id).to.equal("open_t1000")
-				expect(level.zlo).to.equal(-316)
-				expect(level.zhi).to.equal(1016)
-
-				-- Outside gives the very same table
-				F().Reset()
-				standIn(state, {[state.map] = {nodes = nodes}})
-				state.ray = ceil(150)
+				-- the nodes' rays: the sky at the height of the place; the player's (x 0) is under a ceiling at 150
 				util.TraceLine = function(t)
 					state.traces[#state.traces + 1] = t
 
 					if t.start.x >= 10 then
-						return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, 1000)}
+						return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, skyAt[t.start.x] or 900)}
 					end
 
 					return ceil(150)
@@ -1550,8 +1534,72 @@ return {
 				local anchor = F().CurrentAt(Vector(0, 0, 0))
 				local outside = F().Outside(anchor)
 
-				expect(outside.id).to.equal("open_t1000")
-				expect(outside.zhi).to.equal(1016)
+				expect(outside.open).to.beTrue()
+				expect(outside.id).to.equal("open_t960")
+				expect(outside.zlo).to.equal(-316)
+				expect(outside.zhi).to.equal(960)
+			end
+		},
+		{
+			-- The owner's rule (2026-11-22): the camera goes where the up ray hits, indoors and outdoors alike. A map can have pieces over each other with void between:
+			-- over the lower piece the ray hits the underside of the upper one (far over 512). The old rule said "open sky", the whole height, so the camera looked at
+			-- the upper piece only.
+			-- breaks if: a solid hit over 512 still gives the level of the whole height, or the slab ends over the hit (the upper piece comes in), or the id has no height
+			name = "open level: a solid hit far over the feet (the underside of a piece above, void between) puts the top of the slab under it, id open_t<top>, not the world's whole height",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+				standIn(state, {}) -- no graph
+				state.ray = ceil(3000)
+
+				local level = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(level.open).to.beTrue()
+				expect(level.id).to.equal("open_t2944")
+				expect(level.zlo).to.equal(-316)
+				expect(level.zhi).to.equal(2944)
+				expect(level.zhi < 3000).to.beTrue()
+				expect(rounds(state)).to.equal(1)
+
+				-- the same step of 64 is the same table; another step is another level
+				state.now = state.now + 2
+				state.ray = ceil(3010)
+				expect(F().CurrentAt(Vector(100, 0, 0))).to.equal(level)
+
+				state.now = state.now + 2
+				state.ray = ceil(3100)
+
+				local other = F().CurrentAt(Vector(200, 0, 0))
+
+				expect(other.id).to.equal("open_t3072")
+				expect(other.zhi).to.equal(3072)
+				expect(other ~= level).to.beTrue()
+
+				-- going back gives the first table again (one table per level, nothing is made twice)
+				state.now = state.now + 2
+				state.ray = ceil(3000)
+				expect(F().CurrentAt(Vector(300, 0, 0))).to.equal(level)
+			end
+		},
+		{
+			-- breaks if: the open level under the sky at the player's place and the map's (the one Outside gives) are two tables for the same height: their tiles would be made twice
+			name = "open level: the level of the sky seen by the player and the map's open level of the same height are the same table (the tiles are shared)",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+				standIn(state, {}) -- no graph: the map's top comes from the player's own ray
+				state.ray = {Hit = true, HitSky = true, HitPos = Vector(0, 0, 5000)}
+
+				local outdoors = F().CurrentAt(Vector(0, 0, 0))
+
+				-- 5000 - 16 = 4984, down to a multiple of 64: 4928
+				expect(outdoors.id).to.equal("open_t4928")
+
+				state.now = state.now + 2
+				state.ray = ceil(150)
+
+				local indoors = F().CurrentAt(Vector(500, 0, 0))
+
+				expect(indoors.open).to.beNil()
+				expect(F().Outside(indoors)).to.equal(outdoors)
 			end
 		},
 		{
@@ -1603,8 +1651,9 @@ return {
 
 				local level = F().CurrentAt(Vector(0, 0, 0))
 
-				expect(level.id).to.equal("open_t9984")
-				expect(level.zhi).to.equal(10000)
+				-- 9984 - 16 = 9968, down to a multiple of 64: 9920
+				expect(level.id).to.equal("open_t9920")
+				expect(level.zhi).to.equal(9920)
 				expect(rounds(state)).to.equal(1)
 			end
 		},
