@@ -155,6 +155,11 @@ local function install(st)
 				st.onTrim()
 			end
 
+			if st.trimAnswersTable then
+				-- the shape of the real Cache.Trim: {removed = n, bytes = bytes left}
+				return {removed = st.trimRemoved, bytes = 0}
+			end
+
 			return st.trimRemoved
 		end,
 		Has = function(tile)
@@ -1942,6 +1947,66 @@ return {
 				expect(state.hasCalls > 0).to.beTrue()
 				expect(G.Pending() >= 1).to.beTrue()
 				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beFalse() -- recounted once, then the same again
+			end
+		},
+		-- fails if the answer of the real Cache.Trim ({removed = n, bytes = n}, not a number) is not understood: the next request would not recount the tiles the Trim removed
+		{
+			name = "a Trim that answers like the real one ({removed, bytes}) makes the next identical Request recount when it removed tiles, and not when it removed none",
+			func = function(state)
+				local G = gen()
+
+				state.trimAnswersTable = true
+				game.GetMap = function() return "gen_test_map_trim_table" end
+				G.Request(LEVEL, 500, 500, 3000)
+				stepAll(state, 63)
+				expect(#state.trims).to.equal(1)
+
+				state.trimRemoved = 0
+				G.Step(state.t) -- the 64th tile: Trim removes nothing
+				expect(G.Request(LEVEL, 500, 500, 3000)).to.beFalse()
+
+				stepAll(state) -- the 81 tiles are done
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beTrue()
+				stepAll(state, 46)
+				state.trimRemoved = 7
+				G.Step(state.t) -- the 128th tile: Trim removes 7
+				state.stored["a1|20,0|512|2"] = nil
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beTrue()
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beFalse()
+			end
+		},
+		-- fails if the preload keeps making tiles after the cache began to throw tiles away (the cache is full): each tile made would push another one out, and the generator would
+		-- work at every frame for nothing (seen on gm_boreas with a limit of 256 MB: 7 ms a frame for ever)
+		{
+			name = "preload: a Trim that removed tiles ends the preload (the cache is full) and says so; a Trim that removed nothing does not",
+			func = function(state)
+				local G = gen()
+				local P1 = {id = "open_t960", open = true, zlo = -100, zhi = 960}
+				local entries = {}
+
+				state.trimAnswersTable = true
+				game.GetMap = function() return "gen_test_map_preload_full" end
+
+				for i = 1, 200 do
+					entries[i] = {tile = {level = P1.id, tx = i, ty = 0, res = 512, ppm = 2}, level = P1, d = i}
+				end
+
+				G.SetPreload(entries)
+				expect(G.PreloadProgress().cut).to.beFalse()
+
+				-- 63 tiles, then the 64th: the Trim removes nothing, the preload goes on
+				state.trimRemoved = 0
+				stepAll(state, 64)
+				expect(#state.trims >= 1).to.beTrue()
+				expect(G.PreloadProgress().cut).to.beFalse()
+				expect(G.Pending() > 0).to.beTrue()
+
+				-- the next Trim removes tiles: the rest of the preload is dropped, nothing waits any more, and the progress says it was cut
+				state.trimRemoved = 5
+				stepAll(state, 64)
+				expect(G.PreloadProgress().cut).to.beTrue()
+				expect(G.Pending()).to.equal(0)
+				expect(#state.stores < 200).to.beTrue()
 			end
 		},
 		-- fails if an abandoned tile is never tried again, or is tried again at once

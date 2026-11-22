@@ -71,7 +71,7 @@ S.storedSinceTrim = 0 -- tiles stored with success since the last Trim (kept by 
 
 local function newSet()
 	-- level = the level table of the last request (nil: this set is not wanted), queue = entries {tile =, key =, d =} nearest first
-	return {level = nil, queue = {}, done = 0, total = 0, failed = 0, readyFired = false}
+	return {level = nil, queue = {}, done = 0, total = 0, failed = 0, readyFired = false, cut = false}
 end
 
 local function resetState()
@@ -189,12 +189,28 @@ local function trimCache()
 		return
 	end
 
-	local ok2, removed = pcall(Cache.Trim, bytes)
+	local ok2, answer = pcall(Cache.Trim, bytes)
 
 	if not ok2 then
-		S.lastError = tostring(removed)
-	elseif type(removed) == "number" and removed > 0 then
+		S.lastError = tostring(answer)
+
+		return
+	end
+
+	-- Cache.Trim answers {removed = n, bytes = bytes left}; a bare number is understood too
+	local removed = type(answer) == "table" and answer.removed or answer
+
+	if type(removed) == "number" and removed > 0 then
 		S.sigSet = false -- the disk changed: the next request counts the tiles again, whether or not it is the same as the last one
+
+		-- the cache is full: every tile made from now on pushes another one out, and the preload would make tiles for ever (seen with a limit under the
+		-- size of the plan: 7 ms of every frame spent for nothing). What was made stays; the rest of the preload is dropped and PreloadProgress says so.
+		local pre = S.sets.preload
+
+		if #pre.queue > 0 then
+			pre.queue = {}
+			pre.cut = true
+		end
 	end
 end
 
@@ -756,7 +772,7 @@ end
 function Gen.SetPreload(entries)
 	local pre = S.sets.preload
 
-	pre.queue, pre.done, pre.total, pre.failed = {}, 0, 0, 0
+	pre.queue, pre.done, pre.total, pre.failed, pre.cut = {}, 0, 0, 0, false
 
 	if type(entries) ~= "table" then
 		return false
@@ -783,11 +799,11 @@ function Gen.SetPreload(entries)
 	return true
 end
 
--- {done, total, failed} of the preload (the tiles that were already there when a turn came count as done)
+-- {done, total, failed, cut} of the preload (the tiles that were already there when a turn came count as done; cut = true when the cache was full and the rest was dropped)
 function Gen.PreloadProgress()
 	local pre = S.sets.preload
 
-	return {done = pre.done, total = pre.total, failed = pre.failed}
+	return {done = pre.done, total = pre.total, failed = pre.failed, cut = pre.cut == true}
 end
 
 -- how many tiles are left to make (the one in progress and those of the floor below, of the outside and of the preload included)
