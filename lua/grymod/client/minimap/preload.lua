@@ -19,6 +19,7 @@ local CELL = 128 -- units: the cells of the in/out map
 local HALF_BAND = 64 -- a layer is a band of 128 units around layer * 128
 local SUBDIV = 3 -- a box is cut in at most SUBDIV x SUBDIV areas, each asks its own up ray
 local OUTDOOR = 1
+local INDOOR = 2
 
 Preload.MAX_TILES = 4000 -- a plan keeps the nearest tiles when there are more
 
@@ -97,7 +98,8 @@ end
 --   origin = {x, y} (the nearest tiles first), maxTiles = the cap (Preload.MAX_TILES), maxTop = the top of the map's open level (Floors.MapOpenTop): a place whose
 --   level is higher makes no tile (a cell at the fringe of a box, where the in/out map's spread is wider than the ground, can see its ray go through the sky of the
 --   playable area into the skybox),
---   places = {{x, y, z}, ...} (the ground places of the node graph: the floors), placeLevelAt = function(x, y, z) -> level | nil (Floors.PeekAt), definitionsAt =
+--   indoorLevelAt = function(x, y, top) -> level | nil (the floors of an INDOOR box: the ground is found under `top`, the top of the box's layer, then the level of a player there;
+--   without it indoor boxes make no tile), places = {{x, y, z}, ...} (the ground places of the node graph: the floors), placeLevelAt = function(x, y, z) -> level | nil (Floors.PeekAt), definitionsAt =
 --   function(x, y, z) -> {ppm, ...} (the definitions of the place's mode; without it the job's `definitions`), placeRadius = units around a place that get tiles (256) }.
 -- The job: Step(count) does at most `count` boxes and answers how many it did; Done(); Entries() = the tiles to make, nearest first, each {tile = {level, tx, ty,
 -- res, ppm}, level = the level table (the generator needs its heights), d = squared distance to the origin}; Total() = how many tiles the plan has before the
@@ -109,6 +111,7 @@ function Preload.NewJob(boxes, opts)
 	local origin = opts.origin or {0, 0}
 	local maxTiles = opts.maxTiles or Preload.MAX_TILES
 	local levelAt, has, tileUnits = opts.levelAt, opts.has, opts.tileUnits
+	local indoorLevelAt = opts.indoorLevelAt
 	local maxTop = opts.maxTop
 
 	-- the edge of a tile for each definition, asked once per definition
@@ -169,7 +172,11 @@ function Preload.NewJob(boxes, opts)
 	end
 
 	local function doBox(box)
-		if field(box, "state", 6) ~= OUTDOOR then
+		local state = field(box, "state", 6)
+		local outdoor = state == OUTDOOR
+
+		-- an indoor box makes tiles only when the floors are asked for (indoorLevelAt)
+		if not outdoor and not (state == INDOOR and indoorLevelAt) then
 			return
 		end
 
@@ -191,10 +198,17 @@ function Preload.NewJob(boxes, opts)
 			for iy = 0, gy - 1 do
 				local ay1, ay2 = cy1 + mathFloor(iy * h / gy), cy1 + mathFloor((iy + 1) * h / gy)
 				local x1, y1, x2, y2 = ax1 * CELL, ay1 * CELL, ax2 * CELL, ay2 * CELL
-				local level = levelAt((x1 + x2) / 2, (y1 + y2) / 2, z)
+				local mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+				local level = (outdoor and levelAt or indoorLevelAt)(mx, my, z)
 
 				if type(level) == "table" and type(level.id) == "string" and not (maxTop and type(level.zhi) == "number" and level.zhi > maxTop) then
-					addArea(level, x1, y1, x2, y2, definitions)
+					local defs = definitions
+
+					if not outdoor and definitionsAt then
+						defs = definitionsAt(mx, my, z) or definitions
+					end
+
+					addArea(level, x1, y1, x2, y2, defs)
 				end
 			end
 		end
@@ -452,6 +466,11 @@ function Preload.Start()
 		maxTop = Floors.MapOpenTop and Floors.MapOpenTop() or nil,
 		has = Cache.Has,
 		origin = Preload._origin(),
+		indoorLevelAt = (Floors.GroundAt and Floors.PeekAt and footDefs) and function(x, y, top)
+			local ground = Floors.GroundAt(x, y, top)
+
+			return ground and Floors.PeekAt(x, y, ground) or nil
+		end or nil,
 		places = places,
 		placeLevelAt = Floors.PeekAt,
 		definitionsAt = function(x, y, z)

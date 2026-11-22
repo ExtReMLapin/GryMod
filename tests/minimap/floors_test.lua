@@ -1658,6 +1658,34 @@ return {
 			end
 		},
 		{
+			-- the preload finds the ground under a cell of an indoor box with one ray down from the top of the box's layer. breaks if: it shoots another way, goes over 256 units, takes a
+			-- start that is inside a solid (no ground to speak of) or the sky for a floor, or answers a bad number with a number
+			name = "GroundAt: one ray down from the top of the layer (256 units, brush mask) gives the height it hits; nil when it hits nothing, starts in a solid, hits the sky, or the numbers are bad",
+			func = function(state)
+				expect(isfunction(F().GroundAt)).to.beTrue()
+
+				state.ray = {Hit = true, HitSky = false, StartSolid = false, HitPos = Vector(10, 20, -273)}
+				expect(F().GroundAt(10, 20, -200)).to.equal(-273)
+				expect(#state.traces).to.equal(1)
+				expect(state.traces[1].start.z).to.equal(-200)
+				expect(state.traces[1].endpos.z).to.equal(-456)
+				expect(state.traces[1].mask).to.equal(MASK_SOLID_BRUSHONLY)
+
+				state.ray = nothing()
+				expect(F().GroundAt(10, 20, -200)).to.beNil()
+
+				state.ray = {Hit = true, HitSky = false, StartSolid = true, HitPos = Vector(10, 20, -200)}
+				expect(F().GroundAt(10, 20, -200)).to.beNil()
+
+				state.ray = {Hit = true, HitSky = true, StartSolid = false, HitPos = Vector(10, 20, -300)}
+				expect(F().GroundAt(10, 20, -200)).to.beNil()
+
+				expect(F().GroundAt(0 / 0, 20, -200)).to.beNil()
+				util.TraceLine = function() error("no ray") end
+				expect(F().GroundAt(10, 20, -200)).to.beNil()
+			end
+		},
+		{
 			-- PeekAt is what the preload asks for each ground place of the node graph (the floors): the level CurrentAt would give a player standing there, with no player: no
 			-- memory of a last shot, none made. breaks if: it gives another level than CurrentAt for the same rays, it spoils the remembered shot of the player (the next
 			-- CurrentAt would shoot again, or give another level), or it holds a bigger class back as the player's clock does

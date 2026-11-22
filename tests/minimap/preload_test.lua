@@ -52,7 +52,7 @@ end
 local function makeEnv()
 	local M = GryMod.Minimap
 	local P0 = M.Preload
-	local env = {hooks = {}, timers = {}, handed = nil, rays = 0, peeks = 0}
+	local env = {hooks = {}, timers = {}, handed = nil, rays = 0, peeks = 0, grounds = 0}
 	local saved = {Settings = M.Settings, Cache = M.Cache, Gen = M.Gen, Floors = M.Floors, Zone = GryMod.ZoneMapClient, AIN = GryMod.AIN}
 	local savedFields = {}
 
@@ -63,6 +63,10 @@ local function makeEnv()
 	local v = {preload = 1, autozoom = 0, vehicle = 100, foot = 75, indoor = 25, range = 25, k = 130, definition = 4, autodef = 1, boxes = true, frame = 0.005, nodes = {}}
 
 	local function boxList()
+		if v.boxes == "outdoor" then
+			return {box(0, 0, 0, 7, 7)} -- the outdoor box alone
+		end
+
 		return {box(0, 0, 0, 7, 7), box(0, 20, 20, 22, 22, 2)}
 	end
 
@@ -89,6 +93,11 @@ local function makeEnv()
 	}
 	M.Floors = {
 		MapOpenTop = function() return 5000 end,
+		GroundAt = function(_, _, top)
+			env.grounds = env.grounds + 1
+
+			return top - 100
+		end,
 		PeekAt = function(_, _, z)
 			env.peeks = env.peeks + 1
 
@@ -369,7 +378,7 @@ return {
 						end
 
 						return floorLevel
-					end,
+						end,
 					definitionsAt = function() return {4} end
 				}))
 
@@ -391,6 +400,77 @@ return {
 				}))
 
 				expect(#plain).to.equal(18)
+			end
+		},
+		{
+			-- the underground and the places the graph does not reach (the navigation mesh does, so the in/out map's indoor boxes do): the floors of an indoor box are asked at its areas,
+			-- each with its own ground height. breaks if: an indoor box without indoorLevelAt makes tiles, the definitions of the place are not used, or a place with no ground makes one
+			name = "NewJob: an indoor box makes the tiles of its areas for the level indoorLevelAt gives (at the top of its layer), at the definitions of the place; no indoorLevelAt, no tile; no level, no tile",
+			func = function()
+				local asked = {}
+				local floorLevel = {id = "f96c120", zlo = 40, zhi = 216}
+				local entries = run({box(1, 0, 0, 1, 0, 2)}, options({
+					indoorLevelAt = function(x, y, z)
+						asked[#asked + 1] = x .. "," .. y .. "," .. z
+
+						return floorLevel
+					end,
+					definitionsAt = function() return {4} end
+				}))
+
+				-- a box of 2 x 1 cells (x 0..256, y 0..128) of the layer 1 (z 64..192, top 191) is cut in 2 x 1 areas: two asks, at the top of the layer
+				expect(#asked).to.equal(2)
+				expect(asked[1]).to.equal("64,64,191")
+				expect(asked[2]).to.equal("192,64,191")
+				expect(#entries >= 1).to.beTrue()
+
+				for _, e in ipairs(entries) do
+					expect(e.tile.level).to.equal("f96c120")
+					expect(e.tile.ppm).to.equal(4)
+				end
+
+				-- no indoorLevelAt: the indoor box makes nothing (it was so before the floors)
+				expect(#run({box(1, 0, 0, 1, 0, 2)}, options())).to.equal(0)
+
+				-- a place with no ground
+				expect(#run({box(1, 0, 0, 1, 0, 2)}, options({indoorLevelAt = function() return nil end}))).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the indoor boxes of the in/out map are not turned into floor places (the underground of a navigation-mesh map would be left to the player), the ground is not
+			-- looked for under the top of the layer, or the indoor definition is not the one used
+			name = "driver: the indoor boxes of the in/out map make floor places (the ground found under the top of the layer, then the level of a player there), at the indoor range's definition",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = true, nodes = {}})
+					expect(P().Start()).to.beTrue()
+
+					local frames = 0
+
+					while #env.hooks > 0 and frames < 100 do
+						env.frame()
+						frames = frames + 1
+					end
+
+					-- the indoor box is of the layer 0 (top 63): the ground the stand-in finds is 100 under it, -37, and the stand-in level is named after it
+					local found = {}
+
+					for _, e in ipairs(env.handed) do
+						if e.tile.level == "f-37c120" then
+							found[e.tile.ppm] = true
+						end
+					end
+
+					expect(found[4]).to.beTrue() -- the indoor range (25 m, k = 130) gives 4 px/m
+					expect(found[2]).to.beNil()
+					expect(env.grounds > 0).to.beTrue()
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
 			end
 		},
 		{
@@ -429,7 +509,7 @@ return {
 						{x = 1100, y = 100, z = 0, type = 2},
 						{x = 3000, y = 3000, z = 0, type = 3}
 					}})
-					env.set({boxes = true})
+					env.set({boxes = "outdoor"}) -- the outdoor box alone: the peeks counted below are the nodes' (an indoor box would make its own)
 
 					expect(P().Start()).to.beTrue()
 
@@ -563,9 +643,13 @@ return {
 					local ppms = {}
 
 					for _, e in ipairs(env.handed) do
-						ppms[e.tile.ppm] = true
 						expect(e.tile.res).to.equal(1024)
-						expect(e.level.id).to.equal("open_t960")
+
+						-- the open level of the outdoor box (the indoor box makes floor tiles of its own, see the floors cases)
+						if string.sub(e.tile.level, 1, 4) == "open" then
+							ppms[e.tile.ppm] = true
+							expect(e.level.id).to.equal("open_t960")
+						end
 					end
 
 					expect(ppms[2]).to.beTrue()

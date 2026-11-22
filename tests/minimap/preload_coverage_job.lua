@@ -173,3 +173,121 @@ function COV.eval(route)
 		veilEventsUnderPlayer = st.veil, veilOpen = st.veilOpen, veilFloor = st.veilFloor
 	}
 end
+
+-- WHY each tile under the player was missing after the preload (the owner's question, 2026-11-22). Same walk as COV.eval; for each tile that is under the player the first time and is not in
+-- the cache, it says which of these holds, in this order:
+--   "level differs": the cache has a tile at the same place and definition for ANOTHER level (the preload prepared the place, but under another level id: the stairs problem);
+--   "definition differs": the cache has this level at this place, but at another definition (the mode / range the preload guessed was not the one the walk used);
+--   "no node near": nothing at this place, and no ground node of the graph within 300 units (the floors are made around the nodes, 256 units), so nothing could have been asked;
+--   "node near, other level": nothing at this place under any level or definition although a node is near (the node's own level is given: why it was not the same);
+-- plus, for every case, the box of the in/out map at the place (none, indoor or outdoor) and the nearest node's distance and level.
+-- Returns {counts = {...}, examples = {first ones with the ids}}.
+function COV.why(route, maxExamples)
+	local F, C, S, Z = M.Floors, M.Cache, M.Settings, GryMod.ZoneMapClient
+	local k = S.ScreenConstant()
+	local res = S.TileRes()
+	local foot = GetConVar("gry_radar_zoom_foot"):GetFloat()
+	local indoorRange = GetConVar("gry_radar_zoom_indoor"):GetFloat()
+	local defs = {2, 4, 8, 16, 32, 64}
+	local def = S.Definition()
+	local graph = GryMod.AIN.Load(game.GetMap())
+	local nodes = {}
+
+	for _, n in ipairs(graph.nodes) do
+		if n.type == 2 then
+			nodes[#nodes + 1] = n
+		end
+	end
+
+	local seen, counts, examples = {}, {}, {}
+	local clock = 1000
+	local realRT = RealTime
+
+	F.Reset()
+	RealTime = function() return clock end
+
+	local known = C.KnownLevels()
+
+	local ok, err = pcall(function()
+		for _, p in ipairs(route) do
+			clock = clock + 0.3
+
+			local pos = Vector(p.x, p.y, p.z)
+			local inside = Z.Indoor(pos) == true
+
+			def = S.AutoDefinitionFor(k / (inside and indoorRange or foot), def)
+
+			local level = F.CurrentAt(pos)
+			local tx, ty = C.TileOf(p.x, p.y, res, def)
+			local key = level.id .. "|" .. tx .. "," .. ty .. "," .. def
+
+			if not seen[key] then
+				seen[key] = true
+
+				if not C.Has({level = level.id, tx = tx, ty = ty, res = res, ppm = def}) then
+					local reason
+					local otherLevels, otherDefs = {}, {}
+
+					for _, id in ipairs(known) do
+						if id ~= level.id and C.Has({level = id, tx = tx, ty = ty, res = res, ppm = def}) then
+							otherLevels[#otherLevels + 1] = id
+						end
+					end
+
+					for _, d in ipairs(defs) do
+						if d ~= def and C.Has({level = level.id, tx = tx, ty = ty, res = res, ppm = d}) then
+							otherDefs[#otherDefs + 1] = d
+						end
+					end
+
+					local near, nd = nil, math.huge
+
+					for _, n in ipairs(nodes) do
+						local dx, dy, dz = n.x - p.x, n.y - p.y, n.z - p.z
+						local d2 = dx * dx + dy * dy + dz * dz
+
+						if d2 < nd then
+							near, nd = n, d2
+						end
+					end
+
+					nd = math.sqrt(nd)
+
+					if #otherLevels > 0 then
+						reason = "level differs"
+					elseif #otherDefs > 0 then
+						reason = "definition differs"
+					elseif nd > 300 then
+						reason = "no node near"
+					else
+						reason = "node near, other level"
+					end
+
+					counts[reason] = (counts[reason] or 0) + 1
+
+					if #examples < (maxExamples or 12) then
+						local nodeLevel = near and F.PeekAt(near.x, near.y, near.z)
+
+						examples[#examples + 1] = {
+							reason = reason,
+							level = level.id, open = level.open or false, def = def, indoor = inside,
+							pos = math.floor(p.x) .. "," .. math.floor(p.y) .. "," .. math.floor(p.z),
+							nearestNode = near and (math.floor(nd) .. " units, level " .. tostring(nodeLevel and nodeLevel.id)) or "none",
+							preparedHereUnderOtherLevels = table.concat(otherLevels, " "),
+							preparedHereAtOtherDefinitions = table.concat(otherDefs, " ")
+						}
+					end
+				end
+			end
+		end
+	end)
+
+	RealTime = realRT
+	F.Reset()
+
+	if not ok then
+		return {error = tostring(err)}
+	end
+
+	return {counts = counts, examples = examples}
+end

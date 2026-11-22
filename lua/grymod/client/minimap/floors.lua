@@ -882,6 +882,34 @@ function Floors.OpenAt(x, y, z)
 	return openAt(zmin, isSky and skyZ or hit)
 end
 
+-- GroundAt(x, y, top) -> z | nil. The height of the ground under `top` (the top of a layer of the in/out map): ONE ray down, GROUND_REACH units, brush mask. nil when it hits nothing,
+-- starts inside a solid (no ground to speak of), hits the sky (not a floor), or the numbers are bad. For the tile preload, which finds the floors of an indoor box with it.
+local GROUND_REACH = 256
+
+function Floors.GroundAt(x, y, top)
+	if not (isFinite(x) and isFinite(y) and isFinite(top)) then
+		return nil
+	end
+
+	local ok, tr = pcall(util.TraceLine, {
+		start = Vector(x, y, top),
+		endpos = Vector(x, y, top - GROUND_REACH),
+		mask = MASK_SOLID_BRUSHONLY
+	})
+
+	if not ok or type(tr) ~= "table" or not tr.Hit or tr.StartSolid or tr.HitSky then
+		return nil
+	end
+
+	local z = tr.HitPos and tr.HitPos.z
+
+	if not isFinite(z) then
+		return nil
+	end
+
+	return z
+end
+
 -- MapOpenTop() -> number | nil: the top (zhi) of the map's own open level, the one Outside gives: the whole height of the world cut at the sky the nodes see. The tile
 -- preload leaves out the places whose level is higher (outside the playable area). nil when the world's bounds are unknown.
 function Floors.MapOpenTop()
