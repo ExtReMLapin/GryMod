@@ -24,9 +24,9 @@ local AutoConVar = CreateClientConVar("gry_radar_autozoom", "0", true, false,
 local ModeConVars = {
 	vehicle = CreateClientConVar("gry_radar_zoom_vehicle", "100", true, false,
 		"Radar range in metres (5 to 100) while the player drives, with the automatic zoom on", 5, 100),
-	foot = CreateClientConVar("gry_radar_zoom_foot", "75", true, false,
+	foot = CreateClientConVar("gry_radar_zoom_foot", "40", true, false,
 		"Radar range in metres (5 to 100) on foot outside, with the automatic zoom on", 5, 100),
-	indoor = CreateClientConVar("gry_radar_zoom_indoor", "25", true, false,
+	indoor = CreateClientConVar("gry_radar_zoom_indoor", "13", true, false,
 		"Radar range in metres (5 to 100) indoors (under a ceiling in a narrow place), with the automatic zoom on", 5, 100)
 }
 local DelayConVar = CreateClientConVar("gry_radar_zoom_delay", "0.7", true, false,

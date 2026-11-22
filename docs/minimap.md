@@ -61,8 +61,8 @@ number gives the default).
 
 | `gry_radar_autozoom` | 0 | 0 or 1 | Automatic zoom: the radar's range follows three modes instead of the slider `gry_radar_range` (greyed in the menu while it is on). See "Automatic zoom" below. |
 | `gry_radar_zoom_vehicle` | 100 | 5 to 100 | Range in metres while the player drives a vehicle (automatic zoom on). |
-| `gry_radar_zoom_foot` | 75 | 5 to 100 | Range in metres on foot outside. |
-| `gry_radar_zoom_indoor` | 25 | 5 to 100 | Range in metres indoors (under a ceiling in a narrow place). |
+| `gry_radar_zoom_foot` | 40 | 5 to 100 | Range in metres on foot outside. |
+| `gry_radar_zoom_indoor` | 13 | 5 to 100 | Range in metres indoors (under a ceiling in a narrow place). |
 | `gry_radar_zoom_delay` | 0.7 | 0.1 to 5 | Seconds a mode has to hold before the radar goes to its range. |
 
 The map always turns with the player's view, like the contacts: there is no fixed-north mode.
@@ -122,7 +122,7 @@ modes. The three ranges are the player's sliders and nothing ties one to another
   the next tick of its one second timer; it carries the target). A new target in the middle of a glide starts from the range shown.
 - **Cost.** Nothing while the option is off. On: no hook of its own (`Radar.Feed` calls `GryMod.RadarZoom.Update` at every frame the HUD
   draws; the glide is a pure function of the time), one probe at most every quarter of a second.
-- **Limits.** The contacts follow the same range as the map, so indoors at 25 m an enemy 40 m away is not on the radar (a separate range for the
+- **Limits.** The contacts follow the same range as the map, so indoors at 13 m an enemy 20 m away is not on the radar (a separate range for the
   contacts is a later change). A roof made of props is not seen (the rays use the brush mask), the same trap as the floors. Going from a small range
   to a big one shows tiles that may not exist yet (the veil rules above apply).
 
@@ -187,7 +187,7 @@ places before you get there, so that a walk outside finds them ready.
   changes one plan. A map with no in/out map (no node graph and no navigation mesh) has no preload: it stays as it was, made as you play.
 - **What:** the tiles that cover the OUTDOOR boxes of the in/out map, for the open level of each place (the camera goes where an up ray from the place hits,
   see Limits), at the definitions the radar can use: with the automatic definition, the level in use plus the level the rule gives for each of the
-  three zoom ranges (shared ones once: 100 / 75 / 25 m on a 4K screen need 2 and 4 pixels per metre); with a manual definition, the slider's. The screen
+  three zoom ranges (shared ones once; the default ranges are 100 / 40 / 13 m); with a manual definition, the slider's. The screen
   constant that gives the level of a range (the density at a range r is k / r) is recorded by the radar at each draw (`Settings.ScreenConstant`).
   A place whose level would be higher than the sky of the playable area (a cell at the fringe of a box) makes no tile.
 - **The floors:** when the map has a node graph (`.ain`), each ground node is a place: `Floors.PeekAt` gives the level a player standing there would get (the
