@@ -851,6 +851,16 @@ function Floors.OpenAt(x, y, z)
 	return openAt(zmin, isSky and skyZ or hit)
 end
 
+-- MapOpenTop() -> number | nil: the top (zhi) of the map's own open level, the one Outside gives: the whole height of the world cut at the sky the nodes see. The tile
+-- preload leaves out the places whose level is higher (outside the playable area). nil when the world's bounds are unknown.
+function Floors.MapOpenTop()
+	if not worldHeights(game.GetMap(), nil) then
+		return nil
+	end
+
+	return worldBox.open.zhi
+end
+
 -- Outside(level) -> level | nil, reason: the level that shows what is OUTSIDE the slab of `level`, the open level of the map (the whole height of the world:
 -- rocks, roofs and terrain, the same table, id "open", that CurrentAt gives outdoors, so the tiles already made for it are used). The radar draws it under
 -- the floor below, faintly, so that the solid parts of a floor (earth cut by the slice) show a part of what is outside.

@@ -180,6 +180,19 @@ local function accept(bytes)
 	end
 
 	S.map, S.index, S.boxes, S.reason = map, index, #map.boxes, nil
+
+	-- the map is there: the tile preload starts from this (a hook that raises does not stop the receiver)
+	local ran, hookErr = pcall(hook.Run, "GryMod_InOutMapReady", S.boxes)
+
+	if not ran then
+		ErrorNoHalt("[GryMod] GryMod_InOutMapReady: " .. tostring(hookErr) .. "\n")
+	end
+end
+
+-- The boxes of the map held ({layer, x1, y1, x2, y2, state, ceil} each, as the module decoded them), or nil when there is no map. The list is the module's own: read it,
+-- do not change it.
+function Z.Boxes()
+	return S.map and S.map.boxes or nil
 end
 
 -- The state of the server's work (gry_zonemap_state). A state that says the map is not there (or is being made again) drops the one held: a stale

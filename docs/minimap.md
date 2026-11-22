@@ -47,6 +47,7 @@ number gives the default).
 | `gry_minimap_budget_ms` | 6 | 1 to 30 | Milliseconds per frame the generator may use. One capture (about 7 ms) may go over it. |
 | `gry_minimap_below` | 40 | 0 to 100, whole numbers | Opacity in percent of the floor below, seen through the empty parts of the current floor. 0 turns the floor below off (and it is not generated). |
 | `gry_minimap_outside` | 30 | 0 to 100, whole numbers | Opacity in percent of the outside (the open level, the whole height of the map) behind the floors, drawn under the floor below. 0 turns it off (and it is not generated). It is drawn only when the player is inside; outdoors the current level is already the open level. |
+| `gry_minimap_preload` | 1 | 0 or 1 | Make the map tiles of the outdoor places in advance, from the in/out map (see "Tile preload" below). 0: tiles are only made as you play. |
 | `gry_minimap_cache_mb` | 256 | 16 to 4096 | Size limit of the cache of one map, in megabytes. |
 | `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: the automatic definition goes up to 64 pixels per metre by itself, or raise `gry_minimap_definition` (with the automatic definition off) for a sharp picture. |
 
@@ -167,6 +168,27 @@ the automatic zoom asks it first and only falls back on its own rays where the m
 - **Clearing it:** press "Clear the minimap cache" in the options menu (it clears the current map and the map is made again as you
   play), or delete the directory `garrysmod/data/grymod/minimap/<key>/` (or all of `garrysmod/data/grymod/minimap/`) while the game is
   closed.
+
+## Tile preload (outdoor tiles made in advance)
+
+Without it the map is made as you walk: the tiles around you, and the ones around each new place. The preload makes the tiles of the outdoor
+places before you get there, so that a walk outside finds them ready.
+
+- **When:** the in/out map arrived from the server (`GryMod_InOutMapReady`), or one of the settings that decide what is made changed (the switch
+  `gry_minimap_preload`, the automatic zoom and its three ranges, the radar range, the definition settings). A short wait (2 s) makes several
+  changes one plan. A map with no in/out map (no node graph and no navigation mesh) has no preload: it stays as it was, made as you play.
+- **What:** the tiles that cover the OUTDOOR boxes of the in/out map, for the open level of each place (the camera goes where an up ray from the place hits,
+  see Limits), at the definitions the radar can use: with the automatic definition, the level in use plus the level the rule gives for each of the
+  three zoom ranges (shared ones once: 100 / 75 / 25 m on a 4K screen need 2 and 4 pixels per metre); with a manual definition, the slider's. The screen
+  constant that gives the level of a range (the density at a range r is k / r) is recorded by the radar at each draw (`Settings.ScreenConstant`).
+  A place whose level would be higher than the sky of the playable area (a cell at the fringe of a box) makes no tile. The indoor floors are
+  not preloaded yet (their names need the ground height, see the stairs note in the to-do list): they are made as you play.
+- **How:** the plan is made in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
+  player first, and tiles the cache already has are left out. The generator makes them after every tile the radar asks for, with a smaller budget
+  (`Gen.PRELOAD_BUDGET_MS`, 2 ms), and not at all in a frame that follows a frame slower than 25 ms: it comes back when frames are fast again. The
+  preload never shows in the veil (no percentage).
+- **Cost:** no hook stays: the planning frame hook exists only while a plan is made, and the generator's hook only while tiles wait. A plan for
+  gm_construct (927 boxes) costs about 11 ms of rays in all and makes about 28 tiles at two definitions.
 
 ## What the player sees while the map is made
 

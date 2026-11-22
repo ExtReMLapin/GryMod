@@ -439,6 +439,11 @@ local function autoDefinition(Settings, xf, metres)
 
 	if density then
 		Settings.SetAutoDefinition(Settings.AutoDefinitionFor(density, Settings.Definition()))
+
+		-- the screen constant for the tile preload (density times range: the same at every range)
+		if Settings.SetScreenConstant then
+			Settings.SetScreenConstant(density * metres)
+		end
 	end
 end
 

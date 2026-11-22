@@ -1658,6 +1658,36 @@ return {
 			end
 		},
 		{
+			-- the preload asks the top of the map's own open level to leave out the places whose ray goes above the playable area (the cells at the fringe of a box, where the
+			-- spread of the in/out map is wider than the ground). breaks if: it gives the world's top when the map's open level is cut at the sky, or nothing without a world
+			name = "MapOpenTop: the top of the map's open level (cut at the sky seen by the nodes, else the world's top with the margin), nil without world bounds",
+			func = function(state)
+				expect(isfunction(F().MapOpenTop)).to.beTrue()
+
+				-- no node graph, no ray that sees the sky: the world's top (900) with the margin
+				standIn(state, {})
+				state.ray = ceil(150)
+				expect(F().MapOpenTop()).to.equal(916)
+
+				-- nodes that see the sky at 1000 under a world that goes up to 15360: 960
+				F().Reset()
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+
+				local nodes = cluster(0, 10)
+
+				standIn(state, {[state.map] = {nodes = nodes}})
+				util.TraceLine = function(t)
+					return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, 1000)}
+				end
+				expect(F().MapOpenTop()).to.equal(960)
+
+				-- no world
+				F().Reset()
+				game.GetWorld = function() return nil end
+				expect(F().MapOpenTop()).to.beNil()
+			end
+		},
+		{
 			-- OpenAt is what the tile preload asks for each outdoor place of the in/out map: the same level the game would give a player standing there, without
 			-- a player. breaks if: it answers another table than CurrentAt for the same height (tiles made twice), shoots more than one ray, or gives a level under a roof
 			name = "OpenAt: one up ray from the place gives the open level of its hit (the very table CurrentAt gives), nothing under a roof (within 512), a level under the piece above far over it",

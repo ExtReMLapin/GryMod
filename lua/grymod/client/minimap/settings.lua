@@ -162,6 +162,26 @@ function Settings.SetAutoDefinition(ppm)
 	return true
 end
 
+-- The screen constant: the density of the screen (pixels per metre of ground) times the range in metres, the same whatever the range (the radar's pixels per metre
+-- times the screen's pixels per radar pixel). The radar records it at every draw; the tile preload reads it to know which definition each zoom range will get without
+-- a radar to ask (the density at a range r is k / r). nil until the radar has drawn once. Kept by the module across a hot reload.
+Settings.ScreenK = Settings.ScreenK
+
+-- Only a positive finite number is taken (true); anything else is refused (false) and the value in use stays.
+function Settings.SetScreenConstant(k)
+	if type(k) ~= "number" or k ~= k or k <= 0 or k == math.huge then
+		return false
+	end
+
+	Settings.ScreenK = k
+
+	return true
+end
+
+function Settings.ScreenConstant()
+	return Settings.ScreenK
+end
+
 -- The level used before the current automatic one (the radar draws its tiles under the new ones until the new ones exist), or nil: at the start, and
 -- whenever the automatic definition is off (the slider's value has no pyramid).
 function Settings.PreviousDefinition()

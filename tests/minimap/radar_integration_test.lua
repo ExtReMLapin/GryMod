@@ -178,6 +178,11 @@ local function installAuto(state)
 		return true
 	end
 	S.PreviousDefinition = function() return state.previousDefinition end
+	S.SetScreenConstant = function(k)
+		state.screenK = k
+
+		return true
+	end
 end
 
 -- the density the radar must give the rule: its pixels per metre times the screen pixels per radar pixel (the length of a column of the transform)
@@ -1558,6 +1563,47 @@ return {
 		},
 		{
 			-- breaks if: the level is given to Settings after Gen.Request (the generator would ask for the old definition once more), or not at all
+			-- the tile preload has no radar to ask which definition a zoom range will get: it needs the screen constant (the density at a range r is k / r), which only the
+			-- radar knows. breaks if: the radar does not record it, records the density instead of density * range (it would change with the range), or records it with
+			-- the automatic definition off
+			name = "Auto: the radar records the screen constant (density times range: the same at every range), once a draw, for the tile preload",
+			func = function(state)
+				installAuto(state)
+
+				local convar = GetConVar("gry_radar_range")
+				local old = convar:GetString()
+
+				local ok, err = pcall(function()
+					local seen = {}
+
+					for _, metres in ipairs({10, 38}) do
+						convar:SetString(tostring(metres))
+						state.screenK = nil
+
+						local panel = newPanel()
+
+						panel:Draw(0, 0, 2.5)
+						expect(state.screenK ~= nil).to.beTrue()
+						expect(state.screenK).to.aboutEqual(expectedDensity(panel, 2.5, metres) * metres, 1e-6)
+						seen[#seen + 1] = state.screenK
+					end
+
+					-- the same constant at the two ranges
+					expect(seen[1]).to.aboutEqual(seen[2], 1e-6)
+
+					-- with the automatic definition off nothing is recorded (the preload has no pyramid to work with)
+					state.auto = false
+					state.screenK = nil
+					newPanel():Draw(0, 0, 2.5)
+					expect(state.screenK).to.beNil()
+				end)
+
+				pcall(function() convar:SetString(old) end)
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "Auto: the level the rule gave goes to Settings.SetAutoDefinition once a draw, before Gen.Request, and the tile looked up for the veil is at that definition",
 			func = function(state)
 				installAuto(state)

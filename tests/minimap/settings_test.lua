@@ -160,6 +160,35 @@ return {
 			end
 		},
 		{
+			-- the radar gives the screen constant at every draw (see radar_integration_test); the preload reads it. breaks if a bad value replaces a good one, or is accepted
+			name = "the screen constant: SetScreenConstant keeps a positive finite number and refuses anything else (the old value stays); ScreenConstant gives it",
+			func = function()
+				local S = GryMod.Minimap.Settings
+				local live = S.ScreenConstant and S.ScreenConstant()
+
+				expect(isfunction(S.SetScreenConstant)).to.beTrue()
+				expect(isfunction(S.ScreenConstant)).to.beTrue()
+
+				local ok, err = pcall(function()
+					expect(S.SetScreenConstant(130)).to.equal(true)
+					expect(S.ScreenConstant()).to.equal(130)
+
+					for _, bad in ipairs({0, -5, 0 / 0, math.huge, "130", true}) do
+						expect(S.SetScreenConstant(bad)).to.equal(false)
+						expect(S.ScreenConstant()).to.equal(130)
+					end
+
+					expect(S.SetScreenConstant(1.5)).to.equal(true)
+					expect(S.ScreenConstant()).to.equal(1.5)
+				end)
+
+				-- the running radar's own value is put back
+				S.ScreenK = live
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "the accessors give the defaults when the convars hold their default",
 			func = function()
 				local S = GryMod.Minimap.Settings

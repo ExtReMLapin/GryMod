@@ -45,6 +45,136 @@ local function run(boxes, opts, perStep)
 	return job.Entries(), job
 end
 
+-- The stand-ins of the driver's world: the settings (the real rule of the automatic definition, the values of the convars given by the case), the in/out map's boxes,
+-- the cache (the real tile size, no tile there), the generator (it keeps what it was handed), Floors.OpenAt (counts its rays), the hook, the timer and the clock.
+-- env.set{...} changes values: preload, autozoom, vehicle, foot, indoor, range (convars), k (screen constant, false = unknown), definition, autodef (0 / 1), boxes (true: an
+-- outdoor and an indoor box, false: no map), frame (the last frame's duration). env.restore() puts everything back (a case always calls it, also after a failure).
+local function makeEnv()
+	local M = GryMod.Minimap
+	local P0 = M.Preload
+	local env = {hooks = {}, timers = {}, handed = nil, rays = 0}
+	local saved = {Settings = M.Settings, Cache = M.Cache, Gen = M.Gen, Floors = M.Floors, Zone = GryMod.ZoneMapClient}
+	local savedFields = {}
+
+	for _, k in ipairs({"_hookAdd", "_hookRemove", "_timerCreate", "_timerRemove", "_convar", "_frameTime", "_clock", "_origin"}) do
+		savedFields[k] = P0[k]
+	end
+
+	local v = {preload = 1, autozoom = 0, vehicle = 100, foot = 75, indoor = 25, range = 25, k = 130, definition = 4, autodef = 1, boxes = true, frame = 0.005}
+
+	local function boxList()
+		return {box(0, 0, 0, 7, 7), box(0, 20, 20, 22, 22, 2)}
+	end
+
+	M.Settings = {
+		Enabled = function() return true end,
+		DefinitionAuto = function() return v.autodef == 1 end,
+		Definition = function() return v.definition end,
+		TileRes = function() return 1024 end,
+		ScreenConstant = function() return v.k or nil end,
+		AUTO_LEVELS = saved.Settings.AUTO_LEVELS,
+		AutoDefinitionFor = saved.Settings.AutoDefinitionFor
+	}
+	M.Cache = {
+		TileUnits = function(res, ppm) return res / ppm / 0.01905 end,
+		Has = function() return false end
+	}
+	M.Gen = {
+		PRELOAD_MAX_FRAME = 0.025,
+		SetPreload = function(entries)
+			env.handed = entries
+
+			return true
+		end
+	}
+	M.Floors = {
+		MapOpenTop = function() return 5000 end,
+		OpenAt = function()
+			env.rays = env.rays + 1
+
+			return level("open_t960")
+		end
+	}
+	GryMod.ZoneMapClient = {
+		Boxes = function() return v.boxes and boxList() or nil end
+	}
+
+	P0._hookAdd = function(_, name, fn) env.hooks[#env.hooks + 1] = {name = name, fn = fn} end
+	P0._hookRemove = function(_, name)
+		for i = #env.hooks, 1, -1 do
+			if env.hooks[i].name == name then
+				table.remove(env.hooks, i)
+			end
+		end
+	end
+	P0._timerCreate = function(name, _, _, fn)
+		for i = #env.timers, 1, -1 do
+			if env.timers[i].name == name then
+				table.remove(env.timers, i)
+			end
+		end
+
+		env.timers[#env.timers + 1] = {name = name, fn = fn}
+	end
+	P0._timerRemove = function(name)
+		for i = #env.timers, 1, -1 do
+			if env.timers[i].name == name then
+				table.remove(env.timers, i)
+			end
+		end
+	end
+	P0._convar = function(name)
+		return ({
+			gry_minimap_preload = v.preload,
+			gry_radar_autozoom = v.autozoom,
+			gry_radar_zoom_vehicle = v.vehicle,
+			gry_radar_zoom_foot = v.foot,
+			gry_radar_zoom_indoor = v.indoor,
+			gry_radar_range = v.range
+		})[name]
+	end
+	P0._frameTime = function() return v.frame end
+	P0._origin = function() return {0, 0} end
+
+	function env.set(values)
+		for k, value in pairs(values) do
+			v[k] = value
+		end
+	end
+
+	function env.frame()
+		local list = {}
+
+		for i, h in ipairs(env.hooks) do
+			list[i] = h.fn
+		end
+
+		for _, fn in ipairs(list) do
+			fn()
+		end
+	end
+
+	function env.fireTimer()
+		local t = table.remove(env.timers, 1)
+
+		if t then
+			t.fn()
+		end
+	end
+
+	function env.restore()
+		pcall(function() P0.Stop() end)
+		M.Settings, M.Cache, M.Gen, M.Floors = saved.Settings, saved.Cache, saved.Gen, saved.Floors
+		GryMod.ZoneMapClient = saved.Zone
+
+		for k, value in pairs(savedFields) do
+			P0[k] = value
+		end
+	end
+
+	return env
+end
+
 -- tables are compared by reference by the framework: lists are compared as text
 local function text(list)
 	local out = {}
@@ -189,6 +319,32 @@ return {
 			end
 		},
 		{
+			-- the cells at the fringe of a box (the spread of the in/out map is wider than the ground) may see a ray that goes through the sky of the playable area into the skybox:
+			-- levels over the top of the map's open level are not made (gm_construct made open_t10176 and open_t15168 for them). breaks if: such a place makes tiles
+			name = "NewJob: a place whose level is over maxTop (the playable sky) makes no tile; one at or under it does",
+			func = function()
+				local entries = run({box(0, 0, 0, 1, 0), box(0, 4, 0, 5, 0), box(0, 8, 0, 9, 0)}, options({
+					maxTop = 9920,
+					levelAt = function(x)
+						-- the three boxes are 1024 units apart: x of the first area is in 0..256, the second 512..768, the third 1024..1280
+						local top = x < 400 and 9920 or (x < 900 and 15168 or 5000)
+
+						return {id = "open_t" .. top, open = true, zlo = -100, zhi = top}
+					end
+				}))
+
+				local seen = {}
+
+				for _, e in ipairs(entries) do
+					seen[e.level.id] = true
+				end
+
+				expect(seen.open_t9920).to.beTrue()
+				expect(seen.open_t5000).to.beTrue()
+				expect(seen.open_t15168).to.beNil()
+			end
+		},
+		{
 			-- breaks if: a step does all the work whatever the count asked (a frame would freeze on a map with thousands of boxes), or the job never says it is done
 			name = "NewJob: a step does at most the number of boxes asked, the job says when it is done, and the result is the same in any number of steps",
 			func = function()
@@ -213,6 +369,174 @@ return {
 				local pieces = run(boxes, options(), 1)
 
 				expect(text(ids(pieces))).to.equal(text(ids(whole)))
+			end
+		},
+
+		-- ------------------------------------------------------------------------------------------------------------------------------------------------
+		-- the driver: it reads the settings and the in/out map, plans in steps of a frame, and hands the tiles to the generator
+		-- ------------------------------------------------------------------------------------------------------------------------------------------------
+		{
+			-- breaks if: the preload starts when it is switched off, from a map that is not there, or without the screen constant it needs to know the definitions
+			name = "driver: Start says why it does nothing (switched off, no map, no screen constant with the automatic definition) and makes no hook then",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({preload = 0})
+					local started, why = P().Start()
+
+					expect(started).to.beFalse()
+					expect(why).to.equal("off")
+
+					env.set({preload = 1, boxes = false})
+					started, why = P().Start()
+					expect(started).to.beFalse()
+					expect(why).to.equal("no map")
+
+					env.set({boxes = true, k = false})
+					started, why = P().Start()
+					expect(started).to.beFalse()
+					expect(why).to.equal("no screen constant")
+
+					expect(#env.hooks).to.equal(0)
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- the owner's three ranges (100 / 75 / 25 m) on a screen whose constant is 130 give the definitions 2 and 4: tiles of both, for the open level of the outdoor boxes
+			-- breaks if: the ranges are not read from the convars (the manual one is used with the automatic zoom on), a definition is missing, or the plan is handed over before it is done
+			name = "driver: with the automatic zoom the definitions come from the three ranges; the plan is made in steps of the frame hook and handed to the generator when done, then the hook goes",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, definition = 4, boxes = true})
+
+					expect(P().Start()).to.beTrue()
+					expect(#env.hooks).to.equal(1)
+					expect(env.handed).to.beNil() -- nothing yet: the plan is made frame by frame
+
+					-- drive the frame hook until it removes itself
+					local frames = 0
+
+					while #env.hooks > 0 and frames < 100 do
+						env.frame()
+						frames = frames + 1
+					end
+
+					expect(#env.hooks).to.equal(0)
+					expect(env.handed ~= nil).to.beTrue()
+
+					local ppms = {}
+
+					for _, e in ipairs(env.handed) do
+						ppms[e.tile.ppm] = true
+						expect(e.tile.res).to.equal(1024)
+						expect(e.level.id).to.equal("open_t960")
+					end
+
+					expect(ppms[2]).to.beTrue()
+					expect(ppms[4]).to.beTrue()
+					expect(ppms[8]).to.beNil()
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: with the manual definition the preload still waits for the screen constant, or uses another definition than the slider's
+			name = "driver: with a manual definition the slider's definition is the only one and no screen constant is needed",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({autodef = 0, definition = 15, k = false, boxes = true})
+					expect(P().Start()).to.beTrue()
+
+					local frames = 0
+
+					while #env.hooks > 0 and frames < 100 do
+						env.frame()
+						frames = frames + 1
+					end
+
+					expect(env.handed ~= nil).to.beTrue()
+
+					for _, e in ipairs(env.handed) do
+						expect(e.tile.ppm).to.equal(15)
+					end
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: the frame hook works in a slow frame, or does more than its small share of a frame
+			name = "driver: the planning steps do nothing in a frame that follows a slow one, and Stop removes the hook and empties the generator's preload",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = true})
+					expect(P().Start()).to.beTrue()
+
+					env.set({frame = 0.08})
+
+					local before = env.rays
+
+					env.frame()
+					expect(env.rays).to.equal(before)
+					expect(#env.hooks).to.equal(1)
+
+					env.set({frame = 0.005})
+					env.frame()
+					expect(env.rays > before).to.beTrue()
+
+					P().Stop()
+					expect(#env.hooks).to.equal(0)
+					expect(#env.handed).to.equal(0)
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- the event comes once per accepted file and the owner changes a slider several times: one start, after a short wait. breaks if: every event or change starts a plan
+			name = "driver: Schedule waits a moment and starts once however many times it is called; nothing is scheduled when the preload is off",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({preload = 1, autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = true})
+
+					P().Schedule()
+					P().Schedule()
+					P().Schedule()
+					expect(#env.timers).to.equal(1)
+					expect(#env.hooks).to.equal(0) -- not yet
+
+					env.fireTimer()
+					expect(#env.hooks).to.equal(1)
+
+					env.set({preload = 0})
+					P().Stop()
+					P().Schedule()
+					expect(#env.timers).to.equal(0)
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
 			end
 		}
 	}

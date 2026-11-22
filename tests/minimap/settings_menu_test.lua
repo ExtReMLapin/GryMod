@@ -420,6 +420,19 @@ return {
 			end
 		},
 		{
+			-- the preload is optional (every feature has its switch): a check box bound to the convar, saved, and opening the panel writes nothing
+			name = "the tile preload has a check box bound to gry_minimap_preload (a toggle is a check box), default on, and opening the panel writes nothing",
+			func = function(state)
+				state.panel = build()
+
+				local box = checkBoxOn(state.panel, "gry_minimap_preload")
+
+				expect(box ~= nil).to.beTrue()
+				expect(GetConVar("gry_minimap_preload"):GetDefault()).to.equal("1")
+				expect(#state.writes).to.equal(0)
+			end
+		},
+		{
 			name = "the cache size slider is bound to gry_minimap_cache_mb: 16 to 4096, whole numbers, right after the outside slider (which follows the floor below slider)",
 			func = function(state)
 				state.panel = build()

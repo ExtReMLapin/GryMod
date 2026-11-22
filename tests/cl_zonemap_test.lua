@@ -495,6 +495,48 @@ return {
 			end
 		},
 		{
+			-- the tile preload starts from this event and reads the boxes (it must not start from a map that is not there, or a refused file)
+			-- breaks if: the event is not fired when a file is accepted, is fired for a refused one, or Boxes() gives boxes of a map that was dropped
+			name = "an accepted file fires GryMod_InOutMapReady once with the number of boxes, and Boxes() gives them; a refused file or a state that drops the map does neither",
+			func = function(state)
+				local Z = GryMod.ZoneMapClient
+				local fired = {}
+
+				hook.Add("GryMod_InOutMapReady", "gry_zonemap_test_ready", function(count)
+					fired[#fired + 1] = count
+				end)
+
+				local ok, err = pcall(function()
+					expect(isfunction(Z.Boxes)).to.beTrue()
+					expect(Z.Boxes()).to.beNil()
+
+					state.decoded = {boxes = {{0, 0, 0, 0, 0, 2, 0}, {0, 1, 0, 1, 0, 1, 0}}}
+					Z.OnState(4, 2, 2)
+					Z.OnData(0, 1, 10, "MAP1234567")
+
+					expect(#fired).to.equal(1)
+					expect(fired[1]).to.equal(2)
+					expect(#Z.Boxes()).to.equal(2)
+
+					-- a state that says the map is being made again drops it
+					Z.OnState(3, 1, 2)
+					expect(Z.Boxes()).to.beNil()
+
+					-- a file that is refused (the stand-in decoder refuses what does not start with "MAP")
+					Z.OnState(4, 2, 2)
+					Z.OnData(0, 1, 10, "XXX1234567")
+					expect(#fired).to.equal(1)
+					expect(Z.Boxes()).to.beNil()
+				end)
+
+				hook.Remove("GryMod_InOutMapReady", "gry_zonemap_test_ready")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "three chunks in order make the file",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient

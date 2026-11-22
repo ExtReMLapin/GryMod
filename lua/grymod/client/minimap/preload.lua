@@ -94,7 +94,9 @@ end
 -- NewJob(boxes, opts) -> job. boxes = the boxes of the in/out map ({layer, x1, y1, x2, y2, state, ceil}, cells of 128 units); opts = {
 --   definitions = {ppm, ...}, res = tile size in pixels, tileUnits = function(res, ppm) -> edge of a tile in units,
 --   levelAt = function(x, y, z) -> level table | nil (Floors.OpenAt), has = function(tile) -> bool (Cache.Has: tiles already there are left out),
---   origin = {x, y} (the nearest tiles first), maxTiles = the cap (Preload.MAX_TILES) }.
+--   origin = {x, y} (the nearest tiles first), maxTiles = the cap (Preload.MAX_TILES), maxTop = the top of the map's open level (Floors.MapOpenTop): a place whose
+--   level is higher makes no tile (a cell at the fringe of a box, where the in/out map's spread is wider than the ground, can see its ray go through the sky of the
+--   playable area into the skybox) }.
 -- The job: Step(count) does at most `count` boxes and answers how many it did; Done(); Entries() = the tiles to make, nearest first, each {tile = {level, tx, ty,
 -- res, ppm}, level = the level table (the generator needs its heights), d = squared distance to the origin}; Total() = how many tiles the plan has before the
 -- cap; Truncated() = true when the cap cut it. The entries are final once Done() is true.
@@ -105,6 +107,7 @@ function Preload.NewJob(boxes, opts)
 	local origin = opts.origin or {0, 0}
 	local maxTiles = opts.maxTiles or Preload.MAX_TILES
 	local levelAt, has, tileUnits = opts.levelAt, opts.has, opts.tileUnits
+	local maxTop = opts.maxTop
 
 	-- the edge of a tile for each definition, asked once
 	local edges = {}
@@ -177,7 +180,7 @@ function Preload.NewJob(boxes, opts)
 				local x1, y1, x2, y2 = ax1 * CELL, ay1 * CELL, ax2 * CELL, ay2 * CELL
 				local level = levelAt((x1 + x2) / 2, (y1 + y2) / 2, z)
 
-				if type(level) == "table" and type(level.id) == "string" then
+				if type(level) == "table" and type(level.id) == "string" and not (maxTop and type(level.zhi) == "number" and level.zhi > maxTop) then
 					addArea(level, x1, y1, x2, y2)
 				end
 			end
@@ -233,4 +236,198 @@ function Preload.NewJob(boxes, opts)
 	end
 
 	return job
+end
+
+-- ---------------------------------------------------------------------------------------------------------------------------------------
+-- The driver: reads the settings and the in/out map, plans in small steps (one frame never does all the rays of a map), and hands the tiles to the generator, which
+-- makes them after everything the radar asks for, within a small budget and not in a slow frame (see Gen.SetPreload). Cost rules: no hook stays: the frame hook exists only
+-- while a plan is being made; a timer waits a moment after an event or a change of setting so that several changes make one plan; nothing is done when the preload is off.
+-- The engine's parts are fields (Preload._hookAdd, ...) so that the tests give their own.
+
+local NAME = "GryMod minimap preload"
+local STEP_BOXES = 4 -- boxes planned between two readings of the clock
+local FRAME_SHARE = 0.001 -- seconds of planning in a frame, at most (one step is always done)
+
+Preload.SCHEDULE_DELAY = 2 -- seconds waited after an event or a change before planning
+Preload.RETRY_MAX = 30 -- how many times a plan waits (a second each) for the radar to give the screen constant
+
+CreateClientConVar("gry_minimap_preload", "1", true, false, "Make the map tiles of the outdoor places in advance, from the in/out map (1), or only as you play (0)", 0, 1)
+
+Preload._hookAdd = hook.Add
+Preload._hookRemove = hook.Remove
+Preload._timerCreate = timer.Create
+Preload._timerRemove = timer.Remove
+Preload._frameTime = FrameTime
+Preload._clock = SysTime
+
+Preload._convar = function(name)
+	local convar = GetConVar(name)
+
+	return convar and convar:GetFloat() or nil
+end
+
+Preload._origin = function()
+	local ply = LocalPlayer()
+
+	if IsValid(ply) then
+		local pos = ply:GetPos()
+
+		return {pos.x, pos.y}
+	end
+
+	return {0, 0}
+end
+
+local job = nil -- the plan being made
+local retries = 0
+
+local function removeFrameHook()
+	Preload._hookRemove("Think", NAME)
+end
+
+-- one frame of planning (the Think hook)
+local function frame()
+	if not job then
+		removeFrameHook()
+
+		return
+	end
+
+	local Gen = GryMod.Minimap.Gen
+	local limit = Gen and Gen.PRELOAD_MAX_FRAME or 0.025
+
+	if Preload._frameTime() > limit then
+		return -- the last frame was slow: later
+	end
+
+	local started = Preload._clock()
+
+	repeat
+		job.Step(STEP_BOXES)
+	until job.Done() or Preload._clock() - started >= FRAME_SHARE
+
+	if job.Done() then
+		local entries = job.Entries()
+
+		job = nil
+		removeFrameHook()
+
+		if Gen and Gen.SetPreload then
+			Gen.SetPreload(entries)
+		end
+	end
+end
+
+-- Stop(): the plan in progress is dropped, the frame hook and the timer go, and the generator forgets the preload tiles that wait.
+function Preload.Stop()
+	job = nil
+	removeFrameHook()
+	Preload._timerRemove(NAME)
+
+	local Gen = GryMod.Minimap.Gen
+
+	if Gen and Gen.SetPreload then
+		Gen.SetPreload({})
+	end
+end
+
+-- Start() -> true | false, reason. Plans the preload now: the outdoor boxes of the in/out map, at the definitions the radar will use (the slider's with a manual definition;
+-- with the automatic one, the levels the three zoom ranges give, or the one range of the radar when the automatic zoom is off). Reasons: "off" (the switch or the
+-- minimap), "no map" (the in/out map is not there), "no screen constant" (the radar has not drawn yet), "no definition".
+function Preload.Start()
+	local M = GryMod.Minimap
+
+	job = nil
+	removeFrameHook()
+
+	local Settings, Cache, Floors, Gen = M.Settings, M.Cache, M.Floors, M.Gen
+
+	if (Preload._convar("gry_minimap_preload") or 1) == 0 or not Settings or not (Settings.Enabled and Settings.Enabled()) then
+		if Gen and Gen.SetPreload then
+			Gen.SetPreload({})
+		end
+
+		return false, "off"
+	end
+
+	local zone = GryMod.ZoneMapClient
+	local boxes = zone and zone.Boxes and zone.Boxes()
+
+	if type(boxes) ~= "table" then
+		return false, "no map"
+	end
+
+	local definitions
+
+	if Settings.DefinitionAuto() then
+		local k = Settings.ScreenConstant and Settings.ScreenConstant()
+
+		if not k then
+			return false, "no screen constant"
+		end
+
+		local ranges
+
+		if (Preload._convar("gry_radar_autozoom") or 0) == 1 then
+			ranges = {Preload._convar("gry_radar_zoom_vehicle"), Preload._convar("gry_radar_zoom_foot"), Preload._convar("gry_radar_zoom_indoor")}
+		else
+			ranges = {Preload._convar("gry_radar_range")}
+		end
+
+		definitions = Preload.Definitions(k, ranges, Settings.Definition())
+	else
+		definitions = {Settings.Definition()}
+	end
+
+	if #definitions == 0 or not Cache or not Floors or not Floors.OpenAt then
+		return false, "no definition"
+	end
+
+	job = Preload.NewJob(boxes, {
+		definitions = definitions,
+		res = Settings.TileRes(),
+		tileUnits = Cache.TileUnits,
+		levelAt = Floors.OpenAt,
+		maxTop = Floors.MapOpenTop and Floors.MapOpenTop() or nil,
+		has = Cache.Has,
+		origin = Preload._origin()
+	})
+
+	Preload._hookAdd("Think", NAME, frame)
+
+	return true
+end
+
+-- Schedule(): plan after a short wait (an event or a change of setting: several make one plan). Off: nothing waits and nothing is kept.
+function Preload.Schedule()
+	if (Preload._convar("gry_minimap_preload") or 1) == 0 then
+		Preload.Stop()
+
+		return
+	end
+
+	Preload._timerCreate(NAME, Preload.SCHEDULE_DELAY, 1, function()
+		local started, why = Preload.Start()
+
+		-- the radar gives the screen constant at its first draws: wait for it (a second at a time) instead of giving up
+		if not started and why == "no screen constant" and retries < Preload.RETRY_MAX then
+			retries = retries + 1
+			Preload._timerCreate(NAME, 1, 1, function()
+				Preload.Schedule()
+			end)
+		else
+			retries = 0
+		end
+	end)
+end
+
+-- the in/out map arrived, and the settings that change what is to be made
+hook.Add("GryMod_InOutMapReady", NAME, function()
+	Preload.Schedule()
+end)
+
+for _, name in ipairs({"gry_minimap_preload", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_range"}) do
+	cvars.AddChangeCallback(name, function()
+		Preload.Schedule()
+	end, NAME)
 end
