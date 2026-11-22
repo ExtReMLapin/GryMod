@@ -537,18 +537,24 @@ local function drawMap(self, x, y, scale)
 			reportError(err)
 		end
 	end
-	-- the level of the player: CurrentAt looks up for a ceiling (an open level outdoors), the height alone is the older rule
+	-- the level of the player: CurrentAt looks up for a ceiling (an open level outdoors), the height alone is the older rule. CurrentAt answers the level to SHOW (the
+	-- display holds the level it showed while that is still right and its tile is there) and the level of the PLACE: the generator is asked for the place's only (the
+	-- preload predicts it, nothing predicts a held level), the view draws the held level where its tile is and the place's elsewhere. `own` is nil when nothing is held.
 	local Floors = M.Floors
-	local level
+	local level, own
 
 	if Floors.CurrentAt then
-		level = Floors.CurrentAt(pos)
+		level, own = Floors.CurrentAt(pos)
 	else
 		level = Floors.Current(pos.z)
 	end
 
 	if not level then
 		return
+	end
+
+	if type(own) ~= "table" or own.id == level.id then
+		own = nil
 	end
 
 	-- the floor below, seen through the voids of this one, at the opacity the player chose (Settings.Below, 0 to 1; 0 or missing: none).
@@ -559,14 +565,19 @@ local function drawMap(self, x, y, scale)
 		belowOpacity = 0
 	end
 
-	local below = nil
+	local below, belowOwn = nil, nil
 
 	if belowOpacity > 0 and M.Floors.Below then
 		below = M.Floors.Below(level)
+
+		if own then
+			belowOwn = M.Floors.Below(own)
+		end
 	end
 
 	if not below then
 		belowOpacity = 0
+		belowOwn = nil
 	end
 
 	-- the outside (the open level of the map, the whole height of the world), seen faintly under everything else through the solid parts of the floors, at the
@@ -599,7 +610,7 @@ local function drawMap(self, x, y, scale)
 	local extent = M.View.ExtentFactor and M.View.ExtentFactor() or Radar.MAP_EXTENT
 
 	-- a request the generator refuses answers nil and a reason (too many tiles, no tile size): nothing waits for it, it is told once
-	local requested, refusal = M.Gen.Request(level, px, py, requestRange * extent, below, outside)
+	local requested, refusal = M.Gen.Request(own or level, px, py, requestRange * extent, belowOwn or below, outside)
 
 	if not requested and refusal then
 		reportError("Gen.Request: " .. tostring(refusal))
@@ -622,6 +633,12 @@ local function drawMap(self, x, y, scale)
 	local active = progress and progress.active
 
 	local present = M.Cache.Has(tile)
+
+	-- a held level whose tile is not there: the view draws the place's tile under the player instead
+	if not present and own then
+		tile.level = own.id
+		present = M.Cache.Has(tile)
+	end
 
 	-- a change of level of the automatic definition (a zoom) leaves the new tile missing while the tiles of the previous level, which the view goes on drawing,
 	-- already cover the player: no veil then
@@ -689,6 +706,7 @@ local function drawMap(self, x, y, scale)
 	end
 
 	call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha = xf, px, py, ply:EyeAngles().y, range, level, alpha, below, belowOpacity * alpha
+	call.base, call.belowBase = own, belowOwn
 	call.outside, call.outsideAlpha = outside, outsideOpacity * alpha
 	self.mapPending = true
 end
@@ -704,7 +722,7 @@ local function drawPendingMap(self)
 
 	local call = self.mapCall
 	local View = GryMod.Minimap.View
-	local ok, err = pcall(View.Draw, call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha, call.outside, call.outsideAlpha)
+	local ok, err = pcall(View.Draw, call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha, call.outside, call.outsideAlpha, call.base, call.belowBase)
 	surface.SetDrawColor(255, 255, 255, 255)
 
 	if not ok then

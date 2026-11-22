@@ -1243,6 +1243,100 @@ return {
 				expect(state.calls[2]).to.equal("View.Draw")
 			end
 		},
+		-- the level SHOWN (held) and the level of the PLACE: the generator makes the place's, the view draws the held one where its tile is
+		{
+			-- breaks if: the generator is asked for the held level (the memory of the way the player came: nothing predicts it), the floor below it is asked for the held
+			-- level's, or the view is not told the level of the place and its floor below
+			name = "when Floors.CurrentAt holds a level (second answer: the level of the place) Gen.Request gets the place's level and its floor below, View.Draw the held level, the place's as 12th argument and its floor below as 13th",
+			func = function(state)
+				local held = {id = "held", zlo = -56, zhi = 72}
+				local place = {id = "place", zlo = -20, zhi = 140}
+				local outside = {id = "open", open = true, zlo = -500, zhi = 900}
+
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Settings.Outside = function() return 0.3 end
+				GryMod.Minimap.Floors.CurrentAt = function() return held, place end
+				GryMod.Minimap.Floors.Below = function(level) return {id = "below_" .. level.id, zlo = level.zlo - 192, zhi = level.zlo} end
+				GryMod.Minimap.Floors.Outside = function() return outside end
+
+				newPanel():Draw(0, 0, 1)
+
+				local request, draw = state.args.request, state.args.draw
+
+				expect(request[1]).to.equal(place)
+				expect(request[5].id).to.equal("below_place")
+				expect(request[6]).to.equal(outside)
+				expect(draw[6]).to.equal(held)
+				expect(draw[8].id).to.equal("below_held")
+				expect(draw[9]).to.aboutEqual(0.4 * GryMod.FlashRadar.MAP_ALPHA, 1e-9)
+				expect(draw[12]).to.equal(place)
+				expect(draw[13].id).to.equal("below_place")
+			end
+		},
+		{
+			-- breaks if: a level that holds nothing (one answer, or the same table twice) sends a base, or a second request
+			name = "with nothing held (one answer, or the level of the place twice) the base arguments are nil and the request is for the level shown, as before",
+			func = function(state)
+				local level = {id = "same", zlo = -56, zhi = 72}
+
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Floors.Below = function(l) state.belowAsked = (state.belowAsked or 0) + 1 return {id = "below_" .. l.id, zlo = -250, zhi = -56} end
+
+				for _, answers in ipairs({{level}, {level, level}, {level, {id = "same", zlo = -56, zhi = 72}}}) do
+					state.belowAsked = 0
+					GryMod.Minimap.Floors.CurrentAt = function() return answers[1], answers[2] end
+					newPanel():Draw(0, 0, 1)
+					expect(state.args.request[1]).to.equal(level)
+					expect(state.args.draw[6]).to.equal(level)
+					expect(state.args.draw[12]).to.beNil()
+					expect(state.args.draw[13]).to.beNil()
+					expect(state.belowAsked).to.equal(1)
+				end
+			end
+		},
+		{
+			-- the veil is decided by the tile that is drawn under the player: the held level's when the cache has it, else the place's (the view draws it). breaks if: the veil
+			-- looks at the held level only (a veil over a map that is drawn), or at the place only (a veil missing over a tile that is not there), or asks for the place when
+			-- the held tile is there
+			name = "the veil follows the tile drawn under the player: the held level's tile, else the place's; none of the two is the veil",
+			func = function(state)
+				local held = {id = "held", zlo = -56, zhi = 72}
+				local place = {id = "place", zlo = -20, zhi = 140}
+				local has = {}
+
+				GryMod.Minimap.Floors.CurrentAt = function() return held, place end
+				GryMod.Minimap.Cache.Has = function(tile)
+					state.tiles[#state.tiles + 1] = {level = tile.level}
+
+					return has[tile.level] == true
+				end
+
+				local function veil()
+					state.tiles = {}
+
+					local panel = newPanel()
+					panel:Draw(0, 0, 1)
+
+					return panel.main:Child("Noise").visible
+				end
+
+				-- the held level's tile is there: no veil, and the place is not asked
+				has.held, has.place = true, false
+				expect(veil()).to.beFalse()
+
+				for _, tile in ipairs(state.tiles) do
+					expect(tile.level).to.equal("held")
+				end
+
+				-- only the place's tile is there: the view draws it, no veil
+				has.held, has.place = false, true
+				expect(veil()).to.beFalse()
+
+				-- neither: the veil
+				has.held, has.place = false, false
+				expect(veil()).to.beTrue()
+			end
+		},
 		-- the map is drawn in the middle of the movie, between the glass and the rest (a map drawn before the film is dimmed by the glass)
 		{
 			name = "View.Draw runs inside the movie's drawing, from the hook of the Root clip at depth 3: after the glass (depth 1), before the mask, the units and the frame (drawn before the film)",
