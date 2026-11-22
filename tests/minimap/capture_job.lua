@@ -2,7 +2,9 @@
 -- a render hook: the job does its work inside a PostRender hook). Phases, chosen by args.phase:
 --   "basic" (default): Capture.Render of a real 512 tile around the player. Checks: the length is res * res * 4, the picture is not uniform, the channel order is
 --      B, G, R, A (a red clear gives 0, 0, 255), the time of a capture (several runs, the first one creates the render target), IsCapturing is false afterwards, no
---      entity changed its NoDraw state. Writes data/grymod/minimap/test_capture_basic.dat to look at the picture (delete it afterwards).
+--      entity changed its NoDraw state; the alpha is real: the capture has void pixels (alpha 0 AND black) and solid ones, the pixels of alpha 0 that carry a colour
+--      are counted as solid (Capture.IsVoid), see out.classes / out.checks. Writes data/grymod/minimap/test_capture_basic.dat and test_capture_classes.dat (void black,
+--      solid white, alpha 0 but coloured red) to look at (delete them afterwards).
 --   "base": the same tile, kept in _G.GRY_CAPTURE_JOB (bytes and tile) BEFORE a test entity exists.
 --   "prop": the same tile again after a prop was spawned on the server (the brief of the test spawns it with lua_exec in the server realm, see below): the capture
 --      with the module's masking must be the same as the base (the prop is not in it); the same capture with the prop declared "created by the map" (a stand-in of
@@ -313,8 +315,73 @@ local function countDiff(a, b)
 	return n
 end
 
+-- The void rule (Capture.IsVoid) on a real capture: counts of void pixels (alpha 0 AND black), solid pixels, and among the solid ones those with alpha 0 but a colour
+-- (the geometry that writes alpha 0, about 5 % of the alpha 0 pixels measured) and the black ones with alpha > 0. Also a picture of the classification
+-- (void black, solid white, alpha 0 but coloured red) to look at.
+local function classify(bytes)
+	local IsVoid = Capture.IsVoid
+	local byte, char = string.byte, string.char
+	local stats = {void = 0, solid = 0, alpha0Coloured = 0, alpha0Total = 0, solidBlackAlphaSet = 0, alphaValues = {}}
+	local picture = {}
+
+	for p = 0, res * res - 1 do
+		local i = p * 4 + 1
+		local b, g, r, a = byte(bytes, i, i + 3)
+
+		stats.alphaValues[a] = (stats.alphaValues[a] or 0) + 1
+
+		if a == 0 then
+			stats.alpha0Total = stats.alpha0Total + 1
+		end
+
+		if IsVoid(b, g, r, a) then
+			stats.void = stats.void + 1
+			picture[p + 1] = "\0\0\0\255"
+		else
+			stats.solid = stats.solid + 1
+
+			if a == 0 then
+				stats.alpha0Coloured = stats.alpha0Coloured + 1
+				picture[p + 1] = "\0\0\255\255"
+			else
+				if b == 0 and g == 0 and r == 0 then
+					stats.solidBlackAlphaSet = stats.solidBlackAlphaSet + 1
+				end
+
+				picture[p + 1] = "\255\255\255\255"
+			end
+		end
+
+		if p % 20000 == 0 then
+			job:step()
+		end
+	end
+
+	stats.picture = table.concat(picture)
+
+	return stats
+end
+
 if phase == "basic" then
+	local stats = classify(out.bytes)
+
+	out.classes = {
+		void = stats.void,
+		solid = stats.solid,
+		alpha0Total = stats.alpha0Total,
+		alpha0ColouredTreatedAsSolid = stats.alpha0Coloured,
+		alpha0ColouredShareOfAlpha0 = stats.alpha0Total > 0 and stats.alpha0Coloured / stats.alpha0Total or 0,
+		solidBlackWithAlpha = stats.solidBlackAlphaSet,
+		alphaValues = stats.alphaValues
+	}
+	out.checks = {
+		hasVoid = stats.void > 0,
+		hasSolid = stats.solid > 0,
+		-- a pixel of alpha 0 with a colour is solid, never void (IsVoid on the first such pixel is checked in capture_test.lua too)
+		alpha0ColouredNotVoid = stats.void + stats.solid == res * res and stats.void == stats.alpha0Total - stats.alpha0Coloured
+	}
 	writeBMP("grymod/minimap/test_capture_basic.dat", out.bytes, res)
+	writeBMP("grymod/minimap/test_capture_classes.dat", stats.picture, res)
 	out.bytes = nil
 elseif phase == "prop" and out.masked then
 	local base = kept.bytes

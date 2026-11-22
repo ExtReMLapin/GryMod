@@ -131,6 +131,106 @@ return {
 			end
 		},
 		{
+			name = "the map opacity slider is bound to gry_minimap_opacity: 0 to 100, whole numbers, right before the floor below slider",
+			func = function(state)
+				state.panel = build()
+
+				local slider = sliderOn(state.panel, "gry_minimap_opacity")
+				expect(slider ~= nil).to.beTrue()
+				expect(slider:GetMin()).to.equal(0)
+				expect(slider:GetMax()).to.equal(100)
+				expect(slider:GetDecimals()).to.equal(0)
+				expect(#state.writes).to.equal(0)
+
+				local order = {}
+
+				for _, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DNumSlider" and p.Scratch then
+						order[#order + 1] = p.Scratch:GetTable().m_strConVar
+					end
+				end
+
+				local below
+				for i, name in ipairs(order) do
+					if name == "gry_minimap_below" then below = i end
+				end
+
+				expect(below ~= nil and below > 1).to.beTrue()
+				expect(order[below - 1]).to.equal("gry_minimap_opacity")
+			end
+		},
+		{
+			name = "the floor below slider is bound to gry_minimap_below: 0 to 100, whole numbers",
+			func = function(state)
+				state.panel = build()
+
+				local slider = sliderOn(state.panel, "gry_minimap_below")
+				expect(slider ~= nil).to.beTrue()
+				expect(slider:GetMin()).to.equal(0)
+				expect(slider:GetMax()).to.equal(100)
+				expect(slider:GetDecimals()).to.equal(0)
+				expect(#state.writes).to.equal(0)
+			end
+		},
+		{
+			name = "the outside slider is bound to gry_minimap_outside: 0 to 100, whole numbers, right after the floor below slider",
+			func = function(state)
+				state.panel = build()
+
+				local slider = sliderOn(state.panel, "gry_minimap_outside")
+				expect(slider ~= nil).to.beTrue()
+				expect(slider:GetMin()).to.equal(0)
+				expect(slider:GetMax()).to.equal(100)
+				expect(slider:GetDecimals()).to.equal(0)
+				expect(#state.writes).to.equal(0)
+
+				local order = {}
+
+				for _, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DNumSlider" and p.Scratch then
+						order[#order + 1] = p.Scratch:GetTable().m_strConVar
+					end
+				end
+
+				local below
+				for i, name in ipairs(order) do
+					if name == "gry_minimap_below" then below = i end
+				end
+
+				expect(below ~= nil).to.beTrue()
+				expect(order[below + 1]).to.equal("gry_minimap_outside")
+			end
+		},
+		{
+			name = "the cache size slider is bound to gry_minimap_cache_mb: 16 to 4096, whole numbers, right after the outside slider (which follows the floor below slider)",
+			func = function(state)
+				state.panel = build()
+
+				local slider = sliderOn(state.panel, "gry_minimap_cache_mb")
+				expect(slider ~= nil).to.beTrue()
+				expect(slider:GetMin()).to.equal(16)
+				expect(slider:GetMax()).to.equal(4096)
+				expect(slider:GetDecimals()).to.equal(0)
+				expect(#state.writes).to.equal(0)
+
+				local order = {}
+
+				for _, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DNumSlider" and p.Scratch then
+						order[#order + 1] = p.Scratch:GetTable().m_strConVar
+					end
+				end
+
+				local outside
+				for i, name in ipairs(order) do
+					if name == "gry_minimap_outside" then outside = i end
+				end
+
+				expect(outside ~= nil).to.beTrue()
+				expect(order[outside + 1]).to.equal("gry_minimap_cache_mb")
+			end
+		},
+		{
 			name = "the budget slider is bound to gry_minimap_budget_ms: 1 to 30",
 			func = function(state)
 				state.panel = build()

@@ -41,6 +41,24 @@ local function image(w, h, f)
 	return table.concat(rows)
 end
 
+-- Same with an alpha: f(x, y) -> r, g, b, a.
+local function imageA(w, h, f)
+	local rows = {}
+
+	for y = 0, h - 1 do
+		local row = {}
+
+		for x = 0, w - 1 do
+			local r, g, b, a = f(x, y)
+			row[x + 1] = string.char(b, g, r, a)
+		end
+
+		rows[y + 1] = table.concat(row)
+	end
+
+	return table.concat(rows)
+end
+
 local function pixel(bgra, w, x, y)
 	local i = (y * w + x) * 4 + 1
 	local b, g, r = string.byte(bgra, i, i + 2)
@@ -739,6 +757,396 @@ return {
 				local e = D.Error(img, back)
 
 				expect(e.psnr).to.beGreaterThan(33)
+			end
+		},
+
+		-- Wave 2: real alpha (opts.alpha). A pixel is VOID when alpha == 0 and b == g == r == 0 (Capture.IsVoid); every other pixel is solid, whatever its alpha.
+		-- A block with a void pixel is written in the 3-colour mode (c0 <= c1, indices 0 = c0, 1 = c1, 2 = middle, 3 = transparent), its end points from the solid
+		-- pixels only. Production change that breaks these cases: another void rule, end points that include the void pixels, c0 > c1 in 3-colour mode, a wrong index.
+		{
+			name = "alpha, hand-computed: one void pixel in a black and white block gives the 3-colour mode (c0 = black <= c1 = white, white index 1, void index 3)",
+			func = function()
+				local D = dxt()
+				local V, W, K = px(0, 0, 0, 0), px(255, 255, 255, 255), px(0, 0, 0, 1) -- a black SOLID pixel has alpha 1
+				local rows = {
+					V .. W .. K .. W, -- 3 1 0 1 -> 3 + 1*4 + 0 + 1*64 = 0x47
+					W .. W .. W .. W, -- 0x55
+					K .. K .. K .. K, -- 0x00
+					W .. K .. W .. K, -- 1 0 1 0 -> 1 + 16 = 0x11
+				}
+
+				expect(hex(D.Compress(table.concat(rows), 4, 4, {alpha = true}))).to.equal("00 00 FF FF 47 55 00 11 ")
+			end
+		},
+		{
+			name = "alpha, hand-computed: three void pixels, two grey levels (40 and 200): end points from the solid pixels, index 0 dark, 1 light, 3 void",
+			func = function()
+				local D = dxt()
+				-- 40: r5 5, g6 10, b5 5 -> 0x2945; 200: r5 24, g6 49, b5 24 -> 0xC638; 0x2945 < 0xC638 so c0 = 0x2945
+				local V, Dk, Lt = px(0, 0, 0, 0), px(40, 40, 40, 255), px(200, 200, 200, 255)
+				local rows = {
+					V .. Dk .. Lt .. V, -- 3 0 1 3 -> 3 + 0 + 16 + 192 = 0xD3
+					Lt .. Lt .. Dk .. Dk, -- 1 1 0 0 -> 0x05
+					Dk .. Dk .. Lt .. Lt, -- 0 0 1 1 -> 0x50
+					Lt .. Dk .. Dk .. V, -- 1 0 0 3 -> 1 + 192 = 0xC1
+				}
+
+				expect(hex(D.Compress(table.concat(rows), 4, 4, {alpha = true}))).to.equal("45 29 38 C6 D3 05 50 C1 ")
+			end
+		},
+		{
+			name = "alpha, hand-computed: vivid colours (red and yellow) keep their exact end points next to a void pixel",
+			func = function()
+				local D = dxt()
+				local V, R, Y = px(0, 0, 0, 0), px(255, 0, 0, 255), px(255, 255, 0, 255)
+				local rows = {
+					V .. R .. Y .. Y, -- 3 0 1 1 -> 3 + 16 + 64 = 0x53
+					R .. R .. R .. R, -- 0x00
+					Y .. Y .. Y .. Y, -- 0x55
+					Y .. R .. V .. R, -- 1 0 3 0 -> 1 + 48 = 0x31
+				}
+
+				-- c0 = 0xF800 (red), c1 = 0xFFE0 (yellow)
+				expect(hex(D.Compress(table.concat(rows), 4, 4, {alpha = true}))).to.equal("00 F8 E0 FF 53 00 55 31 ")
+			end
+		},
+		{
+			name = "alpha, hand-computed: an all-void block is c0 = c1 = 0 with every index 3; a block with a single solid pixel has c0 == c1 and index 0 for it",
+			func = function()
+				local D = dxt()
+				local V, R = px(0, 0, 0, 0), px(255, 0, 0, 255)
+
+				expect(hex(D.Compress(string.rep(V, 16), 4, 4, {alpha = true}))).to.equal("00 00 00 00 FF FF FF FF ")
+
+				local rows = {V .. V .. V .. V, V .. V .. V .. V, V .. R .. V .. V, V .. V .. V .. V}
+
+				-- the solid pixel is at (1, 2): 3 + 0*4 + 3*16 + 3*64 = 0xF3
+				expect(hex(D.Compress(table.concat(rows), 4, 4, {alpha = true}))).to.equal("00 F8 00 F8 FF FF F3 FF ")
+			end
+		},
+		{
+			name = "alpha: a pixel with alpha 0 but a colour is SOLID (the void rule needs the colour to be black too): it gets index 0, only the black alpha-0 pixel is void",
+			func = function()
+				local D = dxt()
+				local rows = {px(0, 0, 0, 0) .. string.rep(px(200, 100, 50, 0), 3)}
+
+				for y = 2, 4 do
+					rows[y] = string.rep(px(200, 100, 50, 0), 4)
+				end
+
+				-- c0 = c1 = 0xC326; the void pixel is index 3 in the lowest bits of the first row
+				expect(hex(D.Compress(table.concat(rows), 4, 4, {alpha = true}))).to.equal("26 C3 26 C3 03 00 00 00 ")
+			end
+		},
+		{
+			name = "alpha on an image without any void pixel is byte for byte the same as without opts (4-colour blocks as before)",
+			func = function()
+				local D = dxt()
+				local images = {noise(64, 64, 31), landscape(128), solid(16, 16, 128, 64, 32), image(32, 32, function(x, y) return x * 8, y * 8, (x + y) * 4 end)}
+
+				for n, img in ipairs(images) do
+					local w = math.floor(math.sqrt(#img / 4) + 0.5)
+
+					expect(D.Compress(img, w, w, {alpha = true}) == D.Compress(img, w, w)).to.beTrue()
+					expect(D.Compress(img, w, w, {}) == D.Compress(img, w, w)).to.beTrue()
+					expect(D.Compress(img, w, w, {alpha = false}) == D.Compress(img, w, w)).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "alpha: blocks with void pixels are 3-colour (c0 <= c1), blocks without are 4-colour (c0 > c1, or c0 == c1 with indices 0), in a noisy image with voids",
+			func = function()
+				local D = dxt()
+				local rnd = lcg(8)
+				local img = imageA(64, 64, function(x, y)
+					if (x % 16) < 3 and (y % 8) < 5 then
+						return 0, 0, 0, 0
+					end
+
+					return 20 + rnd() % 200, 20 + rnd() % 200, 20 + rnd() % 200, 255
+				end)
+				local c = D.Compress(img, 64, 64, {alpha = true})
+				local three, four = 0, 0
+
+				for by = 0, 15 do
+					for bx = 0, 15 do
+						local i = (by * 16 + bx) * 8 + 1
+						local c0, c1 = u16(c, i), u16(c, i + 2)
+						local hasVoid = false
+
+						for y = 0, 3 do
+							for x = 0, 3 do
+								local o = ((by * 4 + y) * 64 + bx * 4 + x) * 4 + 1
+
+								if img:sub(o, o + 3) == "\0\0\0\0" then
+									hasVoid = true
+								end
+							end
+						end
+
+						if hasVoid then
+							three = three + 1
+							expect(c0 <= c1).to.beTrue()
+						else
+							four = four + 1
+							expect(c0 >= c1).to.beTrue()
+
+							if c0 == c1 then
+								expect(string.byte(c, i + 4)).to.equal(0)
+							end
+						end
+					end
+				end
+
+				expect(three).to.beGreaterThan(0)
+				expect(four).to.beGreaterThan(0)
+			end
+		},
+		{
+			name = "alpha round trip: voids come back transparent (alpha 0, black), solids come back solid (alpha 255) with PSNR >= 33 dB on the solids",
+			func = function()
+				local D = dxt()
+				local size = 256
+				local base = landscape(size)
+				-- punch a void disc and a void band in it, add black solid pixels (alpha 1) and coloured alpha-0 pixels (solid by the rule)
+				local rows = {}
+
+				for y = 0, size - 1 do
+					local row = {}
+
+					for x = 0, size - 1 do
+						local i = (y * size + x) * 4 + 1
+						local p = base:sub(i, i + 3)
+						local dx, dy = x - 90, y - 130
+
+						if dx * dx + dy * dy < 60 * 60 or (y > 200 and y < 215) or (x > 230 and (y % 7) < 3) then
+							p = "\0\0\0\0"
+						elseif x == 10 and y % 5 == 0 then
+							p = "\0\0\0\1" -- black solid
+						elseif x == 12 and y % 5 == 0 then
+							p = "\9\8\7\0" -- coloured, alpha 0: solid
+						end
+
+						row[x + 1] = p
+					end
+
+					rows[y + 1] = table.concat(row)
+				end
+
+				local img = table.concat(rows)
+				local c = D.Compress(img, size, size, {alpha = true})
+				local back = D.Decode(c, size, size)
+				local voids, solids = 0, 0
+
+				for y = 0, size - 1 do
+					for x = 0, size - 1 do
+						local i = (y * size + x) * 4 + 1
+						local ob, og, or_, oa = string.byte(img, i, i + 3)
+						local bb, bg, br, ba = string.byte(back, i, i + 3)
+
+						if oa == 0 and ob == 0 and og == 0 and or_ == 0 then
+							voids = voids + 1
+							expect(ba).to.equal(0)
+							expect(bb + bg + br).to.equal(0)
+						else
+							solids = solids + 1
+							expect(ba).to.equal(255)
+						end
+					end
+				end
+
+				expect(voids).to.beGreaterThan(1000)
+				expect(solids).to.beGreaterThan(1000)
+
+				local e = D.ErrorSolid(img, back)
+
+				expect(e).to.exist()
+				expect(e.lost).to.equal(0)
+				expect(e.solid).to.equal(solids)
+				expect(e.psnr).to.beGreaterThan(33)
+			end
+		},
+		{
+			name = "alpha: CompressRows chunks (1, 7, 32 and the rest) concatenated are byte for byte Compress, with voids",
+			func = function()
+				local D = dxt()
+				local w, h = 64, 128
+				local rnd = lcg(77)
+				local img = imageA(w, h, function(x, y)
+					if (x * 3 + y * 5) % 11 < 3 then
+						return 0, 0, 0, 0
+					end
+
+					return 30 + rnd() % 180, 30 + rnd() % 180, 30 + rnd() % 180, 255
+				end)
+				local whole = D.Compress(img, w, h, {alpha = true})
+				local rows = h / 4
+
+				expect(#whole).to.equal((w / 4) * rows * 8)
+				expect(whole ~= D.Compress(img, w, h)).to.beTrue()
+
+				for _, size in ipairs({1, 7, 32, 13}) do
+					local parts, first = {}, 0
+
+					while first < rows do
+						local last = math.min(first + size - 1, rows - 1)
+						local s, err = D.CompressRows(img, w, h, first, last, {alpha = true})
+
+						expect(err).to.beNil()
+						parts[#parts + 1] = s
+						first = last + 1
+					end
+
+					expect(table.concat(parts) == whole).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "alpha: bad opts and the usual refusals give nil and a reason",
+			func = function()
+				local D = dxt()
+				local img = solid(8, 8, 1, 2, 3)
+
+				for _, o in ipairs({"alpha", 12, true}) do
+					local s, err = D.Compress(img, 8, 8, o)
+
+					expect(s).to.beNil()
+					expect(err).to.beA("string")
+
+					s, err = D.CompressRows(img, 8, 8, 0, 1, o)
+					expect(s).to.beNil()
+					expect(err).to.beA("string")
+				end
+
+				local s, err = D.Compress(img, 7, 8, {alpha = true})
+
+				expect(s).to.beNil()
+				expect(err).to.beA("string")
+
+				s, err = D.CompressRows(img, 8, 8, 1, 2, {alpha = true})
+				expect(s).to.beNil()
+				expect(err).to.beA("string")
+
+				s, err = D.CompressRows(img, 8, 8, 2, 1, {alpha = true})
+				expect(s).to.beNil()
+				expect(err).to.beA("string")
+			end
+		},
+		{
+			name = "ErrorSolid: only the solid pixels of A are measured (alpha ignored), hand-computed mae, max, psnr; the void ones do not count",
+			func = function()
+				local D = dxt()
+				local a = px(10, 20, 30, 1) .. px(0, 0, 0, 0) .. px(100, 100, 100, 255)
+				local b = px(13, 20, 26, 255) .. px(50, 50, 50, 255) .. px(100, 100, 100, 0)
+				local e = D.ErrorSolid(a, b)
+
+				-- two solid pixels, 6 channels: |d| sum 7, d^2 sum 25
+				expect(e.solid).to.equal(2)
+				expect(e.lost).to.equal(0)
+				expect(e.max).to.equal(4)
+				expect(e.mae).to.aboutEqual(7 / 6, 1e-9)
+				expect(e.psnr).to.aboutEqual(10 * math.log10(255 * 255 / (25 / 6)), 1e-9)
+			end
+		},
+		{
+			name = "ErrorSolid: a solid pixel of A that is void in B is counted in lost (and its colour difference is measured)",
+			func = function()
+				local D = dxt()
+				local a = px(10, 20, 30, 255) .. px(100, 100, 100, 255)
+				local b = px(10, 20, 30, 255) .. px(0, 0, 0, 0)
+				local e = D.ErrorSolid(a, b)
+
+				expect(e.solid).to.equal(2)
+				expect(e.lost).to.equal(1)
+				expect(e.max).to.equal(100)
+			end
+		},
+		{
+			name = "ErrorSolid: identical solids give mae 0 and psnr 99; no solid pixel, different lengths or wrong types give nil and a reason",
+			func = function()
+				local D = dxt()
+				local a = px(10, 20, 30, 255) .. px(0, 0, 0, 0)
+				local e = D.ErrorSolid(a, a)
+
+				expect(e.mae).to.equal(0)
+				expect(e.psnr).to.equal(99)
+				expect(e.solid).to.equal(1)
+
+				for _, args in ipairs({{px(0, 0, 0, 0), px(0, 0, 0, 0)}, {a, a .. px(1, 1, 1, 1)}, {a, ""}, {"", ""}, {1, a}, {a, nil}, {"xyz", "xyz"}}) do
+					local ok, r, err = pcall(D.ErrorSolid, args[1], args[2])
+
+					expect(ok).to.beTrue()
+					expect(r).to.beNil()
+					expect(err).to.beA("string")
+				end
+			end
+		},
+
+		-- IsAllVoid: true only when every pixel is void (alpha 0 and colour 0), early exit on the first solid pixel.
+		{
+			name = "IsAllVoid: an empty image is all void, whatever its size (also with a number of pixels that is not a multiple of 4)",
+			func = function()
+				local D = dxt()
+
+				for _, size in ipairs({{4, 4}, {16, 16}, {1, 1}, {3, 3}, {5, 7}, {1024, 4}}) do
+					local w, h = size[1], size[2]
+					local r, err = D.IsAllVoid(string.rep("\0", w * h * 4), w, h)
+
+					expect(err).to.beNil()
+					expect(r).to.equal(true)
+				end
+			end
+		},
+		{
+			name = "IsAllVoid: ONE solid pixel is found wherever it is: the very last byte, the first byte, the middle, and in the leftover pixels of a 3x3 image",
+			func = function()
+				local D = dxt()
+				local w, h = 16, 16
+				local n = w * h * 4
+
+				-- a nonzero byte at each of these offsets (1-based): first, middle, 16-byte step edges, last
+				for _, at in ipairs({1, 2, 3, 4, 15, 16, 17, 130, n / 2, n / 2 + 1, n - 16, n - 15, n - 1, n}) do
+					local img = string.rep("\0", at - 1) .. "\1" .. string.rep("\0", n - at)
+
+					expect(#img).to.equal(n)
+					expect(D.IsAllVoid(img, w, h)).to.equal(false)
+				end
+
+				-- 3x3: 36 bytes, the last 4 are not covered by the 16-byte reads
+				for at = 33, 36 do
+					local img = string.rep("\0", at - 1) .. "\200" .. string.rep("\0", 36 - at)
+
+					expect(D.IsAllVoid(img, 3, 3)).to.equal(false)
+				end
+			end
+		},
+		{
+			name = "IsAllVoid: a black pixel with alpha 1 is solid; a coloured pixel with alpha 0 is solid; an all-zero pixel among them is not enough",
+			func = function()
+				local D = dxt()
+				local V = px(0, 0, 0, 0)
+
+				expect(D.IsAllVoid(string.rep(V, 7) .. px(0, 0, 0, 1) .. string.rep(V, 8), 4, 4)).to.equal(false)
+				expect(D.IsAllVoid(string.rep(V, 3) .. px(9, 0, 0, 0) .. string.rep(V, 12), 4, 4)).to.equal(false)
+				expect(D.IsAllVoid(string.rep(V, 15) .. px(0, 5, 0, 0), 4, 4)).to.equal(false)
+				expect(D.IsAllVoid(string.rep(V, 15) .. px(0, 0, 255, 0), 4, 4)).to.equal(false)
+				expect(D.IsAllVoid(string.rep(V, 16), 4, 4)).to.equal(true)
+			end
+		},
+		{
+			name = "IsAllVoid: wrong length, wrong types or bad sizes give nil and a reason, no error",
+			func = function()
+				local D = dxt()
+				local img = string.rep("\0", 64)
+
+				for _, args in ipairs({{img, 4, 3}, {img, 5, 4}, {img .. "\0", 4, 4}, {"", 4, 4}, {"", 0, 0}, {nil, 4, 4}, {12, 4, 4}, {{}, 4, 4}, {img, "4", 4},
+					{img, 4, nil}, {img, 0, 16}, {img, -4, -4}, {img, 2.5, 8}, {img, math.huge, 4}, {img, 0 / 0, 4}}) do
+					local ok, r, err = pcall(D.IsAllVoid, args[1], args[2], args[3])
+
+					expect(ok).to.beTrue()
+					expect(r).to.beNil()
+					expect(err).to.beA("string")
+				end
 			end
 		},
 	}

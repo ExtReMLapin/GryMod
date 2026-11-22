@@ -13,7 +13,15 @@ local HOOK_EVENT = "PostRender"
 local HOOK_NAME = "GryMod minimap generator"
 local LISTENER = "gry_gen_test_listener"
 
+local BELOW = {id = "a0", zlo = -200, zhi = -40} -- the floor below LEVEL
+
+-- the only reason that Capture.Render gives for "not now" (the menu is open): such a capture is tried again without being counted as a failure
+local UNAVAILABLE = "capture unavailable"
+
 local LEVEL = {id = "a1", zlo = 0, zhi = 160}
+
+-- the outside (the open level of the map: the whole height of the world), generated after the floor below
+local OUTSIDE = {id = "open", open = true, zlo = -500, zhi = 900}
 
 local saved = nil -- the originals, kept outside `state` so that afterEach always finds them
 
@@ -38,13 +46,24 @@ local function install(st)
 	local M = GryMod.Minimap
 	local G = M.Gen
 
+	-- The radar of the game may have a real request under way (its tile in progress, its hook): every case starts from an empty generator. The
+	-- radar asks again at its next draw, and since Cancel forgets the last request it is not taken for a repeat.
+	if G and G.Cancel then
+		pcall(G.Cancel)
+	end
+
 	saved = {
 		Capture = M.Capture,
 		DXT1 = M.DXT1,
 		Cache = M.Cache,
 		Settings = M.Settings,
 		clock = G and G._clock,
-		hasClock = G ~= nil
+		hasClock = G ~= nil,
+		prunedMap = G and G._state and G._state.prunedMap,
+		sinceTrim = G and G._state and G._state.storedSinceTrim,
+		View = M.View,
+		realTime = G and G._realTime,
+		getMap = game.GetMap
 	}
 
 	st.res = 512
@@ -62,24 +81,85 @@ local function install(st)
 	st.onCapture = nil -- function(tile, n) -> value; replaces the default capture
 	st.onStore = nil -- function(tile, n) -> true | false, err
 	st.storeCalls = 0
+	st.prunes = 0
+	st.calls = {} -- "prune" and "trim", in the order of the calls
+	st.trims = {} -- the argument of each Trim
+	st.onTrim = nil -- function() called by the Trim stand-in (it may raise)
+	st.cacheBytes = 123456
+	st.trimRemoved = 0 -- what the Trim stand-in answers: the number of tiles it removed
+	st.rt = 1000 -- the fake RealTime, seconds
+	st.isVoid = function(bgra, w, h) return false end -- the stand-in of DXT1.IsAllVoid: no void tile by default
+	st.voidCalls = {} -- {bgra, w, h}
+	st.empties = {} -- the tiles given to Cache.StoreEmpty
+	st.onStoreEmpty = nil -- function(tile) -> true | false, err; replaces the default (stores nothing, answers true)
+	st.flushes = {} -- one entry per Cache.Flush call: {pending = tiles left, hooked = the work hook is still there}
+	st.onFlush = nil -- function() called by the Flush stand-in (it may raise)
+
+	if G and G._state then
+		G._state.storedSinceTrim = 0 -- the counter of the module starts from zero in each case
+	end
+	st.onPrune = nil -- function() called by the Prune stand-in (it may raise)
 
 	M.Settings = {
 		Enabled = function() return true end,
 		Definition = function() return st.ppm end,
 		TileRes = function() return st.res end,
 		Rotate = function() return false end,
-		BudgetMs = function() return st.budget end
+		BudgetMs = function() return st.budget end,
+		CacheBytes = function() return st.cacheBytes end
 	}
 
 	M.Cache = {
 		TileUnits = function(res, ppm) return st.tileUnits end,
 		TileOf = function(x, y, res, ppm) return math.floor(x / st.tileUnits), math.floor(y / st.tileUnits) end,
+		Prune = function()
+			st.prunes = st.prunes + 1
+			st.calls[#st.calls + 1] = "prune"
+
+			if st.onPrune then
+				st.onPrune()
+			end
+		end,
+		Flush = function()
+			st.flushes[#st.flushes + 1] = {pending = G and G.Pending() or -1, hooked = (hook.GetTable()[HOOK_EVENT] or {})[HOOK_NAME] ~= nil}
+
+			if st.onFlush then
+				st.onFlush()
+			end
+
+			return true
+		end,
+		StoreEmpty = function(tile)
+			st.empties[#st.empties + 1] = tile
+
+			if st.onStoreEmpty then
+				local ok, err = st.onStoreEmpty(tile)
+
+				if not ok then
+					return false, err or "refused"
+				end
+			end
+
+			st.stored[cacheKey(tile)] = true
+
+			return true
+		end,
+		Trim = function(bytes)
+			st.trims[#st.trims + 1] = bytes
+			st.calls[#st.calls + 1] = "trim"
+
+			if st.onTrim then
+				st.onTrim()
+			end
+
+			return st.trimRemoved
+		end,
 		Has = function(tile)
 			st.hasCalls = st.hasCalls + 1
 
 			return st.stored[cacheKey(tile)] == true
 		end,
-		Store = function(tile, data)
+		Store = function(tile, data, format)
 			st.storeCalls = st.storeCalls + 1
 
 			if st.onStore then
@@ -90,7 +170,7 @@ local function install(st)
 				end
 			end
 
-			st.stores[#st.stores + 1] = {tile = tile, data = data}
+			st.stores[#st.stores + 1] = {tile = tile, data = data, format = format}
 			st.stored[cacheKey(tile)] = true
 
 			return true
@@ -114,8 +194,13 @@ local function install(st)
 	}
 
 	M.DXT1 = {
-		CompressRows = function(bgra, w, h, first, last)
-			st.compress[#st.compress + 1] = {bgra = bgra, w = w, h = h, first = first, last = last}
+		IsAllVoid = function(bgra, w, h)
+			st.voidCalls[#st.voidCalls + 1] = {bgra = bgra, w = w, h = h}
+
+			return st.isVoid(bgra, w, h)
+		end,
+		CompressRows = function(bgra, w, h, first, last, opts)
+			st.compress[#st.compress + 1] = {bgra = bgra, w = w, h = h, first = first, last = last, opts = opts}
 
 			return "[" .. first .. "-" .. last .. "]"
 		end
@@ -127,6 +212,8 @@ local function install(st)
 
 			return st.t
 		end
+
+		G._realTime = function() return st.rt end
 	end
 end
 
@@ -147,7 +234,16 @@ local function restore()
 
 	if G and saved.hasClock then
 		G._clock = saved.clock
+		G._realTime = saved.realTime
+
+		if G._state then
+			G._state.prunedMap = saved.prunedMap
+			G._state.storedSinceTrim = saved.sinceTrim
+		end
 	end
+
+	game.GetMap = saved.getMap
+	M.View = saved.View
 
 	saved = nil
 end
@@ -221,10 +317,27 @@ return {
 		hook.Add("GryMod_MinimapReady", LISTENER, function()
 			state.events[#state.events + 1] = "R"
 		end)
+
+		hook.Add("GryMod_MinimapBelowReady", LISTENER, function()
+			state.events[#state.events + 1] = "B"
+		end)
+
+		hook.Add("GryMod_MinimapOutsideReady", LISTENER, function()
+			state.events[#state.events + 1] = "O"
+		end)
 	end,
 	afterEach = function(state)
 		pcall(hook.Remove, "GryMod_MinimapProgress", LISTENER)
 		pcall(hook.Remove, "GryMod_MinimapReady", LISTENER)
+		pcall(hook.Remove, "GryMod_MinimapBelowReady", LISTENER)
+		pcall(hook.Remove, "GryMod_MinimapOutsideReady", LISTENER)
+
+		for _, name in ipairs({"GryMod_MinimapProgress", "GryMod_MinimapReady", "GryMod_MinimapBelowReady", "GryMod_MinimapOutsideReady"}) do
+			pcall(hook.Remove, name, LISTENER .. "_raiser")
+		end
+
+		pcall(collectgarbage, "restart")
+		pcall(jit.on)
 		pcall(restore)
 	end,
 	cases = {
@@ -561,7 +674,7 @@ return {
 
 				state.onCapture = function(tile, n)
 					if n <= nils then
-						return nil, "no render"
+						return nil, UNAVAILABLE
 					end
 
 					return "BGRA-IMAGE-DATA-" .. tkey(tile)
@@ -718,7 +831,7 @@ return {
 				expect(join(state.events)).to.equal("P 1 9")
 
 				-- a Step that changes nothing (a nil capture) fires nothing
-				state.onCapture = function() return nil end
+				state.onCapture = function() return nil, UNAVAILABLE end
 				G.Step(state.t)
 				G.Step(state.t)
 				expect(join(state.events)).to.equal("P 1 9")
@@ -937,6 +1050,1439 @@ return {
 				scan(G, "Gen", 0)
 
 				expect(join(found)).to.equal("")
+			end
+		},
+		-- fails if the floor below is queued before the main tiles, not sorted by distance, or made with the wrong level
+		{
+			name = "below: the tiles of the level below come after every main tile, sorted by distance in each level, with their own level",
+			func = function(state)
+				local G = gen()
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beTrue()
+				expect(G.Pending()).to.equal(18)
+				stepAll(state)
+
+				local main, below = {}, {}
+
+				for i = 1, #state.renders do
+					local r = state.renders[i]
+
+					if i <= 9 then
+						main[#main + 1] = r.tx .. "," .. r.ty
+						expect(r.level).to.equal("a1")
+						expect(r.levelTable).to.equal(LEVEL)
+					else
+						below[#below + 1] = r.tx .. "," .. r.ty
+						expect(r.level).to.equal("a0")
+						expect(r.levelTable).to.equal(BELOW)
+						expect(r.res).to.equal(512)
+						expect(r.ppm).to.equal(2)
+					end
+				end
+
+				expect(#state.renders).to.equal(18)
+				expect(join(main)).to.equal(SMALL_ORDER)
+				expect(join(below)).to.equal(SMALL_ORDER)
+			end
+		},
+		-- fails if the main level loses its priority when a new request comes while below tiles are waiting
+		{
+			name = "below: the main level stays first when a new request arrives",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state, 11) -- the 9 main tiles and 2 below tiles
+
+				expect(#state.renders).to.equal(11)
+
+				G.Request(LEVEL, 2500, 500, 100, BELOW) -- tx 1..3: tiles (2..3, y) are new for both levels
+
+				state.renders = {}
+				stepAll(state)
+
+				local seenBelow = false
+
+				for i = 1, #state.renders do
+					if state.renders[i].level == "a0" then
+						seenBelow = true
+					else
+						expect(seenBelow).to.beFalse() -- no main tile after a below tile
+					end
+				end
+
+				expect(seenBelow).to.beTrue()
+			end
+		},
+		-- fails if the level below is not part of the comparison of two requests
+		{
+			name = "below: deduplication also compares the id of the level below (none, same, other)",
+			func = function(state)
+				local G = gen()
+
+				expect(request9(state)).to.beTrue()
+				expect(request9(state)).to.beFalse()
+				expect(G.Request(LEVEL, 500, 500, 100, nil)).to.beFalse()
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beTrue()
+
+				local has = state.hasCalls
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beFalse()
+				expect(G.Request(LEVEL, 500, 500, 100, {id = "a0", zlo = -300, zhi = -100})).to.beFalse() -- same id: same request
+				expect(state.hasCalls).to.equal(has)
+				expect(G.Request(LEVEL, 500, 500, 100, {id = "z5", zlo = 0, zhi = 1})).to.beTrue()
+				expect(G.Request(LEVEL, 500, 500, 100)).to.beTrue()
+				expect(G.Request(LEVEL, 500, 500, 100)).to.beFalse()
+				expect(G.Request(LEVEL, 500, 500, 100, "nope")).to.beNil()
+			end
+		},
+		-- fails if the main numbers include the level below, or if belowDone / belowTotal are wrong
+		{
+			name = "below: Progress describes the main level only, and gives belowDone, belowTotal, belowFailed",
+			func = function(state)
+				local G = gen()
+
+				state.stored["a0|0,0|512|2"] = true
+				state.stored["a0|1,1|512|2"] = true
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(0)
+				expect(p.total).to.equal(9)
+				expect(p.percent).to.equal(0)
+				expect(p.active).to.beTrue()
+				expect(p.failed).to.equal(0)
+				expect(p.belowDone).to.equal(2)
+				expect(p.belowTotal).to.equal(9)
+				expect(p.belowFailed).to.equal(0)
+
+				stepAll(state, 9) -- the main level is done
+				p = G.Progress()
+				expect(p.done).to.equal(9)
+				expect(p.percent).to.equal(100)
+				expect(p.active).to.beFalse() -- the main level has nothing left, whatever the level below does
+				expect(p.belowDone < 9).to.beTrue()
+				expect(G.Pending() > 0).to.beTrue()
+
+				stepAll(state)
+				p = G.Progress()
+				expect(p.belowDone).to.equal(9)
+				expect(p.belowTotal).to.equal(9)
+				expect(p.done).to.equal(9)
+
+				-- without below
+				G.Cancel()
+				request9(state)
+				p = G.Progress()
+				expect(p.belowDone).to.equal(0)
+				expect(p.belowTotal).to.equal(0)
+				expect(p.belowFailed).to.equal(0)
+			end
+		},
+		-- fails if the events concern the level below, or if BelowReady is missing, repeated or before Ready
+		{
+			name = "below: Progress and Ready are about the main level, BelowReady comes after Ready, once",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				expect(join(state.events)).to.equal("P 0 9")
+
+				stepAll(state)
+				expect(join(state.events)).to.equal("P 0 9 P 1 9 P 2 9 P 3 9 P 4 9 P 5 9 P 6 9 P 7 9 P 8 9 P 9 9 R B")
+
+				G.Request(LEVEL, 500, 500, 100, BELOW) -- the same request, nothing changed
+				expect(#state.events).to.equal(12)
+
+				-- everything is in the cache at once: Progress, Ready, BelowReady, in that order
+				for tx = 2, 4 do
+					for ty = -1, 1 do
+						state.stored["a1|" .. tx .. "," .. ty .. "|512|2"] = true
+						state.stored["a0|" .. tx .. "," .. ty .. "|512|2"] = true
+					end
+				end
+
+				G.Cancel()
+				state.events = {}
+				G.Request(LEVEL, 3500, 500, 100, BELOW)
+				expect(join(state.events)).to.equal("P 9 9 R B")
+			end
+		},
+		-- fails if the tiles are compressed without the alpha option or stored without the format 20
+		{
+			name = "below: CompressRows gets {alpha = true} and Store gets 20, for both levels",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+
+				expect(#state.compress).to.equal(18 * 4)
+
+				for i = 1, #state.compress do
+					expect(type(state.compress[i].opts)).to.equal("table")
+					expect(state.compress[i].opts.alpha).to.beTrue()
+				end
+
+				expect(#state.stores).to.equal(18)
+
+				for i = 1, #state.stores do
+					expect(state.stores[i].format).to.equal(20)
+				end
+			end
+		},
+		-- fails if a new request without below leaves the tiles of the floor below in the queue
+		{
+			name = "below: a new Request without below removes the tiles of the level below that were waiting",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state, 12) -- 9 main, 3 below
+
+				expect(G.Pending()).to.equal(6)
+
+				G.Request(LEVEL, 500, 500, 100)
+				expect(G.Pending()).to.equal(0)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+
+				local p = G.Progress()
+
+				expect(p.belowTotal).to.equal(0)
+				expect(p.belowDone).to.equal(0)
+
+				local renders = #state.renders
+
+				G.Step(state.t)
+				expect(#state.renders).to.equal(renders)
+			end
+		},
+		-- fails if a tile of the floor below that has captured nothing yet stops the main level, or if a tile of it that is under way is thrown away
+		{
+			name = "below: a below tile not captured yet gives way to a new main tile; one under way is kept",
+			func = function(state)
+				local G = gen()
+
+				for tx = -1, 1 do
+					for ty = -1, 1 do
+						state.stored["a1|" .. tx .. "," .. ty .. "|512|2"] = true
+					end
+				end
+
+				-- 1) the capture gives nothing (menu): the below tile (0,0) is current, not captured
+				state.onCapture = function() return nil, UNAVAILABLE end
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				G.Step(state.t)
+				expect(G._state.current ~= nil and G._state.current.set).to.equal("below")
+
+				state.onCapture = nil
+				G.Request(LEVEL, 1500, 500, 100, BELOW) -- tiles tx 0..2: tx 2 is new for the main level, (0,0) is still wanted
+				expect(G._state.current).to.beNil()
+
+				G.Step(state.t)
+				expect(state.renders[#state.renders].level).to.equal("a1") -- a main tile first
+				G.Cancel()
+
+				-- 2) a below tile already captured stays
+				state.renders = {}
+
+				for tx = 2, 4 do
+					for ty = -1, 1 do
+						state.stored["a1|" .. tx .. "," .. ty .. "|512|2"] = true
+					end
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				state.budget = 1
+				state.dt = 0.004
+				G.Step(state.t) -- captured, then the budget is gone
+				state.budget = 1000
+				state.dt = 0
+				expect(#state.renders).to.equal(1)
+				expect(G._state.current.set).to.equal("below")
+
+				G.Request(LEVEL, 1500, 500, 100, BELOW)
+				expect(G._state.current ~= nil and G._state.current.set).to.equal("below")
+				stepAll(state)
+
+				local count = 0
+
+				for i = 1, #state.renders do
+					if state.renders[i].level == "a0" and tkey(state.renders[i]) == "0,0" then
+						count = count + 1
+					end
+				end
+
+				expect(count).to.equal(1)
+			end
+		},
+		-- fails if a failure of the level below is counted in the main level's `failed`, or stops the queue
+		{
+			name = "below: a failing below tile counts in belowFailed, not in failed, and the queue goes on",
+			func = function(state)
+				local G = gen()
+
+				state.onCapture = function(tile, n)
+					if tile.level == "a0" and tile.tx == 0 and tile.ty == 0 then
+						error("boom")
+					end
+
+					return "BGRA-IMAGE-DATA-" .. tile.level .. tkey(tile)
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+
+				local p = G.Progress()
+
+				expect(p.failed).to.equal(0)
+				expect(p.done).to.equal(9)
+				expect(p.belowFailed).to.equal(1)
+				expect(p.belowDone).to.equal(8)
+				expect(p.belowTotal).to.equal(9)
+				expect(#state.renders).to.equal(9 + 3 + 8)
+				expect(join(state.events):find("R", 1, true) ~= nil).to.beTrue() -- the main level is ready
+				expect(join(state.events):find("B", 1, true)).to.beNil() -- the level below is not
+			end
+		},
+		-- fails if Prune is not called, called at every Request, or not called again for another map
+		{
+			name = "Prune: called once per map, again after the map name changes",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_one" end
+				G.Request(LEVEL, 500, 500, 100)
+				expect(state.prunes).to.equal(1)
+				G.Request(LEVEL, 5500, 500, 100)
+				request9(state)
+				expect(state.prunes).to.equal(1)
+
+				G.Cancel()
+				G.Request(LEVEL, 500, 500, 100) -- a Cancel does not forget the map
+				expect(state.prunes).to.equal(1)
+
+				game.GetMap = function() return "gen_test_map_two" end
+				G.Request(LEVEL, 500, 500, 100)
+				expect(state.prunes).to.equal(2)
+				G.Request(LEVEL, 9500, 500, 100)
+				expect(state.prunes).to.equal(2)
+			end
+		},
+		-- fails if an error in Prune stops the request, or if a Cache without Prune raises
+		{
+			name = "Prune: an error in it does not stop the request; a Cache without Prune is fine",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_three" end
+				state.onPrune = function() error("prune failed") end
+
+				expect(request9(state)).to.beTrue()
+				expect(state.prunes).to.equal(1)
+				expect(G.Pending()).to.equal(9)
+				expect(hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beA("function")
+
+				G.Cancel()
+				game.GetMap = function() return "gen_test_map_four" end
+				GryMod.Minimap.Cache.Prune = nil
+				expect(request9(state)).to.beTrue()
+				expect(G.Pending()).to.equal(9)
+			end
+		},
+		-- fails if Trim is not called after Prune, is called without the limit of Settings, or is called again for the same map
+		{
+			name = "Trim: called with Settings.CacheBytes() right after Prune at the first Request of a map, and not again for that map",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_trim" end
+				state.cacheBytes = 777000
+				G.Request(LEVEL, 500, 500, 100)
+
+				expect(join(state.calls)).to.equal("prune trim")
+				expect(#state.trims).to.equal(1)
+				expect(state.trims[1]).to.equal(777000)
+
+				G.Request(LEVEL, 5500, 500, 100)
+				request9(state)
+				expect(join(state.calls)).to.equal("prune trim")
+
+				game.GetMap = function() return "gen_test_map_trim_two" end
+				G.Request(LEVEL, 500, 500, 100)
+				expect(join(state.calls)).to.equal("prune trim prune trim")
+			end
+		},
+		-- fails if the trim every 64 stored tiles is missing, counts a refused Store, or does not start the count again after each Trim
+		{
+			name = "Trim: again after every 64 tiles stored with success, the count starting again at each Trim",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_count" end
+				G.Request(LEVEL, 500, 500, 3000) -- 9 x 9 = 81 tiles
+				expect(G.Pending()).to.equal(81)
+				expect(#state.trims).to.equal(1) -- the one of the first request of the map
+
+				stepAll(state, 63)
+				expect(#state.stores).to.equal(63)
+				expect(#state.trims).to.equal(1)
+
+				G.Step(state.t)
+				expect(#state.stores).to.equal(64)
+				expect(#state.trims).to.equal(2)
+				expect(state.trims[2]).to.equal(123456)
+
+				stepAll(state)
+				expect(#state.stores).to.equal(81)
+				expect(#state.trims).to.equal(2)
+
+				-- 81 more, the same map: the count started again at the 64th tile, so the next Trim comes at the 128th (162 in all: no third one)
+				G.Request(LEVEL, 20500, 500, 3000)
+				stepAll(state)
+				expect(#state.stores).to.equal(162)
+				expect(#state.trims).to.equal(3)
+			end
+		},
+		-- fails if a Store that is refused counts towards the 64
+		{
+			name = "Trim: a refused Store does not count",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_refused" end
+				state.onStore = function() return false, "disk full" end
+				G.Request(LEVEL, 500, 500, 3000)
+				stepAll(state, 400)
+
+				expect(#state.stores).to.equal(0)
+				expect(state.storeCalls > 64).to.beTrue()
+				expect(#state.trims).to.equal(1)
+			end
+		},
+		-- fails if an error in Trim stops the request or the generation
+		{
+			name = "Trim: an error in it stops nothing, at the first request or after 64 tiles",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_trim_error" end
+				state.onTrim = function() error("trim failed") end
+
+				expect(G.Request(LEVEL, 500, 500, 3000)).to.beTrue()
+				expect(G.Pending()).to.equal(81)
+				stepAll(state)
+
+				expect(#state.stores).to.equal(81)
+				expect(#state.trims).to.equal(2)
+				expect(G.Progress().failed).to.equal(0)
+				expect(G.Progress().done).to.equal(81)
+			end
+		},
+		-- fails if a Cache without Trim, or a Settings without CacheBytes, raises or is trimmed anyway
+		{
+			name = "Trim: a Cache without Trim or a Settings without CacheBytes is fine, and nothing is trimmed",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_no_trim" end
+				GryMod.Minimap.Cache.Trim = nil
+				expect(G.Request(LEVEL, 500, 500, 3000)).to.beTrue()
+				stepAll(state)
+				expect(#state.stores).to.equal(81)
+				expect(#state.trims).to.equal(0)
+				G.Cancel()
+
+				GryMod.Minimap.Cache.Trim = function(bytes)
+					state.trims[#state.trims + 1] = bytes
+				end
+
+				GryMod.Minimap.Settings.CacheBytes = nil
+				game.GetMap = function() return "gen_test_map_no_bytes" end
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beTrue()
+				stepAll(state)
+				expect(#state.stores).to.equal(162)
+				expect(#state.trims).to.equal(0)
+			end
+		},
+		-- fails if an identical Request builds anything (the signature string of the first version made 80 bytes of garbage per call)
+		{
+			name = "an identical Request allocates nothing: 1000 of them leave the memory where it was (less than 1 KB)",
+			func = function(state)
+				local G = gen()
+
+				request25(state)
+				G.Request(LEVEL, 1500, 500, 600, BELOW)
+
+				-- The compiler is off during the measure: compiled code can leave out the strings it builds and does not use twice, and the
+				-- interpreter makes every one of them, so only a Request that builds nothing passes. (jit.on again right after, and in afterEach.)
+				pcall(jit.off)
+
+				-- a first round: the interpreter's own first-use allocations (tables that grow once) are not the generator's garbage
+				for i = 1, 4000 do
+					G.Request(LEVEL, 1500, 500, 600, BELOW)
+				end
+
+				collectgarbage("collect")
+				collectgarbage("stop")
+
+				local before = collectgarbage("count")
+
+				for i = 1, 1000 do
+					G.Request(LEVEL, 1500, 500, 600, BELOW)
+				end
+
+				local mid = collectgarbage("count")
+
+				for i = 1, 1000 do
+					G.Request(LEVEL, 1520, 480, 600, BELOW) -- the same tiles, another point
+				end
+
+				local after = collectgarbage("count")
+
+				collectgarbage("restart")
+				pcall(jit.on)
+
+				expect(mid - before).to.beLessThan(1)
+				expect(after - mid).to.beLessThan(1)
+				expect(G.Request(LEVEL, 1500, 500, 600, BELOW)).to.beFalse()
+				expect(G.Request(LEVEL, 1500, 500, 600)).to.beTrue() -- and the comparison still sees a difference
+			end
+		},
+		-- fails if a tile that is all void is compressed and stored, or if StoreEmpty is not called, or if it does not count as done
+		{
+			name = "empty tiles: StoreEmpty instead of CompressRows and Store; the tile counts as done and fires the events",
+			func = function(state)
+				local G = gen()
+
+				state.onCapture = function(tile)
+					local s = "VOID-" .. tkey(tile)
+
+					state.bgras[#state.bgras + 1] = s
+
+					return s
+				end
+
+				state.isVoid = function(bgra) return bgra:sub(1, 5) == "VOID-" end
+
+				request9(state)
+				stepAll(state)
+
+				expect(#state.empties).to.equal(9)
+				expect(#state.compress).to.equal(0)
+				expect(#state.stores).to.equal(0)
+				expect(state.storeCalls).to.equal(0)
+				expect(#state.voidCalls).to.equal(9)
+				expect(state.voidCalls[1].bgra).to.equal("VOID-0,0")
+				expect(state.voidCalls[1].w).to.equal(512)
+				expect(state.voidCalls[1].h).to.equal(512)
+
+				local t = state.empties[1]
+
+				expect(t.level).to.equal("a1")
+				expect(t.tx .. "," .. t.ty).to.equal("0,0")
+				expect(t.res).to.equal(512)
+				expect(t.ppm).to.equal(2)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(9)
+				expect(p.percent).to.equal(100)
+				expect(p.active).to.beFalse()
+				expect(join(state.events)).to.equal("P 0 9 P 1 9 P 2 9 P 3 9 P 4 9 P 5 9 P 6 9 P 7 9 P 8 9 P 9 9 R")
+				expect(G.Pending()).to.equal(0)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+
+				-- the BGRA of the empty tile is not kept
+				local seen, found = {}, {}
+
+				local function scan(v, depth)
+					if depth > 12 then
+						return
+					end
+
+					if type(v) == "string" then
+						if v:sub(1, 5) == "VOID-" then
+							found[#found + 1] = v
+						end
+					elseif type(v) == "table" and not seen[v] then
+						seen[v] = true
+
+						for k, x in pairs(v) do
+							scan(k, depth + 1)
+							scan(x, depth + 1)
+						end
+					end
+				end
+
+				scan(G, 0)
+				expect(join(found)).to.equal("")
+			end
+		},
+		-- fails if the choice is not made tile by tile (a tile with one solid pixel must be stored like before)
+		{
+			name = "empty tiles: a tile with a solid pixel takes the normal path; the choice is made tile by tile",
+			func = function(state)
+				local G = gen()
+
+				state.isVoid = function(bgra) return bgra == "BGRA-IMAGE-DATA-0,0" or bgra == "BGRA-IMAGE-DATA--1,0" end
+
+				request9(state)
+				stepAll(state)
+
+				expect(#state.empties).to.equal(2)
+				expect(#state.stores).to.equal(7)
+				expect(#state.compress).to.equal(7 * 4)
+				expect(G.Progress().done).to.equal(9)
+				expect(G.Progress().failed).to.equal(0)
+
+				for i = 1, #state.stores do
+					local key = tkey(state.stores[i].tile)
+
+					expect(key ~= "0,0" and key ~= "-1,0").to.beTrue()
+					expect(state.stores[i].format).to.equal(20)
+				end
+			end
+		},
+		-- fails if a missing IsAllVoid or StoreEmpty raises or loses the tile
+		{
+			name = "empty tiles: without DXT1.IsAllVoid, or without Cache.StoreEmpty, the normal path",
+			func = function(state)
+				local G = gen()
+
+				state.isVoid = function() return true end -- everything would be void
+				GryMod.Minimap.DXT1.IsAllVoid = nil
+				request9(state)
+				stepAll(state)
+				expect(#state.stores).to.equal(9)
+				expect(#state.empties).to.equal(0)
+				expect(G.Progress().done).to.equal(9)
+				G.Cancel()
+
+				state.stores, state.compress = {}, {}
+				state.stored = {}
+				GryMod.Minimap.DXT1.IsAllVoid = function(bgra, w, h) return true end
+				GryMod.Minimap.Cache.StoreEmpty = nil
+				request9(state)
+				stepAll(state)
+				expect(#state.stores).to.equal(9)
+				expect(G.Progress().done).to.equal(9)
+				expect(G.Progress().failed).to.equal(0)
+			end
+		},
+		-- fails if an error in IsAllVoid, or a StoreEmpty that fails, loses the tile or counts a failure
+		{
+			name = "empty tiles: IsAllVoid that raises, or StoreEmpty that raises or refuses, falls back to the normal path",
+			func = function(state)
+				local G = gen()
+
+				state.isVoid = function() error("no") end
+				request9(state)
+				stepAll(state)
+				expect(#state.stores).to.equal(9)
+				expect(#state.empties).to.equal(0)
+				expect(G.Progress().failed).to.equal(0)
+				G.Cancel()
+
+				state.stores, state.compress, state.stored = {}, {}, {}
+				state.isVoid = function() return true end
+				state.onStoreEmpty = function() error("disk") end
+				request9(state)
+				stepAll(state)
+				expect(#state.empties).to.equal(9) -- tried each time
+				expect(#state.stores).to.equal(9)
+				expect(G.Progress().failed).to.equal(0)
+				expect(G.Progress().done).to.equal(9)
+				G.Cancel()
+
+				state.stores, state.compress, state.stored, state.empties = {}, {}, {}, {}
+				state.onStoreEmpty = function() return false, "refused" end
+				request9(state)
+				stepAll(state)
+				expect(#state.empties).to.equal(9)
+				expect(#state.stores).to.equal(9)
+				expect(G.Progress().failed).to.equal(0)
+			end
+		},
+		-- fails if the level below does not get the same treatment, or if its empty tiles count as done of the main level
+		{
+			name = "empty tiles: the level below is handled the same way (belowDone, BelowReady)",
+			func = function(state)
+				local G = gen()
+
+				state.onCapture = function(tile)
+					local s = (tile.level == "a0" and "VOID-" or "BGRA-") .. tkey(tile)
+
+					return s
+				end
+
+				state.isVoid = function(bgra) return bgra:sub(1, 5) == "VOID-" end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				stepAll(state)
+
+				expect(#state.empties).to.equal(9)
+
+				for i = 1, #state.empties do
+					expect(state.empties[i].level).to.equal("a0")
+				end
+
+				expect(#state.stores).to.equal(9)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(9)
+				expect(p.belowDone).to.equal(9)
+				expect(p.belowTotal).to.equal(9)
+				expect(p.failed).to.equal(0)
+				expect(p.belowFailed).to.equal(0)
+				expect(join(state.events):sub(-9)).to.equal("P 9 9 R B")
+			end
+		},
+		-- fails if the maintenance counter counts the empty tiles
+		{
+			name = "empty tiles do not count for the Trim every 64 stored tiles",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_empty_trim" end
+
+				state.isVoid = function(bgra) return bgra:find(",%-3$") ~= nil or bgra:find(",%-4$") ~= nil end
+
+				G.Request(LEVEL, 500, 500, 3000) -- 81 tiles, 18 of them in the two rows ty = -4 and -3
+				stepAll(state)
+
+				expect(#state.empties).to.equal(18)
+				expect(#state.stores).to.equal(63)
+				expect(#state.trims).to.equal(1) -- only the first one: 63 real Stores are not 64
+				expect(G.Progress().done).to.equal(81)
+			end
+		},
+		-- fails if a permanent capture error is retried for ever as if the menu were open
+		{
+			name = "capture nil with another reason than \"capture unavailable\": 3 attempts, then `failed`, the queue goes on and the hook goes away",
+			func = function(state)
+				local G = gen()
+
+				state.onCapture = function(tile)
+					if tile.tx == 0 and tile.ty == 0 then
+						return nil, "render target unavailable"
+					end
+
+					return "BGRA-IMAGE-DATA-" .. tkey(tile)
+				end
+
+				request9(state)
+				G.Step(state.t)
+				G.Step(state.t)
+				expect(G.Progress().failed).to.equal(0)
+				G.Step(state.t)
+
+				expect(#state.renders).to.equal(3)
+				expect(G.Progress().failed).to.equal(1)
+				expect(G.Pending()).to.equal(8)
+
+				stepAll(state)
+
+				local p = G.Progress()
+
+				expect(p.failed).to.equal(1)
+				expect(p.done).to.equal(8)
+				expect(#state.renders).to.equal(3 + 8)
+				expect(G.Pending()).to.equal(0)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+
+				-- no reason at all is not "unavailable" either
+				G.Cancel()
+				state.renders = {}
+				state.stored = {}
+				state.onCapture = function() return nil end
+				request9(state)
+				stepAll(state, 40)
+				expect(G.Pending()).to.equal(0)
+				expect(G.Progress().failed).to.equal(9)
+			end
+		},
+		-- fails if an error in a handler of the events stops the generation or the sticking of the hook
+		{
+			name = "an error in a handler of Progress, Ready or BelowReady does not stop the generation",
+			func = function(state)
+				local G = gen()
+
+				hook.Add("GryMod_MinimapProgress", LISTENER .. "_raiser", function() error("handler of Progress") end)
+				hook.Add("GryMod_MinimapReady", LISTENER .. "_raiser", function() error("handler of Ready") end)
+				hook.Add("GryMod_MinimapBelowReady", LISTENER .. "_raiser", function() error("handler of BelowReady") end)
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beTrue()
+				expect(hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beA("function")
+				expect(G.Pending()).to.equal(18)
+
+				stepAll(state)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(9)
+				expect(p.belowDone).to.equal(9)
+				expect(#state.stores).to.equal(18)
+				expect(G.Pending()).to.equal(0)
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beFalse() -- the request was recorded
+			end
+		},
+		-- fails if the limit of the number of tiles is Gen's own, or if a refused request changes the previous one
+		{
+			name = "too many tiles: the limit is View.MAX_TILES (400 without View); the request is refused and the previous one stays",
+			func = function(state)
+				local G = gen()
+
+				GryMod.Minimap.View = {MAX_TILES = 30}
+				expect(request25(state)).to.beTrue()
+
+				local ok, err = G.Request(LEVEL, 500, 500, 3000) -- 81 tiles
+
+				expect(ok).to.beNil()
+				expect(err).to.equal("too many tiles")
+				expect(G.Pending()).to.equal(25)
+				expect(G.Progress().total).to.equal(25)
+				expect(request25(state)).to.beFalse() -- the previous request is still the one in force
+				expect(G.Request(LEVEL, 500, 500, 3000)).to.beNil() -- and the refused one is not remembered
+
+				G.Cancel()
+				GryMod.Minimap.View = nil -- the limit is then 400: 19 x 19 = 361 tiles pass, 21 x 21 = 441 do not
+				expect(G.Request(LEVEL, 500, 500, 8000)).to.beTrue()
+				expect(G.Progress().total).to.equal(361)
+				ok, err = G.Request(LEVEL, 500, 500, 9000)
+				expect(ok).to.beNil()
+				expect(err).to.equal("too many tiles")
+				expect(G.Progress().total).to.equal(361)
+			end
+		},
+		-- fails if a Trim that removed tiles does not make the next request count the tiles again
+		{
+			name = "a Trim that removed something makes the next identical Request recount; a Trim that removed nothing does not",
+			func = function(state)
+				local G = gen()
+
+				game.GetMap = function() return "gen_test_map_trim_removed" end
+				G.Request(LEVEL, 500, 500, 3000)
+				stepAll(state, 63)
+				expect(#state.trims).to.equal(1)
+
+				state.trimRemoved = 0
+				G.Step(state.t) -- the 64th tile: Trim removes nothing
+				expect(#state.trims).to.equal(2)
+				expect(G.Request(LEVEL, 500, 500, 3000)).to.beFalse()
+
+				stepAll(state) -- the 81 tiles are done
+				expect(#state.stores).to.equal(81)
+
+				-- 81 more tiles in another place: the next Trim comes at the 128th tile in all
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beTrue()
+				stepAll(state, 46)
+				expect(#state.stores).to.equal(127)
+				expect(#state.trims).to.equal(2)
+				state.trimRemoved = 7
+				G.Step(state.t)
+				expect(#state.trims).to.equal(3)
+				state.stored["a1|20,0|512|2"] = nil -- the Trim removed this one from the disk
+				state.hasCalls = 0
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beTrue()
+				expect(state.hasCalls > 0).to.beTrue()
+				expect(G.Pending() >= 1).to.beTrue()
+				expect(G.Request(LEVEL, 20500, 500, 3000)).to.beFalse() -- recounted once, then the same again
+			end
+		},
+		-- fails if an abandoned tile is never tried again, or is tried again at once
+		{
+			name = "an abandoned tile is tried again by a changed request, or by an identical one 30 seconds after the failure",
+			func = function(state)
+				local G = gen()
+				local fails = true
+
+				state.onCapture = function(tile)
+					if fails and tile.tx == 0 and tile.ty == 0 then
+						error("boom")
+					end
+
+					return "BGRA-IMAGE-DATA-" .. tkey(tile)
+				end
+
+				request9(state)
+				stepAll(state)
+				expect(G.Progress().failed).to.equal(1)
+				expect(G.Progress().done).to.equal(8)
+
+				-- at once, or 29 seconds later: nothing
+				expect(request9(state)).to.beFalse()
+				state.rt = state.rt + 29
+				expect(request9(state)).to.beFalse()
+				expect(G.Pending()).to.equal(0)
+
+				-- 30 seconds after the failure: the tile is asked for again, and this time it works
+				fails = false
+				state.rt = state.rt + 1
+				expect(request9(state)).to.beTrue()
+				expect(G.Pending()).to.equal(1)
+				stepAll(state)
+				expect(G.Progress().done).to.equal(9)
+				expect(G.Progress().failed).to.equal(0)
+				expect(request9(state)).to.beFalse()
+				state.rt = state.rt + 100
+				expect(request9(state)).to.beFalse() -- nothing failed this time: no periodic redo
+
+				-- a changed request also asks again
+				G.Cancel()
+				state.stored = {}
+				fails = true
+				request9(state)
+				stepAll(state)
+				expect(G.Progress().failed).to.equal(1)
+				fails = false
+				expect(G.Request(LEVEL, 500, 600, 100)).to.beFalse() -- same tiles: same request
+				expect(G.Request(LEVEL, 1500, 500, 100)).to.beTrue()
+				expect(G.Pending() >= 3).to.beTrue() -- the new column, and the tile (0,0) is still wanted
+				stepAll(state)
+				expect(G.Progress().failed).to.equal(0)
+				expect(state.stored["a1|0,0|512|2"]).to.beTrue()
+			end
+		},
+		-- fails if a missing or absurd tile size raises or is accepted
+		{
+			name = "no tile size: TileUnits that gives nil, 0, a negative, infinity or NaN makes Request answer nil, \"no tile size\"",
+			func = function(state)
+				local G = gen()
+
+				for _, bad in ipairs({"nil", 0, -5, math.huge, 0 / 0}) do
+					state.tileUnits = bad ~= "nil" and bad or nil
+					GryMod.Minimap.Cache.TileUnits = function() return state.tileUnits end
+
+					local ok, err = G.Request(LEVEL, 500, 500, 100)
+
+					expect(ok).to.beNil()
+					expect(err).to.equal("no tile size")
+					expect(G.Pending()).to.equal(0)
+					expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+				end
+			end
+		},
+		-- fails if the outside is queued before the floor below or before a main tile, not sorted by distance, or made with the wrong level
+		{
+			name = "outside: its tiles come after every main tile and every below tile, sorted by distance, with their own level",
+			func = function(state)
+				local G = gen()
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beTrue()
+				expect(G.Pending()).to.equal(27)
+				stepAll(state)
+
+				local order, outside = {}, {}
+
+				for i = 1, #state.renders do
+					local r = state.renders[i]
+
+					order[i] = r.level
+
+					if r.level == "open" then
+						outside[#outside + 1] = r.tx .. "," .. r.ty
+						expect(r.levelTable).to.equal(OUTSIDE)
+						expect(r.res).to.equal(512)
+						expect(r.ppm).to.equal(2)
+					end
+				end
+
+				expect(#state.renders).to.equal(27)
+				expect(join(order)).to.equal(string.rep("a1 ", 9) .. string.rep("a0 ", 9) .. string.rep("open ", 8) .. "open")
+				expect(join(outside)).to.equal(SMALL_ORDER)
+			end
+		},
+		-- fails if the outside needs a floor below, or is dropped when there is none
+		{
+			name = "outside: without a floor below the outside comes right after the main level",
+			func = function(state)
+				local G = gen()
+
+				expect(G.Request(LEVEL, 500, 500, 100, nil, OUTSIDE)).to.beTrue()
+				expect(G.Pending()).to.equal(18)
+				stepAll(state)
+
+				for i = 1, 18 do
+					expect(state.renders[i].level).to.equal(i <= 9 and "a1" or "open")
+				end
+
+				local p = G.Progress()
+
+				expect(p.belowTotal).to.equal(0)
+				expect(p.outsideTotal).to.equal(9)
+				expect(p.outsideDone).to.equal(9)
+			end
+		},
+		-- fails if the id of the outside is not part of the comparison of two requests, or an outside of the same id as another level is kept
+		{
+			name = "outside: deduplication compares the id of the outside (none, same, other); an outside with the id of the main level or of the floor below is no outside",
+			func = function(state)
+				local G = gen()
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beTrue()
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, nil)).to.beFalse()
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beTrue()
+
+				local has = state.hasCalls
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beFalse()
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, {id = "open", zlo = 1, zhi = 2})).to.beFalse() -- same id: same request
+				expect(state.hasCalls).to.equal(has)
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, {id = "z9", zlo = 0, zhi = 1})).to.beTrue()
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beTrue() -- the outside goes away: another request
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beFalse()
+
+				-- the same id as the main level, or as the floor below: no outside at all
+				G.Cancel()
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, {id = "a1", zlo = 0, zhi = 1})).to.beTrue()
+				expect(G.Progress().outsideTotal).to.equal(0)
+				expect(G.Pending()).to.equal(18)
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, {id = "a0", zlo = 0, zhi = 1})).to.beFalse()
+				expect(G.Progress().outsideTotal).to.equal(0)
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beFalse() -- the very same request
+
+				-- a bad outside is refused and changes nothing
+				for _, bad in ipairs({"nope", 5, {}, {id = 7}}) do
+					local ok, err = G.Request(LEVEL, 500, 500, 100, BELOW, bad)
+
+					expect(ok).to.beNil()
+					expect(isstring(err)).to.beTrue()
+				end
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW)).to.beFalse()
+			end
+		},
+		-- fails if Progress mixes the outside with the main level, or lacks outsideDone / outsideTotal / outsideFailed
+		{
+			name = "outside: Progress describes the main level only, and gives outsideDone, outsideTotal, outsideFailed (0 without outside)",
+			func = function(state)
+				local G = gen()
+
+				state.stored["open|0,0|512|2"] = true
+				state.stored["open|1,1|512|2"] = true
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(0)
+				expect(p.total).to.equal(9)
+				expect(p.percent).to.equal(0)
+				expect(p.failed).to.equal(0)
+				expect(p.belowDone).to.equal(0)
+				expect(p.belowTotal).to.equal(9)
+				expect(p.outsideDone).to.equal(2)
+				expect(p.outsideTotal).to.equal(9)
+				expect(p.outsideFailed).to.equal(0)
+
+				stepAll(state, 18) -- the main level and the floor below
+				p = G.Progress()
+				expect(p.done).to.equal(9)
+				expect(p.active).to.beFalse()
+				expect(p.belowDone).to.equal(9)
+				expect(p.outsideDone).to.equal(2)
+				expect(G.Pending()).to.equal(7)
+
+				stepAll(state)
+				p = G.Progress()
+				expect(p.done).to.equal(9)
+				expect(p.total).to.equal(9)
+				expect(p.outsideDone).to.equal(9)
+				expect(p.outsideTotal).to.equal(9)
+
+				G.Cancel()
+				request9(state)
+				p = G.Progress()
+				expect(p.outsideDone).to.equal(0)
+				expect(p.outsideTotal).to.equal(0)
+				expect(p.outsideFailed).to.equal(0)
+			end
+		},
+		-- fails if the event of the outside is missing, repeated, before Ready, or if it changes the other events
+		{
+			name = "outside: Progress and Ready are about the main level, then BelowReady, then OutsideReady once, in that order",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				expect(join(state.events)).to.equal("P 0 9")
+
+				stepAll(state)
+				expect(join(state.events)).to.equal("P 0 9 P 1 9 P 2 9 P 3 9 P 4 9 P 5 9 P 6 9 P 7 9 P 8 9 P 9 9 R B O")
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE) -- the same request
+				expect(#state.events).to.equal(13)
+
+				-- everything is in the cache at once
+				for tx = 2, 4 do
+					for ty = -1, 1 do
+						for _, id in ipairs({"a1", "a0", "open"}) do
+							state.stored[id .. "|" .. tx .. "," .. ty .. "|512|2"] = true
+						end
+					end
+				end
+
+				G.Cancel()
+				state.events = {}
+				G.Request(LEVEL, 3500, 500, 100, BELOW, OUTSIDE)
+				expect(join(state.events)).to.equal("P 9 9 R B O")
+
+				-- an outside without a floor below
+				G.Cancel()
+				state.events = {}
+				state.stored = {}
+				G.Request(LEVEL, 500, 500, 100, nil, OUTSIDE)
+				stepAll(state)
+				expect(join(state.events):sub(-9)).to.equal("P 9 9 R O")
+			end
+		},
+		-- fails if the tiles of the outside are not compressed with the alpha option and stored in the format 20
+		{
+			name = "outside: CompressRows gets {alpha = true} and Store gets 20 for the three levels",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				stepAll(state)
+
+				expect(#state.compress).to.equal(27 * 4)
+
+				for i = 1, #state.compress do
+					expect(state.compress[i].opts.alpha).to.beTrue()
+				end
+
+				expect(#state.stores).to.equal(27)
+
+				for i = 1, #state.stores do
+					expect(state.stores[i].format).to.equal(20)
+				end
+			end
+		},
+		-- fails if a new request without outside leaves its tiles in the queue
+		{
+			name = "outside: a new Request without outside removes the tiles of the outside that were waiting",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				stepAll(state, 21) -- 9 main, 9 below, 3 outside
+
+				expect(G.Pending()).to.equal(6)
+
+				G.Request(LEVEL, 500, 500, 100, BELOW)
+				expect(G.Pending()).to.equal(0)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+				expect(G.Progress().outsideTotal).to.equal(0)
+				expect(G.Progress().outsideDone).to.equal(0)
+
+				local renders = #state.renders
+
+				G.Step(state.t)
+				expect(#state.renders).to.equal(renders)
+			end
+		},
+		-- fails if a new main tile has to wait for an outside tile that has not been captured yet, or an outside tile under way is thrown away
+		{
+			name = "outside: an outside tile not captured yet gives way to a new main tile and to a below tile; one under way is kept",
+			func = function(state)
+				local G = gen()
+
+				for tx = -1, 1 do
+					for ty = -1, 1 do
+						state.stored["a1|" .. tx .. "," .. ty .. "|512|2"] = true
+						state.stored["a0|" .. tx .. "," .. ty .. "|512|2"] = true
+					end
+				end
+
+				-- 1) the capture gives nothing (menu): the outside tile (0,0) is current, not captured
+				state.onCapture = function() return nil, UNAVAILABLE end
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				G.Step(state.t)
+				expect(G._state.current ~= nil and G._state.current.set).to.equal("outside")
+
+				state.onCapture = nil
+				G.Request(LEVEL, 1500, 500, 100, BELOW, OUTSIDE) -- tx 0..2: tx 2 is new for the three levels, (0,0) is still wanted
+				expect(G._state.current).to.beNil()
+
+				G.Step(state.t)
+				expect(state.renders[#state.renders].level).to.equal("a1") -- a main tile first
+				G.Cancel()
+
+				-- 2) an outside tile already captured stays
+				state.renders = {}
+
+				for tx = 2, 4 do
+					for ty = -1, 1 do
+						state.stored["a1|" .. tx .. "," .. ty .. "|512|2"] = true
+						state.stored["a0|" .. tx .. "," .. ty .. "|512|2"] = true
+					end
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				state.budget = 1
+				state.dt = 0.004
+				G.Step(state.t) -- captured, then the budget is gone
+				state.budget = 1000
+				state.dt = 0
+				expect(#state.renders).to.equal(1)
+				expect(G._state.current.set).to.equal("outside")
+
+				G.Request(LEVEL, 1500, 500, 100, BELOW, OUTSIDE)
+				expect(G._state.current ~= nil and G._state.current.set).to.equal("outside")
+				stepAll(state)
+
+				local count = 0
+
+				for i = 1, #state.renders do
+					if state.renders[i].level == "open" and tkey(state.renders[i]) == "0,0" then
+						count = count + 1
+					end
+				end
+
+				expect(count).to.equal(1)
+			end
+		},
+		-- fails if a failure of the outside is counted in `failed` or `belowFailed`, stops the queue, or fires OutsideReady
+		{
+			name = "outside: a failing outside tile counts in outsideFailed only, the queue goes on, and OutsideReady is not fired",
+			func = function(state)
+				local G = gen()
+
+				state.onCapture = function(tile)
+					if tile.level == "open" and tile.tx == 0 and tile.ty == 0 then
+						error("boom")
+					end
+
+					return "BGRA-IMAGE-DATA-" .. tile.level .. tkey(tile)
+				end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				stepAll(state)
+
+				local p = G.Progress()
+
+				expect(p.failed).to.equal(0)
+				expect(p.belowFailed).to.equal(0)
+				expect(p.done).to.equal(9)
+				expect(p.belowDone).to.equal(9)
+				expect(p.outsideFailed).to.equal(1)
+				expect(p.outsideDone).to.equal(8)
+				expect(p.outsideTotal).to.equal(9)
+				expect(#state.renders).to.equal(9 + 9 + 3 + 8)
+				expect(join(state.events):find("B", 1, true) ~= nil).to.beTrue()
+				expect(join(state.events):find("O", 1, true)).to.beNil()
+				expect(G.Pending()).to.equal(0)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+
+				-- 30 seconds later an identical request asks for the abandoned tile again
+				state.onCapture = nil
+				state.rt = state.rt + 30
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beTrue()
+				expect(G.Pending()).to.equal(1)
+				stepAll(state)
+				expect(G.Progress().outsideDone).to.equal(9)
+				expect(G.Progress().outsideFailed).to.equal(0)
+				expect(join(state.events):sub(-5)).to.equal("R B O")
+			end
+		},
+		-- fails if the empty tiles of the outside are compressed and stored, or do not count in outsideDone
+		{
+			name = "outside: empty tiles are handled the same way (StoreEmpty, outsideDone, OutsideReady)",
+			func = function(state)
+				local G = gen()
+
+				state.onCapture = function(tile)
+					return (tile.level == "open" and "VOID-" or "BGRA-") .. tkey(tile)
+				end
+
+				state.isVoid = function(bgra) return bgra:sub(1, 5) == "VOID-" end
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				stepAll(state)
+
+				expect(#state.empties).to.equal(9)
+
+				for i = 1, #state.empties do
+					expect(state.empties[i].level).to.equal("open")
+				end
+
+				expect(#state.stores).to.equal(18)
+
+				local p = G.Progress()
+
+				expect(p.done).to.equal(9)
+				expect(p.outsideDone).to.equal(9)
+				expect(p.outsideFailed).to.equal(0)
+				expect(join(state.events):sub(-11)).to.equal("P 9 9 R B O")
+			end
+		},
+		-- fails if an error in the handler of OutsideReady stops the generation
+		{
+			name = "outside: an error in a handler of OutsideReady does not stop anything",
+			func = function(state)
+				local G = gen()
+
+				hook.Add("GryMod_MinimapOutsideReady", LISTENER .. "_raiser", function() error("handler of OutsideReady") end)
+
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beTrue()
+				stepAll(state)
+				expect(G.Progress().outsideDone).to.equal(9)
+				expect(#state.stores).to.equal(27)
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beFalse()
+			end
+		},
+		-- fails if the request of the outside allocates (the signature built as a string, a table per request)
+		{
+			name = "outside: an identical Request with a floor below and an outside allocates nothing (less than 1 KB for 2000)",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 1500, 500, 600, BELOW, OUTSIDE)
+				pcall(jit.off)
+
+				for i = 1, 4000 do
+					G.Request(LEVEL, 1500, 500, 600, BELOW, OUTSIDE)
+				end
+
+				collectgarbage("collect")
+				collectgarbage("stop")
+
+				local before = collectgarbage("count")
+
+				for i = 1, 1000 do
+					G.Request(LEVEL, 1500, 500, 600, BELOW, OUTSIDE)
+				end
+
+				local mid = collectgarbage("count")
+
+				for i = 1, 1000 do
+					G.Request(LEVEL, 1520, 480, 600, BELOW, OUTSIDE)
+				end
+
+				local after = collectgarbage("count")
+
+				collectgarbage("restart")
+				pcall(jit.on)
+
+				expect(mid - before).to.beLessThan(1)
+				expect(after - mid).to.beLessThan(1)
+				expect(G.Request(LEVEL, 1500, 500, 600, BELOW, OUTSIDE)).to.beFalse()
+			end
+		},
+		-- fails if the limit of tiles is not checked for the outside range (the same range as the others: one count)
+		{
+			name = "outside: too many tiles refuses the whole request, outside included",
+			func = function(state)
+				local G = gen()
+
+				GryMod.Minimap.View = {MAX_TILES = 30}
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beTrue()
+
+				local ok, err = G.Request(LEVEL, 500, 500, 3000, BELOW, OUTSIDE)
+
+				expect(ok).to.beNil()
+				expect(err).to.equal("too many tiles")
+				expect(G.Progress().outsideTotal).to.equal(9)
+				expect(G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)).to.beFalse()
+			end
+		},
+		-- fails if Cache.Flush is not called when the three queues are empty and the work hook goes away (the empty tiles live only in the index)
+		{
+			name = "Flush: Cache.Flush is called once, when the three queues are empty and the hook is removed, not before",
+			func = function(state)
+				local G = gen()
+
+				G.Request(LEVEL, 500, 500, 100, BELOW, OUTSIDE)
+				expect(#state.flushes).to.equal(0)
+
+				stepAll(state, 26)
+				expect(#state.flushes).to.equal(0)
+				expect(G.Pending()).to.equal(1)
+
+				G.Step(state.t)
+				expect(G.Pending()).to.equal(0)
+				expect(#state.flushes).to.equal(1)
+				expect(state.flushes[1].pending).to.equal(0)
+				expect(state.flushes[1].hooked).to.beFalse() -- the hook is already gone: the work is over
+
+				-- nothing left, no hook: a Step that does nothing does not flush again
+				G.Step(state.t)
+				expect(#state.flushes).to.equal(1)
+			end
+		},
+		-- fails if the index is not written when a request leaves the generator idle after a hook was there
+		{
+			name = "Flush: a request that finds everything in the cache while the hook is on also flushes; an idle request does not",
+			func = function(state)
+				local G = gen()
+
+				request9(state)
+				expect(hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beA("function")
+
+				-- everything the new request wants exists: no tile to make, the hook goes away
+				for tx = 2, 4 do
+					for ty = -1, 1 do
+						state.stored["a1|" .. tx .. "," .. ty .. "|512|2"] = true
+					end
+				end
+
+				G.Request(LEVEL, 3500, 500, 100)
+				expect(G.Pending()).to.equal(0)
+				expect(#state.flushes).to.equal(1)
+
+				-- no hook was there: nothing to flush
+				G.Request(LEVEL, 3500, 3500, 100)
+				stepAll(state)
+				local n = #state.flushes
+				G.Request(LEVEL, 3500, 500, 100)
+				expect(#state.flushes).to.equal(n)
+			end
+		},
+		-- fails if Cancel does not write the index
+		{
+			name = "Flush: Cancel calls Cache.Flush (also when nothing was running), after the hook is gone",
+			func = function(state)
+				local G = gen()
+
+				G.Cancel()
+				expect(#state.flushes).to.equal(1)
+
+				request9(state)
+				G.Cancel()
+				expect(#state.flushes).to.equal(2)
+				expect(state.flushes[2].hooked).to.beFalse()
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+			end
+		},
+		-- fails if a Cache without Flush, or a Flush that raises, stops the generation, Cancel or the removal of the hook
+		{
+			name = "Flush: a Cache without Flush, or a Flush that raises, is fine (the error is kept, nothing is raised)",
+			func = function(state)
+				local G = gen()
+
+				GryMod.Minimap.Cache.Flush = nil
+				request9(state)
+				stepAll(state)
+				expect(G.Progress().done).to.equal(9)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+				expect(pcall(G.Cancel)).to.beTrue()
+
+				state.flushes = {}
+				state.stored = {} -- the tiles of the first round are made again
+				GryMod.Minimap.Cache.Flush = function()
+					state.flushes[#state.flushes + 1] = true
+					error("flush failed")
+				end
+
+				request9(state)
+				stepAll(state)
+				expect(#state.flushes).to.equal(1)
+				expect(G.Progress().done).to.equal(9)
+				expect(hook.GetTable()[HOOK_EVENT] and hook.GetTable()[HOOK_EVENT][HOOK_NAME]).to.beNil()
+				expect(pcall(G.Cancel)).to.beTrue()
+				expect(#state.flushes).to.equal(2)
 			end
 		}
 	}

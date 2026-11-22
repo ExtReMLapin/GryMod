@@ -12,8 +12,18 @@ GryMod.Minimap.Gen = GryMod.Minimap.Gen or {}
 --     (a capture costs about 7 ms by itself and needs a frame of its own);
 --   * the BGRA string of a tile (a megabyte or more) is dropped as soon as the last chunk is compressed, and the compressed chunks as soon as the tile is stored.
 -- The other modules (Capture, DXT1, Cache, Settings) are always reached through GryMod.Minimap.<Module> at call time, so a test may replace them.
--- Events (hook.Run): GryMod_MinimapProgress(done, total) once per change of those two numbers, GryMod_MinimapReady() once per request when every
--- wanted tile exists.
+--   * a request may also ask for the floor BELOW the main level (same tile range, res and definition): its tiles are queued after every tile of the main
+--     level and never counted in the main level's numbers. A below tile that was only started (not captured yet) gives way to a new main tile;
+--   * it may also ask for the OUTSIDE (the open level of the map, the whole height of the world): same range, made after the main level and the floor
+--     below, counted apart (outsideDone, outsideTotal, outsideFailed), and never in the main level's numbers;
+--   * every tile is compressed with the 1-bit alpha option and stored in the DXT1A format (20): the void of a floor is transparent.
+-- The three SETS of tiles (main, below, outside) are handled by the same code: S.sets[name] = {level, queue, done, total, failed, ...}, and SET_ORDER
+-- is the order in which their queues are emptied.
+-- Events (hook.Run), all about the MAIN level only except the last two: GryMod_MinimapProgress(done, total) once per change of those two numbers,
+-- GryMod_MinimapReady() once per request when every wanted tile of the main level exists, GryMod_MinimapBelowReady() once per request when the
+-- below level was asked for and its wanted tiles all exist, GryMod_MinimapOutsideReady() the same for the outside.
+-- When the work is over (the three queues are empty, nothing is in progress: the hook goes away) and in Cancel, Cache.Flush() is called (the index of
+-- the cache is written when it is dirty; the empty tiles exist only in the index). It is called under pcall and only when the function exists.
 
 local Gen = GryMod.Minimap.Gen
 
@@ -21,15 +31,26 @@ Gen.HOOK_EVENT = "PostRender"
 Gen.HOOK_NAME = "GryMod minimap generator"
 Gen.CHUNK_ROWS = 32 -- block rows (of 4 pixel rows) handed to DXT1.CompressRows per call
 Gen.MAX_RETRIES = 2 -- new attempts after a failure; the tile is abandoned after the last one
-Gen.MAX_TILES = 2500 -- a request that would need more tiles than this is refused (a wrong extent, not a real demand)
+Gen.TRIM_EVERY = 64 -- tiles stored with success between two calls of Cache.Trim
+Gen.RETRY_FAILED_AFTER = 30 -- seconds (RealTime) after which an identical request asks again for the tiles that were abandoned
+Gen.DEFAULT_MAX_TILES = 400 -- the limit of the number of tiles of a request when GryMod.Minimap.View.MAX_TILES does not exist
 
 local CHUNK_ROWS = Gen.CHUNK_ROWS
 local MAX_RETRIES = Gen.MAX_RETRIES
 
 local PHASE_CAPTURE, PHASE_COMPRESS, PHASE_STORE = 1, 2, 3
 
+-- the sets of tiles of a request, in the order of their queues: the main level, the floor below, the outside. The event of a set (nil for the main
+-- level, whose events are Progress and Ready) fires once when all its tiles exist, and only after the main level's own Ready.
+local SET_ORDER = {"main", "below", "outside"}
+local SET_EVENT = {below = "GryMod_MinimapBelowReady", outside = "GryMod_MinimapOutsideReady"}
+
+local FORMAT_DXT1A = 20 -- VTF format of DXT1 with one bit of alpha
+local COMPRESS_OPTS = {alpha = true} -- read by DXT1.CompressRows, never modified
+
 -- the clock of the budget, replaceable by the tests
 Gen._clock = SysTime
+Gen._realTime = RealTime
 
 -- a hot reload: the hook of the old copy goes away, and the state starts again
 pcall(hook.Remove, Gen.HOOK_EVENT, Gen.HOOK_NAME)
@@ -37,18 +58,24 @@ pcall(hook.Remove, Gen.HOOK_EVENT, Gen.HOOK_NAME)
 local S = {}
 Gen._state = S -- exposed for the tests only (they check that no BGRA string stays in it)
 
+S.prunedMap = nil -- the map whose old cache directories were already pruned (kept by resetState)
+S.storedSinceTrim = 0 -- tiles stored with success since the last Trim (kept by resetState)
+
+local function newSet()
+	-- level = the level table of the last request (nil: this set is not wanted), queue = entries {tile =, key =, d =} nearest first
+	return {level = nil, queue = {}, done = 0, total = 0, failed = 0, readyFired = false}
+end
+
 local function resetState()
-	S.sig = nil -- signature of the last request
-	S.level = nil -- the level table of the last request
-	S.queue = {} -- entries {tile =, key =, d =} still to do, nearest first
-	S.current = nil -- the tile in progress: {tile =, key =, phase =, row =, nrows =, bgra =, chunks =, tries =}
-	S.wanted = {} -- key -> true for every tile of the request that is not in the cache yet (the tile in progress included)
-	S.done = 0
-	S.total = 0
-	S.failed = 0
+	S.sigSet = false -- true once a request was accepted: the fields below describe it (numbers and ids, no string is built to compare)
+	S.sigLevel, S.sigBelow, S.sigOutside = nil, nil, nil -- the ids of its levels
+	S.sigTx0, S.sigTx1, S.sigTy0, S.sigTy1, S.sigRes, S.sigPpm = 0, 0, 0, 0, 0, 0
+	S.wanted = {} -- scratch: the level tables of a request by set (written and cleared inside Request, so that a request makes no table for them)
+	S.sets = {main = newSet(), below = newSet(), outside = newSet()} -- the below queue is made only after the main queue is empty, the outside's after both
+	S.current = nil -- the tile in progress: {tile =, key =, set =, phase =, row =, nrows =, bgra =, chunks =, tries =}; set is "main", "below" or "outside"
+	S.failedAt = nil -- RealTime of the last abandoned tile of the request (they are asked for again 30 s later)
 	S.firedDone = nil -- the (done, total) of the last Progress event
 	S.firedTotal = nil
-	S.readyFired = false
 	S.hooked = false
 	S.lastError = nil
 end
@@ -80,24 +107,42 @@ end
 -- events
 
 local function fireProgress()
-	if S.firedDone ~= S.done or S.firedTotal ~= S.total then
-		S.firedDone, S.firedTotal = S.done, S.total
-		hook.Run("GryMod_MinimapProgress", S.done, S.total)
+	local main = S.sets.main
+
+	if S.firedDone ~= main.done or S.firedTotal ~= main.total then
+		S.firedDone, S.firedTotal = main.done, main.total
+		pcall(hook.Run, "GryMod_MinimapProgress", main.done, main.total) -- a handler that raises an error must not stop anything
 	end
 end
 
 local function fireReady()
-	if S.total > 0 and S.done >= S.total and not S.readyFired then
-		S.readyFired = true
-		hook.Run("GryMod_MinimapReady")
+	local sets = S.sets
+	local main = sets.main
+
+	if main.total > 0 and main.done >= main.total and not main.readyFired then
+		main.readyFired = true
+		pcall(hook.Run, "GryMod_MinimapReady")
+	end
+
+	-- the main level always speaks first, then the floor below, then the outside
+	if main.readyFired then
+		for i = 2, #SET_ORDER do
+			local name = SET_ORDER[i]
+			local set = sets[name]
+
+			if set.total > 0 and set.done >= set.total and not set.readyFired then
+				set.readyFired = true
+				pcall(hook.Run, SET_EVENT[name])
+			end
+		end
 	end
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------------------------
 -- request
 
-local function tileKey(tx, ty)
-	return tx .. "," .. ty
+local function tileKey(levelId, tx, ty, res, ppm)
+	return levelId .. "|" .. tx .. "," .. ty .. "," .. res .. "," .. ppm
 end
 
 local function byDistance(a, b)
@@ -116,12 +161,129 @@ local function isNumber(v)
 	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
+-- Cache.Trim(Settings.CacheBytes()): keeps the cache under its size limit. Called after Prune at the first request of a map, then after every
+-- TRIM_EVERY tiles stored, so that a long game does not go over the limit. Only when both functions exist; an error is kept and ignored.
+local function trimCache()
+	local M = GryMod.Minimap
+	local Cache, Settings = M.Cache, M.Settings
+
+	S.storedSinceTrim = 0
+
+	if not Cache or not Settings or type(Cache.Trim) ~= "function" or type(Settings.CacheBytes) ~= "function" then
+		return
+	end
+
+	local ok, bytes = pcall(Settings.CacheBytes)
+
+	if not ok or type(bytes) ~= "number" then
+		return
+	end
+
+	local ok2, removed = pcall(Cache.Trim, bytes)
+
+	if not ok2 then
+		S.lastError = tostring(removed)
+	elseif type(removed) == "number" and removed > 0 then
+		S.sigSet = false -- the disk changed: the next request counts the tiles again, whether or not it is the same as the last one
+	end
+end
+
+-- Cache.Flush(): the index of the cache is written when it was changed (the cache writes it every few tiles; the empty tiles live only in it). Called
+-- when the work is over and by Cancel; only when the function exists, under pcall: an error is kept and ignored.
+local function flushCache()
+	local Cache = GryMod.Minimap.Cache
+
+	if type(Cache) ~= "table" or type(Cache.Flush) ~= "function" then
+		return
+	end
+
+	local ok, err = pcall(Cache.Flush)
+
+	if not ok then
+		S.lastError = tostring(err)
+	end
+end
+
+-- Cache.Prune (the old cache directories of this map: a key of a former version, a map that changed size) once per map: the first request after the
+-- name of the map changed. The name is kept in the state, which a Cancel does not reset. An error in Prune never stops the request.
+local function pruneOnce(Cache)
+	local map = game.GetMap()
+
+	if type(map) ~= "string" or map == S.prunedMap then
+		return
+	end
+
+	S.prunedMap = map
+
+	if type(Cache.Prune) == "function" then
+		local ok, err = pcall(Cache.Prune)
+
+		if not ok then
+			S.lastError = tostring(err)
+		end
+	end
+
+	trimCache()
+end
+
+-- Makes the queue of one level over the tile range tx0..tx1, ty0..ty1 (the tiles the cache already has are counted as done and not queued).
+-- `cur` is the tile in progress: when it is one of this level's tiles and still worth keeping, it is not queued again, its set is changed to `set`
+-- ("main", "below" or "outside") and the third result is true. Returns queue, done, keptCurrent. total = the number of tiles of the range.
+local function makeQueue(Cache, levelId, set, tx0, ty0, tx1, ty1, res, ppm, T, cx, cy, cur)
+	local queue, done, kept = {}, 0, false
+
+	for tx = tx0, tx1 do
+		for ty = ty0, ty1 do
+			local tile = {level = levelId, tx = tx, ty = ty, res = res, ppm = ppm}
+			local key = tileKey(levelId, tx, ty, res, ppm)
+
+			-- the tile in progress stays when it is needed again; a tile of the floor below or of the outside that has not been captured yet has
+			-- cost nothing, so it does not keep a main tile waiting
+			if cur and cur.key == key and (set == "main" or cur.phase ~= PHASE_CAPTURE) then
+				cur.set = set
+				kept = true
+			elseif Cache.Has(tile) then
+				done = done + 1
+			else
+				local dx, dy = (tx + 0.5) * T - cx, (ty + 0.5) * T - cy
+
+				queue[#queue + 1] = {tile = tile, key = key, d = dx * dx + dy * dy}
+			end
+		end
+	end
+
+	table.sort(queue, byDistance)
+
+	return queue, done, kept
+end
+
 -- Wants the tiles that cover the square of half-side `extentUnits` around (cx, cy), plus one tile of margin, for `level` ({id, zlo, zhi}), at the
--- resolution and definition of the settings. Returns true when the wanted set changed, false when the request is the same as the previous one
--- (nothing is done then), nil and a reason when it is not valid.
-function Gen.Request(level, cx, cy, extentUnits)
+-- resolution and definition of the settings; `below` (optional, a level table) asks for the same tiles of the floor below, made after the main ones;
+-- `outside` (optional, a level table: the open level of the map) asks for them once more, made after the floor below. An outside with the id of the
+-- main level or of the floor below is ignored (the same tiles twice).
+-- Returns true when the wanted set changed, false when the request is the same as the previous one (nothing is done then), nil and a reason when it
+-- is not valid. A refused request ("too many tiles": more than View.MAX_TILES, 400 without View; "no tile size") changes nothing: the previous
+-- request stays in force. An identical request is not ignored when a Trim removed tiles (the disk changed) or when tiles were abandoned more than
+-- RETRY_FAILED_AFTER seconds ago: they are asked for again.
+function Gen.Request(level, cx, cy, extentUnits, below, outside)
 	if type(level) ~= "table" or type(level.id) ~= "string" then
 		return nil, "level must be a table with an id"
+	end
+
+	if below ~= nil and (type(below) ~= "table" or type(below.id) ~= "string") then
+		return nil, "below must be a table with an id"
+	end
+
+	if outside ~= nil and (type(outside) ~= "table" or type(outside.id) ~= "string") then
+		return nil, "outside must be a table with an id"
+	end
+
+	if below and below.id == level.id then
+		below = nil -- the same floor twice is one floor
+	end
+
+	if outside and (outside.id == level.id or (below and outside.id == below.id)) then
+		outside = nil
 	end
 
 	if not isNumber(cx) or not isNumber(cy) or not isNumber(extentUnits) or extentUnits < 0 then
@@ -135,75 +297,93 @@ function Gen.Request(level, cx, cy, extentUnits)
 		return nil, "Cache and Settings are required"
 	end
 
+	pruneOnce(Cache)
+
 	local res, ppm = Settings.TileRes(), Settings.Definition()
+	local T = Cache.TileUnits(res, ppm)
+
+	if not isNumber(T) or T <= 0 then
+		return nil, "no tile size"
+	end
+
 	local tx0, ty0 = Cache.TileOf(cx - extentUnits, cy - extentUnits, res, ppm)
 	local tx1, ty1 = Cache.TileOf(cx + extentUnits, cy + extentUnits, res, ppm)
 
 	-- one tile of margin on every side
 	tx0, ty0, tx1, ty1 = tx0 - 1, ty0 - 1, tx1 + 1, ty1 + 1
 
-	local sig = level.id .. "|" .. tx0 .. "," .. tx1 .. "," .. ty0 .. "," .. ty1 .. "|" .. res .. "|" .. ppm
+	-- the same request as the previous one (the radar asks at every draw): compared field by field, nothing is allocated
+	local belowId = below and below.id or nil
+	local outsideId = outside and outside.id or nil
 
-	if sig == S.sig then
-		return false
-	end
-
-	if (tx1 - tx0 + 1) * (ty1 - ty0 + 1) > Gen.MAX_TILES then
-		return nil, "too many tiles"
-	end
-
-	local T = Cache.TileUnits(res, ppm)
-	local levelId = level.id
-	local queue, wanted = {}, {}
-	local cur = S.current
-	local done, total = 0, 0
-	local keepCurrent = false
-
-	for tx = tx0, tx1 do
-		for ty = ty0, ty1 do
-			total = total + 1
-
-			local tile = {level = levelId, tx = tx, ty = ty, res = res, ppm = ppm}
-			local key = tileKey(tx, ty)
-
-			if cur and cur.key == key and cur.tile.level == levelId and cur.tile.res == res and cur.tile.ppm == ppm then
-				-- the tile in progress is still needed: it stays (and is not queued a second time)
-				keepCurrent = true
-				wanted[key] = true
-			elseif Cache.Has(tile) then
-				done = done + 1
-			else
-				local dx, dy = (tx + 0.5) * T - cx, (ty + 0.5) * T - cy
-
-				queue[#queue + 1] = {tile = tile, key = key, d = dx * dx + dy * dy}
-				wanted[key] = true
-			end
+	if S.sigSet and level.id == S.sigLevel and belowId == S.sigBelow and outsideId == S.sigOutside and tx0 == S.sigTx0 and tx1 == S.sigTx1 and ty0 == S.sigTy0
+		and ty1 == S.sigTy1 and res == S.sigRes and ppm == S.sigPpm then
+		if not S.failedAt or Gen._realTime() - S.failedAt < Gen.RETRY_FAILED_AFTER then
+			return false
 		end
 	end
 
-	table.sort(queue, byDistance)
+	local count = (tx1 - tx0 + 1) * (ty1 - ty0 + 1)
+	local View = M.View
+	local maxTiles = View and View.MAX_TILES
 
-	if cur and not keepCurrent then
+	if type(maxTiles) ~= "number" then
+		maxTiles = Gen.DEFAULT_MAX_TILES
+	end
+
+	if count > maxTiles then
+		return nil, "too many tiles"
+	end
+
+	local cur = S.current
+	local wanted = S.wanted
+	local kept = false
+	local pending = false
+
+	-- one queue per set, in SET_ORDER; a set that is not asked for is empty (total 0)
+	wanted.main, wanted.below, wanted.outside = level, below, outside
+
+	for i = 1, #SET_ORDER do
+		local name = SET_ORDER[i]
+		local set = S.sets[name]
+		local want = wanted[name]
+
+		if want then
+			local queue, done, keptHere = makeQueue(Cache, want.id, name, tx0, ty0, tx1, ty1, res, ppm, T, cx, cy, cur)
+
+			set.level, set.queue, set.done, set.total = want, queue, done, count
+			kept = kept or keptHere
+			pending = pending or #queue > 0
+		else
+			set.level, set.queue, set.done, set.total = nil, {}, 0, 0
+		end
+
+		set.failed = 0
+		set.readyFired = false
+	end
+
+	wanted.main, wanted.below, wanted.outside = nil, nil, nil
+
+	if cur and not kept then
 		S.current = nil -- not needed any more: its image and chunks are left to the garbage collector
 	end
 
-	S.sig = sig
-	S.level = level
-	S.queue = queue
-	S.wanted = wanted
-	S.done = done
-	S.total = total
-	S.failed = 0
-	S.readyFired = false
+	S.failedAt = nil
 
 	fireProgress()
 
-	if #queue > 0 or S.current then
+	if pending or S.current then
 		addHook()
-	else
+	elseif S.hooked then
 		removeHook()
-		fireReady()
+		flushCache() -- the work is over
 	end
+
+	-- the request is recorded only now: whatever happened above, a request that did not get its hook is not taken for done
+	S.sigSet, S.sigLevel, S.sigBelow, S.sigOutside = true, level.id, belowId, outsideId
+	S.sigTx0, S.sigTx1, S.sigTy0, S.sigTy1, S.sigRes, S.sigPpm = tx0, tx1, ty0, ty1, res, ppm
+
+	fireReady()
 
 	return true
 end
@@ -218,24 +398,89 @@ local function fail(cur, why)
 	cur.bgra, cur.chunks = nil, nil
 
 	if cur.tries > MAX_RETRIES then
-		S.failed = S.failed + 1
-		S.wanted[cur.key] = nil
+		local set = S.sets[cur.set]
+
+		set.failed = set.failed + 1
+		S.failedAt = Gen._realTime()
 		S.current = nil
 	else
 		cur.phase = PHASE_CAPTURE
 	end
 end
 
+-- the number of tiles waiting in the three queues (the one in progress is not counted)
+local function queued()
+	local sets = S.sets
+
+	return #sets.main.queue + #sets.below.queue + #sets.outside.queue
+end
+
 local function nextTile()
-	local entry = table.remove(S.queue, 1)
+	local set, entry
+
+	-- the main queue first, then the floor below, then the outside
+	for i = 1, #SET_ORDER do
+		set = SET_ORDER[i]
+		entry = table.remove(S.sets[set].queue, 1)
+
+		if entry then
+			break
+		end
+	end
 
 	if not entry then
 		return nil
 	end
 
-	S.current = {tile = entry.tile, key = entry.key, phase = PHASE_CAPTURE, row = 0, nrows = entry.tile.res / 4, bgra = nil, chunks = nil, tries = 0}
+	S.current = {tile = entry.tile, key = entry.key, set = set, phase = PHASE_CAPTURE, row = 0, nrows = entry.tile.res / 4, bgra = nil, chunks = nil, tries = 0}
 
 	return S.current
+end
+
+-- the tile in progress is now in the cache: it counts as done and fires the events of its level
+local function finishTile(cur)
+	cur.chunks = nil
+	cur.bgra = nil
+	S.current = nil
+
+	local set = S.sets[cur.set]
+
+	set.done = set.done + 1
+
+	if cur.set == "main" then
+		fireProgress()
+	end
+
+	fireReady()
+end
+
+-- A tile that is all void (no floor in it: the capture of a corner of the map) is not compressed nor stored as a file: Cache.StoreEmpty(tile)
+-- remembers it in the index. Returns true when that was done. Without DXT1.IsAllVoid or Cache.StoreEmpty, or when one of them raises an error or
+-- says no, it returns false and the tile takes the normal path.
+local function storeIfEmpty(cur, bgra)
+	local M = GryMod.Minimap
+	local D, K = M.DXT1, M.Cache
+
+	if not D or not K or type(D.IsAllVoid) ~= "function" or type(K.StoreEmpty) ~= "function" then
+		return false
+	end
+
+	local res = cur.tile.res
+	local ok, void = pcall(D.IsAllVoid, bgra, res, res)
+
+	if not ok or void ~= true then
+		return false
+	end
+
+	local ok2, stored = pcall(K.StoreEmpty, cur.tile)
+
+	if ok2 and stored == true then
+		finishTile(cur)
+
+		return true
+	end
+
+	return false
 end
 
 -- the work of one unit; returns "capture" when a capture was attempted (success or not), "retry" when the capture gave nothing and must be retried
@@ -245,17 +490,23 @@ local function work(cur)
 
 	if cur.phase == PHASE_CAPTURE then
 		local C = M.Capture
-		local ok, bgra, err = pcall(C and C.Render, cur.tile, S.level)
+		local ok, bgra, err = pcall(C and C.Render, cur.tile, S.sets[cur.set].level)
 
 		if not ok then
 			fail(cur, bgra)
 		elseif bgra == nil then
-			S.lastError = tostring(err) -- no render context now (menu open): not a failure, the next Step tries again
+			-- Capture.Render says "capture unavailable" when there is no render context now (menu open): not a failure, the next Step tries
+			-- again. Any other reason (no render target, bad level, wrong size, an error in RenderView) is permanent: an attempt that counts.
+			if err == "capture unavailable" then
+				S.lastError = err
 
-			return "retry"
+				return "retry"
+			end
+
+			fail(cur, err or "capture returned nothing")
 		elseif type(bgra) ~= "string" then
 			fail(cur, "capture returned a " .. type(bgra))
-		else
+		elseif not storeIfEmpty(cur, bgra) then
 			cur.bgra, cur.chunks, cur.row, cur.phase = bgra, {}, 0, PHASE_COMPRESS
 		end
 
@@ -272,7 +523,7 @@ local function work(cur)
 			last = cur.nrows - 1
 		end
 
-		local ok, data, err = pcall(D and D.CompressRows, cur.bgra, res, res, first, last)
+		local ok, data, err = pcall(D and D.CompressRows, cur.bgra, res, res, first, last, COMPRESS_OPTS)
 
 		if not ok or type(data) ~= "string" then
 			fail(cur, ok and err or data)
@@ -295,15 +546,16 @@ local function work(cur)
 
 	-- PHASE_STORE
 	local K = M.Cache
-	local ok, stored, err = pcall(K and K.Store, cur.tile, table.concat(cur.chunks))
+	local ok, stored, err = pcall(K and K.Store, cur.tile, table.concat(cur.chunks), FORMAT_DXT1A)
 
 	if ok and stored then
-		cur.chunks = nil
-		S.current = nil
-		S.wanted[cur.key] = nil
-		S.done = S.done + 1
-		fireProgress()
-		fireReady()
+		finishTile(cur)
+
+		S.storedSinceTrim = S.storedSinceTrim + 1
+
+		if S.storedSinceTrim >= Gen.TRIM_EVERY then
+			trimCache()
+		end
 	else
 		fail(cur, ok and err or stored)
 	end
@@ -346,33 +598,54 @@ function Gen.Step(now)
 		end
 	end
 
-	if not S.current and #S.queue == 0 then
-		removeHook()
+	if not S.current and queued() == 0 then
+		if S.hooked then
+			removeHook()
+			flushCache() -- the work is over: the index of the cache is written
+		end
 	end
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------------------------
 -- state
 
--- {done, total, percent (0..100, whole), active, failed} for the current request
+-- {done, total, percent (0..100, whole), active, failed} for the MAIN level of the current request, plus belowDone, belowTotal and belowFailed
+-- for the floor below, and outsideDone, outsideTotal and outsideFailed for the outside (0 when there is none)
 function Gen.Progress()
-	local total = S.total
+	local sets = S.sets
+	local main, below, outside = sets.main, sets.below, sets.outside
+	local total = main.total
 	local percent = 0
 
 	if total > 0 then
-		percent = math.floor(S.done * 100 / total)
+		percent = math.floor(main.done * 100 / total)
 	end
 
-	return {done = S.done, total = total, percent = percent, active = S.current ~= nil or #S.queue > 0, failed = S.failed}
+	local cur = S.current
+
+	return {
+		done = main.done,
+		total = total,
+		percent = percent,
+		active = #main.queue > 0 or (cur ~= nil and cur.set == "main"),
+		failed = main.failed,
+		belowDone = below.done,
+		belowTotal = below.total,
+		belowFailed = below.failed,
+		outsideDone = outside.done,
+		outsideTotal = outside.total,
+		outsideFailed = outside.failed
+	}
 end
 
--- how many tiles are left to make (the one in progress included)
+-- how many tiles are left to make (the one in progress and those of the floor below and of the outside included)
 function Gen.Pending()
-	return #S.queue + (S.current and 1 or 0)
+	return queued() + (S.current and 1 or 0)
 end
 
--- forgets the request, the queue and the tile in progress, and removes the hook
+-- forgets the request, the queue and the tile in progress, removes the hook, and writes the index of the cache if it was changed
 function Gen.Cancel()
 	removeHook()
 	resetState()
+	flushCache()
 end

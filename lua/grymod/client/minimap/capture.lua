@@ -8,11 +8,12 @@
 --      not end in the cache: the cache holds the map as shipped). An entity that was already NoDraw is never touched and never shown again;
 --   3. installs temporary hooks that return true (halos, effects, players, view model, sky box, world fog: a fog controller would drown the
 --      picture seen from 50000 units up);
---   4. pushes the render target of that resolution, clears it, renders an orthographic view from straight above (the height slab of the
---      level is cut with znear / zfar of a camera very high up: with a low camera the engine ignores the slab) and reads the bytes BEFORE
---      the render target is popped;
---   5. whatever happened (an error included): pops the target if it was pushed, removes the hooks, shows again ONLY the entities this call
---      hid and that are still valid.
+--   4. pushes the render target of that resolution, clears it to transparent black (0, 0, 0, 0), renders an orthographic view from straight
+--      above with render.SetWriteDepthToDestAlpha(false) (the height slab of the level is cut with znear / zfar of a camera very high up: with a
+--      low camera the engine ignores the slab), puts the write back to true and reads the bytes BEFORE the render target is popped. The BGRA keeps
+--      its alpha: see Capture.IsVoid for the rule that tells the void from the solid pixels;
+--   5. whatever happened (an error included): puts the depth-to-alpha write back to true, pops the target if it was pushed, removes the hooks,
+--      shows again ONLY the entities this call hid and that are still valid.
 -- The picture: top = world +X, right = world -Y (measured), `2 * half` units across.
 
 GryMod = GryMod or {}
@@ -32,7 +33,7 @@ local MIN_RES, MAX_RES = 4, 4096
 
 -- one capture at a time; `state` holds what the clean-up must undo, whatever the capture did
 local capturing = false
-local state = {hidden = nil, pushed = false}
+local state = {hidden = nil, pushed = false, depthAlphaOff = false}
 local targets = {}
 
 local function isFinite(n)
@@ -157,6 +158,14 @@ function Capture.IsCapturing()
 	return capturing
 end
 
+-- THE VOID RULE (measured on gm_funkis): the picture has a real alpha. The target is cleared to (0, 0, 0, 0) and the view renders without writing the
+-- depth to the alpha, so what no geometry draws keeps alpha 0 and geometry gets alpha 1 (0 or 1 only). But about 5 % of the pixels that have alpha 0
+-- carry a colour (geometry that writes alpha 0), so the alpha alone is NOT a mask. A pixel is void (transparent) when its alpha is 0 AND its colour is
+-- (0, 0, 0); every other pixel is solid, a black solid pixel included (its alpha is 1). Pure: no engine call. A missing channel is not void.
+function Capture.IsVoid(b, g, r, a)
+	return a == 0 and b == 0 and g == 0 and r == 0
+end
+
 local function answerTrue()
 	return true
 end
@@ -231,8 +240,13 @@ local function run(tile, level)
 
 	render.PushRenderTarget(rt)
 	state.pushed = true
-	render.Clear(0, 0, 0, 255, true, true)
+	-- transparent black: what no geometry draws keeps alpha 0 (the void rule, see the header)
+	render.Clear(0, 0, 0, 0, true, true)
 	render.SetLightingMode(0)
+
+	-- the depth is not written to the alpha while the view renders: the geometry then gets alpha 1 (0 or 1 only), the void stays 0
+	state.depthAlphaOff = true
+	render.SetWriteDepthToDestAlpha(false)
 	render.RenderView({
 		origin = Vector((tile.tx + 0.5) * units, (tile.ty + 0.5) * units, level.zhi + CAMERA_OFFSET),
 		angles = Angle(90, 0, 0),
@@ -249,7 +263,10 @@ local function run(tile, level)
 		bloomtone = false
 	})
 
-	-- the bytes are read BEFORE the target is popped: render.Capture reads the current one
+	state.depthAlphaOff = false
+	render.SetWriteDepthToDestAlpha(true)
+
+	-- the bytes are read BEFORE the target is popped: render.Capture reads the current one (and the alpha comes back as drawn)
 	local bytes = render.Capture({format = "bgra", x = 0, y = 0, w = res, h = res})
 
 	state.pushed = false
@@ -268,6 +285,12 @@ end
 
 -- What is undone whatever the capture did: the target pushed and not popped, the hooks, the hidden entities.
 local function cleanup()
+	-- in the order of the normal path: the depth write first, then the target
+	if state.depthAlphaOff then
+		state.depthAlphaOff = false
+		pcall(render.SetWriteDepthToDestAlpha, true)
+	end
+
 	if state.pushed then
 		state.pushed = false
 		pcall(render.PopRenderTarget)
@@ -294,6 +317,7 @@ function Capture.Render(tile, level)
 	capturing = true
 	state.hidden = {}
 	state.pushed = false
+	state.depthAlphaOff = false
 
 	local ok, bytes, reason = pcall(run, tile, level)
 

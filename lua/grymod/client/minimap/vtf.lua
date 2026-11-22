@@ -17,9 +17,13 @@ local schar, sbyte, ssub, sfind, srep = string.char, string.byte, string.sub, st
 
 VTF.FORMAT_BGRA8888 = 12
 VTF.FORMAT_DXT1 = 13
+-- DXT1 with one bit of alpha: same data size as DXT1, a block in 3-colour mode (c0 <= c1) has transparent pixels at index 3
+VTF.FORMAT_DXT1A = 20
 
 -- CLAMPS 0x4 + CLAMPT 0x8 + NOMIP 0x100 + NOLOD 0x200. No POINTSAMPLE: the map is shown smaller than its definition and turns, sampling is linear.
 VTF.FLAGS = 0x30C
+-- the flags of format 20: the same plus ONEBITALPHA 0x1000, so the engine keeps the alpha of the texture
+VTF.FLAGS_ALPHA = 0x130C
 VTF.HEADER_SIZE = 80
 VTF.THUMBNAIL_SIZE = 128
 VTF.MIN_SIZE = 4
@@ -39,7 +43,9 @@ local function u32(n)
 end
 
 -- the constant part of the header from offset 20 to 55 (flags, frames, first frame, padding, reflectivity, padding, bump scale), then the format
-local MIDDLE = u32(VTF.FLAGS) .. u16(1) .. u16(0) .. srep("\0", 4) .. srep("\0\0\0\63", 3) .. srep("\0", 4) .. "\0\0\128\63"
+local MIDDLE_REST = u16(1) .. u16(0) .. srep("\0", 4) .. srep("\0\0\0\63", 3) .. srep("\0", 4) .. "\0\0\128\63"
+local MIDDLE = u32(VTF.FLAGS) .. MIDDLE_REST
+local MIDDLE_ALPHA = u32(VTF.FLAGS_ALPHA) .. MIDDLE_REST
 local TAIL = "\1" .. u32(VTF.FORMAT_DXT1) .. "\16\16" .. u16(1) .. srep("\0", 15)
 local START = "VTF\0" .. u32(7) .. u32(2) .. u32(VTF.HEADER_SIZE)
 
@@ -49,7 +55,7 @@ local function imageBytes(format, w, h)
 		return w * h * 4
 	end
 
-	if format == VTF.FORMAT_DXT1 then
+	if format == VTF.FORMAT_DXT1 or format == VTF.FORMAT_DXT1A then
 		return math.ceil(w / 4) * math.ceil(h / 4) * 8
 	end
 
@@ -86,8 +92,8 @@ function VTF.Build(w, h, format, data)
 		return nil, err
 	end
 
-	if format ~= VTF.FORMAT_BGRA8888 and format ~= VTF.FORMAT_DXT1 then
-		return nil, "unknown format " .. tostring(format) .. " (12 = BGRA8888, 13 = DXT1)"
+	if format ~= VTF.FORMAT_BGRA8888 and format ~= VTF.FORMAT_DXT1 and format ~= VTF.FORMAT_DXT1A then
+		return nil, "unknown format " .. tostring(format) .. " (12 = BGRA8888, 13 = DXT1, 20 = DXT1A)"
 	end
 
 	if type(data) ~= "string" then
@@ -100,7 +106,7 @@ function VTF.Build(w, h, format, data)
 		return nil, "data is " .. #data .. " bytes, expected " .. want
 	end
 
-	return START .. u16(w) .. u16(h) .. MIDDLE .. u32(format) .. TAIL .. THUMBNAIL .. data
+	return START .. u16(w) .. u16(h) .. (format == VTF.FORMAT_DXT1A and MIDDLE_ALPHA or MIDDLE) .. u32(format) .. TAIL .. THUMBNAIL .. data
 end
 
 -- a path under data/: lowercase [a-z0-9_/.-], no "..", no leading or doubled slash, ends with ext (and is more than ext)
@@ -195,9 +201,10 @@ function VTF.Write(path, w, h, format, data)
 	return writeWhole(path, bytes)
 end
 
--- the material file text: an unlit material, the vertex colour and alpha apply (View draws it faded), no level of detail
+-- the material file text: an unlit material, the vertex colour and alpha apply (View draws it faded), $translucent because the texture carries
+-- an alpha (format 20 voids; harmless for the opaque formats), no level of detail
 function VTF.VMTText(basetexturePath)
-	return "\"UnlitGeneric\"\n{\n\t\"$basetexture\" \"" .. tostring(basetexturePath) .. "\"\n\t\"$vertexcolor\" 1\n\t\"$vertexalpha\" 1\n\t\"$nolod\" 1\n}\n"
+	return "\"UnlitGeneric\"\n{\n\t\"$basetexture\" \"" .. tostring(basetexturePath) .. "\"\n\t\"$vertexcolor\" 1\n\t\"$vertexalpha\" 1\n\t\"$translucent\" 1\n\t\"$nolod\" 1\n}\n"
 end
 
 -- WriteVMT(path, basetexturePath) -> true | false, reason. basetexturePath is what Material() will look up, e.g. "../data/grymod/minimap/<key>/<base>":

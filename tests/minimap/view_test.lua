@@ -41,11 +41,28 @@ local function replaceModules(state)
 	original.Cache, original.Settings, original.Gen = M.Cache, M.Settings, M.Gen
 	original.DrawPoly, original.SetMaterial, original.SetDrawColor = surface.DrawPoly, surface.SetMaterial, surface.SetDrawColor
 	original.FRAME = GryMod.FlashRadar and GryMod.FlashRadar.FRAME
+	original.MAP_LEFT = GryMod.FlashRadar and GryMod.FlashRadar.MAP_LEFT
+	original.MAX_MATERIALS = GryMod.Minimap.View.MAX_MATERIALS
+
+	-- The numbers written in these tests (the notch at x = -46.75, the corners at 62 and 45...) are the ORIGINAL game's polygon; the radar's real frame is now the
+	-- glass of the movie (tests/minimap/radar_frame_test.lua covers it and the map frame computed from it). The frame is put back in restoreModules.
+	if GryMod.FlashRadar and GryMod.FlashRadar.ORIGINAL_FRAME then
+		GryMod.FlashRadar.FRAME = GryMod.FlashRadar.ORIGINAL_FRAME
+		-- and the radar's own left bound of the map is not part of the original game's frame: the cases that want one set it
+		GryMod.FlashRadar.MAP_LEFT = nil
+	end
 	original.saved = true
 
 	state.existing = {}
 	state.all = false
 	state.materialCalls = {}
+	state.belowExisting = {}
+	state.belowAll = false
+	state.belowCalls = {}
+	state.outsideExisting = {}
+	state.outsideAll = false
+	state.outsideCalls = {}
+	state.hasCalls = {}
 	recorded = {polys = {}, colors = {}, materials = {}, current = nil}
 
 	-- the cache: the geometry of the real one (tile edge = res / ppm / metres per unit) is replaced by the stand-in's (res / ppm units), so the numbers
@@ -53,6 +70,28 @@ local function replaceModules(state)
 	M.Cache = {
 		TileUnits = function(res, ppm) return res / ppm end,
 		Material = function(tile)
+			-- the outside is level "open" in these tests: its own set of existing tiles and its own list of calls
+			if tile.level == "open" then
+				state.outsideCalls[#state.outsideCalls + 1] = tile.tx .. "," .. tile.ty
+
+				if state.outsideAll or state.outsideExisting[tile.tx .. "," .. tile.ty] then
+					return {token = tile.tx .. "," .. tile.ty, level = tile.level, res = tile.res, ppm = tile.ppm}
+				end
+
+				return nil
+			end
+
+			-- the floor below is level "z0" in these tests: its own set of existing tiles and its own list of calls
+			if tile.level == "z0" then
+				state.belowCalls[#state.belowCalls + 1] = tile.tx .. "," .. tile.ty
+
+				if state.belowAll or state.belowExisting[tile.tx .. "," .. tile.ty] then
+					return {token = tile.tx .. "," .. tile.ty, level = tile.level, res = tile.res, ppm = tile.ppm}
+				end
+
+				return nil
+			end
+
 			state.materialCalls[#state.materialCalls + 1] = tile.tx .. "," .. tile.ty
 
 			if state.all or state.existing[tile.tx .. "," .. tile.ty] then
@@ -61,7 +100,19 @@ local function replaceModules(state)
 
 			return nil
 		end,
-		Has = function(tile) return state.all or state.existing[tile.tx .. "," .. tile.ty] == true end,
+		Has = function(tile)
+			state.hasCalls[#state.hasCalls + 1] = tile.tx .. "," .. tile.ty
+
+			if tile.level == "open" then
+				return state.outsideAll or state.outsideExisting[tile.tx .. "," .. tile.ty] == true
+			end
+
+			if tile.level == "z0" then
+				return state.belowAll or state.belowExisting[tile.tx .. "," .. tile.ty] == true
+			end
+
+			return state.all or state.existing[tile.tx .. "," .. tile.ty] == true
+		end,
 		Store = function() error("the view must never write a tile") end,
 		Clear = function() error("the view must never clear the cache") end,
 		Prune = function() error("the view must never prune the cache") end
@@ -81,7 +132,7 @@ local function replaceModules(state)
 	})
 
 	surface.SetMaterial = function(material) recorded.current = material recorded.materials[#recorded.materials + 1] = material end
-	surface.SetDrawColor = function(r, g, b, a) recorded.colors[#recorded.colors + 1] = {r, g, b, a} end
+	surface.SetDrawColor = function(r, g, b, a) recorded.colour = {r, g, b, a} recorded.colors[#recorded.colors + 1] = {r, g, b, a} end
 	surface.DrawPoly = function(verts)
 		local copy = {}
 
@@ -89,7 +140,7 @@ local function replaceModules(state)
 			copy[i] = {x = verts[i].x, y = verts[i].y, u = verts[i].u, v = verts[i].v}
 		end
 
-		recorded.polys[#recorded.polys + 1] = {verts = copy, material = recorded.current}
+		recorded.polys[#recorded.polys + 1] = {verts = copy, material = recorded.current, colour = recorded.colour}
 	end
 end
 
@@ -104,7 +155,10 @@ local function restoreModules()
 
 	if GryMod.FlashRadar and original.FRAME then
 		GryMod.FlashRadar.FRAME = original.FRAME
+		GryMod.FlashRadar.MAP_LEFT = original.MAP_LEFT
 	end
+
+	GryMod.Minimap.View.MAX_MATERIALS = original.MAX_MATERIALS
 
 	surface.DrawPoly, surface.SetMaterial, surface.SetDrawColor = original.DrawPoly, original.SetMaterial, original.SetDrawColor
 	original = {}
@@ -116,11 +170,37 @@ local function level()
 	return {id = "a1", zlo = -32, zhi = 128}
 end
 
+-- the floor below the main level
+local function lower()
+	return {id = "z0", zlo = -160, zhi = 0}
+end
+
+-- the outside (the open level of the map) under the floor below
+local function open()
+	return {id = "open", open = true, zlo = -600, zhi = 900}
+end
+
+-- how many polygons of each level, and where the first of the main level is
+local function groups()
+	local below, main, firstMain = 0, 0, nil
+
+	for i, poly in ipairs(recorded.polys) do
+		if poly.material.level == "z0" then
+			below = below + 1
+		else
+			main = main + 1
+			firstMain = firstMain or i
+		end
+	end
+
+	return below, main, firstMain
+end
+
 -- the player at the middle of tile (0, 0), looking along +X (yaw 0)
 local function draw(state, xf, extra)
 	extra = extra or {}
 
-	return GryMod.Minimap.View.Draw(xf or IDENTITY, extra.px or 32, extra.py or 32, extra.yaw or 0, extra.range or RANGE, extra.level or level(), extra.alpha or 1)
+	return GryMod.Minimap.View.Draw(xf or IDENTITY, extra.px or 32, extra.py or 32, extra.yaw or 0, extra.range or RANGE, extra.level or level(), extra.alpha or 1, extra.below, extra.belowAlpha, extra.outside, extra.outsideAlpha)
 end
 
 local function projected(xf, rx, ry)
@@ -868,7 +948,7 @@ return {
 		},
 		-- the map frame: the radar frame without the danger bar's strip --------------------------------------------------------------
 		{
-			name = "MapFrame: with the present Radar.FRAME it is the convex polygon (-46.75,-42) (62,-42) (62,32.15) (46.25,45) (-46.75,45), clockwise, no vertex on the old notch",
+			name = "MapFrame: with the original game's polygon as Radar.FRAME it is the convex polygon (-46.75,-42) (62,-42) (62,32.15) (46.25,45) (-46.75,45), clockwise, no vertex on the old notch",
 			func = function()
 				local V = GryMod.Minimap.View
 				local map = V.MapFrame()
@@ -979,6 +1059,868 @@ return {
 				end
 
 				expect(found).to.beTrue()
+			end
+		},
+		-- the floor below -----------------------------------------------------------------------------------------------------------
+		{
+			name = "Below: its tiles are drawn first (all of them before any tile of the main level), tinted (150,165,190) with belowAlpha, then the main level white with alpha",
+			func = function(state)
+				state.existing["0,0"], state.existing["0,-1"] = true, true
+				state.belowExisting["0,0"], state.belowExisting["-1,0"], state.belowExisting["-1,-1"] = true, true, true
+				draw(state, IDENTITY, {alpha = 0.6, below = lower(), belowAlpha = 0.4})
+
+				local belowCount, mainCount, firstMain = groups()
+
+				expect(belowCount).to.equal(3)
+				expect(mainCount).to.equal(2)
+				expect(firstMain).to.equal(4)
+
+				for i, poly in ipairs(recorded.polys) do
+					local c = poly.colour
+
+					if i < firstMain then
+						expect(poly.material.level).to.equal("z0")
+						expect(c[1] == 150 and c[2] == 165 and c[3] == 190 and near(c[4], 0.4 * 255, 1)).to.beTrue()
+					else
+						expect(poly.material.level).to.equal("a1")
+						expect(c[1] == 255 and c[2] == 255 and c[3] == 255 and near(c[4], 0.6 * 255, 1)).to.beTrue()
+					end
+				end
+
+				-- one colour call a group, in that order
+				expect(#recorded.colors).to.equal(2)
+				expect(recorded.colors[1][1]).to.equal(150)
+				expect(recorded.colors[2][1]).to.equal(255)
+			end
+		},
+		{
+			name = "Below: the tiles of the floor below are asked from the Cache with the level's id, the resolution and the definition",
+			func = function(state)
+				state.belowExisting["0,0"] = true
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4})
+
+				expect(#recorded.polys).to.equal(1)
+				expect(recorded.polys[1].material.level).to.equal("z0")
+				expect(recorded.polys[1].material.res).to.equal(512)
+				expect(recorded.polys[1].material.ppm).to.equal(8)
+			end
+		},
+		{
+			name = "Below: nothing is drawn or asked for the floor below when belowAlpha is 0, nil, negative or no number (and nothing changes for the main level)",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.belowAll = true
+
+				for _, belowAlpha in ipairs({0, -1, 0 / 0, "x", false}) do
+					recorded.polys, recorded.colors = {}, {}
+					draw(state, IDENTITY, {below = lower(), belowAlpha = belowAlpha})
+
+					expect(#recorded.polys).to.equal(1)
+					expect(recorded.polys[1].material.level).to.equal("a1")
+					expect(#recorded.colors).to.equal(1)
+				end
+
+				recorded.polys, recorded.colors = {}, {}
+				draw(state, IDENTITY, {below = lower()})
+				expect(#recorded.polys).to.equal(1)
+				expect(#state.belowCalls).to.equal(0)
+			end
+		},
+		{
+			name = "Below: a belowAlpha above 1 is clamped to 255",
+			func = function(state)
+				state.belowExisting["0,0"] = true
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 5})
+
+				expect(recorded.polys[1].colour[4]).to.equal(255)
+			end
+		},
+		{
+			name = "Below: the coverage counts the main level only, the same with or without a floor below",
+			func = function(state)
+				state.existing = {["1,-1"] = true, ["1,0"] = true, ["1,1"] = true, ["1,2"] = true}
+				state.belowAll = true
+
+				local without = draw(state, IDENTITY, {px = 64, py = 64})
+				local with = draw(state, IDENTITY, {px = 64, py = 64, below = lower(), belowAlpha = 0.4})
+
+				expect(near(without, 0.5, 0.03)).to.beTrue()
+				expect(with).to.equal(without)
+
+				-- no main tile at all: the coverage is 0 even when the floor below is everywhere (and it is drawn)
+				state.existing = {}
+				recorded.polys = {}
+				expect(draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4})).to.equal(0)
+				expect(#recorded.polys > 0).to.beTrue()
+			end
+		},
+		{
+			name = "Below: a floor below with no tile in the cache draws nothing for itself, adds no colour call and no error",
+			func = function(state)
+				state.existing["0,0"] = true
+				draw(state)
+
+				local polys, colors, calls = #recorded.polys, #recorded.colors, #state.materialCalls
+				recorded.polys, recorded.colors = {}, {}
+				state.materialCalls = {}
+
+				local ok = pcall(draw, state, IDENTITY, {below = lower(), belowAlpha = 0.4})
+
+				expect(ok).to.beTrue()
+				expect(#recorded.polys).to.equal(polys)
+				expect(#recorded.colors).to.equal(colors)
+				expect(#state.materialCalls).to.equal(calls)
+				-- the main level costs what it cost: the floor below was asked about the tiles of the window only, never more than the main level was
+				expect(#state.belowCalls >= 1 and #state.belowCalls <= 16).to.beTrue()
+			end
+		},
+		{
+			name = "Below: tiles outside the map frame are not asked for (the LRU of materials), the others are clipped by the same frame (nothing at x < -46.75)",
+			func = function(state)
+				state.all = true
+				state.belowAll = true
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4})
+
+				local belowCount, mainCount = groups()
+
+				expect(belowCount > 0).to.beTrue()
+				-- the same tiles, the same polygons
+				expect(belowCount).to.equal(mainCount)
+
+				for _, call in ipairs(state.belowCalls) do
+					-- the tiles at two tiles from the player lie above or below the window (their radar y is out of -42..45)
+					expect(call ~= "2,0" and call ~= "-2,0").to.beTrue()
+				end
+
+				local limit = GryMod.Minimap.View.MapFrame()[1][1]
+
+				for _, poly in ipairs(recorded.polys) do
+					for _, vert in ipairs(poly.verts) do
+						expect(vert.x >= limit - 1e-9).to.beTrue()
+					end
+				end
+			end
+		},
+		{
+			name = "Below: the floor below's polygons are the main level's for the same tile: the same vertices and u, v",
+			func = function(state)
+				state.existing["0,1"] = true
+				state.belowExisting["0,1"] = true
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4})
+
+				expect(#recorded.polys).to.equal(2)
+
+				local a, b = recorded.polys[1].verts, recorded.polys[2].verts
+
+				expect(#a).to.equal(#b)
+
+				for i = 1, #a do
+					expect(a[i].x == b[i].x and a[i].y == b[i].y and a[i].u == b[i].u and a[i].v == b[i].v).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "Below: a floor below with the SAME id as the main level is not drawn (it would be the same tiles twice): the main level is drawn once",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.belowAll = true
+				draw(state, IDENTITY, {below = level(), belowAlpha = 0.4})
+
+				expect(#recorded.polys).to.equal(1)
+				expect(#recorded.colors).to.equal(1)
+				expect(#state.belowCalls).to.equal(0)
+			end
+		},
+		{
+			name = "Below: with the main level's alpha at 0 the floor below is still drawn (the main level is not); bad below tables are ignored without error",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.belowExisting["0,0"] = true
+				draw(state, IDENTITY, {alpha = 0, below = lower(), belowAlpha = 0.4})
+
+				expect(#recorded.polys).to.equal(1)
+				expect(recorded.polys[1].material.level).to.equal("z0")
+
+				for _, bad in ipairs({"z0", {zlo = 0, zhi = 1}, {id = 5}, 7, true}) do
+					recorded.polys = {}
+					local ok = pcall(draw, state, IDENTITY, {below = bad, belowAlpha = 0.4})
+
+					expect(ok).to.beTrue()
+					expect(#recorded.polys).to.equal(1)
+					expect(recorded.polys[1].material.level).to.equal("a1")
+				end
+
+				expect(GryMod.Minimap.View.LastError).to.beNil()
+			end
+		},
+		{
+			name = "Below: an error in the Cache while the floor below is drawn is swallowed (Draw answers 0, LastError says why)",
+			func = function(state)
+				state.existing["0,0"] = true
+				local material = GryMod.Minimap.Cache.Material
+
+				GryMod.Minimap.Cache.Material = function(tile)
+					if tile.level == "z0" then error("boom") end
+
+					return material(tile)
+				end
+
+				local ok, coverage = pcall(draw, state, IDENTITY, {below = lower(), belowAlpha = 0.4})
+
+				expect(ok).to.beTrue()
+				expect(coverage).to.equal(0)
+				expect(type(GryMod.Minimap.View.LastError)).to.equal("string")
+			end
+		},
+		-- the outside ---------------------------------------------------------------------------------------------------------------
+		{
+			-- breaks if: the outside is drawn after the floor below or the main level, or with another tint than (110,125,140), or with the alpha of the main level
+			name = "Outside: its tiles are drawn first (all of them before any tile of the floor below, and of the main level), tinted (110,125,140) with outsideAlpha",
+			func = function(state)
+				state.existing["0,0"], state.existing["0,-1"] = true, true
+				state.belowExisting["0,0"], state.belowExisting["-1,0"] = true, true
+				state.outsideExisting["0,0"], state.outsideExisting["-1,0"], state.outsideExisting["-1,-1"], state.outsideExisting["0,-1"] = true, true, true, true
+				draw(state, IDENTITY, {alpha = 0.6, below = lower(), belowAlpha = 0.4, outside = open(), outsideAlpha = 0.25})
+
+				local levels = {}
+
+				for i, poly in ipairs(recorded.polys) do
+					levels[i] = poly.material.level
+				end
+
+				expect(table.concat(levels, " ")).to.equal("open open open open z0 z0 a1 a1")
+
+				for i, poly in ipairs(recorded.polys) do
+					local c = poly.colour
+
+					if i <= 4 then
+						expect(c[1] == 110 and c[2] == 125 and c[3] == 140 and near(c[4], 0.25 * 255, 1)).to.beTrue()
+					elseif i <= 6 then
+						expect(c[1] == 150 and c[2] == 165 and c[3] == 190 and near(c[4], 0.4 * 255, 1)).to.beTrue()
+					else
+						expect(c[1] == 255 and c[2] == 255 and c[3] == 255 and near(c[4], 0.6 * 255, 1)).to.beTrue()
+					end
+				end
+
+				-- one colour call a group, in that order
+				expect(#recorded.colors).to.equal(3)
+				expect(recorded.colors[1][1]).to.equal(110)
+				expect(recorded.colors[2][1]).to.equal(150)
+				expect(recorded.colors[3][1]).to.equal(255)
+			end
+		},
+		{
+			-- breaks if: the outside needs a floor below to be drawn
+			name = "Outside: without a floor below the outside is drawn right under the main level",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.outsideExisting["0,0"], state.outsideExisting["0,-1"] = true, true
+				draw(state, IDENTITY, {outside = open(), outsideAlpha = 0.3})
+
+				expect(#recorded.polys).to.equal(3)
+				expect(recorded.polys[1].material.level).to.equal("open")
+				expect(recorded.polys[2].material.level).to.equal("open")
+				expect(recorded.polys[3].material.level).to.equal("a1")
+				expect(#state.belowCalls).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the Cache is asked for the outside with another id, resolution or definition
+			name = "Outside: the tiles of the outside are asked from the Cache with the level's id, the resolution and the definition",
+			func = function(state)
+				state.outsideExisting["0,0"] = true
+				draw(state, IDENTITY, {outside = open(), outsideAlpha = 0.3})
+
+				expect(#recorded.polys).to.equal(1)
+				expect(recorded.polys[1].material.level).to.equal("open")
+				expect(recorded.polys[1].material.res).to.equal(512)
+				expect(recorded.polys[1].material.ppm).to.equal(8)
+			end
+		},
+		{
+			-- breaks if: an alpha that is 0, negative, nil or no number still draws or asks for the outside
+			name = "Outside: nothing is drawn or asked for the outside when outsideAlpha is 0, nil, negative or no number (and nothing changes for the main level)",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.outsideAll = true
+
+				for _, outsideAlpha in ipairs({0, -1, 0 / 0, "x", false}) do
+					recorded.polys, recorded.colors = {}, {}
+					draw(state, IDENTITY, {outside = open(), outsideAlpha = outsideAlpha})
+
+					expect(#recorded.polys).to.equal(1)
+					expect(recorded.polys[1].material.level).to.equal("a1")
+					expect(#recorded.colors).to.equal(1)
+				end
+
+				recorded.polys, recorded.colors = {}, {}
+				draw(state, IDENTITY, {outside = open()})
+				expect(#recorded.polys).to.equal(1)
+				expect(#state.outsideCalls).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: outsideAlpha above 1 is not clamped
+			name = "Outside: an outsideAlpha above 1 is clamped to 255",
+			func = function(state)
+				state.outsideExisting["0,0"] = true
+				draw(state, IDENTITY, {outside = open(), outsideAlpha = 5})
+
+				expect(recorded.polys[1].colour[4]).to.equal(255)
+			end
+		},
+		{
+			-- breaks if: the coverage counts the tiles of the outside
+			name = "Outside: the coverage counts the main level only, the same with or without an outside",
+			func = function(state)
+				state.existing = {["1,-1"] = true, ["1,0"] = true, ["1,1"] = true, ["1,2"] = true}
+				state.outsideAll = true
+				state.belowAll = true
+
+				local without = draw(state, IDENTITY, {px = 64, py = 64})
+				local with = draw(state, IDENTITY, {px = 64, py = 64, below = lower(), belowAlpha = 0.4, outside = open(), outsideAlpha = 0.3})
+
+				expect(near(without, 0.5, 0.03)).to.beTrue()
+				expect(with).to.equal(without)
+
+				-- no main tile at all: the coverage is 0 even when the outside is everywhere (and it is drawn)
+				state.existing = {}
+				recorded.polys = {}
+				expect(draw(state, IDENTITY, {outside = open(), outsideAlpha = 0.3})).to.equal(0)
+				expect(#recorded.polys > 0).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: a missing tile of the outside sends a polygon, a colour call, or an error
+			name = "Outside: an outside with no tile in the cache (or only empty ones: the Cache gives no material) draws nothing for itself, adds no colour call and no error",
+			func = function(state)
+				state.existing["0,0"] = true
+				draw(state)
+
+				local polys, colors = #recorded.polys, #recorded.colors
+				recorded.polys, recorded.colors = {}, {}
+
+				local ok = pcall(draw, state, IDENTITY, {outside = open(), outsideAlpha = 0.3})
+
+				expect(ok).to.beTrue()
+				expect(#recorded.polys).to.equal(polys)
+				expect(#recorded.colors).to.equal(colors)
+				expect(#state.outsideCalls >= 1 and #state.outsideCalls <= 16).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the tiles of the outside are asked for when no polygon of them would be sent
+			name = "Outside: tiles outside the map frame are not asked for, the others are clipped by the same frame (nothing at x < -46.75)",
+			func = function(state)
+				state.all = true
+				state.outsideAll = true
+				draw(state, IDENTITY, {outside = open(), outsideAlpha = 0.3})
+
+				local mainCount, outsideCount = 0, 0
+
+				for _, poly in ipairs(recorded.polys) do
+					if poly.material.level == "open" then outsideCount = outsideCount + 1 else mainCount = mainCount + 1 end
+				end
+
+				expect(outsideCount > 0).to.beTrue()
+				expect(outsideCount).to.equal(mainCount)
+
+				for _, call in ipairs(state.outsideCalls) do
+					expect(call ~= "2,0" and call ~= "-2,0").to.beTrue()
+				end
+
+				local limit = GryMod.Minimap.View.MapFrame()[1][1]
+
+				for _, poly in ipairs(recorded.polys) do
+					for _, vert in ipairs(poly.verts) do
+						expect(vert.x >= limit - 1e-9).to.beTrue()
+					end
+				end
+			end
+		},
+		{
+			-- breaks if: the outside is drawn with other vertices than the main level's for the same tile
+			name = "Outside: the outside's polygons are the main level's for the same tile: the same vertices and u, v",
+			func = function(state)
+				state.existing["0,1"] = true
+				state.outsideExisting["0,1"] = true
+				draw(state, IDENTITY, {outside = open(), outsideAlpha = 0.3})
+
+				expect(#recorded.polys).to.equal(2)
+
+				local a, b = recorded.polys[1].verts, recorded.polys[2].verts
+
+				expect(#a).to.equal(#b)
+
+				for i = 1, #a do
+					expect(a[i].x == b[i].x and a[i].y == b[i].y and a[i].u == b[i].u and a[i].v == b[i].v).to.beTrue()
+				end
+			end
+		},
+		{
+			-- breaks if: an outside of the same id as the main level or the floor below is drawn (the same tiles twice)
+			name = "Outside: an outside with the SAME id as the main level or as the floor below is not drawn",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.outsideAll = true
+				state.belowExisting["0,0"] = true
+
+				draw(state, IDENTITY, {outside = level(), outsideAlpha = 0.3})
+				expect(#recorded.polys).to.equal(1)
+				expect(#recorded.colors).to.equal(1)
+
+				recorded.polys, recorded.colors = {}, {}
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4, outside = lower(), outsideAlpha = 0.3})
+				expect(#recorded.polys).to.equal(2)
+				expect(#recorded.colors).to.equal(2)
+				expect(#state.outsideCalls).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the outside depends on the main level's alpha, or a bad outside table raises
+			name = "Outside: with the main level's alpha at 0 the outside is still drawn; bad outside tables are ignored without error",
+			func = function(state)
+				state.existing["0,0"] = true
+				state.outsideExisting["0,0"] = true
+				draw(state, IDENTITY, {alpha = 0, outside = open(), outsideAlpha = 0.3})
+
+				expect(#recorded.polys).to.equal(1)
+				expect(recorded.polys[1].material.level).to.equal("open")
+
+				for _, bad in ipairs({"open", {zlo = 0, zhi = 1}, {id = 5}, 7, true}) do
+					recorded.polys = {}
+					local ok = pcall(draw, state, IDENTITY, {outside = bad, outsideAlpha = 0.3})
+
+					expect(ok).to.beTrue()
+					expect(#recorded.polys).to.equal(1)
+					expect(recorded.polys[1].material.level).to.equal("a1")
+				end
+
+				expect(GryMod.Minimap.View.LastError).to.beNil()
+			end
+		},
+		{
+			-- breaks if: an error of the Cache while the outside is drawn escapes Draw
+			name = "Outside: an error in the Cache while the outside is drawn is swallowed (Draw answers 0, LastError says why)",
+			func = function(state)
+				state.existing["0,0"] = true
+				local material = GryMod.Minimap.Cache.Material
+
+				GryMod.Minimap.Cache.Material = function(tile)
+					if tile.level == "open" then error("boom") end
+
+					return material(tile)
+				end
+
+				local ok, coverage = pcall(draw, state, IDENTITY, {outside = open(), outsideAlpha = 0.3})
+
+				expect(ok).to.beTrue()
+				expect(coverage).to.equal(0)
+				expect(type(GryMod.Minimap.View.LastError)).to.equal("string")
+			end
+		},
+		{
+			-- breaks if: the budget is not shared in the order main, below, outside
+			name = "Outside: the materials budget is shared main level, floor below, outside: the outside only gets what the other two left",
+			func = function(state)
+				local V = GryMod.Minimap.View
+				GryMod.Minimap.Settings.Definition = function() return 40 end
+				state.all = true
+				state.belowAll = true
+				state.outsideAll = true
+
+				V.MAX_MATERIALS = 100000
+				draw(state, IDENTITY, {px = 40, py = 40})
+
+				local count = #state.materialCalls
+
+				expect(count >= 130).to.beTrue()
+
+				-- the main level and the floor below take the whole budget: the outside asks for nothing
+				V.MAX_MATERIALS = 2 * count
+				state.materialCalls, state.belowCalls, state.outsideCalls = {}, {}, {}
+				draw(state, IDENTITY, {px = 40, py = 40, below = lower(), belowAlpha = 0.4, outside = open(), outsideAlpha = 0.3})
+				expect(#state.materialCalls).to.equal(count)
+				expect(#state.belowCalls).to.equal(count)
+				expect(#state.outsideCalls).to.equal(0)
+
+				-- with room left it asks for exactly 5
+				V.MAX_MATERIALS = 2 * count + 5
+				state.materialCalls, state.belowCalls, state.outsideCalls = {}, {}, {}
+				draw(state, IDENTITY, {px = 40, py = 40, below = lower(), belowAlpha = 0.4, outside = open(), outsideAlpha = 0.3})
+				expect(#state.outsideCalls).to.equal(5)
+
+				-- the floor below is off: the outside gets what the main level left
+				V.MAX_MATERIALS = count + 3
+				state.materialCalls, state.outsideCalls = {}, {}
+				draw(state, IDENTITY, {px = 40, py = 40, outside = open(), outsideAlpha = 0.3})
+				expect(#state.materialCalls).to.equal(count)
+				expect(#state.outsideCalls).to.equal(3)
+			end
+		},
+		-- the extent of the tiles asked for -------------------------------------------------------------------------------------------
+		{
+			name = "ExtentFactor: the farthest vertex of the map frame from the player in ranges, rounded UP to the hundredth (original polygon: 1.75; the real glass: its own value)",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+				local P = pixels()
+
+				local function expectedFactor()
+					local reach = 0
+
+					for _, p in ipairs(V.MapFrame()) do
+						reach = math.max(reach, math.sqrt(p[1] * p[1] + p[2] * p[2]))
+					end
+
+					return reach, math.ceil(reach / P * 100 - 1e-9) / 100
+				end
+
+				-- the original polygon: the farthest vertex is (62, -42), 74.9 pixels, 1.742 ranges
+				local reach, factor = expectedFactor()
+				expect(factor).to.equal(1.75)
+				expect(V.ExtentFactor()).to.equal(1.75)
+				expect(V.ExtentFactor() * P >= reach).to.beTrue()
+
+				-- the real glass of the movie (the frame the tests found before their montage)
+				Radar.FRAME = original.FRAME
+				reach, factor = expectedFactor()
+				expect(V.ExtentFactor()).to.equal(factor)
+				expect(V.ExtentFactor() * P >= reach - 1e-9).to.beTrue()
+				expect(V.ExtentFactor() * P < reach + 0.01 * P + 1e-9).to.beTrue()
+				expect(V.ExtentFactor() >= 1 and V.ExtentFactor() <= Radar.MAP_EXTENT + 1e-9).to.beTrue()
+			end
+		},
+		{
+			name = "ExtentFactor: a simulated frame gives its own number (reach 44.72 pixels = 1.04 ranges, rounded up to 1.05); a frame of exactly 2 ranges gives 2, not 2.01",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+
+				Radar.FRAME = {{-30, 10}, {-30, -20}, {40, -20}, {40, 20}, {-20, 20}, {-20, 5}}
+				expect(V.ExtentFactor()).to.equal(1.05)
+
+				-- a square whose farthest corner is exactly 2 * PIXELS away: (0.6, 0.8) * 2 * PIXELS
+				local P = pixels()
+				Radar.FRAME = {{0, 0}, {1.2 * P, 0}, {1.2 * P, 1.6 * P}, {0, 1.6 * P}}
+				expect(V.ExtentFactor()).to.equal(2)
+			end
+		},
+		{
+			name = "ExtentFactor: with no usable frame it is the fallback, 2",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+
+				for _, frame in ipairs({false, "x", {}, {{0, 0}}, {{0, 0}, {1, 1}}, {{0, 0}, {1, 0}, {0 / 0, 1}}, {{0, 0}, {1, 0}, "p"}}) do
+					Radar.FRAME = frame or nil
+					expect(V.ExtentFactor()).to.equal(2)
+				end
+			end
+		},
+		{
+			name = "Draw: the tiles asked for reach the frame's farthest corner: a big frame draws a tile 160 units away that the old 1.75 ranges would not reach",
+			func = function(state)
+				local Radar = GryMod.FlashRadar
+
+				Radar.FRAME = {{-150, -150}, {150, -150}, {150, 150}, {-150, 150}}
+				-- tile (3, 0): world x from 192 to 256, 160 to 224 units ahead of the player, 107 to 150 radar pixels up: inside this frame, past 1.75 * 64 = 112 units
+				state.existing["3,0"] = true
+				draw(state)
+
+				expect(#recorded.polys).to.equal(1)
+				expect(recorded.polys[1].material.token).to.equal("3,0")
+			end
+		},
+		{
+			name = "Draw: the vertex tables are reused but every polygon reaches DrawPoly with exactly its own vertices (a clipped tile of 5 or more, then a whole one of 4)",
+			func = function(state)
+				state.all = true
+
+				-- the player at the right corner of the window: some tiles are cut at the chamfered corner (5 vertices or more), some are whole
+				local sizes = {}
+
+				for _, position in ipairs({{32, 32}, {-20, 80}, {70, 10}, {32, 32}}) do
+					recorded.polys = {}
+					draw(state, IDENTITY, {px = position[1], py = position[2]})
+
+					for _, poly in ipairs(recorded.polys) do
+						local verts = poly.verts
+
+						expect(#verts >= 3).to.beTrue()
+						sizes[#verts] = true
+
+						-- no vertex is repeated (a stale tail or a shared table would show here), and the polygon is a proper clockwise one
+						for i = 1, #verts do
+							for j = i + 1, #verts do
+								expect(verts[i].x ~= verts[j].x or verts[i].y ~= verts[j].y).to.beTrue()
+							end
+						end
+
+						expect(signedArea(verts) > 0).to.beTrue()
+					end
+				end
+
+				expect(sizes[4]).to.beTrue()
+				expect(sizes[5] or sizes[6] or sizes[7]).to.beTrue()
+			end
+		},
+		-- Radar.MAP_LEFT: where the map starts on the left ----------------------------------------------------------------------------
+		{
+			name = "MapFrame: with Radar.MAP_LEFT = -70 on the real glass the polygon starts at x = -70 (and keeps the notch, which is right of it)",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+
+				Radar.FRAME = original.FRAME
+				Radar.MAP_LEFT = nil
+				local before = V.MapFrame()
+				Radar.MAP_LEFT = -70
+
+				local map = V.MapFrame()
+				local minX = math.huge
+				local onCut = 0
+				local notch = false
+
+				for _, p in ipairs(map) do
+					minX = math.min(minX, p[1])
+
+					if near(p[1], -70, 1e-9) then
+						onCut = onCut + 1
+					end
+
+					if near(p[1], -51.23, 1e-9) and near(p[2], 28.37, 1e-9) then
+						notch = true
+					end
+				end
+
+				expect(near(minX, -70, 1e-9)).to.beTrue()
+				expect(onCut).to.equal(2)
+				expect(notch).to.beTrue()
+				-- a wider polygon than the one cut at the notch (the cache took the new bound into account: it was built before)
+				expect(#map > #before).to.beTrue()
+			end
+		},
+		{
+			name = "MapFrame: Radar.MAP_LEFT absent, NaN, no number, past the right edge or outside the frame gives the rule of the notch (x of the first reflex vertex)",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+
+				Radar.FRAME = original.FRAME
+				Radar.MAP_LEFT = nil
+				local default = V.MapFrame()
+
+				expect(#default > 0).to.beTrue()
+				expect(near(default[1][1], -51.23, 1e-9) or near(default[#default][1], -51.23, 1e-9) or near(default[2][1], -51.23, 1e-9)).to.beTrue()
+
+				-- the frame spans x from -77.38 to 70.8: the bounds themselves and everything beyond are not inside it
+				for _, bad in ipairs({0 / 0, "x", true, 1e9, -1e9, math.huge, -math.huge, -77.38, 70.8, 100, -100}) do
+					Radar.MAP_LEFT = bad
+
+					local map = V.MapFrame()
+
+					expect(#map).to.equal(#default)
+
+					for i = 1, #map do
+						expect(map[i][1] == default[i][1] and map[i][2] == default[i][2]).to.beTrue()
+					end
+				end
+			end
+		},
+		{
+			name = "MapFrame: a change of Radar.MAP_LEFT is picked up at the next call (the cache is keyed on it), and so is its removal",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+
+				Radar.FRAME = original.FRAME
+				Radar.MAP_LEFT = -70
+				expect(near(V.MapFrame()[1][1], -70, 1e-9) or near(V.MapFrame()[#V.MapFrame()][1], -70, 1e-9) or true).to.beTrue()
+
+				local function leftmost()
+					local minX = math.huge
+
+					for _, p in ipairs(V.MapFrame()) do
+						minX = math.min(minX, p[1])
+					end
+
+					return minX
+				end
+
+				expect(near(leftmost(), -70, 1e-9)).to.beTrue()
+				Radar.MAP_LEFT = -60
+				expect(near(leftmost(), -60, 1e-9)).to.beTrue()
+				Radar.MAP_LEFT = nil
+				expect(near(leftmost(), -51.23, 1e-9)).to.beTrue()
+			end
+		},
+		{
+			name = "ExtentFactor: recomputed with the polygon MAP_LEFT gives (a frame whose farthest vertex is in the strip: 0.33 ranges without it, 2.11 with it)",
+			func = function()
+				local V = GryMod.Minimap.View
+				local Radar = GryMod.FlashRadar
+
+				-- the shape of the real frame, a long left part: the strip is x < -5, the notch vertex is (-5, 3)
+				Radar.FRAME = {{-100, 0}, {-100, -10}, {10, -10}, {10, 10}, {-5, 10}, {-5, 3}}
+				Radar.MAP_LEFT = nil
+				expect(V.ExtentFactor()).to.equal(0.33)
+
+				-- cut at -90: the farthest vertex is (-90, -10), 90.55 pixels = 2.106 ranges
+				Radar.MAP_LEFT = -90
+				expect(V.ExtentFactor()).to.equal(2.11)
+			end
+		},
+		{
+			name = "Draw: a tile that straddles the left cut is clipped against the polygon MAP_LEFT gives (nothing at x < MAP_LEFT, area of the part inside)",
+			func = function(state)
+				-- the original polygon, the map starting at -30 (the notch at -46.75 is then outside the map): tile (0, 1) is x from -64.5 to -21.5, y from -21.5 to 21.5
+				GryMod.FlashRadar.MAP_LEFT = -30
+				state.existing["0,1"] = true
+				draw(state)
+
+				expect(#recorded.polys).to.equal(1)
+
+				for _, vert in ipairs(recorded.polys[1].verts) do
+					expect(vert.x >= -30 - 1e-9).to.beTrue()
+				end
+
+				expect(near(signedArea(recorded.polys[1].verts), 8.5 * 43, 1e-6)).to.beTrue()
+			end
+		},
+		{
+			name = "Draw: with a MAP_LEFT that keeps the notch (the polygon is not convex) the polygons of a tile over the notch still add up to the tile's area inside the map frame",
+			func = function(state)
+				GryMod.FlashRadar.MAP_LEFT = -52
+
+				for _, c in ipairs({{32, 32, 0, 1}, {32, 32, 0, 2}, {32, 32, 1, 2}, {-20, 80, 1, 2}}) do
+					state.existing = {}
+					state.existing[c[3] .. "," .. c[4]] = true
+					recorded.polys = {}
+					draw(state, IDENTITY, {px = c[1], py = c[2]})
+
+					local expected = sampledIntersection(handQuad(c[3], c[4], c[1], c[2]), 0.4)
+					local total = 0
+
+					for _, poly in ipairs(recorded.polys) do
+						expect(signedArea(poly.verts) > 0).to.beTrue()
+						total = total + signedArea(poly.verts)
+					end
+
+					if math.abs(total - expected) > 0.01 * expected + 2.5 then
+						error("tile " .. c[3] .. "," .. c[4] .. " with the player at " .. c[1] .. "," .. c[2] .. ": polygons cover " .. total .. ", the map frame holds " .. expected, 0)
+					end
+				end
+			end
+		},
+
+		-- what is asked of the cache -----------------------------------------------------------------------------------------------------
+		{
+			name = "Cache: Material is only asked for a tile of which a polygon is really sent: not with an alpha of 0, not for a tile whose box touches the frame's but whose quad does not",
+			func = function(state)
+				state.all = true
+				draw(state, IDENTITY, {alpha = 0})
+				expect(#state.materialCalls).to.equal(0)
+				expect(#recorded.polys).to.equal(0)
+
+				-- a quad turned 45 degrees: the tiles in the corners of the frame's box have a box that touches it and a quad that does not
+				state.materialCalls, recorded.polys = {}, {}
+				draw(state, IDENTITY, {yaw = 45})
+
+				local asked = #state.materialCalls
+				expect(asked == #recorded.polys).to.beTrue()
+				expect(asked > 0).to.beTrue()
+			end
+		},
+		{
+			name = "Cache: the coverage uses Cache.Has, not Material (a tile under the range circle that is not drawn costs a Has, never a material)",
+			func = function(state)
+				state.all = true
+				draw(state, IDENTITY, {alpha = 0})
+
+				expect(#state.materialCalls).to.equal(0)
+				expect(#state.hasCalls > 0).to.beTrue()
+				-- only the tiles under the circle, once each
+				expect(#state.hasCalls <= 9).to.beTrue()
+
+				-- a tile that was asked for is not asked about again with Has
+				state.hasCalls, state.materialCalls = {}, {}
+				state.existing["0,0"] = true
+				state.all = false
+				draw(state, IDENTITY, {})
+
+				for _, call in ipairs(state.hasCalls) do
+					expect(call ~= "0,0").to.beTrue()
+				end
+			end
+		},
+		{
+			name = "Cache: no more than View.MAX_MATERIALS (96) distinct materials asked in one Draw, the nearest tiles first; the floor below only gets what the main level left",
+			func = function(state)
+				local V = GryMod.Minimap.View
+				-- 12.8 units a tile: some 130 and more tiles on the window
+				GryMod.Minimap.Settings.Definition = function() return 40 end
+				state.all = true
+				state.belowAll = true
+				expect(V.MAX_MATERIALS).to.equal(96)
+
+				V.MAX_MATERIALS = 100000
+				draw(state, IDENTITY, {px = 40, py = 40})
+
+				local everything = {}
+
+				for _, call in ipairs(state.materialCalls) do
+					everything[#everything + 1] = call
+				end
+
+				expect(#everything >= 130).to.beTrue()
+
+				V.MAX_MATERIALS = original.MAX_MATERIALS
+				state.materialCalls, recorded.polys = {}, {}
+				draw(state, IDENTITY, {px = 40, py = 40})
+
+				expect(#state.materialCalls).to.equal(96)
+				expect(#recorded.polys).to.equal(96)
+
+				-- the tile under the player is among them, and no tile that was left out is nearer (by ring) than one that was asked
+				local T = 512 / 40
+				local ptx, pty = math.floor(40 / T), math.floor(40 / T)
+				local asked = {}
+				local worstAsked = -1
+				local bestLeft = math.huge
+
+				local function ring(call)
+					local tx, ty = string.match(call, "^(-?%d+),(-?%d+)$")
+
+					return math.max(math.abs(tonumber(tx) - ptx), math.abs(tonumber(ty) - pty))
+				end
+
+				for _, call in ipairs(state.materialCalls) do
+					asked[call] = true
+					worstAsked = math.max(worstAsked, ring(call))
+				end
+
+				for _, call in ipairs(everything) do
+					if not asked[call] then
+						bestLeft = math.min(bestLeft, ring(call))
+					end
+				end
+
+				expect(asked[ptx .. "," .. pty]).to.beTrue()
+				expect(worstAsked <= bestLeft).to.beTrue()
+
+				-- the floor below: the main level took the whole budget, so it asks for nothing
+				state.materialCalls, state.belowCalls = {}, {}
+				draw(state, IDENTITY, {px = 40, py = 40, below = lower(), belowAlpha = 0.4})
+				expect(#state.materialCalls).to.equal(96)
+				expect(#state.belowCalls).to.equal(0)
+
+				-- with room left (the main level's count + 5) it asks for exactly 5
+				V.MAX_MATERIALS = #everything + 5
+				state.materialCalls, state.belowCalls = {}, {}
+				draw(state, IDENTITY, {px = 40, py = 40, below = lower(), belowAlpha = 0.4})
+				expect(#state.materialCalls).to.equal(#everything)
+				expect(#state.belowCalls).to.equal(5)
 			end
 		},
 		{

@@ -46,6 +46,10 @@ end
 -- DXT1 index of the rounded position n (0 at c1, 3 at c0) along the axis.
 local INDEX = {[0] = 1, [1] = 3, [2] = 2, [3] = 0}
 
+-- Same for the alpha mode, both modes in one table: [e] 4-colour mode (e = position counted from c1), [4 + e] 3-colour mode (e = position counted from c0, 0..2:
+-- index 0 = c0, 2 = the middle, 1 = c1).
+local INDEXA = {[0] = 1, [1] = 3, [2] = 2, [3] = 0, [4] = 0, [5] = 2, [6] = 1, [7] = 1}
+
 -- Checks a BGRA picture: returns a reason when it cannot be a w x h picture with w and h multiples of 4, nil when it is fine.
 local function checkPicture(bgra, w, h)
 	if type(bgra) ~= "string" then
@@ -229,20 +233,250 @@ local function compressRows(d, w, first, last)
 	return concat(parts)
 end
 
--- DXT1.Compress(bgra, w, h) -> string | nil, reason
-function DXT1.Compress(bgra, w, h)
+-- Same as compressRows for a picture with a real alpha (opts.alpha): a pixel is VOID when its alpha and its three colours are all 0 (see Capture.IsVoid), every
+-- other pixel is solid. A block with at least one void pixel is written in the 3-colour mode: end points from the solid pixels only, c0 <= c1, palette c0, c1,
+-- middle, index 3 = transparent; the void pixels get index 3. A block without void pixel is exactly what compressRows writes. Same two-loop structure.
+local function compressRowsAlpha(d, w, first, last)
+	local bw = w / 4
+	local stride = w * 4
+	local parts = {}
+	local KR, KG, KB, K0, FLIP, STEP, BASE, LV, C0, C1 = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+
+	for by = first, last do
+		local rowBase = by * 4 * stride + 1
+
+		for bx = 0, bw - 1 do
+			local o = rowBase + bx * 16
+			local rmin, rmax, gmin, gmax, bmin, bmax = 255, 0, 255, 0, 255, 0
+			local nsolid = 0
+
+			-- bounding box of the solid pixels (a void pixel is black, so it never raises a maximum; its minimum is pushed out of the way by 255)
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 0, o + stride * 0 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				nsolid = nsolid + s0 + s1 + s2 + s3
+				rmin, rmax = min(rmin, r0 + (1 - s0) * 255, r1 + (1 - s1) * 255, r2 + (1 - s2) * 255, r3 + (1 - s3) * 255), max(rmax, r0, r1, r2, r3)
+				gmin, gmax = min(gmin, g0 + (1 - s0) * 255, g1 + (1 - s1) * 255, g2 + (1 - s2) * 255, g3 + (1 - s3) * 255), max(gmax, g0, g1, g2, g3)
+				bmin, bmax = min(bmin, b0 + (1 - s0) * 255, b1 + (1 - s1) * 255, b2 + (1 - s2) * 255, b3 + (1 - s3) * 255), max(bmax, b0, b1, b2, b3)
+			end
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 1, o + stride * 1 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				nsolid = nsolid + s0 + s1 + s2 + s3
+				rmin, rmax = min(rmin, r0 + (1 - s0) * 255, r1 + (1 - s1) * 255, r2 + (1 - s2) * 255, r3 + (1 - s3) * 255), max(rmax, r0, r1, r2, r3)
+				gmin, gmax = min(gmin, g0 + (1 - s0) * 255, g1 + (1 - s1) * 255, g2 + (1 - s2) * 255, g3 + (1 - s3) * 255), max(gmax, g0, g1, g2, g3)
+				bmin, bmax = min(bmin, b0 + (1 - s0) * 255, b1 + (1 - s1) * 255, b2 + (1 - s2) * 255, b3 + (1 - s3) * 255), max(bmax, b0, b1, b2, b3)
+			end
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 2, o + stride * 2 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				nsolid = nsolid + s0 + s1 + s2 + s3
+				rmin, rmax = min(rmin, r0 + (1 - s0) * 255, r1 + (1 - s1) * 255, r2 + (1 - s2) * 255, r3 + (1 - s3) * 255), max(rmax, r0, r1, r2, r3)
+				gmin, gmax = min(gmin, g0 + (1 - s0) * 255, g1 + (1 - s1) * 255, g2 + (1 - s2) * 255, g3 + (1 - s3) * 255), max(gmax, g0, g1, g2, g3)
+				bmin, bmax = min(bmin, b0 + (1 - s0) * 255, b1 + (1 - s1) * 255, b2 + (1 - s2) * 255, b3 + (1 - s3) * 255), max(bmax, b0, b1, b2, b3)
+			end
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 3, o + stride * 3 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				nsolid = nsolid + s0 + s1 + s2 + s3
+				rmin, rmax = min(rmin, r0 + (1 - s0) * 255, r1 + (1 - s1) * 255, r2 + (1 - s2) * 255, r3 + (1 - s3) * 255), max(rmax, r0, r1, r2, r3)
+				gmin, gmax = min(gmin, g0 + (1 - s0) * 255, g1 + (1 - s1) * 255, g2 + (1 - s2) * 255, g3 + (1 - s3) * 255), max(gmax, g0, g1, g2, g3)
+				bmin, bmax = min(bmin, b0 + (1 - s0) * 255, b1 + (1 - s1) * 255, b2 + (1 - s2) * 255, b3 + (1 - s3) * 255), max(bmax, b0, b1, b2, b3)
+			end
+
+			-- three = 1 when the block holds a void pixel: 3-colour mode (positions 0..2 along the axis), else 4-colour mode (0..3)
+			local three = min(1, 16 - nsolid)
+			local lv, base = 3 - three, 4 * three
+			local c0, c1, kr, kg, kb, k0, flip, step
+
+			if nsolid == 0 then
+				-- all void: c0 = c1 = 0, every index will be 3 (the pixels are void)
+				c0, c1, kr, kg, kb, k0, flip, step = 0, 0, 0, 0, 0, 0, 0, 1
+			elseif Q5[rmin] == Q5[rmax] and Q6[gmin] == Q6[gmax] and Q5[bmin] == Q5[bmax] then
+				-- one colour after quantisation: c0 == c1; solid pixels get index 0 (position clamped to the end of the axis in the 4-colour mode, to its start in
+				-- the 3-colour mode, where index 0 is the start)
+				c0 = Q5[rmax] * 2048 + Q6[gmax] * 32 + Q5[bmax]
+				c1, kr, kg, kb, k0, flip, step = c0, 0, 0, 0, 10 - 20 * three, 0, 1
+			else
+				-- orientation of the axis: see compressRows
+				local mr, mg, mb = rmin + rmax, gmin + gmax, bmin + bmax
+				local srb, sgb, sr, sg, sb = 0, 0, 0, 0, 0
+
+				do
+					local b0, g0, r0, _, b1, g1, r1, _, b2, g2, r2, _, b3, g3, r3 = byte(d, o + stride * 0, o + stride * 0 + 14)
+					srb = srb + r0 * b0 + r1 * b1 + r2 * b2 + r3 * b3
+					sgb = sgb + g0 * b0 + g1 * b1 + g2 * b2 + g3 * b3
+					sr, sg, sb = sr + r0 + r1 + r2 + r3, sg + g0 + g1 + g2 + g3, sb + b0 + b1 + b2 + b3
+				end
+				do
+					local b0, g0, r0, _, b1, g1, r1, _, b2, g2, r2, _, b3, g3, r3 = byte(d, o + stride * 1, o + stride * 1 + 14)
+					srb = srb + r0 * b0 + r1 * b1 + r2 * b2 + r3 * b3
+					sgb = sgb + g0 * b0 + g1 * b1 + g2 * b2 + g3 * b3
+					sr, sg, sb = sr + r0 + r1 + r2 + r3, sg + g0 + g1 + g2 + g3, sb + b0 + b1 + b2 + b3
+				end
+				do
+					local b0, g0, r0, _, b1, g1, r1, _, b2, g2, r2, _, b3, g3, r3 = byte(d, o + stride * 2, o + stride * 2 + 14)
+					srb = srb + r0 * b0 + r1 * b1 + r2 * b2 + r3 * b3
+					sgb = sgb + g0 * b0 + g1 * b1 + g2 * b2 + g3 * b3
+					sr, sg, sb = sr + r0 + r1 + r2 + r3, sg + g0 + g1 + g2 + g3, sb + b0 + b1 + b2 + b3
+				end
+				do
+					local b0, g0, r0, _, b1, g1, r1, _, b2, g2, r2, _, b3, g3, r3 = byte(d, o + stride * 3, o + stride * 3 + 14)
+					srb = srb + r0 * b0 + r1 * b1 + r2 * b2 + r3 * b3
+					sgb = sgb + g0 * b0 + g1 * b1 + g2 * b2 + g3 * b3
+					sr, sg, sb = sr + r0 + r1 + r2 + r3, sg + g0 + g1 + g2 + g3, sb + b0 + b1 + b2 + b3
+				end
+
+				-- sums over the solid pixels (the void ones are black and add nothing) of (2r - mr) * (2b - mb) and (2g - mg) * (2b - mb)
+				sr = 4 * srb - 2 * mb * sr - 2 * mr * sb + nsolid * mr * mb
+				sg = 4 * sgb - 2 * mb * sg - 2 * mg * sb + nsolid * mg * mb
+
+				local fr, fg = max(0, -max(-1, min(1, sr))), max(0, -max(-1, min(1, sg)))
+				local ar, br = rmin + (rmax - rmin) * fr, rmax - (rmax - rmin) * fr
+				local ag, bg = gmin + (gmax - gmin) * fg, gmax - (gmax - gmin) * fg
+				local cA = Q5[ar] * 2048 + Q6[ag] * 32 + Q5[bmin]
+				local cB = Q5[br] * 2048 + Q6[bg] * 32 + Q5[bmax]
+				local ra, ga, ba = ER5[ar], ER6[ag], ER5[bmin]
+				local dr, dg, db = ER5[br] - ra, ER6[bg] - ga, ER5[bmax] - ba
+				local k = lv / (dr * dr + dg * dg + db * db)
+				kr, kg, kb = dr * k, dg * k, db * k
+				k0 = 0.5 - ra * kr - ga * kg - ba * kb
+				-- 4-colour mode: c0 = the larger of cA and cB; 3-colour mode: c0 = the smaller (c0 <= c1). sw = 1 when A is the larger.
+				local sw = max(0, min(1, cA - cB))
+				local hi, lo = cB + (cA - cB) * sw, cA - (cA - cB) * sw
+				c0, c1 = hi + three * (lo - hi), lo + three * (hi - lo)
+				flip, step = sw * lv, 1 - 2 * sw
+			end
+
+			local i = bx + 1
+			KR[i], KG[i], KB[i], K0[i], FLIP[i], STEP[i], BASE[i], LV[i], C0[i], C1[i] = kr, kg, kb, k0, flip, step, base, lv, c0, c1
+		end
+
+		local row = {}
+
+		for bx = 0, bw - 1 do
+			local o = rowBase + bx * 16
+			local i = bx + 1
+			local kr, kg, kb, k0, flip, step, base, lv = KR[i], KG[i], KB[i], K0[i], FLIP[i], STEP[i], BASE[i], LV[i]
+			local x0, x1, x2, x3
+
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 0, o + stride * 0 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local i0 = INDEXA[base + flip + step * max(0, min(lv, floor(r0 * kr + g0 * kg + b0 * kb + k0)))] * s0 + 3 - 3 * s0
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local i1 = INDEXA[base + flip + step * max(0, min(lv, floor(r1 * kr + g1 * kg + b1 * kb + k0)))] * s1 + 3 - 3 * s1
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local i2 = INDEXA[base + flip + step * max(0, min(lv, floor(r2 * kr + g2 * kg + b2 * kb + k0)))] * s2 + 3 - 3 * s2
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				local i3 = INDEXA[base + flip + step * max(0, min(lv, floor(r3 * kr + g3 * kg + b3 * kb + k0)))] * s3 + 3 - 3 * s3
+				x0 = i0 + i1 * 4 + i2 * 16 + i3 * 64
+			end
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 1, o + stride * 1 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local i0 = INDEXA[base + flip + step * max(0, min(lv, floor(r0 * kr + g0 * kg + b0 * kb + k0)))] * s0 + 3 - 3 * s0
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local i1 = INDEXA[base + flip + step * max(0, min(lv, floor(r1 * kr + g1 * kg + b1 * kb + k0)))] * s1 + 3 - 3 * s1
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local i2 = INDEXA[base + flip + step * max(0, min(lv, floor(r2 * kr + g2 * kg + b2 * kb + k0)))] * s2 + 3 - 3 * s2
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				local i3 = INDEXA[base + flip + step * max(0, min(lv, floor(r3 * kr + g3 * kg + b3 * kb + k0)))] * s3 + 3 - 3 * s3
+				x1 = i0 + i1 * 4 + i2 * 16 + i3 * 64
+			end
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 2, o + stride * 2 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local i0 = INDEXA[base + flip + step * max(0, min(lv, floor(r0 * kr + g0 * kg + b0 * kb + k0)))] * s0 + 3 - 3 * s0
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local i1 = INDEXA[base + flip + step * max(0, min(lv, floor(r1 * kr + g1 * kg + b1 * kb + k0)))] * s1 + 3 - 3 * s1
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local i2 = INDEXA[base + flip + step * max(0, min(lv, floor(r2 * kr + g2 * kg + b2 * kb + k0)))] * s2 + 3 - 3 * s2
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				local i3 = INDEXA[base + flip + step * max(0, min(lv, floor(r3 * kr + g3 * kg + b3 * kb + k0)))] * s3 + 3 - 3 * s3
+				x2 = i0 + i1 * 4 + i2 * 16 + i3 * 64
+			end
+			do
+				local b0, g0, r0, a0, b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3 = byte(d, o + stride * 3, o + stride * 3 + 15)
+				local s0 = min(1, a0 + b0 + g0 + r0)
+				local i0 = INDEXA[base + flip + step * max(0, min(lv, floor(r0 * kr + g0 * kg + b0 * kb + k0)))] * s0 + 3 - 3 * s0
+				local s1 = min(1, a1 + b1 + g1 + r1)
+				local i1 = INDEXA[base + flip + step * max(0, min(lv, floor(r1 * kr + g1 * kg + b1 * kb + k0)))] * s1 + 3 - 3 * s1
+				local s2 = min(1, a2 + b2 + g2 + r2)
+				local i2 = INDEXA[base + flip + step * max(0, min(lv, floor(r2 * kr + g2 * kg + b2 * kb + k0)))] * s2 + 3 - 3 * s2
+				local s3 = min(1, a3 + b3 + g3 + r3)
+				local i3 = INDEXA[base + flip + step * max(0, min(lv, floor(r3 * kr + g3 * kg + b3 * kb + k0)))] * s3 + 3 - 3 * s3
+				x3 = i0 + i1 * 4 + i2 * 16 + i3 * 64
+			end
+
+			local c0, c1 = C0[i], C1[i]
+			local c0lo, c1lo = band(c0, 255), band(c1, 255)
+
+			row[i] = char(c0lo, rshift(c0, 8), c1lo, rshift(c1, 8), x0, x1, x2, x3)
+		end
+
+		parts[#parts + 1] = concat(row)
+	end
+
+	return concat(parts)
+end
+
+-- opts: nil, or a table; opts.alpha == true selects the alpha mode (see compressRowsAlpha). Returns the mode, or nil and a reason.
+local function checkOpts(opts)
+	if opts == nil then
+		return false
+	end
+
+	if type(opts) ~= "table" then
+		return nil, "opts must be a table"
+	end
+
+	return opts.alpha == true
+end
+
+-- DXT1.Compress(bgra, w, h [, opts]) -> string | nil, reason
+-- opts.alpha = true: the picture has a real alpha, void pixels (alpha 0 and colour 0) are transparent in the result (3-colour mode blocks).
+function DXT1.Compress(bgra, w, h, opts)
+	local alpha, oerr = checkOpts(opts)
+
+	if oerr then
+		return nil, oerr
+	end
+
 	local err = checkPicture(bgra, w, h)
 
 	if err then
 		return nil, err
 	end
 
+	if alpha then
+		return compressRowsAlpha(bgra, w, 0, h / 4 - 1)
+	end
+
 	return compressRows(bgra, w, 0, h / 4 - 1)
 end
 
--- DXT1.CompressRows(bgra, w, h, firstBlockRow, lastBlockRow) -> string | nil, reason
+-- DXT1.CompressRows(bgra, w, h, firstBlockRow, lastBlockRow [, opts]) -> string | nil, reason
 -- Block rows are numbered from 0 (4 pixel rows each) and both bounds are inclusive. The concatenation of consecutive chunks is Compress.
-function DXT1.CompressRows(bgra, w, h, first, last)
+function DXT1.CompressRows(bgra, w, h, first, last, opts)
+	local alpha, oerr = checkOpts(opts)
+
+	if oerr then
+		return nil, oerr
+	end
+
 	local err = checkPicture(bgra, w, h)
 
 	if err then
@@ -259,6 +493,10 @@ function DXT1.CompressRows(bgra, w, h, first, last)
 
 	if first < 0 or last > h / 4 - 1 then
 		return nil, "block rows outside the picture"
+	end
+
+	if alpha then
+		return compressRowsAlpha(bgra, w, first, last)
 	end
 
 	return compressRows(bgra, w, first, last)
@@ -367,4 +605,97 @@ function DXT1.Error(a, b)
 	local mse = sumSq / samples
 
 	return {mae = sumAbs / samples, psnr = mse > 0 and 10 * log10(65025 / mse) or PSNR_EXACT, max = max}
+end
+
+-- DXT1.ErrorSolid(bgraA, bgraB) -> {mae, psnr, max, solid, lost} | nil, reason
+-- Like Error but only over the SOLID pixels of A (every pixel except a void one: alpha 0 and colour 0), and it counts in `lost` the solid pixels of A that are
+-- void in B (transparent after a round trip, which a compressor must never do). Their colour difference is part of the error. nil when A has no solid pixel.
+function DXT1.ErrorSolid(a, b)
+	if type(a) ~= "string" or type(b) ~= "string" then
+		return nil, "both pictures must be strings"
+	end
+
+	if #a ~= #b then
+		return nil, "the pictures have different lengths"
+	end
+
+	if #a == 0 or #a % 4 ~= 0 then
+		return nil, "the length must be a positive multiple of 4"
+	end
+
+	local sumAbs, sumSq, max, solid, lost = 0, 0, 0, 0, 0
+
+	for i = 1, #a, 4 do
+		local ab, ag, ar, aa = byte(a, i, i + 3)
+
+		if ab + ag + ar + aa > 0 then
+			local bb, bg, br, ba = byte(b, i, i + 3)
+			local db, dg, dr = ab - bb, ag - bg, ar - br
+
+			solid = solid + 1
+
+			if bb + bg + br + ba == 0 then
+				lost = lost + 1
+			end
+
+			sumSq = sumSq + db * db + dg * dg + dr * dr
+
+			if db < 0 then db = -db end
+			if dg < 0 then dg = -dg end
+			if dr < 0 then dr = -dr end
+
+			sumAbs = sumAbs + db + dg + dr
+
+			if db > max then max = db end
+			if dg > max then max = dg end
+			if dr > max then max = dr end
+		end
+	end
+
+	if solid == 0 then
+		return nil, "the first picture has no solid pixel"
+	end
+
+	local samples = solid * 3
+	local mse = sumSq / samples
+
+	return {mae = sumAbs / samples, psnr = mse > 0 and 10 * log10(65025 / mse) or PSNR_EXACT, max = max, solid = solid, lost = lost}
+end
+
+-- DXT1.IsAllVoid(bgra, w, h) -> boolean | nil, reason
+-- True when every pixel is void (alpha 0 and colour 0: all four bytes are 0), false as soon as one pixel is solid. Reads 16 bytes (4 pixels) per step and
+-- stops at the first nonzero group; the bytes left over when the pixel count is not a multiple of 4 are checked one by one. w and h are only used to check
+-- the length (positive integers, #bgra == w * h * 4).
+function DXT1.IsAllVoid(bgra, w, h)
+	if type(bgra) ~= "string" then
+		return nil, "the picture is not a string"
+	end
+
+	if type(w) ~= "number" or type(h) ~= "number" or w ~= floor(w) or h ~= floor(h) or w < 1 or h < 1 or w == math.huge or h == math.huge then
+		return nil, "width and height must be positive integers"
+	end
+
+	local n = #bgra
+
+	if n ~= w * h * 4 then
+		return nil, "the string length does not match width * height * 4"
+	end
+
+	local full = n - n % 16
+
+	for i = 1, full, 16 do
+		local a, b, c, d, e, f, g, h2, i2, j, k, l, m, n2, o, p = byte(bgra, i, i + 15)
+
+		if a + b + c + d + e + f + g + h2 + i2 + j + k + l + m + n2 + o + p > 0 then
+			return false
+		end
+	end
+
+	for i = full + 1, n do
+		if byte(bgra, i) ~= 0 then
+			return false
+		end
+	end
+
+	return true
 end

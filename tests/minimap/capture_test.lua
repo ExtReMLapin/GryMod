@@ -8,7 +8,7 @@
 local HOOK_NAME = "GryMod minimap capture"
 local EVENTS = {"PreDrawHalos", "PreDrawEffects", "PrePlayerDraw", "PreDrawViewModel", "PreDrawSkyBox", "SetupWorldFog"}
 local MODEL = "models/props_junk/PopCan01a.mdl"
-local RENDER_CALLS = {"PushRenderTarget", "Clear", "RenderView", "Capture", "PopRenderTarget", "SetLightingMode", "FogMode"}
+local RENDER_CALLS = {"PushRenderTarget", "Clear", "RenderView", "Capture", "PopRenderTarget", "SetLightingMode", "FogMode", "SetWriteDepthToDestAlpha"}
 local OTHER_HOOK = "GryMod minimap capture test other addon"
 
 local savedRender = {}   -- render.<name> originals, saved by stubRender
@@ -802,6 +802,131 @@ return {
 				expect(noDrawOf(a)).to.equal(false)
 				expect(capture().IsCapturing()).to.equal(false)
 				expect(countHooks()).to.equal(0)
+			end
+		},
+		-- Real alpha (wave 2): the void keeps alpha 0 ----------------------------------------------------------------------------
+		{
+			-- fails if: the target is cleared with an opaque alpha (the void would then be opaque black)
+			name = "the target is cleared to transparent black: Clear(0, 0, 0, 0, true, true)",
+			func = function()
+				local _, args, ok = renderOnce({RenderView = function() end, Capture = function() return pixels(64) end})
+
+				expect(ok).to.beTrue()
+				expect(args.Clear.n).to.equal(6)
+				expect(args.Clear[1]).to.equal(0)
+				expect(args.Clear[2]).to.equal(0)
+				expect(args.Clear[3]).to.equal(0)
+				expect(args.Clear[4]).to.equal(0)
+				expect(args.Clear[5]).to.equal(true)
+				expect(args.Clear[6]).to.equal(true)
+			end
+		},
+		{
+			-- fails if: the depth is written to the alpha while the view renders (the alpha would not tell the void), or is not put back after
+			name = "SetWriteDepthToDestAlpha(false) is set after Clear and before RenderView, and true again right after RenderView (and before the capture reads the bytes)",
+			func = function()
+				local seq = {}
+				local writes = {}
+				local stateDuringView
+
+				stubRender(seq, {}, {
+					RenderView = function() stateDuringView = writes[#writes] end,
+					Capture = function() return pixels(64) end,
+					SetWriteDepthToDestAlpha = function(v) writes[#writes + 1] = v end
+				})
+
+				local ok, r1 = pcall(capture().Render, validTile(), validLevel())
+
+				expect(ok).to.beTrue()
+				expect(type(r1)).to.equal("string")
+				expect(#writes).to.equal(2)
+				expect(writes[1]).to.equal(false)
+				expect(writes[2]).to.equal(true)
+				expect(stateDuringView).to.equal(false)
+
+				local at = {}
+
+				for i = 1, #seq do
+					if seq[i] == "SetWriteDepthToDestAlpha" then
+						at[#at + 1] = i
+					else
+						at[seq[i]] = i
+					end
+				end
+
+				expect(at.Clear < at[1]).to.beTrue()
+				expect(at[1] < at.RenderView).to.beTrue()
+				expect(at.RenderView < at[2]).to.beTrue()
+				expect(at[2] < at.Capture).to.beTrue()
+			end
+		},
+		{
+			-- fails if: an error in RenderView leaves the depth-to-alpha write off for the whole game (everything else drawn afterwards would be wrong)
+			name = "a RenderView that raises: the depth write to the alpha is put back to true (once), after the failure",
+			func = function()
+				local writes = {}
+				local _, _, ok, r1 = renderOnce({
+					RenderView = function() error("capture test: RenderView exploded", 0) end,
+					SetWriteDepthToDestAlpha = function(v) writes[#writes + 1] = v end
+				})
+
+				expect(ok).to.beTrue()
+				expect(r1).to.beNil()
+				expect(#writes).to.equal(2)
+				expect(writes[1]).to.equal(false)
+				expect(writes[2]).to.equal(true)
+			end
+		},
+		{
+			-- fails if: a failure before the view leaves the write off
+			name = "a failure before the view (the push raises): the depth write is never left off",
+			func = function()
+				local writes = {}
+				local _, _, ok, r1 = renderOnce({
+					PushRenderTarget = function() error("capture test: push exploded", 0) end,
+					SetWriteDepthToDestAlpha = function(v) writes[#writes + 1] = v end
+				})
+
+				expect(ok).to.beTrue()
+				expect(r1).to.beNil()
+				expect(#writes == 0 or writes[#writes] == true).to.beTrue()
+			end
+		},
+		{
+			-- fails if: the bytes are changed on the way (the alpha is the mask of the void: it must come back as render.Capture gave it)
+			name = "the returned BGRA keeps its alpha: the bytes are not touched (alpha 0 and alpha 1 pixels come back as they were)",
+			func = function()
+				local res = 64
+				local bytes = string.rep("\0\0\0\0", res * res - 2) .. "\9\8\7\1" .. "\0\0\5\0"
+				local _, _, ok, r1 = renderOnce({Capture = function() return bytes end})
+
+				expect(ok).to.beTrue()
+				expect(r1 == bytes).to.beTrue()
+				expect(select(4, string.byte(r1, #r1 - 7, #r1 - 4))).to.equal(1)
+				expect(select(4, string.byte(r1, #r1 - 3, #r1))).to.equal(0)
+			end
+		},
+		{
+			-- fails if: the rule is the alpha alone (about 5 % of the pixels of alpha 0 carry a colour: geometry that writes alpha 0), or a black solid pixel is taken for void
+			name = "IsVoid(b, g, r, a): void only when the alpha is 0 AND the colour is black; a coloured pixel of alpha 0 and a black pixel of alpha 1 are solid",
+			func = function()
+				local IsVoid = need("IsVoid")
+
+				expect(IsVoid(0, 0, 0, 0)).to.equal(true)
+				-- a black solid pixel (alpha 1, the geometry's alpha) is solid
+				expect(IsVoid(0, 0, 0, 1)).to.equal(false)
+				expect(IsVoid(0, 0, 0, 255)).to.equal(false)
+				-- geometry that wrote alpha 0 but has a colour: solid, whichever channel carries it
+				expect(IsVoid(5, 0, 0, 0)).to.equal(false)
+				expect(IsVoid(0, 5, 0, 0)).to.equal(false)
+				expect(IsVoid(0, 0, 5, 0)).to.equal(false)
+				expect(IsVoid(200, 120, 40, 0)).to.equal(false)
+				-- coloured and opaque
+				expect(IsVoid(200, 120, 40, 255)).to.equal(false)
+				expect(IsVoid(255, 255, 255, 1)).to.equal(false)
+				-- nothing missing is void
+				expect(IsVoid(nil, nil, nil, nil)).to.equal(false)
+				expect(IsVoid(0, 0, 0)).to.equal(false)
 			end
 		},
 		-- GetRT -----------------------------------------------------------------------------------------------------------------

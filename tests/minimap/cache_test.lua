@@ -6,7 +6,7 @@
 -- map that is loaded). Every file written goes under data/grymod/minimap/test_* and is deleted before and after each case.
 
 local ROOT = "grymod/minimap/"
-local KEY_A = "test_mapa_1234_v1"
+local KEY_A = "test_mapa_1234_v2"
 
 local function C()
 	local cache = GryMod and GryMod.Minimap and GryMod.Minimap.Cache
@@ -55,10 +55,19 @@ local function useKey(state, key)
 	C().Reset()
 end
 
+-- the size of a real .vtf of this resolution in DXT1: 80 bytes of header + 128 of thumbnail, then 8 bytes for each 4x4 block (512 -> 131072 + 208), worked out here
+-- independently of the module; with bgra = true the data is 4 bytes a pixel
+local function vtfSizeFor(res, bgra)
+	local blocks = math.max(1, math.ceil(res / 4))
+
+	return 208 + (bgra and res * res * 4 or blocks * blocks * 8)
+end
+
 -- a stand-in of the VTF module: records its calls, writes small real files (the cache checks the disk), can be made to fail
 local function installVTF(state)
 	state.calls = {write = {}, vmt = {}}
 	state.failWrite, state.failVMT = nil, nil -- the state table is shared by the cases of the file
+	state.vtfSize = nil -- bytes written in a .vtf (the size of a real DXT1 file of that resolution by default); a case sets it after installVTF
 
 	GryMod.Minimap.VTF = {
 		FORMAT_BGRA8888 = 12,
@@ -72,7 +81,7 @@ local function installVTF(state)
 			end
 
 			mkdirs(path)
-			file.Write(path, "vtf")
+			file.Write(path, string.rep("x", state.vtfSize or vtfSizeFor(w)))
 
 			return true
 		end,
@@ -98,14 +107,17 @@ local function installMaterial(state)
 	state.downloads = 0
 	state.errorMaterial = false
 
-	local texture = {
-		Download = function()
-			state.downloads = state.downloads + 1
-		end
-	}
+	state.downloadSawFile = {} -- for each Download: did the .vtf of that material exist at that moment?
 
 	Material = function(path)
 		state.loads[#state.loads + 1] = path
+
+		local texture = {
+			Download = function()
+				state.downloads = state.downloads + 1
+				state.downloadSawFile[#state.downloadSawFile + 1] = state.origFile.Exists(string.gsub(path, "^%.%./data/", "") .. ".vtf", "DATA")
+			end
+		}
 
 		return {
 			IsError = function()
@@ -123,6 +135,32 @@ end
 
 local function store(tl, data)
 	return C().Store(tl, data or "dxt")
+end
+
+-- the bytes the .vtf and .vmt files of these tiles take on the disk, read by the test itself
+local function diskBytes(tiles)
+	local sum = 0
+
+	for _, t in ipairs(tiles) do
+		local path = C().Path(t)
+
+		sum = sum + math.max(file.Size(path .. ".vtf", "DATA"), 0) + math.max(file.Size(path .. ".vmt", "DATA"), 0)
+	end
+
+	return sum
+end
+
+-- counts the calls of every file.* function the case saved in state.origFile (and passes them through); the originals are put back by afterEach
+local function spyFile(state, counts)
+	for name, fn in pairs(state.origFile) do
+		counts[name] = 0
+
+		file[name] = function(...)
+			counts[name] = counts[name] + 1
+
+			return fn(...)
+		end
+	end
 end
 
 -- 66 tiles in a row, stored through the stand-in VTF (Store is the only public way to fill the cache)
@@ -151,7 +189,9 @@ return {
 			Size = file.Size,
 			Find = file.Find,
 			Open = file.Open,
-			IsDir = file.IsDir
+			IsDir = file.IsDir,
+			Time = file.Time,
+			Write = file.Write
 		}
 		wipe()
 
@@ -160,6 +200,8 @@ return {
 		end
 	end,
 	afterEach = function(state)
+		pcall(collectgarbage, "restart") -- a case may have stopped the collector to count allocations
+
 		pcall(function()
 			GryMod.Minimap.VTF = state.origVTF
 			Material = state.origMaterial
@@ -181,6 +223,10 @@ return {
 				if GryMod.Minimap.Cache.Reset then
 					GryMod.Minimap.Cache.Reset()
 				end
+
+				if GryMod.Minimap.Cache.SetCapacity then
+					GryMod.Minimap.Cache.SetCapacity(160) -- a case may have changed it
+				end
 			end
 		end)
 
@@ -190,35 +236,35 @@ return {
 		-- (1) the key ---------------------------------------------------------------------------------------------------------------
 		{
 			-- fails if KeyFor does not lowercase, does not turn each odd byte into "_", does not add the size or the version
-			name = "KeyFor sanitises the map name: lowercase, every byte outside [a-z0-9_] becomes an underscore, then _<size>_v1",
+			name = "KeyFor sanitises the map name: lowercase, every byte outside [a-z0-9_] becomes an underscore, then _<size>_v2",
 			func = function()
-				expect(C().KeyFor("GM_Construct", 1234)).to.equal("gm_construct_1234_v1")
-				expect(C().KeyFor("My Map-v2!", 7)).to.equal("my_map_v2__7_v1")
-				expect(C().KeyFor("ab\xC3\xA9", 0)).to.equal("ab___0_v1") -- the two bytes of an accented letter give two underscores
-				expect(C().KeyFor("../../x", 1)).to.equal("______x_1_v1") -- no path character survives
+				expect(C().KeyFor("GM_Construct", 1234)).to.equal("gm_construct_1234_v2")
+				expect(C().KeyFor("My Map-v2!", 7)).to.equal("my_map_v2__7_v2")
+				expect(C().KeyFor("ab\xC3\xA9", 0)).to.equal("ab___0_v2") -- the two bytes of an accented letter give two underscores
+				expect(C().KeyFor("../../x", 1)).to.equal("______x_1_v2") -- no path character survives
 			end
 		},
 		{
 			-- fails if a negative, missing or odd size is written as it is, or if an empty name makes an empty key
 			name = "KeyFor: an unknown size (negative, nil, not a number) is 0, an empty or missing name is 'unknown'",
 			func = function()
-				expect(C().KeyFor("a", -1)).to.equal("a_0_v1")
-				expect(C().KeyFor("a", nil)).to.equal("a_0_v1")
-				expect(C().KeyFor("a", "12")).to.equal("a_0_v1")
-				expect(C().KeyFor("", 5)).to.equal("unknown_5_v1")
-				expect(C().KeyFor(nil, 5)).to.equal("unknown_5_v1")
+				expect(C().KeyFor("a", -1)).to.equal("a_0_v2")
+				expect(C().KeyFor("a", nil)).to.equal("a_0_v2")
+				expect(C().KeyFor("a", "12")).to.equal("a_0_v2")
+				expect(C().KeyFor("", 5)).to.equal("unknown_5_v2")
+				expect(C().KeyFor(nil, 5)).to.equal("unknown_5_v2")
 			end
 		},
 		{
 			-- fails if Key does not read the .bsp size (here a map that is not on disk: size 0, file.Size says -1)
-			name = "Key: the size is 0 when the .bsp is unknown, the name comes from game.GetMap, the version is v1",
+			name = "Key: the size is 0 when the .bsp is unknown, the name comes from game.GetMap, the version is v2",
 			func = function()
 				game.GetMap = function()
 					return "Test_Bogus Map"
 				end
 				C().Reset()
 
-				expect(C().Key()).to.equal("test_bogus_map_0_v1")
+				expect(C().Key()).to.equal("test_bogus_map_0_v2")
 			end
 		},
 		{
@@ -234,7 +280,7 @@ return {
 				end
 				C().Reset()
 
-				expect(C().Key()).to.equal("gm_construct_" .. size .. "_v1")
+				expect(C().Key()).to.equal("gm_construct_" .. size .. "_v2")
 			end
 		},
 		{
@@ -243,7 +289,7 @@ return {
 			func = function()
 				useKey({}, KEY_A)
 
-				expect(C().Dir("abc_1_v1")).to.equal("grymod/minimap/abc_1_v1")
+				expect(C().Dir("abc_1_v2")).to.equal("grymod/minimap/abc_1_v2")
 				expect(C().Dir()).to.equal("grymod/minimap/" .. KEY_A)
 			end
 		},
@@ -492,6 +538,49 @@ return {
 			end
 		},
 		{
+			-- fails if the format is not forwarded to VTF.Write (20 = DXT1 with one bit of alpha), or if the default is not DXT1 (13)
+			name = "Store(tile, data, format): the default is 13 (DXT1), 20 (DXT1 with alpha) and 12 are forwarded to VTF.Write",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(C().Store(tile("a1", 1, 1), "x")).to.beTrue()
+				expect(C().Store(tile("a1", 2, 1), "x", nil)).to.beTrue()
+				expect(C().Store(tile("a1", 3, 1), "x", 20)).to.beTrue()
+				expect(C().Store(tile("a1", 4, 1), "x", 12)).to.beTrue()
+				expect(C().Store(tile("a1", 5, 1), "x", 13)).to.beTrue()
+
+				expect(state.calls.write[1].format).to.equal(13)
+				expect(state.calls.write[2].format).to.equal(13)
+				expect(state.calls.write[3].format).to.equal(20)
+				expect(state.calls.write[4].format).to.equal(12)
+				expect(state.calls.write[5].format).to.equal(13)
+				expect(C().Count()).to.equal(5)
+			end
+		},
+		{
+			-- fails if any number is passed on to the VTF module (it would be written under a wrong format)
+			name = "Store refuses a format other than 12, 13 or 20 (false, reason), writes nothing and leaves the index alone",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local t = tile("a1", 1, 1)
+
+				for _, bad in ipairs({0, 7, 14, 19, 21, -1, 13.5, "13", true, {}}) do
+					local ok, err = C().Store(t, "x", bad)
+
+					expect(ok).to.beFalse()
+					expect(type(err)).to.equal("string")
+				end
+
+				expect(#state.calls.write).to.equal(0)
+				expect(C().Has(t)).to.beFalse()
+				expect(C().Count()).to.equal(0)
+				expect(file.Exists(ROOT .. KEY_A .. "/index.json", "DATA")).to.beFalse()
+			end
+		},
+		{
 			-- fails if the index file is not written, or lacks the version, the key or the tile name
 			name = "Store writes index.json: {version = 1, key, tiles = {<base>...}}",
 			func = function(state)
@@ -500,6 +589,7 @@ return {
 
 				expect(store(tile("a1", 3, -2))).to.beTrue()
 				expect(store(tile("a2", 0, 0))).to.beTrue()
+				expect(C().Flush()).to.beTrue() -- the index is written in batches: Flush writes it now
 
 				local text = file.Read(ROOT .. KEY_A .. "/index.json", "DATA")
 
@@ -560,8 +650,9 @@ return {
 			end
 		},
 		{
-			-- fails if a damaged index.json crashes the load or is trusted (names that are not tile names are a way out of the directory)
-			name = "a damaged index.json, one of another key, or one with a strange tile name gives an empty index, without error",
+			-- fails if a damaged index.json crashes the load, or if a name of it that is not a tile name is trusted (a way out of the directory).
+			-- The index is rebuilt from the .vtf files of the directory, so the real tile is still there whatever the index says.
+			name = "a damaged index.json, one of another key or version, or one with strange names: no error, only real tiles, the index is rebuilt from the directory",
 			func = function(state)
 				useKey(state, KEY_A)
 				installVTF(state)
@@ -574,20 +665,22 @@ return {
 
 				file.Write(path, "this is { not json")
 				C().Reset()
-				expect(C().Has(t)).to.beFalse()
-				expect(C().Count()).to.equal(0)
+				expect(C().Has(t)).to.beTrue()
+				expect(C().Count()).to.equal(1)
+				expect(util.JSONToTable(file.Read(path, "DATA")).key).to.equal(KEY_A) -- written again
 
-				file.Write(path, util.TableToJSON({version = 1, key = "test_other_1_v1", tiles = {C().Name(t)}}))
+				file.Write(path, util.TableToJSON({version = 1, key = "test_other_1_v2", tiles = {C().Name(t)}}))
 				C().Reset()
-				expect(C().Has(t)).to.beFalse()
+				expect(C().Has(t)).to.beTrue()
+				expect(C().Count()).to.equal(1)
 
 				file.Write(path, util.TableToJSON({version = 2, key = KEY_A, tiles = {C().Name(t)}}))
 				C().Reset()
-				expect(C().Has(t)).to.beFalse()
+				expect(C().Has(t)).to.beTrue()
 
-				file.Write(path, util.TableToJSON({version = 1, key = KEY_A, tiles = {"../../evil", 12, C().Name(t)}}))
+				file.Write(path, util.TableToJSON({version = 1, key = KEY_A, tiles = {"../../evil", 12, "t_nothing_there_1_1_16_4", C().Name(t)}}))
 				C().Reset()
-				expect(C().Count()).to.equal(1)
+				expect(C().Count()).to.equal(1) -- the evil name, the number and the tile without a file are not tiles
 				expect(C().Has(t)).to.beTrue()
 			end
 		},
@@ -603,6 +696,7 @@ return {
 				expect(store(t)).to.beTrue()
 				expect(store(t, "second")).to.beTrue()
 				expect(C().Count()).to.equal(1)
+				expect(C().Flush()).to.beTrue()
 
 				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
 
@@ -695,6 +789,7 @@ return {
 				expect(C().Has(bad)).to.beFalse()
 				expect(C().Has(good)).to.beTrue()
 				expect(C().Count()).to.equal(1)
+				expect(C().Flush()).to.beTrue()
 
 				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
 
@@ -805,20 +900,57 @@ return {
 
 				state.errorMaterial = true
 				expect(C().Material(t)).to.beNil()
-
-				-- an error material is not kept: once the file is good, the next call loads again
-				state.errorMaterial = false
-				expect(C().Material(t) ~= nil).to.beTrue()
-				expect(#state.loads).to.equal(2)
 			end
 		},
 		{
-			name = "Material is nil when the engine gives nothing at all",
+			-- fails if the engine is asked again at every frame for a tile whose file it cannot use (the tile must leave the index to be made again)
+			name = "Material for a tile of the index that the engine cannot use (IsError) removes it from the index and the disk: no second engine call, a new Store works",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local t, other = tile("a1", 1, 1), tile("a1", 2, 2)
+
+				expect(store(t)).to.beTrue()
+				expect(store(other)).to.beTrue()
+
+				state.errorMaterial = true
+				expect(C().Material(t)).to.beNil()
+				expect(#state.loads).to.equal(1)
+
+				-- the failure is remembered: the tile is no longer known, so no further engine call at all
+				expect(C().Material(t)).to.beNil()
+				expect(C().Material(t)).to.beNil()
+				expect(#state.loads).to.equal(1)
+				expect(C().Has(t)).to.beFalse()
+				expect(C().Count()).to.equal(1)
+				expect(file.Exists(C().Path(t) .. ".vtf", "DATA")).to.beFalse()
+				expect(file.Exists(C().Path(t) .. ".vmt", "DATA")).to.beFalse()
+				expect(C().Has(other)).to.beTrue() -- the others are untouched
+
+				-- it is made again: a Store brings it back, and its material loads
+				state.errorMaterial = false
+				expect(store(t)).to.beTrue()
+				expect(C().Material(t) ~= nil).to.beTrue()
+
+				-- and it stays gone after a reload when the index was written in between
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+				expect(C().Has(t)).to.beTrue()
+			end
+		},
+		{
+			name = "Material is nil when the engine gives nothing at all, and the tile is removed from the index",
 			func = function(state)
 				useKey(state, KEY_A)
 				installVTF(state)
 
+				local calls = 0
+
 				Material = function()
+					calls = calls + 1
+
 					return nil
 				end
 
@@ -826,38 +958,78 @@ return {
 
 				expect(store(t)).to.beTrue()
 				expect(C().Material(t)).to.beNil()
+				expect(C().Material(t)).to.beNil()
+				expect(calls).to.equal(1)
+				expect(C().Has(t)).to.beFalse()
 			end
 		},
 		{
-			-- fails with no limit (65 loads kept) or with a limit that is not 64
-			name = "LRU: 64 materials are kept; the 65th pushes out the oldest, which is loaded again when asked",
+			-- fails with the old limit of 64: a cyclic walk over 100 tiles would miss every time
+			name = "Capacity: 160 materials by default, SetCapacity clamps to 16..512 and ignores what is not a number",
+			func = function()
+				expect(C().MAX_MATERIALS).to.equal(160)
+				expect(C().Capacity()).to.equal(160)
+
+				expect(C().SetCapacity(300)).to.equal(300)
+				expect(C().Capacity()).to.equal(300)
+				expect(C().SetCapacity(3)).to.equal(16)
+				expect(C().SetCapacity(100000)).to.equal(512)
+				expect(C().SetCapacity(40.9)).to.equal(40)
+				expect(C().SetCapacity(nil)).to.equal(40) -- unchanged
+				expect(C().SetCapacity("200")).to.equal(40)
+				expect(C().SetCapacity(0 / 0)).to.equal(40)
+				expect(C().SetCapacity(160)).to.equal(160)
+			end
+		},
+		{
+			-- the walk of the radar: more tiles than the old limit of 64 but fewer than the capacity are all kept
+			name = "a cyclic walk over 100 tiles loads each material once with the default capacity",
 			func = function(state)
 				useKey(state, KEY_A)
 				installVTF(state)
 				installMaterial(state)
 
-				expect(C().MAX_MATERIALS).to.equal(64)
+				local list = storeMany(100)
 
-				local list = storeMany(65)
+				for _ = 1, 3 do
+					for i = 1, 100 do
+						expect(C().Material(list[i]) ~= nil).to.beTrue()
+					end
+				end
 
-				for i = 1, 64 do
+				expect(#state.loads).to.equal(100)
+			end
+		},
+		{
+			-- fails with no limit (17 loads kept) or with a limit that is not the capacity
+			name = "LRU: the capacity is kept; one more pushes out the oldest, which is loaded again when asked",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				expect(C().SetCapacity(16)).to.equal(16)
+
+				local list = storeMany(17)
+
+				for i = 1, 16 do
 					expect(C().Material(list[i]) ~= nil).to.beTrue()
 				end
 
-				expect(#state.loads).to.equal(64)
+				expect(#state.loads).to.equal(16)
 
-				for i = 1, 64 do
+				for i = 1, 16 do
 					C().Material(list[i])
 				end
 
-				expect(#state.loads).to.equal(64) -- all 64 are kept
+				expect(#state.loads).to.equal(16) -- all 16 are kept
 
-				C().Material(list[65])
-				expect(#state.loads).to.equal(65)
+				C().Material(list[17])
+				expect(#state.loads).to.equal(17)
 
 				C().Material(list[1]) -- the oldest was dropped
-				expect(#state.loads).to.equal(66)
-				expect(state.loads[66]).to.equal("../data/" .. C().Path(list[1]))
+				expect(#state.loads).to.equal(18)
+				expect(state.loads[18]).to.equal("../data/" .. C().Path(list[1]))
 			end
 		},
 		{
@@ -868,21 +1040,49 @@ return {
 				installVTF(state)
 				installMaterial(state)
 
-				local list = storeMany(65)
+				C().SetCapacity(16)
 
-				for i = 1, 64 do
+				local list = storeMany(17)
+
+				for i = 1, 16 do
 					C().Material(list[i])
 				end
 
 				C().Material(list[1]) -- 1 becomes the youngest, 2 the oldest
-				C().Material(list[65]) -- pushes 2 out
-				expect(#state.loads).to.equal(65)
+				C().Material(list[17]) -- pushes 2 out
+				expect(#state.loads).to.equal(17)
 
 				C().Material(list[1])
-				expect(#state.loads).to.equal(65) -- still there
+				expect(#state.loads).to.equal(17) -- still there
 
 				C().Material(list[2])
-				expect(#state.loads).to.equal(66) -- dropped, loaded again
+				expect(#state.loads).to.equal(18) -- dropped, loaded again
+			end
+		},
+		{
+			-- fails if a smaller capacity only applies to the next load (the surplus would stay)
+			name = "SetCapacity to a smaller value drops the surplus at once, the least recently used first",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local list = storeMany(20)
+
+				for i = 1, 20 do
+					C().Material(list[i])
+				end
+
+				expect(#state.loads).to.equal(20)
+
+				C().SetCapacity(16) -- 4 go: the first four
+
+				C().Material(list[20])
+				C().Material(list[5])
+				expect(#state.loads).to.equal(20) -- 5 and 20 are still there
+
+				C().Material(list[1])
+				expect(#state.loads).to.equal(21) -- 1 was dropped
 			end
 		},
 		{
@@ -933,14 +1133,16 @@ return {
 				installVTF(state)
 				installMaterial(state)
 
-				local list = storeMany(65)
+				C().SetCapacity(16)
 
-				for i = 1, 65 do
+				local list = storeMany(17)
+
+				for i = 1, 17 do
 					C().Material(list[i])
 				end
 
 				state.downloads = 0
-				C().Forget(list[1]) -- pushed out of the table when the 65th came in
+				C().Forget(list[1]) -- pushed out of the table when the 17th came in
 
 				expect(state.downloads).to.equal(1)
 			end
@@ -961,9 +1163,49 @@ return {
 
 				expect(store(t, "new bytes")).to.beTrue()
 				expect(state.downloads).to.equal(1)
+				expect(state.downloadSawFile[1]).to.beTrue() -- asked after the new files were written
 
 				C().Material(t)
 				expect(#state.loads).to.equal(2)
+			end
+		},
+		{
+			-- fails if Forget is called before the write: after a Clear the Download would be asked for a file that is not there (the engine keeps the old texture)
+			name = "Store after a Clear asks the engine to read the file again only once the new file is on the disk",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local t = tile("a1", 1, 1)
+
+				expect(store(t)).to.beTrue()
+				expect(C().Material(t) ~= nil).to.beTrue()
+				expect(C().Clear()).to.beTrue()
+				expect(file.Exists(C().Path(t) .. ".vtf", "DATA")).to.beFalse()
+				expect(state.downloads).to.equal(0)
+
+				expect(store(t)).to.beTrue()
+				expect(state.downloads).to.equal(1)
+				expect(state.downloadSawFile[1]).to.beTrue()
+			end
+		},
+		{
+			-- the failure case: nothing was written, the engine is not asked to read anything
+			name = "a failing Store calls no Download (the files were not rewritten)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local t = tile("a1", 1, 1)
+
+				expect(store(t)).to.beTrue()
+				expect(C().Material(t) ~= nil).to.beTrue()
+
+				state.failVMT = "no vmt"
+				expect(C().Store(t, "x")).to.beFalse()
+				expect(state.downloads).to.equal(0)
 			end
 		},
 		{
@@ -985,7 +1227,7 @@ return {
 				installVTF(state)
 
 				local t1, t2 = tile("a1", 1, 1), tile("a1", 2, 2)
-				local KEY_B = "test_mapb_55_v1"
+				local KEY_B = "test_mapb_55_v2"
 
 				useKey(state, KEY_A)
 				expect(store(t1)).to.beTrue()
@@ -995,6 +1237,7 @@ return {
 
 				useKey(state, KEY_B)
 				expect(store(t1)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
 				local pathB1 = C().Path(t1)
 
 				-- B is the current key: clearing A (another key) leaves the memory alone
@@ -1065,11 +1308,11 @@ return {
 
 				local t = tile("a1", 1, 1)
 				local keys = {
-					current = "test_mapa_100_v1",
-					old1 = "test_mapa_200_v1",
-					old2 = "test_mapa_300_v1",
-					other = "test_mapb_100_v1",
-					longer = "test_mapa_v2_100_v1"
+					current = "test_mapa_100_v2",
+					old1 = "test_mapa_200_v2",
+					old2 = "test_mapa_300_v2",
+					other = "test_mapb_100_v2",
+					longer = "test_mapa_v2_100_v2"
 				}
 				local paths = {}
 
@@ -1088,6 +1331,42 @@ return {
 				expect(file.Exists(paths.current, "DATA")).to.beTrue()
 				expect(file.Exists(paths.other, "DATA")).to.beTrue()
 				expect(file.Exists(paths.longer, "DATA")).to.beTrue()
+				expect(C().Has(t)).to.beTrue()
+			end
+		},
+		{
+			-- fails if the version part of a key is compared (the _v1 tiles are opaque and stale) or if Prune stops at the same size
+			name = "Prune treats the _v1 keys of the same map as stale (even with the same size), and spares the _v1 and _v2 keys of other maps",
+			func = function(state)
+				installVTF(state)
+
+				local t = tile("a1", 1, 1)
+				local keys = {
+					current = "test_mapa_100_v2",
+					sameSizeV1 = "test_mapa_100_v1",
+					otherSizeV1 = "test_mapa_90_v1",
+					otherSizeV2 = "test_mapa_80_v2",
+					otherMapV1 = "test_mapb_100_v1",
+					otherMapV2 = "test_mapb_100_v2"
+				}
+				local paths = {}
+
+				for name, key in pairs(keys) do
+					useKey(state, key)
+					expect(store(t)).to.beTrue()
+					paths[name] = C().Path(t) .. ".vtf"
+				end
+
+				useKey(state, keys.current)
+
+				expect(C().Prune()).to.equal(3)
+
+				expect(file.Exists(paths.sameSizeV1, "DATA")).to.beFalse()
+				expect(file.Exists(paths.otherSizeV1, "DATA")).to.beFalse()
+				expect(file.Exists(paths.otherSizeV2, "DATA")).to.beFalse()
+				expect(file.Exists(paths.current, "DATA")).to.beTrue()
+				expect(file.Exists(paths.otherMapV1, "DATA")).to.beTrue()
+				expect(file.Exists(paths.otherMapV2, "DATA")).to.beTrue()
 				expect(C().Has(t)).to.beTrue()
 			end
 		},
@@ -1121,13 +1400,1203 @@ return {
 				expect(C().Count()).to.equal(0)
 			end
 		},
+		-- KnownLevels -----------------------------------------------------------------------------------------------------------------
+		{
+			-- fails if the level is cut at the first underscore, or if a number field is taken for part of the level
+			name = "KnownLevels: the level ids of the index, sorted, without duplicates (negative tiles, 'open', an id with an underscore, a fractional ppm)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(store(tile("f96t184", 1, 1))).to.beTrue()
+				expect(store(tile("f96t184", -4, 7))).to.beTrue() -- same level again
+				expect(store(tile("f96t184", 2, 2, 512, 1))).to.beTrue()
+				expect(store(tile("fn96tn8", -1, -1))).to.beTrue()
+				expect(store(tile("open", 0, 0, 1024, 2.5))).to.beTrue()
+				expect(store(tile("a_b", 3, 3))).to.beTrue()
+
+				local levels = C().KnownLevels()
+
+				expect(#levels).to.equal(4)
+				expect(levels[1]).to.equal("a_b")
+				expect(levels[2]).to.equal("f96t184")
+				expect(levels[3]).to.equal("fn96tn8")
+				expect(levels[4]).to.equal("open")
+
+				-- the same after a new load of the index from the disk
+				C().Reset()
+				levels = C().KnownLevels()
+
+				expect(#levels).to.equal(4)
+				expect(levels[2]).to.equal("f96t184")
+			end
+		},
+		{
+			name = "KnownLevels without any tile (no index, or after Clear) is an empty array",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local levels = C().KnownLevels()
+
+				expect(type(levels)).to.equal("table")
+				expect(#levels).to.equal(0)
+
+				expect(store(tile("open", 0, 0))).to.beTrue()
+				expect(#C().KnownLevels()).to.equal(1)
+				expect(C().Clear()).to.beTrue()
+				expect(#C().KnownLevels()).to.equal(0)
+			end
+		},
+		{
+			-- fails if the levels of another key (another map) leak in, or a tile whose Store failed is listed
+			name = "KnownLevels lists only the current key, and not a tile whose Store failed",
+			func = function(state)
+				installVTF(state)
+				useKey(state, "test_mapb_55_v2")
+				expect(store(tile("other", 0, 0))).to.beTrue()
+
+				useKey(state, KEY_A)
+				expect(store(tile("mine", 0, 0))).to.beTrue()
+
+				state.failWrite = "disk full"
+				expect(C().Store(tile("failed", 0, 0), "x")).to.beFalse()
+
+				local levels = C().KnownLevels()
+
+				expect(#levels).to.equal(1)
+				expect(levels[1]).to.equal("mine")
+			end
+		},
+		-- Trim ------------------------------------------------------------------------------------------------------------------------
+		{
+			-- fails if Trim deletes something while the folder is under the limit
+			name = "Trim under the limit removes nothing and reports the size of the folder (.vtf + .vmt of the index)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {tile("a1", 1, 1), tile("a1", 2, 1), tile("a1", 3, 1)}
+
+				for _, t in ipairs(list) do
+					expect(store(t)).to.beTrue()
+				end
+
+				local r = C().Trim(1000000)
+
+				expect(r.removed).to.equal(0)
+				expect(r.bytes).to.equal(diskBytes(list))
+				expect(r.bytes).to.beGreaterThan(3 * 336) -- the .vmt files count too
+
+				for _, t in ipairs(list) do
+					expect(C().Has(t)).to.beTrue()
+				end
+			end
+		},
+		{
+			-- fails if Trim keeps the oldest, stops at the limit instead of 90 % of it, or leaves the index and the files out of step
+			name = "Trim over the limit removes the oldest tiles first, down to under 90 % of the limit, and keeps the index consistent",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {}
+
+				for i = 1, 5 do
+					list[i] = tile("a1", i, 1)
+					expect(store(list[i])).to.beTrue()
+				end
+
+				local before = diskBytes(list)
+				local limit = 1110
+				local r = C().Trim(limit)
+
+				expect(before).to.beGreaterThan(limit)
+				expect(r.removed).to.equal(3) -- 390 bytes a tile (336 of .vtf + 54 of .vmt): two are left (780 <= 999), three are not (1170 > 999)
+				expect(r.bytes).to.beLessThan(limit * 0.9 + 1)
+				expect(r.bytes).to.equal(diskBytes({list[4], list[5]}))
+
+				for i = 1, 3 do
+					expect(C().Has(list[i])).to.beFalse()
+					expect(file.Exists(C().Path(list[i]) .. ".vtf", "DATA")).to.beFalse()
+					expect(file.Exists(C().Path(list[i]) .. ".vmt", "DATA")).to.beFalse()
+				end
+
+				for i = 4, 5 do
+					expect(C().Has(list[i])).to.beTrue()
+					expect(file.Exists(C().Path(list[i]) .. ".vtf", "DATA")).to.beTrue()
+				end
+
+				expect(C().Count()).to.equal(2)
+
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(#idx.tiles).to.equal(2)
+
+				C().Reset()
+				expect(C().Count()).to.equal(2)
+				expect(C().Has(list[5])).to.beTrue()
+				expect(C().Has(list[1])).to.beFalse()
+			end
+		},
+		{
+			-- fails if the order is the order of writing instead of the last access (Has / Material count as an access)
+			name = "Trim removes the least recently used: a tile that was drawn (Has) after the others were written survives",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {}
+
+				for i = 1, 4 do
+					list[i] = tile("a1", i, 1)
+					expect(store(list[i])).to.beTrue()
+				end
+
+				expect(C().Has(list[1])).to.beTrue() -- the oldest written is now the youngest used
+
+				local r = C().Trim(1110) -- 4 x 390 = 1560 > 1110: two go (780 <= 999)
+
+				expect(r.removed).to.equal(2)
+				expect(C().Has(list[1])).to.beTrue()
+				expect(C().Has(list[4])).to.beTrue()
+				expect(C().Has(list[2])).to.beFalse()
+				expect(C().Has(list[3])).to.beFalse()
+			end
+		},
+		{
+			name = "Trim: a tile whose material was asked (Material) counts as used",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local list = {}
+
+				for i = 1, 4 do
+					list[i] = tile("a1", i, 1)
+					expect(store(list[i])).to.beTrue()
+				end
+
+				expect(C().Material(list[2]) ~= nil).to.beTrue()
+				expect(C().Trim(1110).removed).to.equal(2)
+
+				expect(C().Has(list[2])).to.beTrue()
+				expect(C().Has(list[4])).to.beTrue()
+				expect(C().Has(list[1])).to.beFalse()
+				expect(C().Has(list[3])).to.beFalse()
+			end
+		},
+		{
+			-- fails if the tile Store just wrote can be removed (the generator trims right after a Store)
+			name = "Trim never removes the tile that was written last, even when the limit is smaller than the folder of that tile alone",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {tile("a1", 1, 1), tile("a1", 2, 1), tile("a1", 3, 1)}
+
+				for _, t in ipairs(list) do
+					expect(store(t)).to.beTrue()
+				end
+
+				expect(C().Has(list[3])).to.beTrue()
+				expect(C().Has(list[1])).to.beTrue() -- list[1] is the last one USED, list[3] the last one WRITTEN
+
+				local r = C().Trim(1)
+
+				expect(r.removed).to.equal(2)
+				expect(C().Has(list[3])).to.beTrue()
+				expect(C().Has(list[1])).to.beFalse()
+				expect(C().Has(list[2])).to.beFalse()
+				expect(file.Exists(C().Path(list[3]) .. ".vtf", "DATA")).to.beTrue()
+				expect(r.bytes).to.equal(diskBytes({list[3]}))
+			end
+		},
+		{
+			-- fails if the loaded materials of the removed tiles are not forgotten (the engine would keep serving the deleted texture)
+			name = "Trim calls Forget on the tiles it removes (one Download for a loaded material)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local list = {}
+
+				for i = 1, 3 do
+					list[i] = tile("a1", i, 1)
+					expect(store(list[i])).to.beTrue()
+				end
+
+				expect(C().Material(list[1]) ~= nil).to.beTrue()
+				-- list[1] is the oldest WRITTEN, but make it the oldest USED: touch the two others afterwards
+				expect(C().Has(list[2])).to.beTrue()
+				expect(C().Has(list[3])).to.beTrue()
+
+				expect(C().Trim(740).removed).to.equal(2) -- 3 x 390 = 1170 > 740, one tile (390) is under 666
+				expect(state.downloads).to.equal(1)
+				expect(C().Has(list[1])).to.beFalse()
+			end
+		},
+		{
+			-- fails if the age of a tile is lost at a reload: without a time stamp in the session the time of the .vtf file decides
+			name = "Trim: for a tile not used in this session (index just loaded) the time of its .vtf decides, oldest first",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {tile("a1", 1, 1), tile("a1", 2, 1), tile("a1", 3, 1)}
+
+				for _, t in ipairs(list) do
+					expect(store(t)).to.beTrue()
+				end
+
+				local times = {}
+
+				times[C().Path(list[1]) .. ".vtf"] = 300
+				times[C().Path(list[2]) .. ".vtf"] = 100
+				times[C().Path(list[3]) .. ".vtf"] = 200
+
+				C().Reset() -- forgets the stamps of the session
+
+				file.Time = function(path, where)
+					return times[path] or state.origFile.Time(path, where)
+				end
+
+				local r = C().Trim(555) -- 1170 > 555, down to 500: only one tile (390) stays
+
+				expect(r.removed).to.equal(2)
+				expect(C().Has(list[1])).to.beTrue() -- the most recent file time
+				expect(C().Has(list[2])).to.beFalse()
+				expect(C().Has(list[3])).to.beFalse()
+			end
+		},
+		{
+			-- fails if the stamps of this session and the file times are mixed up (a file time is a date, a stamp is a counter)
+			name = "Trim: a tile used in this session is younger than any tile known only by the time of its file",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {tile("a1", 1, 1), tile("a1", 2, 1), tile("a1", 3, 1)}
+
+				for _, t in ipairs(list) do
+					expect(store(t)).to.beTrue()
+				end
+
+				local times = {}
+
+				times[C().Path(list[1]) .. ".vtf"] = 300
+				times[C().Path(list[2]) .. ".vtf"] = 100 -- oldest file...
+				times[C().Path(list[3]) .. ".vtf"] = 200
+
+				C().Reset()
+
+				file.Time = function(path, where)
+					return times[path] or state.origFile.Time(path, where)
+				end
+
+				expect(C().Has(list[2])).to.beTrue() -- ...but used just now
+
+				expect(C().Trim(555).removed).to.equal(2)
+				expect(C().Has(list[2])).to.beTrue()
+				expect(C().Has(list[3])).to.beFalse()
+				expect(C().Has(list[1])).to.beFalse()
+			end
+		},
+		{
+			-- fails if a bad limit is taken as "delete everything" (0) or as a number (inf, NaN, a string)
+			name = "Trim with a bad limit (nil, 0, negative, NaN, inf, string, table) returns nil, 'bad limit' and removes nothing",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local list = {tile("a1", 1, 1), tile("a1", 2, 1)}
+
+				for _, t in ipairs(list) do
+					expect(store(t)).to.beTrue()
+				end
+
+				for _, bad in ipairs({0, -5, 0 / 0, math.huge, "1000", true, {}}) do
+					local r, err = C().Trim(bad)
+
+					expect(r).to.beNil()
+					expect(err).to.equal("bad limit")
+				end
+
+				expect(C().Trim(nil)).to.beNil()
+
+				expect(C().Count()).to.equal(2)
+				expect(C().Has(list[1])).to.beTrue()
+				expect(C().Has(list[2])).to.beTrue()
+				expect(file.Exists(C().Path(list[1]) .. ".vtf", "DATA")).to.beTrue()
+			end
+		},
+		{
+			name = "Trim of an empty cache: nothing removed, 0 bytes",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local r = C().Trim(1000)
+
+				expect(r.removed).to.equal(0)
+				expect(r.bytes).to.equal(0)
+			end
+		},
+		-- Empty tiles (no file) -------------------------------------------------------------------------------------------------------
+		{
+			-- fails if StoreEmpty writes a file, or if the tile is not known afterwards
+			name = "StoreEmpty: the tile exists (Has, IsEmpty, Count) and no .vtf, no .vmt is written, no VTF call is made",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local e, n = tile("a1", 1, 1), tile("a1", 2, 1)
+
+				expect(C().IsEmpty(e)).to.beFalse()
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(store(n)).to.beTrue()
+
+				expect(C().Has(e)).to.beTrue()
+				expect(C().IsEmpty(e)).to.beTrue()
+				expect(C().Has(n)).to.beTrue()
+				expect(C().IsEmpty(n)).to.beFalse() -- a normal tile is not empty
+				expect(C().IsEmpty(tile("a1", 9, 9))).to.beFalse() -- an unknown tile is not empty either
+				expect(C().Count()).to.equal(2) -- both count
+
+				expect(#state.calls.write).to.equal(1) -- only the normal tile
+				expect(#state.calls.vmt).to.equal(1)
+				expect(file.Exists(C().Path(e) .. ".vtf", "DATA")).to.beFalse()
+				expect(file.Exists(C().Path(e) .. ".vmt", "DATA")).to.beFalse()
+			end
+		},
+		{
+			-- fails if the empty list is not written, or if the empty tile is also listed among the tiles that have a file
+			name = "StoreEmpty writes index.json: the name in `empty`, not in `tiles`; version stays 1",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local e, n = tile("a1", 1, 1), tile("a1", 2, 1)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(store(n)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(idx.version).to.equal(1)
+				expect(idx.key).to.equal(KEY_A)
+				expect(#idx.tiles).to.equal(1)
+				expect(idx.tiles[1]).to.equal(C().Name(n))
+				expect(#idx.empty).to.equal(1)
+				expect(idx.empty[1]).to.equal(C().Name(e))
+			end
+		},
+		{
+			-- the index of a cache with no empty tile does not carry an `empty` key at all (the old layout, byte for byte)
+			name = "an index without empty tiles has no `empty` list",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(store(tile("a1", 1, 1))).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(idx.empty).to.beNil()
+			end
+		},
+		{
+			-- fails if the empty tiles are only kept in memory
+			name = "empty tiles survive a new load of the index (Reset): Has, IsEmpty, Count",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local e, n = tile("a1", 1, 1), tile("a2", 2, 2)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(store(n)).to.beTrue()
+				expect(C().Flush()).to.beTrue() -- the empty tiles exist only in the index file
+
+				C().Reset()
+
+				expect(C().Has(e)).to.beTrue()
+				expect(C().IsEmpty(e)).to.beTrue()
+				expect(C().IsEmpty(n)).to.beFalse()
+				expect(C().Count()).to.equal(2)
+			end
+		},
+		{
+			-- an index written before the empty tiles existed must read as before
+			name = "an index file without `empty` (the old layout) loads as before, with no empty tile",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local n = tile("a1", 1, 1)
+
+				expect(store(n)).to.beTrue()
+				file.Write(ROOT .. KEY_A .. "/index.json", util.TableToJSON({version = 1, key = KEY_A, tiles = {C().Name(n)}}))
+				C().Reset()
+
+				expect(C().Has(n)).to.beTrue()
+				expect(C().IsEmpty(n)).to.beFalse()
+				expect(C().Count()).to.equal(1)
+			end
+		},
+		{
+			-- fails if names of the empty list are trusted without the same check as the others
+			name = "a damaged `empty` list (strange names, numbers, a table that is not a list) is ignored without error",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local good = tile("a1", 1, 1)
+				local path = ROOT .. KEY_A .. "/index.json"
+
+				mkdirs(path) -- no tile at all in the directory: only the index says what is there
+
+				file.Write(path, util.TableToJSON({version = 1, key = KEY_A, tiles = {}, empty = {"../../evil", 12, C().Name(good), C().Name(good), "t_no_res_here"}}))
+				C().Reset()
+				expect(C().Count()).to.equal(1) -- only the good name, once
+				expect(C().IsEmpty(good)).to.beTrue()
+
+				file.Write(path, util.TableToJSON({version = 1, key = KEY_A, tiles = {}, empty = "not a list"}))
+				C().Reset()
+				expect(C().Count()).to.equal(0)
+
+				file.Write(path, util.TableToJSON({version = 1, key = KEY_A, tiles = {}, empty = 12}))
+				C().Reset()
+				expect(C().Count()).to.equal(0)
+			end
+		},
+		{
+			-- fails if StoreEmpty accepts anything as a tile
+			name = "StoreEmpty refuses a bad tile (false, reason) and writes nothing",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local ok, err = C().StoreEmpty({level = "a1", tx = 0, ty = 0, res = 1000, ppm = 4})
+
+				expect(ok).to.beFalse()
+				expect(type(err)).to.equal("string")
+				expect(C().StoreEmpty(nil)).to.beFalse()
+				expect(C().StoreEmpty("a1")).to.beFalse()
+				expect(C().Count()).to.equal(0)
+				expect(file.Exists(ROOT .. KEY_A .. "/index.json", "DATA")).to.beFalse()
+			end
+		},
+		{
+			name = "StoreEmpty twice for the same tile: one entry in the index, Count stays 1",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local e = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().Count()).to.equal(1)
+				expect(C().Flush()).to.beTrue()
+
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(#idx.empty).to.equal(1)
+			end
+		},
+		{
+			-- fails if Material tries to load a material for a tile that has no file (an error material by name would be cached by the engine)
+			name = "Material of an empty tile is nil, without any engine call and without error",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local e = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().Material(e)).to.beNil()
+				expect(C().Material(e)).to.beNil()
+				expect(#state.loads).to.equal(0)
+			end
+		},
+		{
+			name = "Forget of an empty tile does nothing (no Download, no error)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local e = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				C().Forget(e)
+
+				expect(state.downloads).to.equal(0)
+				expect(#state.loads).to.equal(0)
+				expect(C().Has(e)).to.beTrue()
+			end
+		},
+		{
+			-- fails if the empty tile stays marked empty after a real Store, or if its list entry stays
+			name = "a normal Store for a tile marked empty makes it a normal tile (files written, not empty, one entry)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local t = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(t)).to.beTrue()
+				expect(store(t)).to.beTrue()
+
+				expect(C().IsEmpty(t)).to.beFalse()
+				expect(C().Has(t)).to.beTrue()
+				expect(C().Count()).to.equal(1)
+				expect(file.Exists(C().Path(t) .. ".vtf", "DATA")).to.beTrue()
+				expect(file.Exists(C().Path(t) .. ".vmt", "DATA")).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(#idx.tiles).to.equal(1)
+				expect(idx.empty).to.beNil()
+
+				C().Reset()
+				expect(C().IsEmpty(t)).to.beFalse()
+				expect(C().Has(t)).to.beTrue()
+			end
+		},
+		{
+			-- fails if the files of the tile stay on the disk (they would be orphans the index no longer lists), or if the loaded material is not forgotten
+			name = "StoreEmpty over a normal tile deletes its files, forgets its material (one Download) and marks it empty",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+				installMaterial(state)
+
+				local t = tile("a1", 1, 1)
+
+				expect(store(t)).to.beTrue()
+				expect(C().Material(t) ~= nil).to.beTrue()
+
+				expect(C().StoreEmpty(t)).to.beTrue()
+
+				expect(file.Exists(C().Path(t) .. ".vtf", "DATA")).to.beFalse()
+				expect(file.Exists(C().Path(t) .. ".vmt", "DATA")).to.beFalse()
+				expect(state.downloads).to.equal(1)
+				expect(C().IsEmpty(t)).to.beTrue()
+				expect(C().Has(t)).to.beTrue()
+				expect(C().Count()).to.equal(1)
+				expect(C().Material(t)).to.beNil()
+				expect(C().Flush()).to.beTrue()
+
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(#idx.tiles).to.equal(0)
+				expect(#idx.empty).to.equal(1)
+
+				C().Reset()
+				expect(C().IsEmpty(t)).to.beTrue()
+			end
+		},
+		{
+			-- fails if a failed Store over an empty tile leaves files behind or loses the empty mark
+			name = "a failing Store over an empty tile leaves it empty, with no file",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local t = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(t)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+
+				state.failVMT = "no vmt" -- the .vtf is written, then the .vmt fails
+
+				expect(C().Store(t, "x")).to.beFalse()
+				expect(C().IsEmpty(t)).to.beTrue()
+				expect(C().Has(t)).to.beTrue()
+				expect(file.Exists(C().Path(t) .. ".vtf", "DATA")).to.beFalse()
+
+				C().Reset()
+				expect(C().IsEmpty(t)).to.beTrue()
+			end
+		},
+		{
+			-- fails if the levels that only have empty tiles are missing (Floors would generate them again)
+			name = "KnownLevels also lists a level that has only empty tiles",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(C().StoreEmpty(tile("open", 0, 0))).to.beTrue()
+				expect(C().StoreEmpty(tile("fn96tn8", -1, -1))).to.beTrue()
+				expect(store(tile("f96t184", 1, 1))).to.beTrue()
+
+				local levels = C().KnownLevels()
+
+				expect(#levels).to.equal(3)
+				expect(levels[1]).to.equal("f96t184")
+				expect(levels[2]).to.equal("fn96tn8")
+				expect(levels[3]).to.equal("open")
+
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+				expect(#C().KnownLevels()).to.equal(3)
+			end
+		},
+		{
+			-- fails if the empty tiles take part in the size (they have 0 bytes) or are removed (it would free nothing and lose the knowledge)
+			name = "Trim does not count the empty tiles (0 bytes) and keeps them while it removes the normal ones",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local normals, empties = {}, {}
+
+				for i = 1, 4 do
+					empties[i] = tile("a1", i, 5)
+					expect(C().StoreEmpty(empties[i])).to.beTrue()
+				end
+
+				for i = 1, 4 do
+					normals[i] = tile("a1", i, 1)
+					expect(store(normals[i])).to.beTrue()
+				end
+
+				local before = diskBytes(normals)
+				local r = C().Trim(1110) -- 4 x 390 = 1560 > 1110: two normal tiles go (780 <= 999)
+
+				expect(before).to.beGreaterThan(1110)
+				expect(r.removed).to.equal(2)
+				expect(r.bytes).to.equal(diskBytes({normals[3], normals[4]}))
+
+				for i = 1, 4 do
+					expect(C().Has(empties[i])).to.beTrue()
+					expect(C().IsEmpty(empties[i])).to.beTrue()
+				end
+
+				expect(C().Count()).to.equal(6)
+
+				C().Reset()
+				expect(C().Count()).to.equal(6)
+			end
+		},
+		{
+			name = "Trim of a cache with only empty tiles: nothing removed, 0 bytes",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(C().StoreEmpty(tile("a1", 1, 1))).to.beTrue()
+				expect(C().StoreEmpty(tile("a1", 2, 1))).to.beTrue()
+
+				local r = C().Trim(1)
+
+				expect(r.removed).to.equal(0)
+				expect(r.bytes).to.equal(0)
+				expect(C().Count()).to.equal(2)
+			end
+		},
+		{
+			-- fails if Clear leaves the empty tiles of the key (in memory or in the index file)
+			name = "Clear removes the empty tiles of the key too (memory and index file)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local e = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().Clear()).to.beTrue()
+				expect(C().Has(e)).to.beFalse()
+				expect(C().IsEmpty(e)).to.beFalse()
+				expect(C().Count()).to.equal(0)
+				expect(file.Exists(ROOT .. KEY_A .. "/index.json", "DATA")).to.beFalse()
+
+				C().Reset()
+				expect(C().Has(e)).to.beFalse()
+			end
+		},
+		{
+			-- fails if a cache directory that holds only an index (all empty tiles) is not removed by Prune
+			name = "Prune removes a stale key whose only content is an index of empty tiles, and spares the current key",
+			func = function(state)
+				installVTF(state)
+
+				local e = tile("a1", 1, 1)
+
+				useKey(state, "test_mapa_100_v1")
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+
+				useKey(state, KEY_A)
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+
+				expect(C().Prune()).to.equal(1)
+				expect(file.Exists(ROOT .. "test_mapa_100_v1/index.json", "DATA")).to.beFalse()
+				expect(file.Exists(ROOT .. KEY_A .. "/index.json", "DATA")).to.beTrue()
+				expect(C().IsEmpty(e)).to.beTrue()
+			end
+		},
+		{
+			-- the empty tile is a use too: Trim's order does not depend on it, but Has must stay true after any number of calls
+			name = "Has of an empty tile works from memory (no file call) once the index is loaded",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local e = tile("a1", 1, 1)
+
+				expect(C().StoreEmpty(e)).to.beTrue()
+				C().Has(e)
+
+				local touched = 0
+
+				for name in pairs(state.origFile) do
+					file[name] = function(...)
+						touched = touched + 1
+
+						return state.origFile[name](...)
+					end
+				end
+
+				for _ = 1, 100 do
+					C().Has(e)
+					C().IsEmpty(e)
+				end
+
+				expect(touched).to.equal(0)
+			end
+		},
+		-- The index in batches (Flush) --------------------------------------------------------------------------------------------------
+		{
+			-- fails if the index is written at every Store (O(n^2) for hundreds of tiles) or never without Flush
+			name = "the index is written every 16 changes, not at every Store; Flush writes it at once and writes nothing when it is clean",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local indexWrites = 0
+
+				file.Write = function(path, content)
+					if string.find(path, "index.json", 1, true) then
+						indexWrites = indexWrites + 1
+					end
+
+					return state.origFile.Write(path, content)
+				end
+
+				local path = ROOT .. KEY_A .. "/index.json"
+
+				expect(C().FLUSH_EVERY).to.equal(16)
+
+				for i = 1, 15 do
+					expect(store(tile("a1", i, 0))).to.beTrue()
+				end
+
+				expect(indexWrites).to.equal(0)
+				expect(file.Exists(path, "DATA")).to.beFalse()
+
+				expect(store(tile("a1", 16, 0))).to.beTrue() -- the 16th change
+				expect(indexWrites).to.equal(1)
+				expect(#util.JSONToTable(file.Read(path, "DATA")).tiles).to.equal(16)
+
+				for i = 17, 19 do
+					expect(store(tile("a1", i, 0))).to.beTrue()
+				end
+
+				expect(indexWrites).to.equal(1)
+				expect(#util.JSONToTable(file.Read(path, "DATA")).tiles).to.equal(16) -- still the old one
+
+				expect(C().Flush()).to.beTrue()
+				expect(indexWrites).to.equal(2)
+				expect(#util.JSONToTable(file.Read(path, "DATA")).tiles).to.equal(19)
+
+				expect(C().Flush()).to.beTrue() -- clean: nothing to write
+				expect(indexWrites).to.equal(2)
+
+				for i = 20, 40 do
+					expect(store(tile("a1", i, 0))).to.beTrue()
+				end
+
+				expect(indexWrites).to.equal(3) -- 16 more changes since the Flush: one write (tile 35), not 21
+			end
+		},
+		{
+			name = "Flush without any change, or before anything was loaded, is true and writes nothing",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(C().Flush()).to.beTrue()
+				expect(file.Exists(ROOT .. KEY_A .. "/index.json", "DATA")).to.beFalse()
+			end
+		},
+		{
+			-- fails if a failed write is taken for a success because an older index.json exists (the check was only "does the file exist")
+			name = "Flush checks what was written: a write that does nothing or truncates is reported (false, reason), the index stays dirty and a later Flush works",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(store(tile("a1", 1, 0))).to.beTrue()
+				expect(C().Flush()).to.beTrue() -- an index.json exists now
+				expect(store(tile("a1", 2, 0))).to.beTrue()
+
+				file.Write = function() end -- the write silently fails: the old index.json is still there
+
+				local ok, err = C().Flush()
+
+				expect(ok).to.beFalse()
+				expect(type(err)).to.equal("string")
+
+				file.Write = function(path)
+					state.origFile.Write(path, "x") -- truncated
+				end
+
+				expect(C().Flush()).to.beFalse()
+
+				file.Write = state.origFile.Write
+
+				expect(C().Flush()).to.beTrue() -- still dirty: written now
+				C().Reset()
+				expect(C().Count()).to.equal(2)
+				expect(util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA")).tiles[2]).to.equal(C().Name(tile("a1", 2, 0)))
+			end
+		},
+		{
+			-- fails if a Store whose periodic index write fails is reported as a failure (the tile is on the disk and will be adopted)
+			name = "a periodic index write that fails does not make Store fail: the tile is on the disk and found again at the next load",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local indexWrite = function() end
+
+				file.Write = function(path, content)
+					if string.find(path, "index.json", 1, true) then
+						return indexWrite(path, content)
+					end
+
+					return state.origFile.Write(path, content)
+				end
+
+				for i = 1, 16 do
+					expect(store(tile("a1", i, 0))).to.beTrue()
+				end
+
+				expect(file.Exists(ROOT .. KEY_A .. "/index.json", "DATA")).to.beFalse() -- the write did nothing
+
+				C().Reset()
+				expect(C().Count()).to.equal(16)
+			end
+		},
+		{
+			-- fails if a tile written since the last index write is lost at a load (the index is rebuilt from the directory)
+			name = "a .vtf the index does not list (Stores since the last write, a crash, no index at all) is adopted at load, and the index is written again",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				for i = 1, 3 do
+					expect(store(tile("a1", i, 0))).to.beTrue()
+				end
+
+				local path = ROOT .. KEY_A .. "/index.json"
+
+				expect(file.Exists(path, "DATA")).to.beFalse() -- never written
+
+				C().Reset()
+
+				expect(C().Count()).to.equal(3)
+
+				for i = 1, 3 do
+					expect(C().Has(tile("a1", i, 0))).to.beTrue()
+				end
+
+				expect(file.Exists(path, "DATA")).to.beTrue() -- the load wrote the rebuilt index
+				expect(#util.JSONToTable(file.Read(path, "DATA")).tiles).to.equal(3)
+			end
+		},
+		{
+			-- fails if the empty tiles are lost when only some of the .vtf files are listed (they exist only in the index)
+			name = "the rebuild keeps the empty tiles of the index and adopts the .vtf files written after it",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local a, e, b = tile("a1", 1, 0), tile("a1", 2, 0), tile("a1", 3, 0)
+
+				expect(store(a)).to.beTrue()
+				expect(C().StoreEmpty(e)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+				expect(store(b)).to.beTrue() -- after the last write of the index
+
+				C().Reset()
+
+				expect(C().Count()).to.equal(3)
+				expect(C().Has(a)).to.beTrue()
+				expect(C().Has(b)).to.beTrue()
+				expect(C().IsEmpty(e)).to.beTrue()
+				expect(C().IsEmpty(b)).to.beFalse()
+			end
+		},
+		{
+			-- a tile that was made empty in memory but whose index was not written: the files are gone, so it is simply unknown (made again), never a ghost
+			name = "StoreEmpty over a tile with files, then a reload before any Flush: no ghost tile (the files are gone, the tile is made again)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local t = tile("a1", 1, 0)
+
+				expect(store(t)).to.beTrue()
+				expect(C().Flush()).to.beTrue()
+				expect(C().StoreEmpty(t)).to.beTrue()
+
+				C().Reset()
+
+				expect(C().Has(t)).to.beFalse()
+				expect(C().Count()).to.equal(0)
+			end
+		},
+		{
+			-- fails if the load asks the disk once for each tile (a file.Exists a tile) instead of listing the directory once
+			name = "the load lists the directory with one file.Find and asks no file.Exists",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				for i = 1, 8 do
+					expect(store(tile("a1", i, 0))).to.beTrue()
+				end
+
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+
+				local counts = {}
+
+				spyFile(state, counts)
+
+				expect(C().Count()).to.equal(8)
+				expect(counts.Find).to.equal(1)
+				expect(counts.Exists).to.equal(0)
+			end
+		},
+		-- File size of a tile --------------------------------------------------------------------------------------------------------
+		{
+			-- fails if only the existence of the file is checked: a truncated .vtf would be given to the engine
+			name = "a tile whose .vtf has the wrong size (truncated, too long) is dropped at load and its files are deleted, listed in the index or not",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local good, short, long, orphan = tile("a1", 1, 0), tile("a1", 2, 0), tile("a1", 3, 0), tile("a1", 4, 0)
+
+				expect(store(good)).to.beTrue()
+
+				state.vtfSize = vtfSizeFor(16) - 1
+				expect(store(short)).to.beTrue()
+				state.vtfSize = vtfSizeFor(16) + 1
+				expect(store(long)).to.beTrue()
+
+				expect(C().Flush()).to.beTrue() -- the first three are listed
+
+				state.vtfSize = 5
+				expect(store(orphan)).to.beTrue() -- not listed: found by the directory listing
+
+				C().Reset()
+
+				expect(C().Has(good)).to.beTrue()
+				expect(C().Has(short)).to.beFalse()
+				expect(C().Has(long)).to.beFalse()
+				expect(C().Has(orphan)).to.beFalse()
+				expect(C().Count()).to.equal(1)
+
+				for _, t in ipairs({short, long, orphan}) do
+					expect(file.Exists(C().Path(t) .. ".vtf", "DATA")).to.beFalse()
+				end
+
+				-- written again: the index no longer lists the dropped ones
+				local idx = util.JSONToTable(file.Read(ROOT .. KEY_A .. "/index.json", "DATA"))
+
+				expect(#idx.tiles).to.equal(1)
+			end
+		},
+		{
+			-- fails if the expected size is wrong for a resolution: 512 -> 131072 + 208, 1024 -> 524288 + 208 in DXT1 / DXT1A, and 4 bytes a pixel in BGRA
+			name = "the sizes a file must have: DXT1 for 512 (131072 + 208) and 1024 (524288 + 208), BGRA for 16 (1024 + 208) are accepted, anything near is not",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				expect(vtfSizeFor(512)).to.equal(131072 + 208) -- the test's own figures
+				expect(vtfSizeFor(1024)).to.equal(524288 + 208)
+				expect(vtfSizeFor(16, true)).to.equal(1024 + 208)
+
+				local t512, t1024, bgra, off = tile("a1", 1, 0, 512, 1), tile("a1", 2, 0, 1024, 4), tile("a1", 3, 0, 16, 4), tile("a1", 4, 0, 512, 1)
+
+				expect(store(t512)).to.beTrue()
+				expect(store(t1024)).to.beTrue()
+
+				state.vtfSize = vtfSizeFor(16, true)
+				expect(C().Store(bgra, "x", 12)).to.beTrue()
+
+				state.vtfSize = 131072 + 208 + 8 -- one more block of 8 bytes
+				expect(store(off)).to.beTrue()
+
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+
+				expect(C().Has(t512)).to.beTrue()
+				expect(C().Has(t1024)).to.beTrue()
+				expect(C().Has(bgra)).to.beTrue()
+				expect(C().Has(off)).to.beFalse()
+			end
+		},
+		-- Trim without disk calls -----------------------------------------------------------------------------------------------------
+		{
+			-- fails if Trim asks the disk for the size of each tile (3 calls a tile before): the sizes are remembered at Store
+			name = "Trim counts from the remembered sizes: no file.Size, file.Exists, file.Find or file.Time call when every tile was used in this session",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				for i = 1, 6 do
+					expect(store(tile("a1", i, 1))).to.beTrue()
+				end
+
+				local counts = {}
+
+				spyFile(state, counts)
+
+				local r = C().Trim(1110) -- 6 x 390 = 2340 > 1110: down to 999 means 2 tiles left (780)
+
+				expect(r.removed).to.equal(4)
+				expect(r.bytes).to.equal(780)
+				expect(counts.Size).to.equal(1) -- the one that checks what the index write put on the disk; nothing for the tiles
+				expect(counts.Exists).to.equal(0)
+				expect(counts.Find).to.equal(0)
+				expect(counts.Time).to.equal(0)
+			end
+		},
+		{
+			name = "Trim after a reload: the sizes were read once at load (no file.Size during Trim); only the file time is asked for the unused tiles",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				for i = 1, 4 do
+					expect(store(tile("a1", i, 1))).to.beTrue()
+				end
+
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+				expect(C().Count()).to.equal(4)
+
+				local counts = {}
+
+				spyFile(state, counts)
+
+				local r = C().Trim(1110)
+
+				expect(r.removed).to.equal(2)
+				expect(r.bytes).to.equal(780)
+				expect(counts.Size).to.equal(1) -- the check of the index write only
+				expect(counts.Time).to.equal(4)
+			end
+		},
+		-- Name memo --------------------------------------------------------------------------------------------------------------------
+		{
+			-- fails if Name builds its strings again at every call (about 8 strings a call): 10000 Has would cost hundreds of KB
+			name = "Has of a known tile allocates nothing: 10000 calls make the memory grow by less than 2 KB (the collector is stopped, so garbage counts)",
+			func = function(state)
+				useKey(state, KEY_A)
+				installVTF(state)
+
+				local t, missing = tile("a1", 3, -2, 1024, 3), tile("a1", 9, 9, 1024, 3)
+
+				expect(store(t)).to.beTrue()
+				expect(C().Has(t)).to.beTrue() -- the first call loads the index and memoises the name
+				expect(C().Has(missing)).to.beFalse()
+
+				-- warm-up: the JIT compiles its traces (they are objects of the collector too) before the measure starts
+				for _ = 1, 3000 do
+					C().Has(t)
+					C().Has(missing)
+				end
+
+				collectgarbage("collect")
+				collectgarbage("stop")
+
+				-- two windows of 10000 calls (the collector stopped): the first absorbs what the JIT and the test runner still allocate once (a few KB at most),
+				-- the second is the steady state that is asserted. A name built again at every call would cost about 8 strings a call, hundreds of KB a window.
+				local drifts = {}
+
+				for w = 1, 2 do
+					local before = collectgarbage("count")
+
+					for _ = 1, 10000 do
+						C().Has(t)
+						C().Has(missing)
+					end
+
+					drifts[w] = collectgarbage("count") - before
+				end
+
+				collectgarbage("restart")
+
+				expect(drifts[1]).to.beLessThan(16)
+				expect(drifts[2]).to.beLessThan(2)
+			end
+		},
+		{
+			-- fails if the memo is keyed on the table of the tile instead of its fields (a reused table with other values), or serves a name for an invalid tile
+			name = "Name memo: a tile table reused with other fields gets the right name, an invalid one still gets nil, equal tiles in two tables share one name",
+			func = function()
+				local t = tile("a1", 3, 4, 1024, 3)
+				local first = C().Name(t)
+
+				expect(first).to.equal("t_a1_3_4_1024_3")
+				expect(C().Name(t)).to.equal(first)
+
+				t.tx = -5
+				expect(C().Name(t)).to.equal("t_a1_n5_4_1024_3")
+
+				t.tx = 3
+				t.level = "b2"
+				expect(C().Name(t)).to.equal("t_b2_3_4_1024_3")
+
+				t.level = "a1"
+				t.ppm = 2.5
+				expect(C().Name(t)).to.equal("t_a1_3_4_1024_2p5")
+
+				t.ppm = 3
+				t.res = 1000
+				expect(C().Name(t)).to.beNil() -- a valid tile with this level and tx was memoised: the memo must not answer for res 1000
+				t.res = 1024
+				t.ty = nil
+				expect(C().Name(t)).to.beNil()
+				t.ty = 0 / 0
+				expect(C().Name(t)).to.beNil()
+
+				expect(C().Name(tile("a1", 3, 4, 1024, 3))).to.equal(first)
+			end
+		},
 		-- real VTF module (owned by another agent) ------------------------------------------------------------------------------------
 		{
 			-- skipped while the VTF module is not there; then it runs for real: the engine must accept the file the module wrote
 			name = "integration with the REAL VTF module: Store of a hand-made DXT1 16x16, then Material is not nil and not an error",
 			skip = not (GryMod.Minimap.VTF and GryMod.Minimap.VTF.Write and GryMod.Minimap.VTF.WriteVMT),
 			func = function(state)
-				useKey(state, "test_integration_1_v1")
+				useKey(state, "test_integration_1_v2")
 
 				-- 16x16 pixels = 4 x 4 blocks of 8 bytes: end points white (0xFFFF) and black (0x0000), all indices 0 (= white)
 				local data = string.rep("\255\255\0\0\0\0\0\0", 16)
@@ -1143,6 +2612,34 @@ return {
 
 				expect(mat ~= nil).to.beTrue()
 				expect(mat:IsError()).to.beFalse()
+
+				-- the file the real module wrote has the size the cache expects of a file of this resolution: a new load keeps the tile
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+				expect(C().Has(t)).to.beTrue()
+			end
+		},
+		{
+			-- same with the alpha format (20): the real VTF module must write a file the engine loads
+			name = "integration with the REAL VTF module: Store with format 20 (DXT1 with alpha), then Material is not nil and not an error",
+			skip = not (GryMod.Minimap.VTF and GryMod.Minimap.VTF.Write and GryMod.Minimap.VTF.WriteVMT and GryMod.Minimap.VTF.FORMAT_DXT1A == 20),
+			func = function(state)
+				useKey(state, "test_integration_1_v2")
+
+				-- 3-colour mode (c0 <= c1): all 16 blocks are index 3 = transparent black, and index 0 pixels are the colour c0
+				local data = string.rep("\0\0\255\255\0\0\0\255", 16)
+				local t = tile("a1", math.random(10000, 99999), -math.random(1, 9999), 16, 4)
+
+				expect(C().Store(t, data, 20)).to.beTrue()
+
+				local mat = C().Material(t)
+
+				expect(mat ~= nil).to.beTrue()
+				expect(mat:IsError()).to.beFalse()
+
+				expect(C().Flush()).to.beTrue()
+				C().Reset()
+				expect(C().Has(t)).to.beTrue() -- the size of the real file passes the check of the load
 			end
 		}
 	}

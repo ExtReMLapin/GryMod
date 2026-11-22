@@ -14,7 +14,7 @@ local function hex(s)
 end
 
 -- The reference header of a VTF 7.2 file as the engine reads it, field by field (offset in the comment), for the three shapes the tests check.
-local function reference(widthHex, heightHex, formatHex)
+local function reference(widthHex, heightHex, formatHex, flagsHex)
 	return hex(
 		"56 54 46 00" .. -- 0: "VTF\0"
 		"07 00 00 00" .. -- 4: major version 7
@@ -22,7 +22,7 @@ local function reference(widthHex, heightHex, formatHex)
 		"50 00 00 00" .. -- 12: header size 80
 		widthHex .. -- 16: width (u16)
 		heightHex .. -- 18: height (u16)
-		"0C 03 00 00" .. -- 20: flags CLAMPS 0x4 + CLAMPT 0x8 + NOMIP 0x100 + NOLOD 0x200
+		(flagsHex or "0C 03 00 00") .. -- 20: flags CLAMPS 0x4 + CLAMPT 0x8 + NOMIP 0x100 + NOLOD 0x200 (+ ONEBITALPHA 0x1000 for format 20)
 		"01 00" .. -- 24: frames
 		"00 00" .. -- 26: first frame
 		"00 00 00 00" .. -- 28: padding
@@ -39,10 +39,11 @@ local function reference(widthHex, heightHex, formatHex)
 	)
 end
 
-local BGRA, DXT1 = "0C 00 00 00", "0D 00 00 00"
+local BGRA, DXT1, DXT1A = "0C 00 00 00", "0D 00 00 00", "14 00 00 00"
 local REF_4x4_BGRA = reference("04 00", "04 00", BGRA)
 local REF_64x64_BGRA = reference("40 00", "40 00", BGRA)
 local REF_1024_DXT1 = reference("00 04", "00 04", DXT1)
+local REF_16_DXT1A = reference("10 00", "10 00", DXT1A, "0C 13 00 00")
 local THUMBNAIL = string.rep(hex("10 84 10 84 00 00 00 00"), 16)
 
 local function bgraData(w, h)
@@ -127,6 +128,26 @@ local function cornerImageDXT1()
 	return table.concat(blocks)
 end
 
+-- 16x16 DXT1A: block 0 solid red (4-colour mode), blocks 1 and 15 fully transparent (3-colour mode: c0 <= c1, every index 3 = transparent black),
+-- block 5 half transparent (3-colour mode, green end points, indices alternate 0 and 3), the others solid black
+local function cornerImageDXT1A()
+	local blocks = {}
+
+	for i = 0, 15 do
+		if i == 0 then
+			blocks[#blocks + 1] = hex("00 F8 00 F8 00 00 00 00")
+		elseif i == 1 or i == 15 then
+			blocks[#blocks + 1] = hex("00 00 00 00 FF FF FF FF")
+		elseif i == 5 then
+			blocks[#blocks + 1] = hex("E0 07 E0 07 CC CC CC CC")
+		else
+			blocks[#blocks + 1] = hex("00 00 00 00 00 00 00 00")
+		end
+	end
+
+	return table.concat(blocks)
+end
+
 return {
 	groupName = "GryMod minimap VTF",
 	beforeEach = function(state)
@@ -164,6 +185,27 @@ return {
 			end
 		},
 		{
+			-- fails if format 20 keeps the flags 0x30C (no ONEBITALPHA 0x1000), or its format field is not 20 at offset 52
+			name = "Build: format 20 (DXT1A) has flags 0x130C and format 20 at offset 52, everything else of the header as before (16x16)",
+			func = function()
+				local out = V().Build(16, 16, 20, dxt1Data(16, 16))
+
+				expect(describeDiff(string.sub(out, 1, 80), REF_16_DXT1A)).to.equal("identical")
+				expect(u32(out, 20)).to.equal(0x130C)
+				expect(u32(out, 52)).to.equal(20)
+				expect(describeDiff(string.sub(out, 81, 208), THUMBNAIL)).to.equal("identical")
+				expect(#out).to.equal(80 + 128 + 128)
+			end
+		},
+		{
+			-- fails if the flags of the other formats change
+			name = "Build: formats 12 and 13 keep the flags 0x30C",
+			func = function()
+				expect(u32(V().Build(4, 4, 12, bgraData(4, 4)), 20)).to.equal(0x30C)
+				expect(u32(V().Build(4, 4, 13, dxt1Data(4, 4)), 20)).to.equal(0x30C)
+			end
+		},
+		{
 			-- fails if the thumbnail is missing, another size or another colour, or the data does not start at 80 + 128
 			name = "Build: the thumbnail is 128 bytes (16 DXT1 blocks of grey 0x8410, indices 0) and the image data follows it unchanged",
 			func = function()
@@ -189,6 +231,12 @@ return {
 					local dxt = V().Build(n, n, 13, dxt1Data(n, n))
 					expect(#dxt).to.equal(80 + 128 + n * n / 2)
 					expect(u32(dxt, 52)).to.equal(13)
+				end
+
+				for _, n in ipairs({4, 16, 64, 1024, 2048, 4096}) do
+					local dxta = V().Build(n, n, 20, dxt1Data(n, n))
+					expect(#dxta).to.equal(80 + 128 + n * n / 2)
+					expect(u32(dxta, 52)).to.equal(20)
 				end
 			end
 		},
@@ -233,6 +281,9 @@ return {
 					{4, 4, 12, "", "BGRA empty"},
 					{4, 4, 13, string.rep("\0", 7), "DXT1 one byte short"},
 					{4, 4, 13, string.rep("\0", 9), "DXT1 one byte too many"},
+					{4, 4, 20, string.rep("\0", 7), "DXT1A one byte short"},
+					{4, 4, 20, string.rep("\0", 9), "DXT1A one byte too many"},
+					{4, 4, 21, string.rep("\0", 8), "format 21 is unknown"},
 					{16, 16, 13, bgraData(16, 16), "DXT1 given the BGRA length"},
 					{4, 4, 12, nil, "data is nil"},
 					{4, 4, 12, 64, "data is a number"},
@@ -363,10 +414,10 @@ return {
 		},
 		{
 			-- fails if the VMT text differs by one character from what the engine cases below load
-			name = "VMTText: the exact text (UnlitGeneric, $basetexture, $vertexcolor 1, $vertexalpha 1, $nolod 1)",
+			name = "VMTText: the exact text (UnlitGeneric, $basetexture, $vertexcolor 1, $vertexalpha 1, $translucent 1, $nolod 1)",
 			func = function()
 				expect(V().VMTText("../data/grymod/minimap/test_vtf_a/t_a1_0_0_1024_3")).to.equal(
-					"\"UnlitGeneric\"\n{\n\t\"$basetexture\" \"../data/grymod/minimap/test_vtf_a/t_a1_0_0_1024_3\"\n\t\"$vertexcolor\" 1\n\t\"$vertexalpha\" 1\n\t\"$nolod\" 1\n}\n")
+					"\"UnlitGeneric\"\n{\n\t\"$basetexture\" \"../data/grymod/minimap/test_vtf_a/t_a1_0_0_1024_3\"\n\t\"$vertexcolor\" 1\n\t\"$vertexalpha\" 1\n\t\"$translucent\" 1\n\t\"$nolod\" 1\n}\n")
 			end
 		},
 		{
@@ -430,6 +481,18 @@ return {
 				expect(info2.format).to.equal(13)
 				expect(info2.dataOffset).to.equal(208)
 				expect(info2.dataLength).to.equal(524288)
+				expect(info2.flags).to.equal(0x30C)
+
+				local dxta = V().Build(256, 128, 20, dxt1Data(256, 128))
+				local info3, err3 = V().Parse(dxta)
+
+				expect(err3).to.beNil()
+				expect(info3.width).to.equal(256)
+				expect(info3.height).to.equal(128)
+				expect(info3.format).to.equal(20)
+				expect(info3.flags).to.equal(0x130C)
+				expect(info3.dataOffset).to.equal(208)
+				expect(info3.dataLength).to.equal(256 * 128 / 2)
 			end
 		},
 		{
@@ -543,6 +606,25 @@ return {
 
 				expect(tex:Width()).to.equal(16)
 				expect(tex:Height()).to.equal(16)
+			end
+		},
+		{
+			-- fails if format 20 (flags 0x130C, $translucent) is not loadable: the engine would return the error material
+			name = "engine: a hand-made 16x16 DXT1A VTF with transparent blocks (3-colour mode, index 3) + VMT loads, texture 16x16",
+			func = function(state)
+				local dir = uniqueDir()
+				state.dirs[#state.dirs + 1] = dir
+
+				local base = dir .. "/dxt1a"
+
+				expect(V().Write(base .. ".vtf", 16, 16, 20, cornerImageDXT1A())).to.beTrue()
+				expect(V().WriteVMT(base .. ".vmt", "../data/" .. base)).to.beTrue()
+
+				local mat = Material("../data/" .. base)
+
+				expect(mat:IsError()).to.beFalse()
+				expect(mat:GetTexture("$basetexture"):Width()).to.equal(16)
+				expect(mat:GetTexture("$basetexture"):Height()).to.equal(16)
 			end
 		},
 		{
