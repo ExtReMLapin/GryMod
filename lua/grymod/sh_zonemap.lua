@@ -16,6 +16,9 @@ ZM.RADIUS = 3
 ZM.CLASSES = {56, 88, 120, 160, 224, 320, 448}
 ZM.MAX_BOX = 255
 ZM.FORMAT_VERSION = 1
+-- the version in the NAME of the cache files (<map>_<bsp>_v<KEY_VERSION>.dat), not the format of the file: it goes up when the rule that makes the samples changes
+-- (2: a place is roofed when 3 of the 5 up rays hit a ceiling at 512 units or less), so that the files made with the old rule are never read again (they stay on disk)
+ZM.KEY_VERSION = 2
 
 local CELL, LAYER_H, RADIUS, CLASSES, MAX_BOX = ZM.CELL, ZM.LAYER_H, ZM.RADIUS, ZM.CLASSES, ZM.MAX_BOX
 
@@ -753,7 +756,7 @@ end
 -- Key
 -- ---------------------------------------------------------------------------------------------------------------------------------
 
--- Key(map, bspSize, source) -> "<map>_<bspSize>_v1": lower case, every byte outside a-z 0-9 _ - . replaced by "_" (a non string or empty map gives "unknown", a bad size 0).
+-- Key(map, bspSize, source) -> "<map>_<bspSize>_v2" (ZM.KEY_VERSION): lower case, every byte outside a-z 0-9 _ - . replaced by "_" (a non string or empty map gives "unknown", a bad size 0).
 -- `source` is optional: "navmesh" (the map made from the nav areas) appends "_navmesh"; nil, "nodes" and anything else give the key of the node files, unchanged.
 function ZM.Key(map, bspSize, source)
 	if type(map) ~= "string" or map == "" then
@@ -764,6 +767,6 @@ function ZM.Key(map, bspSize, source)
 		bspSize = 0
 	end
 
-	return string.gsub(string.lower(map), "[^a-z0-9_%-%.]", "_") .. "_" .. string.format("%d", floor(bspSize)) .. "_v" .. ZM.FORMAT_VERSION
+	return string.gsub(string.lower(map), "[^a-z0-9_%-%.]", "_") .. "_" .. string.format("%d", floor(bspSize)) .. "_v" .. ZM.KEY_VERSION
 		.. (source == "navmesh" and "_navmesh" or "")
 end

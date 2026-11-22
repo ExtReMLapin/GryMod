@@ -598,6 +598,18 @@ return {
 			expect(ZS.Stats().samples).to.equal(8)
 		end),
 
+		-- breaks if: the key version goes back to 1 (the files made with the old ceiling rule would be read again) for either source
+		case("the cache files carry the version 2 of the ceiling rule: <map>_<bsp>_v2_navmesh.dat for the navmesh and <map>_<bsp>_v2.dat for the nodes", function()
+			useFakes({area(0, 0, 300, 300, 50)}, nil)
+			ZS.RunNow()
+			expect(disk["grymod/zonemap/" .. MAPNAME .. "_" .. BSP .. "_v2_navmesh.dat"] ~= nil).to.beTrue()
+
+			useFakes(nil, graphOf(3))
+			setConvar("gry_zonemap_navmesh", "0")
+			ZS.RunNow()
+			expect(disk["grymod/zonemap/" .. MAPNAME .. "_" .. BSP .. "_v2.dat"] ~= nil).to.beTrue()
+		end),
+
 		-- ----------------------------------------------------------------------------------------------- the cap
 		-- breaks if: the cap is removed (60025 samples would be taken), or the cut is not flagged
 		case("the cap: more than 60000 samples keep the first 60000, flagged incomplete and over budget (state 5)", function()

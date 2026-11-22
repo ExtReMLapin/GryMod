@@ -1347,19 +1347,31 @@ return {
 			end
 		},
 		{
-			-- fails if the key is not "<map>_<size>_v1" lower case with the other bytes replaced by _
-			name = "Key: lower case <map>_<bspSize>_v1, bytes outside a-z 0-9 _ - . replaced by _",
+			-- fails if the key is not "<map>_<size>_v2" lower case with the other bytes replaced by _
+			name = "Key: lower case <map>_<bspSize>_v2, bytes outside a-z 0-9 _ - . replaced by _",
 			func = function()
 				local z = Z()
 
-				expect(z.Key("gm_funkis", 12345678)).to.equal("gm_funkis_12345678_v1")
-				expect(z.Key("GM_BigCity", 5)).to.equal("gm_bigcity_5_v1")
-				expect(z.Key("rp_a-b.c", 0)).to.equal("rp_a-b.c_0_v1")
-				expect(z.Key("a b/c\\d:e", 1)).to.equal("a_b_c_d_e_1_v1")
-				expect(z.Key("../x", 1)).to.equal(".._x_1_v1")
-				expect(z.Key("caf\195\169", 1)).to.equal("caf___1_v1")
-				expect(z.Key("a\0b", 1)).to.equal("a_b_1_v1")
-				expect(z.Key("gm_x", 4000000000)).to.equal("gm_x_4000000000_v1")
+				expect(z.Key("gm_funkis", 12345678)).to.equal("gm_funkis_12345678_v2")
+				expect(z.Key("GM_BigCity", 5)).to.equal("gm_bigcity_5_v2")
+				expect(z.Key("rp_a-b.c", 0)).to.equal("rp_a-b.c_0_v2")
+				expect(z.Key("a b/c\\d:e", 1)).to.equal("a_b_c_d_e_1_v2")
+				expect(z.Key("../x", 1)).to.equal(".._x_1_v2")
+				expect(z.Key("caf\195\169", 1)).to.equal("caf___1_v2")
+				expect(z.Key("a\0b", 1)).to.equal("a_b_1_v2")
+				expect(z.Key("gm_x", 4000000000)).to.equal("gm_x_4000000000_v2")
+			end
+		},
+		{
+			-- fails if the key version stays 1 (the files made with the old ceiling rule would be read again) or follows the file format version (the file format did not change)
+			name = "Key: the key version is 2 (the ceiling rule changed: every _v1 file is wrong) and is not the file format version, which stays 1",
+			func = function()
+				local z = Z()
+
+				expect(z.KEY_VERSION).to.equal(2)
+				expect(z.FORMAT_VERSION).to.equal(1)
+				expect(string.sub(z.Key("gm_x", 5), -3)).to.equal("_v2")
+				expect(string.sub(z.Key("gm_x", 5, "navmesh"), -11)).to.equal("_v2_navmesh")
 			end
 		},
 		{
@@ -1368,32 +1380,32 @@ return {
 			func = function()
 				local z = Z()
 
-				expect(z.Key(nil, 3)).to.equal("unknown_3_v1")
-				expect(z.Key(42, 3)).to.equal("unknown_3_v1")
-				expect(z.Key({}, 3)).to.equal("unknown_3_v1")
-				expect(z.Key("", 3)).to.equal("unknown_3_v1")
-				expect(z.Key("gm_x", nil)).to.equal("gm_x_0_v1")
-				expect(z.Key("gm_x", -5)).to.equal("gm_x_0_v1")
-				expect(z.Key("gm_x", 0 / 0)).to.equal("gm_x_0_v1")
-				expect(z.Key("gm_x", math.huge)).to.equal("gm_x_0_v1")
-				expect(z.Key("gm_x", "12")).to.equal("gm_x_0_v1")
-				expect(z.Key("gm_x", 7.9)).to.equal("gm_x_7_v1")
+				expect(z.Key(nil, 3)).to.equal("unknown_3_v2")
+				expect(z.Key(42, 3)).to.equal("unknown_3_v2")
+				expect(z.Key({}, 3)).to.equal("unknown_3_v2")
+				expect(z.Key("", 3)).to.equal("unknown_3_v2")
+				expect(z.Key("gm_x", nil)).to.equal("gm_x_0_v2")
+				expect(z.Key("gm_x", -5)).to.equal("gm_x_0_v2")
+				expect(z.Key("gm_x", 0 / 0)).to.equal("gm_x_0_v2")
+				expect(z.Key("gm_x", math.huge)).to.equal("gm_x_0_v2")
+				expect(z.Key("gm_x", "12")).to.equal("gm_x_0_v2")
+				expect(z.Key("gm_x", 7.9)).to.equal("gm_x_7_v2")
 			end
 		},
 		{
 			-- fails if the navmesh source does not add "_navmesh" to the key, if the nodes source (or none, or a word that is not a source) changes the old key, or if the
-			-- suffix is not added after the version (the node files of the owner stay valid under the same names)
-			name = "Key: the optional third parameter: \"navmesh\" appends _navmesh, nil, \"nodes\" and anything else give the old key exactly",
+			-- suffix is not added after the version
+			name = "Key: the optional third parameter: \"navmesh\" appends _navmesh, nil, \"nodes\" and anything else give the key of the node files exactly",
 			func = function()
 				local z = Z()
 
-				expect(z.Key("gm_funkis", 12345678, "navmesh")).to.equal("gm_funkis_12345678_v1_navmesh")
-				expect(z.Key("GM_BigCity", 5, "navmesh")).to.equal("gm_bigcity_5_v1_navmesh")
-				expect(z.Key(nil, nil, "navmesh")).to.equal("unknown_0_v1_navmesh")
-				expect(z.Key("gm_funkis", 12345678, nil)).to.equal("gm_funkis_12345678_v1")
-				expect(z.Key("gm_funkis", 12345678, "nodes")).to.equal("gm_funkis_12345678_v1")
-				expect(z.Key("gm_funkis", 12345678, "other")).to.equal("gm_funkis_12345678_v1")
-				expect(z.Key("gm_funkis", 12345678, 42)).to.equal("gm_funkis_12345678_v1")
+				expect(z.Key("gm_funkis", 12345678, "navmesh")).to.equal("gm_funkis_12345678_v2_navmesh")
+				expect(z.Key("GM_BigCity", 5, "navmesh")).to.equal("gm_bigcity_5_v2_navmesh")
+				expect(z.Key(nil, nil, "navmesh")).to.equal("unknown_0_v2_navmesh")
+				expect(z.Key("gm_funkis", 12345678, nil)).to.equal("gm_funkis_12345678_v2")
+				expect(z.Key("gm_funkis", 12345678, "nodes")).to.equal("gm_funkis_12345678_v2")
+				expect(z.Key("gm_funkis", 12345678, "other")).to.equal("gm_funkis_12345678_v2")
+				expect(z.Key("gm_funkis", 12345678, 42)).to.equal("gm_funkis_12345678_v2")
 				expect(z.Key("gm_funkis", 12345678, "navmesh") ~= z.Key("gm_funkis", 12345678)).to.beTrue()
 			end
 		},

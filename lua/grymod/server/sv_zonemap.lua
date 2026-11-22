@@ -48,7 +48,8 @@ local RESET_LIMIT, RESET_WINDOW = 1, 1
 -- the rays of a node: five up (the centre and four 48 units away along the world's X and Y), eight around
 local UP_START = 72 -- over the node
 local UP_LENGTH = 32768
-local MAX_RISE = 512 -- a ceiling higher than this over the node is the open sky
+local MAX_RISE = 512 -- a hit higher than this over the node is not a ceiling
+local MIN_CEILINGS = 3 -- the place is roofed when at least this many of the five up rays hit a ceiling
 local SIDE_HEIGHT = 36
 local SIDE_LENGTH = 1050 -- 20 m, the cap of a distance
 local NARROW_BELOW = 787.5 -- 15 m, the middle of the client's hysteresis (12 / 18 m)
@@ -197,12 +198,15 @@ for i = 1, 8 do
 end
 
 -- SampleNode(x, y, z) -> indoor, ceil. `indoor` is under a ceiling AND narrow; `ceil` is the class index of the ceiling (GryMod.ZoneMap.CeilIndex), 0 when open.
--- Under a ceiling: the HIGHEST of the five upward rays that hit the brushes (a side ray in the sky or in nothing is ignored; a centre ray in the sky or in
--- nothing means open and ends the sample, the rays around are not needed); a ceiling more than 512 over the node is open. Narrow: the median of the eight
--- distances (each capped at 20 m) is under 15 m, as the client's own probe.
+-- Under a ceiling: an upward ray "hits a ceiling" when it does not hit the sky, hits the brushes and the hit is 512 units or less over the node (measured from
+-- z); the place is roofed when at least 3 of the five rays hit a ceiling (a ray in the sky, in nothing or over 512 is simply "not a ceiling": a hole, a stairwell
+-- or a skylight on one or two rays does not make the place open). The height of the ceiling is the HIGHEST of the ceilings hit (a pipe or a lamp on one ray
+-- does not lower it). With fewer than 3 ceilings the place is open and ends the sample (class 0; the rays around are not needed, and the up rays that are
+-- left are not cast once 3 ceilings are out of reach). Narrow: the median of the eight distances (each capped at 20 m) is under 15 m, as the client's own probe.
 function ZS.SampleNode(x, y, z)
 	local trace = ZS.Trace
 	local ceiling
+	local misses = 0
 
 	for i = 1, 5 do
 		local params = upRays[i]
@@ -216,17 +220,16 @@ function ZS.SampleNode(x, y, z)
 		local hit = tr.HitPos
 		local hz = hit and hit.z
 
-		if tr.HitSky or not tr.Hit or not hz or hz - hz ~= 0 then
-			if i == 1 then
+		if tr.HitSky or not tr.Hit or not hz or hz - hz ~= 0 or hz - z > MAX_RISE then
+			misses = misses + 1
+
+			-- 3 ceilings of the 5 rays are out of reach: open
+			if misses > 5 - MIN_CEILINGS then
 				return false, 0
 			end
 		elseif not ceiling or hz > ceiling then
 			ceiling = hz
 		end
-	end
-
-	if not ceiling or ceiling - z > MAX_RISE then
-		return false, 0
 	end
 
 	-- eight distances, sorted by insertion in a table that is made once

@@ -37,7 +37,7 @@ local function makeStandIn()
 	end
 
 	function S.Key(map, size)
-		return string.lower(string.gsub(tostring(map), "[^a-zA-Z0-9_%-%.]", "_")) .. "_" .. tostring(size or 0) .. "_v1"
+		return string.lower(string.gsub(tostring(map), "[^a-zA-Z0-9_%-%.]", "_")) .. "_" .. tostring(size or 0) .. "_v2"
 	end
 
 	function S.Build(samples)
@@ -392,6 +392,29 @@ local function sampleOf(spec, x, y, z)
 	return ZS.SampleNode(x, y, z)
 end
 
+-- a ceiling spec for the five up rays, in the order of the module: the centre, +X (48, 0), -X (-48, 0), +Y (0, 48), -Y (0, -48). Each value is a height over the
+-- feet, "sky", or "none" (the ray hits nothing: it goes to 32768 units)
+local function raysOf(c, px, nx, py, ny)
+	return function(ox, oy)
+		local v
+
+		-- the offsets come from a subtraction of the real (fractional) coordinates: round them
+		ox, oy = math.floor(ox + 0.5), math.floor(oy + 0.5)
+
+		if oy == 0 then
+			v = ox == 0 and c or (ox == 48 and px or nx)
+		else
+			v = oy == 48 and py or ny
+		end
+
+		if v == "none" then
+			return nil
+		end
+
+		return v
+	end
+end
+
 local function countCalls(up)
 	local n = 0
 
@@ -580,7 +603,7 @@ return {
 				expect(ceil).to.equal(Z.CeilIndex(row[1]))
 			end
 		end),
-		case("a ceiling more than 512 units over the node is open (not indoor, class 0), 512 itself is not", function()
+		case("a ceiling more than 512 units over the node (on all five rays) is open (not indoor, class 0), 512 itself is not", function()
 			useFakes()
 
 			for _, h in ipairs({513, 600, 5000}) do
@@ -591,7 +614,8 @@ return {
 
 			expect((sampleOf({ceil = 512, wall = 300}, 0, 0, 100))).to.beTrue()
 		end),
-		case("the highest of the five ceilings counts; a side ray that sees the sky or nothing is ignored; a centre ray in the sky is open whatever the others see", function()
+		-- UPDATED to the "3 of 5" rule (was: "the highest of the five counts; a centre ray in the sky is open whatever the others see; a side ray above 512 is open")
+		case("the highest of the ceilings (at 512 or less) counts; the centre ray in the sky or a ray above 512 no longer make the place open when 3 rays see a ceiling", function()
 			useFakes()
 
 			-- the +X ray hits at 300: the highest, class of 300 (224 = 5)
@@ -599,22 +623,146 @@ return {
 			expect(ceil).to.equal(Z.CeilIndex(300))
 			expect(ceil).to.equal(5)
 
-			-- the sides see the sky or nothing: the centre's 150 counts (class 120 = 3)
-			_, ceil = sampleOf({ceil = function(ox, oy) return (ox == 0 and oy == 0) and 150 or "sky" end, wall = 300}, 0, 0, 100)
-			expect(ceil).to.equal(3)
-			_, ceil = sampleOf({ceil = function(ox, oy) return (ox == 0 and oy == 0) and 150 or nil end, wall = 300}, 0, 0, 100)
-			expect(ceil).to.equal(3)
-
-			-- the centre sees the sky, the sides a ceiling: open
+			-- the centre sees the sky, the four others a ceiling at 150: roofed, class 120 = 3 (before: open)
 			local indoor
-			indoor, ceil = sampleOf({ceil = function(ox, oy) return (ox == 0 and oy == 0) and "sky" or 150 end, wall = 300}, 0, 0, 100)
+			indoor, ceil = sampleOf({ceil = raysOf("sky", 150, 150, 150, 150), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(3)
+
+			-- a side ray above 512 (700) no longer makes the place open: four ceilings at 150 (before: open)
+			indoor, ceil = sampleOf({ceil = raysOf(150, 150, 700, 150, 150), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(3)
+
+			-- and the 700 is not the ceiling height: the highest of the hits at 512 or less is 150 (not 700, which would be open)
+			expect(ceil).to.equal(Z.CeilIndex(150))
+		end),
+		-- the entry 4 of docs/superpowers/plans/2026-11-22-inout-bad-positions.md (gm_funkis, indoors in a narrow place), exact numbers
+		case("entry 4 (gm_funkis): ceilings at 262, 254, 536, 266 and 263 over the feet, narrow sides: indoor, class CeilIndex(266) = 5", function()
+			useFakes()
+			local indoor, ceil = sampleOf({ceil = raysOf(262, 254, 536, 266, 263), wall = 300}, -2168.7, 2638.3, -664)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(Z.CeilIndex(266))
+			expect(ceil).to.equal(5)
+		end),
+		-- the entry 6 (gm_silent_apartments, a stairwell), exact numbers: the fifth ray goes up to 32768 units (the void of the stairwell)
+		case("entry 6 (gm_silent_apartments stairwell): four ceilings at 144 and the fifth ray up to 32768, narrow sides: indoor, class CeilIndex(144) = 3", function()
+			useFakes()
+
+			-- the fifth ray hits something at 32768 over the feet
+			local indoor, ceil = sampleOf({ceil = raysOf(144, 144, 144, 144, 32768), wall = 300}, -3870.2, 2792.6, 1760)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(Z.CeilIndex(144))
+			expect(ceil).to.equal(3)
+
+			-- the fifth ray hits nothing at all
+			indoor, ceil = sampleOf({ceil = raysOf(144, 144, 144, 144, "none"), wall = 300}, -3870.2, 2792.6, 1760)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(3)
+		end),
+		-- breaks if: the threshold is not 3 (5 makes it open, 1 makes the sky + one ceiling roofed)
+		case("roofed needs at least 3 of the 5 up rays under a ceiling: three ceilings at 150 and two in the sky is roofed (class 3), two ceilings and three in the sky is open, whichever rays", function()
+			useFakes()
+
+			-- 3 ceilings, in several arrangements (the centre among them or not)
+			local arrangements = {
+				{150, 150, 150, "sky", "sky"},
+				{"sky", "sky", 150, 150, 150},
+				{150, "sky", 150, "sky", 150},
+				{"sky", 150, "none", 150, 150},
+			}
+
+			for _, a in ipairs(arrangements) do
+				local indoor, ceil = sampleOf({ceil = raysOf(a[1], a[2], a[3], a[4], a[5]), wall = 300}, 0, 0, 100)
+				expect(indoor).to.beTrue()
+				expect(ceil).to.equal(3)
+			end
+
+			-- 2 ceilings
+			arrangements = {
+				{150, 150, "sky", "sky", "sky"},
+				{"sky", "sky", "sky", 150, 150},
+				{150, "sky", "sky", "sky", 150},
+				{"none", 150, "sky", 150, "none"},
+			}
+
+			for _, a in ipairs(arrangements) do
+				local indoor, ceil = sampleOf({ceil = raysOf(a[1], a[2], a[3], a[4], a[5]), wall = 300}, 0, 0, 100)
+				expect(indoor).to.beFalse()
+				expect(ceil).to.equal(0)
+			end
+
+			-- 1 ceiling, and 2 ceilings with the other three above 512 (not sky)
+			local indoor, ceil = sampleOf({ceil = raysOf(150, "sky", "sky", "sky", "sky"), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beFalse()
+			expect(ceil).to.equal(0)
+			indoor, ceil = sampleOf({ceil = raysOf(150, 150, 600, 700, 800), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beFalse()
+			expect(ceil).to.equal(0)
+		end),
+		case("all five up rays in the sky is open: not indoor, class 0 (a ray in the sky is not a ceiling)", function()
+			useFakes()
+			local indoor, ceil = sampleOf({ceil = raysOf("sky", "sky", "sky", "sky", "sky"), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beFalse()
+			expect(ceil).to.equal(0)
+		end),
+		-- breaks if: the ceiling height is the highest of ALL the rays (or the lowest of the ceilings)
+		case("the ceiling height is the HIGHEST of the hits at 512 or less: a pipe at 100 on one ray and four ceilings at 300 give the class of 300 (5), not of 100 (2)", function()
+			useFakes()
+			local indoor, ceil = sampleOf({ceil = raysOf(100, 300, 300, 300, 300), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(Z.CeilIndex(300))
+			expect(ceil).to.equal(5)
+
+			-- the pipe on a side ray too
+			_, ceil = sampleOf({ceil = raysOf(300, 300, 100, 300, 300), wall = 300}, 0, 0, 100)
+			expect(ceil).to.equal(5)
+
+			-- a ray above 512 does not count in the height: three at 200 and one at 900 are class 4 (200), not open and not 900
+			_, ceil = sampleOf({ceil = raysOf(200, 200, 200, 900, "sky"), wall = 300}, 0, 0, 100)
+			expect(ceil).to.equal(Z.CeilIndex(200))
+		end),
+		-- breaks if: the 512 limit is removed (the over-512 hits count as ceilings) or the limit is "under 512"
+		case("a hit above 512 units is not a ceiling (hit but too high, not the sky): five rays all over 512 is open; exactly 512 counts, 513 does not", function()
+			useFakes()
+
+			local indoor, ceil = sampleOf({ceil = raysOf(600, 700, 800, 900, 5000), wall = 300}, 0, 0, 100)
 			expect(indoor).to.beFalse()
 			expect(ceil).to.equal(0)
 
-			-- a side ray above 512 is the highest: open
-			indoor, ceil = sampleOf({ceil = function(ox, oy) return ox == -48 and 700 or 150 end, wall = 300}, 0, 0, 100)
+			-- the same height on the five rays: 512 is roofed (class 7), 513 is open
+			indoor, ceil = sampleOf({ceil = raysOf(512, 512, 512, 512, 512), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beTrue()
+			expect(ceil).to.equal(Z.CeilIndex(512))
+
+			indoor, ceil = sampleOf({ceil = raysOf(513, 513, 513, 513, 513), wall = 300}, 0, 0, 100)
 			expect(indoor).to.beFalse()
 			expect(ceil).to.equal(0)
+
+			-- 3 at 512 and 2 at 513: roofed (3 ceilings); 2 at 512 and 3 at 513: open
+			indoor = sampleOf({ceil = raysOf(512, 513, 512, 513, 512), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beTrue()
+			indoor = sampleOf({ceil = raysOf(513, 512, 513, 512, 513), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beFalse()
+		end),
+		-- breaks if: the early exit is lost (an open sky costs 13 rays again) or the up rays are not all cast when 3 ceilings are still possible
+		case("rays are saved when the place cannot be roofed (all sky: three up rays, no side ray) and none when it still can (ceilings on the last three rays: all 13)", function()
+			useFakes()
+			local indoor = sampleOf({ceil = raysOf("sky", "sky", "sky", "sky", "sky"), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beFalse()
+			expect(#calls).to.equal(3)
+			expect(countCalls(false)).to.equal(0)
+
+			-- two misses then three ceilings: the five up rays are all needed to know
+			indoor = sampleOf({ceil = raysOf("sky", "sky", 150, 150, 150), wall = 300}, 0, 0, 100)
+			expect(indoor).to.beTrue()
+			expect(countCalls(true)).to.equal(5)
+			expect(#calls).to.equal(13)
+
+			-- three misses (anywhere): open, the two last rays are not cast
+			sampleOf({ceil = raysOf(150, "sky", "none", 900, 150), wall = 300}, 0, 0, 100)
+			expect(countCalls(true)).to.equal(4)
+			expect(countCalls(false)).to.equal(0)
 		end),
 		case("narrow is a median of the eight distances under 15 m = 787.5 units (each capped at 1050): 787 is indoor, 788 is not, nothing hit is wide; the class stays when the place is wide", function()
 			useFakes()

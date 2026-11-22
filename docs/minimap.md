@@ -124,14 +124,15 @@ modes. The three ranges are the player's sliders and nothing ties one to another
 The automatic zoom has to know whether the player is indoors. The server makes that answer once per map, from the engine's node graph, and sends it to the players;
 the automatic zoom asks it first and only falls back on its own rays where the map says nothing.
 
-- **How it is made.** At the start of a map the server reads `maps/graphs/<map>.ain` (`GryMod.AIN`, shared) and, at each ground node, looks up with five rays (the
-  highest ceiling, brush mask, a ceiling more than 512 units over is the open sky) and around with eight rays at chest height (the median of the free distances, each
+- **How it is made.** At the start of a map the server reads `maps/graphs/<map>.ain` (`GryMod.AIN`, shared) and, at each ground node, looks up with five rays (brush mask; a ray
+  hits a ceiling when it hits a brush 512 units or less over the node, and the place is roofed when at least 3 of the 5 rays do: a hole or a stairwell on one or two
+  rays does not make it open; the ceiling height is the highest of those hits) and around with eight rays at chest height (the median of the free distances, each
   capped at 20 m, under 15 m is narrow). A node is indoor when it is under a ceiling AND narrow; it also keeps the height class of its ceiling (the classes of the
   floors: 56 to 448). The pure module `GryMod.ZoneMap` (`lua/grymod/sh_zonemap.lua`) puts the samples in 128 x 128 unit cells of 128 unit layers of height, spreads each
   one over 3 cells (a graph is sparse: what no node reaches stays unknown), smooths isolated noise, and merges equal cells into rectangles (boxes).
 - **Cost.** About 5 microseconds a ray and at most 13 rays a node: a 410 node map takes about 30 ms in all. The work is spread over the server's frames
   (`gry_zonemap_budget_ms`, 2 ms by default) by a `Think` hook that exists only while it works. Nothing runs at all when the switch is off.
-- **The file.** `data/grymod/zonemap/<map>_<bsp size>_v1.dat` on the server, binary (a 24 byte header with the magic `GZM1`, the size of the map's `.bsp`, the number of
+- **The file.** `data/grymod/zonemap/<map>_<bsp size>_v2.dat` on the server (`_v2_navmesh.dat` for the navmesh source; the `_v1` files of the old ceiling rule are never read and can be deleted by hand), binary (a 24 byte header with the magic `GZM1`, the size of the map's `.bsp`, the number of
   ground nodes, the number of samples and of boxes; 9 bytes a box; a checksum). Written with one write and checked; a file of another map size, damaged or of another
   version is ignored and made again. A map with a few hundred boxes is a few KB.
 - **The network.** `gry_zonemap_state` (state, done, total: off, no graph, waiting, computing, ready, incomplete, failed) to everybody at each change, and the
