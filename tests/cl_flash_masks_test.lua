@@ -7,7 +7,7 @@
 
 local FILMS = {
 	"hud_ammohealthenergysuit", "hud_binoculars", "hud_crosshair", "hud_friendlycross", "hud_grenadedetect",
-	"hud_initialize", "hud_lost", "hud_quickmenu", "hud_radarcompassstealth", "hud_reboot"
+	"hud_initialize", "hud_lost", "hud_quickmenu", "hud_radarcompassstealth", "hud_reboot", "hud_sp_hexicons"
 }
 
 -- The movie as its file holds it (GryMod.Flash.Load keeps the first copy it read, and the drawing code adds working data to it).
