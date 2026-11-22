@@ -22,6 +22,7 @@ option is off plays nothing for that half.
 | `decloak` | | the glitch of leaving the camouflage (and the emptied bar is not read as a hit) | the player fires out of the camouflage | `gry_decloak_glitch`, `gry_screenfx`, `gry_hud_damagefx` |
 | `low_health` | `level` (1: under 25 %, 2: under 20 %) | the red tint and the blur, a shake at level 2 | the health falls through a low zone | `gry_screenfx` |
 | `jam` | `seconds` (2; 0.1 to 60) | the interface trembles (12 px), then settles | never by itself | `gry_hud_damagefx` |
+| `radar_exposure` | `level` (100; 0 to 100), `seconds` (3; 0.1 to 60) | the hexagon of the radar shows at least `level` for `seconds` (no sound: the original has none), then goes back to what the vehicles say | never by itself: the radar's contacts drive the hexagon (see below), this is for addons and the debug window | `gry_hud_radarhex`, `gry_hud_radar` |
 | `mode` | `mode` (`"armor"`, `"speed"`, `"strength"`, `"cloak"` or the number), `tint` (false), `sound` (false) | the colour tint of the mode (none for the camouflage) + its activation sound + its voice half a second later | the suit changes mode | `gry_screenfx`, `gry_sounds` |
 | `energy_critical` | | the "energy critical" voice | the energy falls under 25 % (at most every 30 s) | `gry_sounds` |
 | `regen_start`, `regen_stop` | | the repair sound from its start / its fade out (1 s) | the server starts / stops the health regeneration | `gry_sound_regen`, `gry_sounds` |
@@ -34,6 +35,29 @@ option is off plays nothing for that half.
 
 Not events, because they run on every frame: the sprint sounds and the binoculars loop. The binoculars cues and the quick menu sounds are
 not events yet.
+
+## The radar's hexagon
+
+At the bottom left of the radar there is a hexagon with a warning sign in it, as in the original game. It follows the **vehicles and machines** (the radar's
+contacts of icon type 2, flying, and 3, machines: cars, helicopters, gunships, striders, turrets...) that have noticed the player, while the danger bar beside
+the compass follows the soldiers only (types 1 and 4). The sign is small and green at rest, turns amber (about half), grows and turns red, then pulses red
+when a vehicle fights you. It rises quickly and falls in two steps, as the original's AI does: fast at first, then a slow memory (the longest is a minute).
+`gry_hud_radarhex 0` turns it off, and the danger bar then follows every hostile as before.
+
+Listen to its level (0 to 100, the number of the picture) with a hook; it fires when the number changes, not at every frame:
+
+```lua
+hook.Add("GryMod_RadarExposure", "my_addon", function(level, previous)
+	if level >= 95 and previous < 95 then -- the pulsing red begins
+	end
+end)
+```
+
+Force it from your addon, for a drone's radar or a scripted alarm. The hexagon shows at least `level` for `seconds`, whatever the vehicles do:
+
+```lua
+GryMod.API.HUDEvent("radar_exposure", {level = 70, seconds = 5}) -- grown and red for 5 s
+```
 
 ## Play an event
 
