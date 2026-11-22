@@ -222,6 +222,95 @@ return {
 	groupName = "GryMod minimap preload (client)",
 	cases = {
 		{
+			-- a tile of 1024 px costs 1024 * 1024 / 2 (DXT1) + 208 (header) + 600 (the .vmt) = 525096 bytes; the plan may fill 80 % of the cache limit minus what it holds
+			-- breaks if: the byte cost of a tile is changed or forgotten, the share of the limit is not 80 %, the used bytes are not taken off, the answer is not a whole number or can be negative, a missing number is not 0
+			name = "TilesThatFit: how many tiles of a resolution fit in 80 % of the cache limit once the used bytes are taken off, never negative",
+			func = function()
+				expect(isfunction(P().TilesThatFit)).to.beTrue()
+
+				local MB = 1048576
+
+				-- 768 MB: 0.8 * 805306368 = 644245094.4 bytes, 1226 tiles of 525096 bytes (1227 would need 644292792)
+				expect(P().TilesThatFit(768 * MB, 0, 1024)).to.equal(1226)
+
+				-- a tile of 512 px is 131880 bytes: 4885 of them
+				expect(P().TilesThatFit(768 * MB, 0, 512)).to.equal(4885)
+
+				-- the used bytes are taken off: 400 MB held leaves 644245094.4 - 419430400 = 224814694.4 bytes, 428 tiles
+				expect(P().TilesThatFit(768 * MB, 400 * MB, 1024)).to.equal(428)
+
+				-- a cache already over 80 % has room for none, not for a negative number
+				expect(P().TilesThatFit(256 * MB, 210 * MB, 1024)).to.equal(0)
+
+				-- a missing number is 0 tiles, except the used bytes (nothing held)
+				expect(P().TilesThatFit(nil, 0, 1024)).to.equal(0)
+				expect(P().TilesThatFit(768 * MB, 0, nil)).to.equal(0)
+				expect(P().TilesThatFit(768 * MB, nil, 1024)).to.equal(1226)
+				expect(P().TilesThatFit(0, 0, 1024)).to.equal(0)
+			end
+		},
+		{
+			-- the loop of the owner's game (2026-11-22): a plan bigger than the cache can hold made the generator make tiles, trim them away and make them again
+			-- breaks if: Start does not ask the cache how full it is, the cap is not applied to the plan, or a cache with no limit known stops the preload from being planned
+			name = "driver: the plan is capped to the tiles that fit in the cache limit (the nearest are kept); with no limit known it is not capped",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					local M = GryMod.Minimap
+					local limit, held = nil, 0
+
+					M.Settings.CacheBytes = function() return limit end
+					M.Cache.Trim = function() return {removed = 0, bytes = held} end
+
+					-- a big outdoor box (400 x 400 cells of 128 units): at 4 px per metre a tile is 13438 units wide, so the plan has several tiles
+					GryMod.ZoneMapClient.Boxes = function() return {box(0, 0, 0, 399, 399)} end
+
+					local function planned()
+						env.handed = nil
+						env.set({autozoom = 0, range = 25, k = 130})
+						expect(P().Start()).to.beTrue()
+
+						local frames = 0
+
+						while #env.hooks > 0 and frames < 200 do
+							env.frame()
+							frames = frames + 1
+						end
+
+						expect(env.handed ~= nil).to.beTrue()
+
+						return #env.handed
+					end
+
+					local all = planned()
+
+					expect(all > 3).to.beTrue()
+
+					-- room for 3 tiles of 525096 bytes: 3.5 tiles' worth at 80 %
+					limit = math.floor(3.5 * 525096 / 0.8)
+					expect(planned()).to.equal(3)
+
+					-- room for them all and more: the plan is whole
+					limit = 4096 * 1048576
+					expect(planned()).to.equal(all)
+
+					-- bytes held already fill the share: no tile at all, and the preload says so by an empty plan
+					limit = 256 * 1048576
+					held = 220 * 1048576
+					expect(planned()).to.equal(0)
+
+					-- no limit known: not capped
+					limit, held = nil, 0
+					expect(planned()).to.equal(all)
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			-- the numbers come from Settings.AutoDefinitionFor (smallest level of at least 0.7 times the density, the level in use kept between 0.6 and 1.6 times it) with
 			-- k = 130 (the radar's pixels per metre times the screen's, for a 4K screen: the density at a range r is k / r).
 			-- breaks if: the level in use is forgotten, a level shared by two ranges is listed twice, a range gets a level other than the rule's, or a slider value that is

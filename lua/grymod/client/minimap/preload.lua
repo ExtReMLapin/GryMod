@@ -32,6 +32,25 @@ local AROUND_Y = {0, 0, 1, -1}
 
 local mathFloor = math.floor
 local mathMin = math.min
+
+Preload.CACHE_SHARE = 0.8 -- a plan may fill this share of the cache's size limit (Cache.Trim brings the cache down to 90 % of it, so a plan that fills the limit is trimmed away)
+Preload.TILE_FILE_OVERHEAD = 208 + 600 -- bytes: the header of a .vtf and the .vmt that goes with it
+
+-- TilesThatFit(limitBytes, usedBytes, res) -> n: how many tiles of res x res pixels (DXT1: half a byte a pixel, plus the files' overhead) fit in CACHE_SHARE of the limit once
+-- the bytes the cache already holds are taken off. A whole number, never negative; a missing limit or resolution gives 0, missing used bytes count as nothing held.
+function Preload.TilesThatFit(limitBytes, usedBytes, res)
+	if type(limitBytes) ~= "number" or type(res) ~= "number" or res <= 0 then
+		return 0
+	end
+
+	local room = limitBytes * Preload.CACHE_SHARE - (type(usedBytes) == "number" and usedBytes or 0)
+
+	if room <= 0 then
+		return 0
+	end
+
+	return mathFloor(room / (res * res / 2 + Preload.TILE_FILE_OVERHEAD))
+end
 local mathMax = math.max
 local mathCeil = math.ceil
 
@@ -637,8 +656,19 @@ function Preload.Start()
 		end
 	end
 
+	-- a plan bigger than the cache can hold would be made, trimmed away and made again (the owner's game, 2026-11-22): keep only the tiles that fit
+	local maxTiles
+	local limitOk, limit = pcall(function() return Settings.CacheBytes and Settings.CacheBytes() end)
+
+	if limitOk and type(limit) == "number" and Cache.Trim then
+		local trimOk, held = pcall(Cache.Trim, 2 ^ 50) -- far over any size: it only says how many bytes the cache holds
+
+		maxTiles = mathMin(Preload.MAX_TILES, Preload.TilesThatFit(limit, trimOk and type(held) == "table" and held.bytes or 0, Settings.TileRes()))
+	end
+
 	local planOpts = {
 		definitions = definitions,
+		maxTiles = maxTiles,
 		res = Settings.TileRes(),
 		tileUnits = Cache.TileUnits,
 		levelAt = Floors.OpenAt,
