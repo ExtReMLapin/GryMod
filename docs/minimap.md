@@ -11,8 +11,12 @@ the minimap never keeps the radar from drawing.
    the feet (one at the centre, four 48 units away along the world axes). The highest ceiling they hit decides how tall the slice is. Only
    the map's own brushes count as a ceiling: the rays go through props. If the centre ray sees the sky, or the ceiling is more than 512
    units up, the player is outside and the slice covers the whole height of the world (rocks, dunes and roofs show up).
-2. **A slice of height is rendered.** The level is a slab from 56 units under the floor up to the ceiling class (88, 120, 160, 224, 320
-   or 448 units over the floor). The slab is rendered in an orthographic view from above into a render target, one square tile at a time
+2. **A slice of height is rendered.** Under a ceiling, the level is a slab whose top is the "roundest" height between the head (72 units
+   over the feet) and the ceiling minus 8: the multiple of the biggest power of two in that window (a ceiling 150 over the feet gives a top at
+   128). Its thickness is the smallest of 192, 320 and 576 that keeps the feet 8 units over its bottom. The level depends on the place only
+   (the feet and the ceiling), never on the way the player came, so the preload can make it in advance. The map keeps showing the level it
+   shows while that level still holds the feet and the head under the ceiling and its tile under the player is there (no flip at each
+   doorway). The slab is rendered in an orthographic view from above into a render target, one square tile at a time
    (`gry_minimap_tile` pixels wide). The tiles are laid on a fixed grid of the map, so the same tile is never made twice.
 3. **What the map did not create is hidden.** During a capture every visible entity for which `Entity:CreatedByMap()` is false (props a
    server added, players, effects) is hidden, plus the halos, the sky box, the view model and the fog. They are restored right after,
@@ -183,13 +187,15 @@ places before you get there, so that a walk outside finds them ready.
   constant that gives the level of a range (the density at a range r is k / r) is recorded by the radar at each draw (`Settings.ScreenConstant`).
   A place whose level would be higher than the sky of the playable area (a cell at the fringe of a box) makes no tile.
 - **The floors:** when the map has a node graph (`.ain`), each ground node is a place: `Floors.PeekAt` gives the level a player standing there would get (the
-  same five rays and the same choice as `CurrentAt`, no hold, the player's own remembered level untouched), and the tiles within 256 units around it are made, at the
+  same five rays and the same rule as `CurrentAt`, no hold, the player's own remembered level untouched), and the tiles within 256 units around it are made, at the
   definition of the place's mode (indoors by the in/out map: the indoor range's level, else the foot range's). The INDOOR boxes of the in/out map also make floor places (one ray down from the top
   of the box's layer finds the ground, `Floors.GroundAt`, then `PeekAt` gives the level): this reaches the places the graph does not (the underground of
   gm_construct) and works on a map that has only a navigation mesh. Measured on gm_construct on positions that are not the graph's (the centres of the navigation mesh areas): the tiles
-  missing under the player go from 98 to 66 with the graph's floors (outdoors 18 to 6, floors 80 to 60), and to 48 with the indoor boxes' floors too. The floors stay half missed because a level is named by the exact floor height and
-  ceiling class at each place: another point of the same staircase gives another level (see the stairs note in the to-do list).
-- **How:** the plan is made in two passes over the same places (the level of a place is the usable anchor of the biggest class among the known ones, so the first pass lets every place put its anchor in the registry and the second asks again with the complete registry; only the second pass's tiles are kept), in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
+  missing under the player go from 98 to 66 with the graph's floors (outdoors 18 to 6, floors 80 to 60), and to 48 with the indoor boxes' floors too. With the
+  level of a place (2026-11-22, the same walk over the centres of the navigation mesh, a fresh cache): gm_construct 77 to 31 (the rule before: 51 to 32),
+  gm_boreas 91 to 27 (77 to 25), gm_funkis over its graph nodes 37 to 9 (36 to 12). What is still missed is a place whose level no node near it has (a node in
+  a doorway sees the sky, the player a step inside sees a ceiling), not the path any more.
+- **How:** the plan is made in one pass over the places (the level of a place depends on the place only), in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
   player first, and tiles the cache already has are left out. The generator makes them after every tile the radar asks for, with a smaller budget
   (`Gen.PRELOAD_BUDGET_MS`, 2 ms), and not at all in a frame that follows a frame slower than 25 ms: it comes back when frames are fast again. The
   preload never shows in the veil (no percentage).
@@ -217,7 +223,7 @@ A **level** is a table `{id, zlo, zhi, ...}`. A **tile** is `{level = <level id>
 | Module | Main public functions |
 | --- | --- |
 | `Settings` | `Enabled()`, `Definition()` (the level in use: the automatic one or the slider's), `DefinitionAuto()`, `TileRes()`, `BudgetMs()`, `Below()` (0 to 1), `Outside()` (0 to 1), `CacheBytes()`, `Opacity()`: the convars, clamped, never nil. `ParseSwitch`, `ParseDefinition`, `ParseDefinitionAuto`, `ParseTileRes`, `ParseBudgetMs`, `ParseBelow`, `ParseOutside`, `ParseCacheMB`, `ParseOpacity`: the same rules on any text (pure). The automatic definition: `AUTO_LEVELS` (2, 4, 8, 16, 32, 64), `AutoDefinitionFor(screenPixelsPerMetre, previousPpm)` (pure: the rule and the hysteresis), `SetAutoDefinition(ppm)` (the radar gives the level it calculated; a level outside the pyramid is ignored and answers false), `PreviousDefinition()`, and the state `AutoState = {current, previous}`. |
-| `Floors` | `CurrentAt(pos)`: the level for the feet at `pos` (a Vector), with the rays up; it remembers its last answer and does not shoot again for a second unless the feet moved 48 units. `Below(level)`: the level one storey lower (`nil, "open"` for an outdoor level). `Outside(level)`: the open level of the map (the whole height of the world, id `open`, the same table every time, read-only) for any level that is not open; `nil, "open"` for an open level (nothing behind it), `nil, "no world bounds"` when the world is unknown. `Current(z)` and `Fallback(z)`: the slab of the feet height alone, in steps of 32 units. `Known()`, `Reset()`. |
+| `Floors` | `CurrentAt(pos)`: the level for the feet at `pos` (a Vector), with the rays up; it remembers its last answer and does not shoot again for a second unless the feet moved 48 units. `LevelFor(feet, ceiling)`: the level of a place (id `c<top>t<thickness>`, pure). `TileReady(level, x, y)`: is its tile under (x, y) in the cache (the hold of the display). `Below(level)`: the slab of 192 under the bottom of the level (`nil, "open"` for an outdoor level). `Outside(level)`: the open level of the map (the whole height of the world, id `open`, the same table every time, read-only) for any level that is not open; `nil, "open"` for an open level (nothing behind it), `nil, "no world bounds"` when the world is unknown. `Current(z)` and `Fallback(z)`: the slab of the feet height alone, in steps of 32 units. `Reset()`. |
 | `Capture` | `Render(tile, level)`: one tile as BGRA bytes (`res * res * 4`), or `nil, reason`; needs the render context of a hook. `IsCapturing()`: true during a render (other render hooks of GryMod return early). `IsVoid(b, g, r, a)`: the void rule. `IsBlackOpaque(b, g, r, a)`, `BlackOpaqueToVoid(bgra)` and `IsAllBlackOpaque(bgra)`: the rule of the opaque black of "nothing" (pure, used by `Gen`). `HideNonMap()` and `Restore(list)`. `GetRT(res)`. |
 | `DXT1` | `Compress(bgra, w, h, opts)` and `CompressRows(bgra, w, h, firstBlockRow, lastBlockRow, opts)`: BGRA to DXT1, `opts.alpha = true` makes void pixels transparent. `Decode(dxt, w, h)`, `Error(a, b)`: for tests. |
 | `VTF` | `Build(w, h, format, data)` and `Write(path, w, h, format, data)`: a VTF 7.2 file (formats `FORMAT_BGRA8888` 12, `FORMAT_DXT1` 13, `FORMAT_DXT1A` 20). `VMTText(path)`, `WriteVMT(path, basetexturePath)`, `Parse(bytes)`. |
@@ -257,7 +263,7 @@ local p = GryMod.Minimap.Gen.Progress()
 -- p.done, p.total, p.percent (0 to 100), p.active, p.failed (the level), p.belowDone, p.belowTotal, p.belowFailed,
 -- p.outsideDone, p.outsideTotal, p.outsideFailed
 
-local tile = {level = "f0c88", tx = 0, ty = 0, res = 1024, ppm = 3}
+local tile = {level = "c128t192", tx = 0, ty = 0, res = 1024, ppm = 3}
 print(GryMod.Minimap.Cache.Has(tile)) -- a tile that exists in the cache
 ```
 
@@ -322,16 +328,13 @@ Every test that replaces a module or a global puts it back in a `pcall` in `afte
   ray when there is no graph, once per map. Known limits: the "outside" under the floors of a piece that has another one over it still shows the
   upper piece (it is the map's one), and a tile has one camera height, so a tile that holds both tall roofs and free sky shows the slab of the place
   where the player was.
-- **Sloped floors.** The floor of a level is the feet height rounded to 16 units, and a level may be reused by the player when the feet
-  stay within 36 units under its floor and, over it, 40 units (the lowest class) or class - 72 (the other classes: a taller slab lets the feet
-  go higher, the head cut still has to be inside). On a long slope the map changes level every few steps; the levels already made are
-  reused (they are known from the disk), but a long ramp makes several sets of tiles. Measured on the long ramp of gm_construct
-  (400 units of height over 600, under a flat roof): with the old window (24 under, 40 over) one descent changed level 12 times, 24 sets of
-  tiles with the floor below of each; with this window 14 sets and 1 change of level on the way back up; over a walk through every ground node of the
-  graph, 46 sets of tiles became 26. The rule of exactness (the slab holds the feet and the head and stays under the ceiling) is the same at every shot
-  of the game. Still open: a level per slope, and bands of floors cut in the valleys of the histogram of heights (see the to-do list).
-- **A room whose ceiling changes height** (a gallery, a room with a lowered part) can give two sets of tiles, one for each ceiling
-  class, because the slab is cut at the class that fits under the highest ceiling.
+- **Sloped floors.** A slab is a horizontal box, so a ramp or a staircase still crosses several levels: on a slope under a ceiling that follows the floor
+  the top of the slab changes about every 64 units of rise (the window between the head and the ceiling slides; the roundest height in it stays while it is in
+  it); under a flat roof the top stays and only the thickness changes. Measured on 17 recorded staircases and ramps of 4 maps: 92 levels (the rule before,
+  anchors with a memory of the path: 155; the fewest horizontal boxes possible on those paths: 41). Before 2026-11-22 the tiles of floors were named
+  `f<floor>c<class>`: they are not used any more (they stay in the cache until it is trimmed or cleared).
+- **A room whose ceiling changes height** (a gallery, a room with a lowered part, a shop opening on a taller hall) gives two levels, one for each ceiling,
+  when the roundest height of one window is not in the other; the display keeps the one it shows while it is still right and its tile is there.
 - **Props placed afterwards.** The map shows only what the level creates. A prop a server added, or one the player spawned, is not on the
   map.
 - **Time.** The first visit to a large map generates tiles for as long as it takes; the radar works meanwhile, only the background is
