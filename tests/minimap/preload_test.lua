@@ -52,15 +52,15 @@ end
 local function makeEnv()
 	local M = GryMod.Minimap
 	local P0 = M.Preload
-	local env = {hooks = {}, timers = {}, handed = nil, rays = 0}
-	local saved = {Settings = M.Settings, Cache = M.Cache, Gen = M.Gen, Floors = M.Floors, Zone = GryMod.ZoneMapClient}
+	local env = {hooks = {}, timers = {}, handed = nil, rays = 0, peeks = 0}
+	local saved = {Settings = M.Settings, Cache = M.Cache, Gen = M.Gen, Floors = M.Floors, Zone = GryMod.ZoneMapClient, AIN = GryMod.AIN}
 	local savedFields = {}
 
 	for _, k in ipairs({"_hookAdd", "_hookRemove", "_timerCreate", "_timerRemove", "_convar", "_frameTime", "_clock", "_origin"}) do
 		savedFields[k] = P0[k]
 	end
 
-	local v = {preload = 1, autozoom = 0, vehicle = 100, foot = 75, indoor = 25, range = 25, k = 130, definition = 4, autodef = 1, boxes = true, frame = 0.005}
+	local v = {preload = 1, autozoom = 0, vehicle = 100, foot = 75, indoor = 25, range = 25, k = 130, definition = 4, autodef = 1, boxes = true, frame = 0.005, nodes = {}}
 
 	local function boxList()
 		return {box(0, 0, 0, 7, 7), box(0, 20, 20, 22, 22, 2)}
@@ -89,6 +89,11 @@ local function makeEnv()
 	}
 	M.Floors = {
 		MapOpenTop = function() return 5000 end,
+		PeekAt = function(_, _, z)
+			env.peeks = env.peeks + 1
+
+			return {id = "f" .. z .. "c120", zlo = z - 56, zhi = z + 120}
+		end,
 		OpenAt = function()
 			env.rays = env.rays + 1
 
@@ -96,7 +101,11 @@ local function makeEnv()
 		end
 	}
 	GryMod.ZoneMapClient = {
-		Boxes = function() return v.boxes and boxList() or nil end
+		Boxes = function() return v.boxes and boxList() or nil end,
+		Indoor = function(pos) return pos.x >= 1000 end -- the places at x of 1000 and over are indoors
+	}
+	GryMod.AIN = {
+		Load = function() return {nodes = v.nodes} end
 	}
 
 	P0._hookAdd = function(_, name, fn) env.hooks[#env.hooks + 1] = {name = name, fn = fn} end
@@ -166,6 +175,7 @@ local function makeEnv()
 		pcall(function() P0.Stop() end)
 		M.Settings, M.Cache, M.Gen, M.Floors = saved.Settings, saved.Cache, saved.Gen, saved.Floors
 		GryMod.ZoneMapClient = saved.Zone
+		GryMod.AIN = saved.AIN
 
 		for k, value in pairs(savedFields) do
 			P0[k] = value
@@ -342,6 +352,125 @@ return {
 				expect(seen.open_t9920).to.beTrue()
 				expect(seen.open_t5000).to.beTrue()
 				expect(seen.open_t15168).to.beNil()
+			end
+		},
+		{
+			-- the floors: the ground places of the node graph, each with the level a player there would get (Floors.PeekAt) and the definitions of its mode (indoors: the indoor
+			-- range's, else the foot range's). breaks if: a place makes tiles of another definition than definitionsAt gives, the tiles around it (its edge cases: a place near a
+			-- tile edge needs the next tile too) are not listed, or two places of one tile list it twice
+			name = "NewJob: a ground place makes the tiles around it for its own level and the definitions of its place; places in one tile list it once; a place with no level makes none",
+			func = function()
+				local floorLevel = {id = "f0c120", zlo = -56, zhi = 120}
+				local entries = run({}, options({
+					places = {{x = 100, y = 100, z = 0}, {x = 110, y = 90, z = 0}, {x = 5000, y = 5000, z = 400}},
+					placeLevelAt = function(x, _, z)
+						if z > 100 then
+							return nil, "roofed"
+						end
+
+						return floorLevel
+					end,
+					definitionsAt = function() return {4} end
+				}))
+
+				-- one place of tiles of 256 units: the square of 256 units around (100, 100) is [-156, 356]: tiles -1..1 on both axes, nine tiles; the second place is in the same
+				-- tiles (110, 90): nothing more; the third has no level
+				expect(#entries).to.equal(9)
+
+				for _, e in ipairs(entries) do
+					expect(e.tile.level).to.equal("f0c120")
+					expect(e.tile.ppm).to.equal(4)
+					expect(e.level).to.equal(floorLevel)
+				end
+
+				-- without definitionsAt the job's definitions are used
+				local plain = run({}, options({
+					definitions = {2, 8},
+					places = {{x = 100, y = 100, z = 0}},
+					placeLevelAt = function() return floorLevel end
+				}))
+
+				expect(#plain).to.equal(18)
+			end
+		},
+		{
+			-- breaks if: the places are not part of the steps (a step would do all of them at once), or the job is done before them
+			name = "NewJob: the boxes come first, then the places, in the same steps; the job is done when both are done",
+			func = function()
+				local boxes = {box(0, 0, 0, 1, 0), box(0, 8, 0, 9, 0)}
+				local places = {}
+
+				for i = 1, 4 do
+					places[i] = {x = i * 1000, y = 0, z = 0}
+				end
+
+				local job = P().NewJob(boxes, options({
+					places = places,
+					placeLevelAt = function() return {id = "f0c120", zlo = -56, zhi = 120} end
+				}))
+
+				expect(job.Step(3)).to.equal(3) -- two boxes and one place
+				expect(job.Done()).to.beFalse()
+				expect(job.Step(3)).to.equal(3) -- three places
+				expect(job.Done()).to.beTrue()
+				expect(job.Step(3)).to.equal(0)
+			end
+		},
+		{
+			-- the driver: the nodes of the graph (ground ones), the mode of each place from the in/out map, the definitions of that mode. breaks if: an air node makes a place,
+			-- an indoor place gets the foot range's definition (or the other way round), or a map with no graph breaks the plan
+			name = "driver: the ground nodes of the graph are the places of the floors, indoors at the indoor range's definition and outdoors at the foot range's; no graph, no floors",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = false == true, nodes = {
+						{x = 100, y = 100, z = 0, type = 2},
+						{x = 1100, y = 100, z = 0, type = 2},
+						{x = 3000, y = 3000, z = 0, type = 3}
+					}})
+					env.set({boxes = true})
+
+					expect(P().Start()).to.beTrue()
+
+					local frames = 0
+
+					while #env.hooks > 0 and frames < 100 do
+						env.frame()
+						frames = frames + 1
+					end
+
+					local seen = {}
+
+					for _, e in ipairs(env.handed) do
+						if string.sub(e.tile.level, 1, 1) == "f" then
+							seen[e.tile.ppm] = (seen[e.tile.ppm] or 0) + 1
+						end
+					end
+
+					-- the foot range (75 m, k = 130) gives 2 px/m, the indoor range (25 m) 4 px/m: the place at x 100 only the first, the one at x 1100 only the second
+					expect(seen[2] ~= nil and seen[2] > 0).to.beTrue()
+					expect(seen[4] ~= nil and seen[4] > 0).to.beTrue()
+					expect(seen[8]).to.beNil()
+					expect(env.peeks).to.equal(2) -- the air node made no place
+
+					-- no graph: the boxes alone, nothing raises
+					env.set({nodes = {}})
+					env.handed = nil
+					expect(P().Start()).to.beTrue()
+					frames = 0
+
+					while #env.hooks > 0 and frames < 100 do
+						env.frame()
+						frames = frames + 1
+					end
+
+					expect(env.handed ~= nil).to.beTrue()
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
 			end
 		},
 		{

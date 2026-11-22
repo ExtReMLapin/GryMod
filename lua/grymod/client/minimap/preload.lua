@@ -96,7 +96,9 @@ end
 --   levelAt = function(x, y, z) -> level table | nil (Floors.OpenAt), has = function(tile) -> bool (Cache.Has: tiles already there are left out),
 --   origin = {x, y} (the nearest tiles first), maxTiles = the cap (Preload.MAX_TILES), maxTop = the top of the map's open level (Floors.MapOpenTop): a place whose
 --   level is higher makes no tile (a cell at the fringe of a box, where the in/out map's spread is wider than the ground, can see its ray go through the sky of the
---   playable area into the skybox) }.
+--   playable area into the skybox),
+--   places = {{x, y, z}, ...} (the ground places of the node graph: the floors), placeLevelAt = function(x, y, z) -> level | nil (Floors.PeekAt), definitionsAt =
+--   function(x, y, z) -> {ppm, ...} (the definitions of the place's mode; without it the job's `definitions`), placeRadius = units around a place that get tiles (256) }.
 -- The job: Step(count) does at most `count` boxes and answers how many it did; Done(); Entries() = the tiles to make, nearest first, each {tile = {level, tx, ty,
 -- res, ppm}, level = the level table (the generator needs its heights), d = squared distance to the origin}; Total() = how many tiles the plan has before the
 -- cap; Truncated() = true when the cap cut it. The entries are final once Done() is true.
@@ -109,25 +111,36 @@ function Preload.NewJob(boxes, opts)
 	local levelAt, has, tileUnits = opts.levelAt, opts.has, opts.tileUnits
 	local maxTop = opts.maxTop
 
-	-- the edge of a tile for each definition, asked once
+	-- the edge of a tile for each definition, asked once per definition
 	local edges = {}
 
-	for i = 1, #definitions do
-		edges[i] = tileUnits(res, definitions[i])
+	local function edgeFor(ppm)
+		local edge = edges[ppm]
+
+		if edge == nil then
+			edge = tileUnits(res, ppm) or false
+			edges[ppm] = edge
+		end
+
+		return edge
 	end
 
+	local places = opts.places or {}
+	local placeLevelAt, definitionsAt = opts.placeLevelAt, opts.definitionsAt
+	local radius = opts.placeRadius or 256
 	local nextBox = 1
+	local nextPlace = 1
 	local seen = {} -- "level:tx,ty@ppm" of the tiles already listed
 	local entries = {}
 	local total = 0
 	local finished = false
 	local sorted = false
 
-	-- the tiles of one area (world units) at every definition, for one level
-	local function addArea(level, x1, y1, x2, y2)
-		for i = 1, #definitions do
-			local edge = edges[i]
-			local ppm = definitions[i]
+	-- the tiles of one area (world units) at the given definitions, for one level
+	local function addArea(level, x1, y1, x2, y2, defs)
+		for i = 1, #defs do
+			local ppm = defs[i]
+			local edge = edgeFor(ppm)
 
 			if type(edge) == "number" and edge > 0 then
 				local tx0, tx1 = mathFloor(x1 / edge), mathFloor((x2 - 1e-6) / edge)
@@ -181,12 +194,23 @@ function Preload.NewJob(boxes, opts)
 				local level = levelAt((x1 + x2) / 2, (y1 + y2) / 2, z)
 
 				if type(level) == "table" and type(level.id) == "string" and not (maxTop and type(level.zhi) == "number" and level.zhi > maxTop) then
-					addArea(level, x1, y1, x2, y2)
+					addArea(level, x1, y1, x2, y2, definitions)
 				end
 			end
 		end
 	end
 
+	local function doPlace(place)
+		local level = placeLevelAt(place.x, place.y, place.z)
+
+		if type(level) == "table" and type(level.id) == "string" and not (maxTop and type(level.zhi) == "number" and level.zhi > maxTop) then
+			local defs = definitionsAt and definitionsAt(place.x, place.y, place.z) or definitions
+
+			addArea(level, place.x - radius, place.y - radius, place.x + radius, place.y + radius, defs)
+		end
+	end
+
+	-- the boxes first, then the places, in the same steps
 	function job.Step(count)
 		local done = 0
 
@@ -201,7 +225,18 @@ function Preload.NewJob(boxes, opts)
 			end
 		end
 
-		if nextBox > #boxes then
+		while done < count and placeLevelAt and nextPlace <= #places do
+			local place = places[nextPlace]
+
+			nextPlace = nextPlace + 1
+			done = done + 1
+
+			if type(place) == "table" and type(place.x) == "number" and type(place.y) == "number" and type(place.z) == "number" then
+				doPlace(place)
+			end
+		end
+
+		if nextBox > #boxes and (not placeLevelAt or nextPlace > #places) then
 			finished = true
 		end
 
@@ -209,7 +244,7 @@ function Preload.NewJob(boxes, opts)
 	end
 
 	function job.Done()
-		return finished or nextBox > #boxes
+		return finished or (nextBox > #boxes and (not placeLevelAt or nextPlace > #places))
 	end
 
 	function job.Entries()
@@ -358,6 +393,7 @@ function Preload.Start()
 	end
 
 	local definitions
+	local footDefs, indoorDefs -- the definitions of the two modes, for the floors (a place is indoors or not by the in/out map)
 
 	if Settings.DefinitionAuto() then
 		local k = Settings.ScreenConstant and Settings.ScreenConstant()
@@ -375,12 +411,37 @@ function Preload.Start()
 		end
 
 		definitions = Preload.Definitions(k, ranges, Settings.Definition())
+
+		-- the floors: indoors the indoor range's level, else the foot range's (the vehicle drives outdoors); with one range both are that range's
+		local autozoom = (Preload._convar("gry_radar_autozoom") or 0) == 1
+		local footRange = autozoom and Preload._convar("gry_radar_zoom_foot") or Preload._convar("gry_radar_range")
+		local indoorRange = autozoom and Preload._convar("gry_radar_zoom_indoor") or footRange
+
+		if type(footRange) == "number" and footRange > 0 and type(indoorRange) == "number" and indoorRange > 0 then
+			footDefs = {Settings.AutoDefinitionFor(k / footRange, nil)}
+			indoorDefs = {Settings.AutoDefinitionFor(k / indoorRange, nil)}
+		end
 	else
 		definitions = {Settings.Definition()}
+		footDefs = definitions
+		indoorDefs = definitions
 	end
 
 	if #definitions == 0 or not Cache or not Floors or not Floors.OpenAt then
 		return false, "no definition"
+	end
+
+	-- the ground places of the node graph (the floors): none without a graph, a reader or Floors.PeekAt
+	local places = {}
+	local AIN = GryMod.AIN
+	local ok, graph = pcall(function() return AIN and AIN.Load and AIN.Load(game.GetMap()) end)
+
+	if ok and type(graph) == "table" and type(graph.nodes) == "table" and Floors.PeekAt and footDefs then
+		for _, node in ipairs(graph.nodes) do
+			if type(node) == "table" and node.type == 2 then
+				places[#places + 1] = {x = node.x, y = node.y, z = node.z}
+			end
+		end
 	end
 
 	job = Preload.NewJob(boxes, {
@@ -390,7 +451,14 @@ function Preload.Start()
 		levelAt = Floors.OpenAt,
 		maxTop = Floors.MapOpenTop and Floors.MapOpenTop() or nil,
 		has = Cache.Has,
-		origin = Preload._origin()
+		origin = Preload._origin(),
+		places = places,
+		placeLevelAt = Floors.PeekAt,
+		definitionsAt = function(x, y, z)
+			local indoors = zone.Indoor and zone.Indoor({x = x, y = y, z = z}) == true
+
+			return indoors and indoorDefs or footDefs
+		end
 	})
 
 	Preload._hookAdd("Think", NAME, frame)

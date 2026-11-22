@@ -1,5 +1,6 @@
 -- MANUAL MEASUREMENT TOOL (not a GLuaTest): how much of the tile preload helps a walk. Client realm, with gmod-mcp: lua_exec_file this file, then
 --   COV.routeData = COV.route(96, 600)          -- a tour over the ground nodes of the graph (96-unit steps, jumps over 600 units)
+--   COV.routeData = COV.tour(points, 96, 600)    -- or over any points {x, y, z}, e.g. the centres of the navigation mesh areas (server realm: navmesh.GetAllNavAreas()) so the walk does not use the preload's own places
 --   COV.eval(COV.routeData)                      -- the walk against the cache as it is NOW
 -- Method used on 2026-11-22 (results in docs/superpowers/plans/2026-11-22-preload-coverage-results.md): point the cache at a scratch folder (replace GryMod.Minimap.Cache.Key by a
 -- function returning "zz_coverage_<map>_v4", then Cache.Reset()), make the radar ask for nothing (replace GryMod.Minimap.Gen.Request by a function returning false, so the radar's own
@@ -17,17 +18,8 @@ COV = COV or {}
 
 local M = GryMod.Minimap
 
--- a tour over the ground nodes: nearest neighbour first, walking steps of `step` units between nodes that are at most `hop` apart, a jump otherwise
-function COV.route(step, hop)
-	local graph = GryMod.AIN.Load(game.GetMap())
-	local pts = {}
-
-	for _, n in ipairs(graph.nodes) do
-		if n.type == 2 then
-			pts[#pts + 1] = {x = n.x, y = n.y, z = n.z}
-		end
-	end
-
+-- a tour over `pts` ({x, y, z} each): nearest neighbour first, walking steps of `step` units between places that are at most `hop` apart, a jump otherwise
+function COV.tour(pts, step, hop)
 	local used, route = {}, {}
 	local cur = 1
 
@@ -69,6 +61,20 @@ function COV.route(step, hop)
 	end
 
 	return route
+end
+
+-- a tour over the ground nodes of the node graph
+function COV.route(step, hop)
+	local graph = GryMod.AIN.Load(game.GetMap())
+	local pts = {}
+
+	for _, n in ipairs(graph.nodes) do
+		if n.type == 2 then
+			pts[#pts + 1] = {x = n.x, y = n.y, z = n.z}
+		end
+	end
+
+	return COV.tour(pts, step, hop)
 end
 
 -- the walk against the cache as it is now

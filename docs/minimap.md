@@ -181,8 +181,13 @@ places before you get there, so that a walk outside finds them ready.
   see Limits), at the definitions the radar can use: with the automatic definition, the level in use plus the level the rule gives for each of the
   three zoom ranges (shared ones once: 100 / 75 / 25 m on a 4K screen need 2 and 4 pixels per metre); with a manual definition, the slider's. The screen
   constant that gives the level of a range (the density at a range r is k / r) is recorded by the radar at each draw (`Settings.ScreenConstant`).
-  A place whose level would be higher than the sky of the playable area (a cell at the fringe of a box) makes no tile. The indoor floors are
-  not preloaded yet (their names need the ground height, see the stairs note in the to-do list): they are made as you play.
+  A place whose level would be higher than the sky of the playable area (a cell at the fringe of a box) makes no tile.
+- **The floors:** when the map has a node graph (`.ain`), each ground node is a place: `Floors.PeekAt` gives the level a player standing there would get (the
+  same five rays and the same choice as `CurrentAt`, no hold, the player's own remembered level untouched), and the tiles within 256 units around it are made, at the
+  definition of the place's mode (indoors by the in/out map: the indoor range's level, else the foot range's). A map with only a navigation mesh has no floors
+  preloaded (the zone map keeps no ground height). Measured on gm_construct on positions that are not the graph's (the centres of the navigation mesh areas): the tiles
+  missing under the player go from 98 to 66 (outdoors 18 to 6, floors 80 to 60). The floors stay half missed because a level is named by the exact floor height and
+  ceiling class at each place: another point of the same staircase gives another level (see the stairs note in the to-do list).
 - **How:** the plan is made in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
   player first, and tiles the cache already has are left out. The generator makes them after every tile the radar asks for, with a smaller budget
   (`Gen.PRELOAD_BUDGET_MS`, 2 ms), and not at all in a frame that follows a frame slower than 25 ms: it comes back when frames are fast again. The
