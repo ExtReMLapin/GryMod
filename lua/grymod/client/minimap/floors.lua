@@ -36,7 +36,7 @@ local type = type
 -- state: the levels of one map (the cache lives for one map name only), the step number of the level Current gave last, and what CurrentAt remembers:
 -- the registry of the anchor levels known for one map name (list in creation order, byId to find a duplicate), the last ray (its place, its time and
 -- the level it gave) and the bounds of the world (once per map name)
-local cache = {map = nil, levels = nil, err = nil}
+local cache = {map = nil, levels = nil, err = nil, nodes = nil}
 local previousStep = nil
 local anchors = {map = nil, list = {}, byId = {}}
 -- the last shot of CurrentAt; ONE table that is written again at each shot (valid = false: nothing remembered), so a shot allocates no table for it
@@ -51,7 +51,7 @@ local belowCount = 0
 local rayParams = nil
 
 local function resetCache()
-	cache.map, cache.levels, cache.err = nil, nil, nil
+	cache.map, cache.levels, cache.err, cache.nodes = nil, nil, nil, nil
 end
 
 local function clearBelow()
@@ -171,7 +171,7 @@ function Floors.ForMap()
 	-- a new map: the old cache is of no use
 	resetCache()
 
-	local levels, err
+	local levels, err, nodes
 	local AIN = GryMod.Minimap.AIN
 
 	if type(AIN) ~= "table" or type(AIN.Load) ~= "function" then
@@ -186,14 +186,16 @@ function Floors.ForMap()
 	elseif type(graph) ~= "table" or type(graph.nodes) ~= "table" then
 		err = (type(loadErr) == "string" and loadErr) or "no graph"
 	else
-		levels = Floors.FromNodes(graph.nodes)
+		nodes = graph.nodes
+		levels = Floors.FromNodes(nodes)
 
 		if #levels == 0 then
 			levels, err = nil, "no graph"
 		end
 	end
 
-	cache.map, cache.levels, cache.err = map, levels, err
+	-- the nodes are kept for the cap of the open level (playableTop), once per map name
+	cache.map, cache.levels, cache.err, cache.nodes = map, levels, err, nodes
 
 	return levels, err
 end
@@ -413,6 +415,8 @@ local HEAD_CUT = 72
 local CEILING_GAP = 8
 local FLOOR_ROUND = 16
 local OPEN_MARGIN = 16
+local CAP_NODES = 96 -- the ground nodes whose up rays give the sky height of the playable area (once per map)
+local sformat = string.format
 
 -- the five places of the rays around the feet, as offsets in x and y
 local RAY_DX = {0, RAY_OFFSET, -RAY_OFFSET, 0, 0}
@@ -523,8 +527,65 @@ local function startMap(map)
 	end
 end
 
--- the height of the world's bounds, asked once per map name
-local function worldHeights(map)
+-- The top of the playable area, seen from the sky: the highest SKY hit of an up ray (brush mask) shot from the ground nodes of the node graph (at most CAP_NODES
+-- of them, spread over the list) and from `playerSky` (the sky height the player's own centre ray saw, or nil). nil when no ray saw the sky: then nothing is
+-- known and the world's bounds stay. Once per map name (CurrentAt and Outside ask worldHeights, which asks this), never in the per-frame path.
+-- Why (gm_construct, 2026-11-22): the world's bounds include the 3D skybox, a small room far over the map, so the camera of the open level looked at that room
+-- first. The sky of the playable area (9984 there) is the real top; the skybox starts over it.
+local function playableTop(map, playerSky)
+	local top = playerSky
+
+	-- the nodes of the graph (ForMap reads and keeps them once per map name; nothing when there is no graph)
+	Floors.ForMap()
+
+	local nodes = cache.map == map and cache.nodes or nil
+
+	if type(nodes) == "table" then
+		local ground = 0
+
+		for i = 1, #nodes do
+			local node = nodes[i]
+
+			if type(node) == "table" and node.type == GROUND then
+				ground = ground + 1
+			end
+		end
+
+		local stride = mathFloor((ground + CAP_NODES - 1) / CAP_NODES)
+
+		if stride < 1 then
+			stride = 1
+		end
+
+		local seen = 0
+
+		for i = 1, #nodes do
+			local node = nodes[i]
+
+			if type(node) == "table" and node.type == GROUND then
+				seen = seen + 1
+
+				if (seen - 1) % stride == 0 and isFinite(node.x) and isFinite(node.y) and isFinite(node.z) then
+					local ok, tr = pcall(util.TraceLine, {
+						start = Vector(node.x, node.y, node.z + RAY_START),
+						endpos = Vector(node.x, node.y, node.z + RAY_LENGTH),
+						mask = MASK_SOLID_BRUSHONLY
+					})
+
+					if ok and type(tr) == "table" and tr.HitSky and tr.HitPos and isFinite(tr.HitPos.z) and (not top or tr.HitPos.z > top) then
+						top = tr.HitPos.z
+					end
+				end
+			end
+		end
+	end
+
+	return top
+end
+
+-- the height of the world's bounds, asked once per map name; the top is cut to the playable area's sky when that is lower (see playableTop), and then the
+-- open level gets the id "open_t<top>" so that the tiles made with the whole height (the skybox in the picture) are never used again
+local function worldHeights(map, playerSky)
 	if worldBox.map == map and worldBox.zmin then
 		return worldBox.zmin, worldBox.zmax
 	end
@@ -547,8 +608,16 @@ local function worldHeights(map)
 		return nil
 	end
 
+	local id = "open"
+	local top = playableTop(map, playerSky)
+
+	if top and top < zmax and top > zmin then
+		zmax = top
+		id = "open_t" .. sformat("%d", mathFloor(top))
+	end
+
 	worldBox.map, worldBox.zmin, worldBox.zmax = map, zmin, zmax
-	worldBox.open = {id = "open", open = true, z = 0, zlo = zmin - OPEN_MARGIN, zhi = zmax + OPEN_MARGIN}
+	worldBox.open = {id = id, open = true, z = 0, zlo = zmin - OPEN_MARGIN, zhi = zmax + OPEN_MARGIN}
 
 	return zmin, zmax
 end
@@ -642,6 +711,7 @@ function Floors.CurrentAt(pos)
 
 	local ceiling -- the highest ceiling hit by a ray that is not in the sky
 	local centreOpen = false
+	local centreSky -- the height of the sky the centre ray saw, if it saw the sky
 
 	for i = 1, 5 do
 		-- the same five parameter tables at every shot: only the two Vectors are written again
@@ -667,6 +737,10 @@ function Floors.CurrentAt(pos)
 			if tr.HitSky or not tr.Hit or not isFinite(z) then
 				if i == 1 then
 					centreOpen = true
+
+					if tr.HitSky and isFinite(z) then
+						centreSky = z
+					end
 				end
 			elseif not ceiling or z > ceiling then
 				ceiling = z
@@ -677,7 +751,7 @@ function Floors.CurrentAt(pos)
 	local level, since
 
 	if centreOpen or not ceiling or ceiling - f > MAX_RISE then
-		local zmin, zmax = worldHeights(map)
+		local zmin, zmax = worldHeights(map, centreSky)
 
 		if zmin then
 			-- the open level of the map is one table (only its z, the feet, changes)

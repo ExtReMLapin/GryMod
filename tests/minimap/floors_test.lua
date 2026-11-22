@@ -1503,6 +1503,148 @@ return {
 			end
 		},
 		{
+			-- gm_construct, measured 2026-11-22: the world's bounds go up to 15360 because the 3D skybox is a small room far above the map (its camera at 10991), and the
+			-- sky of the playable area is at 9984. The open level took the whole height, so the camera looked at the little skybox room first: no map in the minimap.
+			-- breaks if: the open level keeps the world's top when ground nodes see the sky lower than it, or the cap is not the highest sky seen, or the id stays "open"
+			-- (the tiles already made with the wrong slab, under that id, would be used again)
+			name = "open level: the top of the slab is the highest SKY seen by the ground nodes' up rays when it is lower than the world's top (id open_t<top>)",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+
+				local nodes = cluster(0, 10)
+				local skyAt = {}
+
+				for i, node in ipairs(nodes) do
+					skyAt[node.x] = (i == 4) and 1000 or 900 -- one node sees the sky a little higher than the others
+				end
+
+				standIn(state, {[state.map] = {nodes = nodes}})
+				-- the nodes' rays and the player's: the sky, at the height of the place
+				util.TraceLine = function(t)
+					state.traces[#state.traces + 1] = t
+
+					return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, skyAt[t.start.x] or 950)}
+				end
+
+				local level = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(level.open).to.beTrue()
+				expect(level.id).to.equal("open_t1000")
+				expect(level.zlo).to.equal(-316)
+				expect(level.zhi).to.equal(1016)
+
+				-- Outside gives the very same table
+				F().Reset()
+				standIn(state, {[state.map] = {nodes = nodes}})
+				state.ray = ceil(150)
+				util.TraceLine = function(t)
+					state.traces[#state.traces + 1] = t
+
+					if t.start.x >= 10 then
+						return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, 1000)}
+					end
+
+					return ceil(150)
+				end
+
+				local anchor = F().CurrentAt(Vector(0, 0, 0))
+				local outside = F().Outside(anchor)
+
+				expect(outside.id).to.equal("open_t1000")
+				expect(outside.zhi).to.equal(1016)
+			end
+		},
+		{
+			-- breaks if: a sky that is higher than the world's top raises the slab, or nodes whose rays hit a ceiling (not the sky) cut it (a roof the graph does not reach
+			-- would be lost), or the id changes when nothing is cut
+			name = "open level: nothing is cut when no ray sees the sky, or when the sky seen is not under the world's top (id open, the world's heights with 16 of margin)",
+			func = function(state)
+				local nodes = cluster(0, 10)
+
+				standIn(state, {[state.map] = {nodes = nodes}})
+				-- the nodes' rays hit a ceiling at 400; the player's ray (the centre ray of CurrentAt, at x 0) sees the sky at 32768
+				util.TraceLine = function(t)
+					state.traces[#state.traces + 1] = t
+
+					if t.start.x >= 10 then
+						return ceil(400)
+					end
+
+					return sky()
+				end
+
+				local level = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(level.id).to.equal("open")
+				expect(level.zlo).to.equal(-316)
+				expect(level.zhi).to.equal(916)
+
+				-- every ray sees the sky, above the world's top (900): the top stays 900
+				F().Reset()
+				standIn(state, {[state.map] = {nodes = nodes}})
+				util.TraceLine = function(t)
+					state.traces[#state.traces + 1] = t
+
+					return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, 5000)}
+				end
+
+				level = F().CurrentAt(Vector(0, 0, 0))
+				expect(level.id).to.equal("open")
+				expect(level.zhi).to.equal(916)
+			end
+		},
+		{
+			-- breaks if: a map with no node graph (84 maps of 230) gets no cap although the player stands under the open sky, or the player's sky costs one more ray
+			name = "open level: with no node graph the sky seen by the player's own centre ray caps the slab, with no extra ray",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+				state.ray = {Hit = true, HitSky = true, HitPos = Vector(0, 0, 9984)}
+				standIn(state, {}) -- no graph
+
+				local level = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(level.id).to.equal("open_t9984")
+				expect(level.zhi).to.equal(10000)
+				expect(rounds(state)).to.equal(1)
+			end
+		},
+		{
+			-- breaks if: the cap makes thousands of rays on a big graph (the cost is once per map, at most 96 nodes), or uses nodes that are not ground
+			name = "open level: at most 96 nodes are used for the cap (a graph of 5000 nodes), and only the ground ones (type 2)",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+
+				local nodes = cluster(0, 5000)
+				local air = cluster(0, 100, AIR)
+
+				for i = 1, #air do
+					air[i].x = 100000 + i
+					nodes[#nodes + 1] = air[i]
+				end
+
+				standIn(state, {[state.map] = {nodes = nodes}})
+
+				local airRays = 0
+
+				util.TraceLine = function(t)
+					state.traces[#state.traces + 1] = t
+
+					if t.start.x >= 100000 then
+						airRays = airRays + 1
+					end
+
+					return {Hit = true, HitSky = true, HitPos = Vector(t.start.x, t.start.y, 2000)}
+				end
+
+				F().CurrentAt(Vector(0, 0, 0))
+
+				-- 5 rays of CurrentAt + at most 96 of the cap
+				expect(#state.traces <= 5 + 96).to.beTrue()
+				expect(#state.traces > 5).to.beTrue()
+				expect(airRays).to.equal(0)
+			end
+		},
+		{
 			-- breaks if: Outside is missing, or gives a level of another id than "open", or a slab that is not the world's bounds with the margin of 16
 			name = "Outside: an anchor level and a step level give the open level of the map (id open, the world's heights -300 and 900 with 16 of margin)",
 			func = function(state)
