@@ -88,6 +88,25 @@ function Events.Register()
 		follows = {{"gry_hud_damagefx", "the jump of the HUD"}}
 	})
 
+	-- the hexagon of the radar shows data.level (0 to 100: 100, the pulsing red, without it) at least, for data.seconds (3 by default): the picture
+	-- of the vehicles' alert, with no sound (the original has none). GryMod's own trigger is the radar's contacts (cl_hud_radar_exposure.lua).
+	register("radar_exposure", function(data)
+		local Hex = GryMod.FlashRadar and GryMod.FlashRadar.Hex
+
+		if Hex then
+			Hex.Force(data.level, data.seconds)
+		end
+	end, {
+		label = "Radar hexagon",
+		variants = {
+			{label = "Hexagon at rest", data = {level = 30, seconds = 4}},
+			{label = "Hexagon amber", data = {level = 52, seconds = 4}},
+			{label = "Hexagon grown, red", data = {level = 70, seconds = 4}},
+			{label = "Hexagon pulsing", data = {level = 100, seconds = 4}}
+		},
+		follows = {{"gry_hud_radarhex", "the hexagon"}, {"gry_hud_radar", "the radar panel"}}
+	})
+
 	-- the suit changes mode (data.mode: "armor", "speed", "strength" or "cloak"): the tint of the mode and its activation sound with
 	-- the voice half a second later. data.tint = false: no tint, data.sound = false: no sound. The camouflage has no tint here.
 	register("mode", function(data)

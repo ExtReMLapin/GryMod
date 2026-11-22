@@ -80,7 +80,7 @@ function GryMod.OptionSlider(form, label, convarName, min, max, decimals, help)
 end
 
 -- The HUD elements whose switches are in the Radar and map menu (cl_options_radar.lua), not in the list of this panel.
-GryMod.RadarHUDElements = {radar = true, radarunits = true}
+GryMod.RadarHUDElements = {radar = true, radarunits = true, radarhex = true}
 
 -- The HUD: one switch for each element of the interface, the crosshair, how the pictures are loaded.
 local function hudElements(Panel)

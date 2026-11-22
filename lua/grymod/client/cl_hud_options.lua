@@ -13,6 +13,7 @@ Options.List = {
 	{name = "status", label = "Health, energy and ammo panel", help = "The panel at the bottom right"},
 	{name = "radar", label = "Compass and radar panel", help = "The panel at the bottom left"},
 	{name = "radarunits", label = "Radar contacts", help = "The dots on the radar: the enemies that are alerted to you and the ones that shot at you (the server's gry_radar_contacts must be on too)"},
+	{name = "radarhex", label = "Radar alert hexagon", helpUnder = true, help = "The hexagon at the bottom left of the radar, as in the original: a warning sign that grows and turns amber, then red, then pulses when a vehicle or a machine (a car, a helicopter, a gunship, a strider, a turret) has noticed you. The danger bar then follows the soldiers only. Off: no hexagon, and the bar follows every hostile like before"},
 	{name = "crosshair", label = "Crosshair", help = "The Crysis crosshair (the Half-Life 2 one is hidden when it is on)"},
 	{name = "damage", label = "Damage direction arcs", help = "Arcs around the crosshair, on the side the damage came from"},
 	{name = "hit", label = "Hit marker", help = "The crosshair blinks when you hurt something"},

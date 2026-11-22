@@ -2,7 +2,7 @@
 -- client realm. The original game has no such switches (its menu only has the colour sets and the crosshair
 -- style, see research-ui2/options.md), so these are GryMod's own and every element can be turned off.
 
-local NAMES = {"status", "radar", "radarunits", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx"}
+local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx"}
 
 local saved = {}
 
@@ -120,7 +120,7 @@ return {
 		},
 		{
 			-- breaks if: an element has no check box in either menu, the two radar elements stay in the Config menu, or the radar menu does not have them
-			name = "every HUD element has a check box in the Config menu or in the Radar and map menu: the two radar ones (radar, radarunits) only in the radar menu, all the others only in Config",
+			name = "every HUD element has a check box in the Config menu or in the Radar and map menu: the three radar ones (radar, radarunits, radarhex) only in the radar menu, all the others only in Config",
 			func = function(state)
 				local function convarsOf(build)
 					local found = {}
@@ -154,7 +154,7 @@ return {
 				for _, option in ipairs(GryMod.HUDOptions.List) do
 					local convar = "gry_hud_" .. option.name
 
-					if option.name == "radar" or option.name == "radarunits" then
+					if option.name == "radar" or option.name == "radarunits" or option.name == "radarhex" then
 						expect(radar[convar]).to.beTrue()
 						expect(config[convar]).to.beNil()
 					else
@@ -217,6 +217,8 @@ return {
 					return drawn
 				end
 
+				-- the radar's hexagon is a second movie drawn with the radar (counted apart below)
+				GetConVar("gry_hud_radarhex"):SetString("0")
 				GetConVar("gry_hud_status"):SetString("1")
 				GetConVar("gry_hud_radar"):SetString("1")
 				local both = count()
@@ -227,6 +229,12 @@ return {
 				local statusOnly = count()
 				GetConVar("gry_hud_status"):SetString("0")
 				local none = count()
+				-- the hexagon on: the radar draws its icon too (one more); with the radar off the icon goes with it
+				GetConVar("gry_hud_radar"):SetString("1")
+				GetConVar("gry_hud_radarhex"):SetString("1")
+				local withHexagon = count()
+				GetConVar("gry_hud_radar"):SetString("0")
+				local hexagonOnly = count()
 				Flash.Draw = real
 				GryMod.FlashHUD.Reset()
 
@@ -234,6 +242,8 @@ return {
 				expect(radarOnly).to.equal(1)
 				expect(statusOnly).to.equal(1)
 				expect(none).to.equal(0)
+				expect(withHexagon).to.equal(2)
+				expect(hexagonOnly).to.equal(0)
 			end
 		},
 		{

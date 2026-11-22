@@ -33,7 +33,11 @@ local function radarHUDSwitches(Panel)
 
 	for _, option in ipairs(GryMod.HUDOptions.List) do
 		if GryMod.RadarHUDElements[option.name] then
-			form:CheckBox(option.label, "gry_hud_" .. option.name)
+			if option.helpUnder then
+				GryMod.OptionBox(form, option.label, "gry_hud_" .. option.name, option.help)
+			else
+				form:CheckBox(option.label, "gry_hud_" .. option.name)
+			end
 		end
 	end
 end

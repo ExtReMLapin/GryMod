@@ -99,7 +99,7 @@ local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_zonem
 
 -- what must not be in the Config menu any more: the settings of the radar, the compass and the maps
 local RADAR_CONVARS = {
-	"gry_hud_radar", "gry_hud_radarunits", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
+	"gry_hud_radar", "gry_hud_radarunits", "gry_hud_radarhex", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
 	"gry_minimap_below", "gry_minimap_outside", "gry_minimap_cache_mb", "gry_minimap_tile", "gry_minimap_budget_ms", "gry_radar_range",
 	"gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_zoom_delay", "gry_zonemap_debug",
 	"gry_zonemap_debug_range", "gry_zonemap_debug_in", "gry_zonemap_debug_out", "gry_zonemap_debug_faces", "gry_zonemap_debug_edges", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap", "gry_zonemap_navmesh"
@@ -207,7 +207,7 @@ return {
 		},
 		{
 			-- breaks if: a control is moved, left out or put in another place
-			name = "the menu has, in this order: the title, the two HUD switches of the radar, the Minimap section, the cache button, the automatic zoom, the in/out map, then the server section",
+			name = "the menu has, in this order: the title, the three HUD switches of the radar, the Minimap section, the cache button, the automatic zoom, the in/out map, then the server section",
 			func = function(state)
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.RadarOptionsPanel(state.panel)
@@ -217,6 +217,7 @@ return {
 					"label:Radar and compass",
 					"box:gry_hud_radar",
 					"box:gry_hud_radarunits",
+					"box:gry_hud_radarhex",
 					"label:Minimap",
 					"box:gry_minimap",
 					"slider:gry_radar_range",
@@ -279,13 +280,13 @@ return {
 			end
 		},
 		{
-			-- breaks if: the two switches are built with another label, or not from the list of the HUD elements
-			name = "the two HUD switches of the radar are the ones of the HUD element list, with its labels and the same convars",
+			-- breaks if: the three switches are built with another label, or not from the list of the HUD elements
+			name = "the three HUD switches of the radar are the ones of the HUD element list, with its labels and the same convars",
 			func = function(state)
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.RadarOptionsPanel(state.panel)
 
-				for _, name in ipairs({"radar", "radarunits"}) do
+				for _, name in ipairs({"radar", "radarunits", "radarhex"}) do
 					local option = GryMod.HUDOptions.Find(name)
 					local found
 

@@ -30,17 +30,33 @@ function Radar.New(movie, theme)
 		return nil
 	end
 
-	local root = Flash.NewRoot(movie, theme or (GryMod.FlashHUD and GryMod.FlashHUD.Theme))
+	theme = theme or (GryMod.FlashHUD and GryMod.FlashHUD.Theme)
+
+	local root = Flash.NewRoot(movie, theme)
 	local main = root:Child("Root")
 
 	if not main then
 		return nil
 	end
 
-	local panel = setmetatable({root = root, main = main, heading = 0, stealth = 0, fov = 15, status = 0}, Panel)
+	local panel = setmetatable({root = root, main = main, theme = theme, heading = 0, stealth = 0, fov = 15, status = 0, exposure = 0, hexShown = false}, Panel)
 	panel:_start()
 
+	-- the alert hexagon's icon (cl_hud_radar_exposure.lua): its own movie, drawn with this one
+	if panel._startHex then
+		panel:_startHex()
+	end
+
 	return panel
+end
+
+-- Gives back the images of the panel's clips (the HUD is dropped: see Module.Reset of cl_hud_flash.lua).
+function Panel:Release()
+	Flash.ReleaseClip(self.root)
+
+	if self.hex then
+		Flash.ReleaseClip(self.hex.root)
+	end
 end
 
 -- The steady state of the original (SkipSequence): the "on" frames, the strip on its normal frame, and the
@@ -146,6 +162,10 @@ function Panel:Destroy(status)
 
 	self:_resolve()
 	self:_refresh()
+
+	if self._hexState then
+		self:_hexState(status)
+	end
 end
 
 -- setCompassRotation: the strip's x for a bearing in degrees (0 = north, growing clockwise).
@@ -282,6 +302,11 @@ end
 
 function Panel:Update(dt)
 	self.root:Advance(dt)
+
+	-- the pulse of the hexagon's icon is a clip that plays on its own
+	if self.hex then
+		self.hex.root:Advance(dt)
+	end
 
 	if self.main:CurrentFrame() ~= self.mainFrame then
 		self:_resolve()
@@ -853,4 +878,9 @@ function Panel:Draw(x, y, scale)
 
 	-- a movie drawing that did not reach the hook leaves no map to draw later: it would be on top
 	self.mapPending = false
+
+	-- the icon in the radar's hexagon, over the radar (the same stage origin: its Root clip is at the same place)
+	if self.hex and self.hexShown then
+		Flash.Draw(self.hex.root, x, y, scale)
+	end
 end

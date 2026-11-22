@@ -72,7 +72,7 @@ Prewarm.Pieces = {
 		return movieNames(movieOf("FlashHUD", "MOVIE"))
 	end},
 	{name = "radar", tier = 1, hud = true, option = "radar", films = function()
-		return movieNames(movieOf("FlashRadar", "MOVIE"))
+		return movieNames(movieOf("FlashRadar", "MOVIE"), movieOf("FlashRadar", "HEX_MOVIE"))
 	end},
 	{name = "crosshair", tier = 1, hud = true, option = "crosshair", films = function()
 		return movieNames(movieOf("FlashCrosshair", "MOVIE"), movieOf("FlashCrosshair", "FRIENDLY_MOVIE"))

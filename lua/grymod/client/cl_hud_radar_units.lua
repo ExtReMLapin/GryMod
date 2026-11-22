@@ -444,7 +444,8 @@ function Radar.Awareness(c)
 	return 0
 end
 
--- The level the bar goes to for a list of contacts {sub, marker}.
+-- The level the bar goes to for a list of contacts {sub, marker}, every hostile counted. With the alert hexagon on, the bar follows the soldiers only
+-- (Radar.SplitTargets, cl_hud_radar_exposure.lua): the vehicles and machines are the hexagon's.
 function Radar.StealthTarget(contacts)
 	local target = 0
 
@@ -511,16 +512,39 @@ function Radar.Feed(panel, ply, dt)
 
 	local options = GryMod.HUDOptions
 
+	-- the alert hexagon (cl_hud_radar_exposure.lua) follows the vehicles and machines, and then the bar the others only; with the hexagon switched
+	-- off the bar follows every hostile, as it did before it
+	local Hex = Radar.Hex
+
 	if options and not options.Enabled("radarunits") or not wanted then
 		panel:SetObjects({})
-		-- no contacts, no news of the hostiles: the bar goes down
+		-- no contacts, no news of the hostiles: the bar goes down; the hexagon's meter is forgotten (its memory of the vehicles that were there
+		-- would hold the icon up for a minute with nothing left to tell it)
 		Radar.Stealth = Radar.StealthStep(Radar.Stealth, 0, dt)
 		panel:SetStealth(Radar.Stealth)
+
+		if Hex then
+			Hex.ForgetMeter()
+			Hex.Feed(panel, 0, dt)
+		end
 
 		return
 	end
 
 	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase, Radar.Range()))
-	Radar.Stealth = Radar.StealthStep(Radar.Stealth, Radar.StealthTarget(Radar.Snapshot), dt)
+
+	local bar, hexagon = 0, 0
+
+	if Hex and Hex.Enabled() then
+		bar, hexagon = Radar.SplitTargets(Radar.Snapshot)
+	else
+		bar = Radar.StealthTarget(Radar.Snapshot)
+	end
+
+	Radar.Stealth = Radar.StealthStep(Radar.Stealth, bar, dt)
 	panel:SetStealth(Radar.Stealth)
+
+	if Hex then
+		Hex.Feed(panel, hexagon, dt)
+	end
 end

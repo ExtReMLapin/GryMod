@@ -114,7 +114,7 @@ return {
 				local names = filmNames()
 
 				for _, name in ipairs({"hud_ammohealthenergysuit", "hud_radarcompassstealth", "hud_crosshair", "hud_friendlycross",
-					"hud_initialize", "hud_quickmenu", "hud_binoculars", "hud_grenadedetect", "hud_lost", "hud_reboot"}) do
+					"hud_initialize", "hud_quickmenu", "hud_binoculars", "hud_grenadedetect", "hud_lost", "hud_reboot", "hud_sp_hexicons"}) do
 					expect(names[name]).to.beTrue()
 				end
 

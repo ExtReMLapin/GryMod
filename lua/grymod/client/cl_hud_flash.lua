@@ -1133,7 +1133,7 @@ function Module.Reset()
 	end
 
 	if panel then
-		Flash.ReleaseClip(panel.root)
+		panel:Release()
 	end
 
 	hud, panel = nil, nil

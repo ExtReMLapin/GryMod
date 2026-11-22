@@ -135,7 +135,7 @@ return {
 				expect(isfunction(API.ListHUDEvents)).to.beTrue()
 				local names = API.ListHUDEvents()
 				local expected = {"armor_hit", "boot", "decloak", "disabled", "dive_in", "dive_out", "drown", "enabled", "energy_critical", "jam", "lost", "low_health",
-					"malfunction", "mode", "reboot", "regen_start", "regen_stop", "reset"}
+					"malfunction", "mode", "radar_exposure", "reboot", "regen_start", "regen_stop", "reset"}
 				local have = {}
 
 				for _, name in ipairs(names) do have[name] = true end
@@ -253,7 +253,7 @@ return {
 			name = "every event of GryMod has its info: a label, the four modes and the two health levels as variants, and follows that name real options",
 			func = function()
 				local names = {"armor_hit", "boot", "decloak", "disabled", "dive_in", "dive_out", "drown", "enabled", "energy_critical", "jam", "lost", "low_health",
-					"malfunction", "mode", "reboot", "regen_start", "regen_stop", "reset"}
+					"malfunction", "mode", "radar_exposure", "reboot", "regen_start", "regen_stop", "reset"}
 
 				for _, name in ipairs(names) do
 					local info = API.GetHUDEventInfo(name)
