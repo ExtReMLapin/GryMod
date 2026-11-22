@@ -362,6 +362,38 @@ return {
 			end
 		},
 		{
+			-- measured in a real buggy (2026-11-22): EyeAngles().y 86.9 with the view really at 1.17 in the world (GetViewSetup, GetAimVector), the vehicle at -85.7;
+			-- vehicle:LocalToWorldAngles(EyeAngles()) gave 1.22
+			name = "ViewYaw: the yaw of the view in the world: the eye angles on foot, the eye angles turned by the vehicle in a vehicle (there they are relative to it)",
+			func = function(state)
+				local Flash = GryMod.Flash
+				expect(Flash.ViewYaw).to.exist()
+
+				local onFoot = {InVehicle = function() return false end, EyeAngles = function() return Angle(5, 40, 0) end}
+				expect(Flash.ViewYaw(onFoot)).to.equal(40)
+
+				local vehicle = {LocalToWorldAngles = function(_, ang) return Angle(ang.p, ang.y - 85.7, ang.r) end, IsValid = function() return true end}
+				local seated = {InVehicle = function() return true end, GetVehicle = function() return vehicle end, EyeAngles = function() return Angle(-4.4, 86.9, 0) end}
+				expect(math.abs(Flash.ViewYaw(seated) - 1.2) < 0.001).to.beTrue()
+
+				-- a seat the game has no vehicle for (the moment of getting in or out): the eye angles, not an error
+				local between = {InVehicle = function() return true end, GetVehicle = function() return NULL end, EyeAngles = function() return Angle(0, 33, 0) end}
+				expect(Flash.ViewYaw(between)).to.equal(33)
+			end
+		},
+		{
+			name = "no HUD file reads the player's yaw straight from EyeAngles (in a vehicle it is relative to the vehicle: radar, map, compass and damage arcs turned wrongly): they ask Flash.ViewYaw",
+			func = function(state)
+				for _, path in ipairs({
+					"grymod/client/cl_hud_radar_units.lua", "grymod/client/cl_hud_radar_flash.lua", "grymod/client/cl_hud_flash.lua", "grymod/client/cl_hud_crosshair_flash.lua"
+				}) do
+					local text = file.Read("lua/" .. path, "GAME") or file.Read(path, "LUA")
+					expect(text).to.exist()
+					expect(string.find(text, "EyeAngles%(%)%.y")).to.beNil()
+				end
+			end
+		},
+		{
 			name = "loading a missing movie gives nil",
 			func = function(state)
 				expect(GryMod.Flash.Load("no_such_movie")).to.beNil()

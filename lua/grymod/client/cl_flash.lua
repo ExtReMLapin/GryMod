@@ -49,6 +49,22 @@ function Flash.Unload(name)
 	movies[name] = nil
 end
 
+-- The yaw of the player's view in the world (degrees). In a vehicle the eye angles are relative to it (measured in a Buggy, view at 1.2 in the world: EyeAngles 86.9,
+-- vehicle at -85.7), so the radar, its map, the compass and the damage arcs turned with the vehicle: there they are turned by the vehicle's own angles.
+function Flash.ViewYaw(ply)
+	local eyes = ply:EyeAngles()
+
+	if ply:InVehicle() then
+		local vehicle = ply:GetVehicle()
+
+		if IsValid(vehicle) then
+			return vehicle:LocalToWorldAngles(eyes).y
+		end
+	end
+
+	return eyes.y
+end
+
 -- The converted movie `grymod/flash/<name>.lua`, or nil when it does not exist.
 function Flash.Load(name)
 	if movies[name] then

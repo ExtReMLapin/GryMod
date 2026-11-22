@@ -578,7 +578,7 @@ function Radar.Feed(panel, ply, dt)
 		return
 	end
 
-	panel:SetObjects(Radar.Contacts(ply:GetPos(), ply:EyeAngles().y, Radar.Live(), phase, Radar.Range(), placed))
+	panel:SetObjects(Radar.Contacts(ply:GetPos(), Flash.ViewYaw(ply), Radar.Live(), phase, Radar.Range(), placed))
 
 	local bar, hexagon = 0, 0
 

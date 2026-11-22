@@ -386,6 +386,42 @@ return {
 			end
 		},
 		{
+			name = "the HUD's feed gives the contacts the yaw of the view in the world, also seated in a vehicle (its eye angles are relative to the vehicle: the radar was turned by the vehicle's own yaw)",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				local panel = newPanel()
+				local options = GryMod.HUDOptions
+				local realContacts, realSnapshot, realFind, realEnabled, realZoom = R.Contacts, R.Snapshot, R.FindEntity, options.Enabled, GryMod.RadarZoom
+				local given
+				local real = {Start = net.Start, WriteBool = net.WriteBool, SendToServer = net.SendToServer}
+				net.Start = function() end
+				net.WriteBool = function() end
+				net.SendToServer = function() end
+				local vehicle = {LocalToWorldAngles = function(_, ang) return Angle(ang.p, ang.y - 85.7, ang.r) end, IsValid = function() return true end}
+				local ply = {
+					GetPos = function() return Vector(0, 0, 0) end,
+					EyeAngles = function() return Angle(0, 86.9, 0) end,
+					InVehicle = function() return true end,
+					GetVehicle = function() return vehicle end
+				}
+				local ok, err = pcall(function()
+					options.Enabled = function() return true end
+					GryMod.RadarZoom = nil
+					R.Snapshot, R.FindEntity = {}, function() return nil end
+					R.Contacts = function(pos, yaw, ...)
+						given = yaw
+
+						return realContacts(pos, yaw, ...)
+					end
+					R.Feed(panel, ply, 1 / 30)
+					expect(math.abs(given - 1.2) < 0.001).to.beTrue()
+				end)
+				R.Contacts, R.Snapshot, R.FindEntity, options.Enabled, GryMod.RadarZoom = realContacts, realSnapshot, realFind, realEnabled, realZoom
+				net.Start, net.WriteBool, net.SendToServer = real.Start, real.WriteBool, real.SendToServer
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "the HUD's feed places the server's contacts, nothing when the switch is off, and asks the server for them",
 			func = function(state)
 				local R = GryMod.FlashRadar
@@ -399,7 +435,7 @@ return {
 				net.SendToServer = function() end
 				R.FindEntity = function() return nil end
 				R.Snapshot = {{id = 7, x = metres(10), y = 0, z = 0, yaw = 0, type = 1, sub = 4, marker = false, big = false}}
-				local ply = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end}
+				local ply = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end, InVehicle = function() return false end}
 				local ok, err = pcall(function()
 					options.Enabled = function() return true end
 					R.Feed(panel, ply, 1 / 30)
@@ -495,7 +531,7 @@ return {
 				net.WriteBool = function() end
 				net.SendToServer = function() end
 				R.FindEntity = function() return nil end
-				local ply = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end}
+				local ply = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end, InVehicle = function() return false end}
 				local bar = panel.view:Child("StealthBar")
 				local ok, err = pcall(function()
 					options.Enabled = function() return true end

@@ -818,7 +818,7 @@ local function drawMap(self, x, y, scale)
 		self.mapCall = call
 	end
 
-	call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha = xf, px, py, ply:EyeAngles().y, range, level, alpha, below, belowOpacity * alpha
+	call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha = xf, px, py, Flash.ViewYaw(ply), range, level, alpha, below, belowOpacity * alpha
 	call.base, call.belowBase = own, belowOwn
 	call.outside, call.outsideAlpha = outside, outsideOpacity * alpha
 	self.mapPending = true

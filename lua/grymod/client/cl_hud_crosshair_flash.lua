@@ -544,7 +544,7 @@ function Cross.NotifyDamage(direction)
 	local ply = LocalPlayer()
 
 	if instance and IsValid(ply) and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("damage")) then
-		instance:OnDamage(ply:GetPos(), ply:GetPos() + direction * 100, ply:EyeAngles().y, CurTime())
+		instance:OnDamage(ply:GetPos(), ply:GetPos() + direction * 100, Flash.ViewYaw(ply), CurTime())
 	end
 end
 
@@ -703,7 +703,7 @@ function Cross.Paint()
 
 	updateSpread(ply, weapon, dt)
 	instance:SetRecoil(index >= 11 and spread * 40 or spread)
-	instance:SetViewYaw(ply:EyeAngles().y, CurTime())
+	instance:SetViewYaw(Flash.ViewYaw(ply), CurTime())
 	scan(ply)
 	instance:Update(dt)
 
