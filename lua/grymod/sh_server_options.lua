@@ -18,7 +18,8 @@ Settings.List = {
 	{name = "gry_cloak_ai", kind = "bool"},
 	{name = "gry_radar_allies_always", kind = "bool"},
 	{name = "gry_movement", kind = "bool"},
-	{name = "gry_radar_objects", kind = "bool"}
+	{name = "gry_radar_objects", kind = "bool"},
+	{name = "gry_zonemap", kind = "bool"}
 }
 
 local byName = {}

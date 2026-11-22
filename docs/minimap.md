@@ -117,6 +117,38 @@ modes. The three ranges are the player's sliders and nothing ties one to another
   contacts is a later change). A roof made of props is not seen (the rays use the brush mask), the same trap as the floors. Going from a small range
   to a big one shows tiles that may not exist yet (the veil rules above apply).
 
+## The indoor / outdoor map (made by the server)
+
+The automatic zoom has to know whether the player is indoors. The server makes that answer once per map, from the engine's node graph, and sends it to the players;
+the automatic zoom asks it first and only falls back on its own rays where the map says nothing.
+
+- **How it is made.** At the start of a map the server reads `maps/graphs/<map>.ain` (`GryMod.AIN`, shared) and, at each ground node, looks up with five rays (the
+  highest ceiling, brush mask, a ceiling more than 512 units over is the open sky) and around with eight rays at chest height (the median of the free distances, each
+  capped at 20 m, under 15 m is narrow). A node is indoor when it is under a ceiling AND narrow; it also keeps the height class of its ceiling (the classes of the
+  floors: 56 to 448). The pure module `GryMod.ZoneMap` (`lua/grymod/sh_zonemap.lua`) puts the samples in 128 x 128 unit cells of 128 unit layers of height, spreads each
+  one over 3 cells (a graph is sparse: what no node reaches stays unknown), smooths isolated noise, and merges equal cells into rectangles (boxes).
+- **Cost.** About 5 microseconds a ray and at most 13 rays a node: a 410 node map takes about 30 ms in all. The work is spread over the server's frames
+  (`gry_zonemap_budget_ms`, 2 ms by default) by a `Think` hook that exists only while it works. Nothing runs at all when the switch is off.
+- **The file.** `data/grymod/zonemap/<map>_<bsp size>_v1.dat` on the server, binary (a 24 byte header with the magic `GZM1`, the size of the map's `.bsp`, the number of
+  ground nodes, the number of samples and of boxes; 9 bytes a box; a checksum). Written with one write and checked; a file of another map size, damaged or of another
+  version is ignored and made again. A map with a few hundred boxes is a few KB.
+- **The network.** `gry_zonemap_state` (state, done, total: off, no graph, waiting, computing, ready, incomplete, failed) to everybody at each change, and the
+  file in chunks of at most 30000 bytes in `gry_zonemap_data` when it is ready; a client asks with `gry_zonemap_want` when it is ready to play, and an administrator
+  can delete the map and have it made again with `gry_zonemap_reset`.
+- **Settings.**
+
+| Convar | Default | Range | Meaning |
+|---|---|---|---|
+| `gry_zonemap` | 1 | 0 or 1 | Server switch (administrators change it from the options panel). Off: nothing is made or sent. |
+| `gry_zonemap_budget_ms` | 2 | 0.5 to 10 | Server console only: milliseconds of rays per server frame while the map is made. |
+| `gry_zonemap_max_nodes` | 20000 | 1 or more | Server console only: a graph with more ground nodes makes the map from the first ones, flagged incomplete. |
+| `gry_zonemap_debug` | 0 | 0 or 1 | Client, no administrator right: draws the boxes in the world (red indoor, green outdoor, a cyan line at the ceiling height). The drawing hook exists only while it is 1. |
+
+- **When it is "incomplete".** If the graph has more nodes than `gry_zonemap_max_nodes`, or a node could not be sampled, the map is made from what was used and the
+  server says so (state 5); the client tells the player once per map. The options panel shows the state of the map.
+- **Limits.** No graph on the map, or an empty one: no zone map (state 1), the automatic zoom keeps its own rays. A place no node reaches is unknown. Props are not
+  seen (the rays use the brush mask), as for the floors.
+
 ## The cache
 
 - **Where:** `garrysmod/data/grymod/minimap/<key>/`. One directory per map, with `index.json` and, for each tile, a `.vtf` and a `.vmt`.
