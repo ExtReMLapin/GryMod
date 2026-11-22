@@ -1,0 +1,601 @@
+-- Tests of the Radar and map menu of the options (GryMod.RadarOptionsPanel, cl_options_radar.lua), GLuaTest format, client realm. The menu is a second
+-- entry of the GryMod category of the Options tab; it holds everything about the radar, the compass and the maps (taken out of the Config menu).
+-- No button: the two actions (clear the minimap cache, delete and make the in/out map again) are check boxes that ask first and un-tick themselves.
+-- The settings of the server are check boxes that never write a convar: they send ONE net message, and are disabled for a player who is not an
+-- administrator (the server validates the right again, tests/sv_server_options_test.lua).
+-- Every stand-in (spawnmenu.AddToolMenuOption, RunConsoleCommand, GryMod.Confirm, the admin status, the transports) is put back in afterEach inside a
+-- pcall, also when a case failed.
+
+local function walk(panel, found)
+	found = found or {}
+
+	for _, child in ipairs(panel:GetChildren()) do
+		found[#found + 1] = child
+		walk(child, found)
+	end
+
+	return found
+end
+
+local TITLES = {
+	["GryMod Radar and map"] = true,
+	["Minimap"] = true,
+	["Map tile size (pixels)"] = true,
+	["Automatic zoom"] = true,
+	["In/out map"] = true,
+	["Server (administrators only)"] = true
+}
+
+-- every control of the menu in the order it was made: "label:<title>" (the titles of the sections only), "box:<convar>", "slider:<convar>",
+-- "combo:<convar>", "action:<text>" (a check box tied to no setting), "admin:<name>" (the controls of GryMod.AdminOption)
+local function markers(panel)
+	local byControl = {}
+
+	for name, control in pairs(panel.GryAdminControls or {}) do
+		byControl[control] = name
+	end
+
+	local order = {}
+
+	for _, p in ipairs(walk(panel)) do
+		if byControl[p] then
+			order[#order + 1] = "admin:" .. byControl[p]
+		elseif p.ClassName == "DLabel" and TITLES[p:GetText()] then
+			local parent = p:GetParent()
+
+			if parent and parent.ClassName ~= "DCheckBoxLabel" and parent.ClassName ~= "DNumSlider" then
+				order[#order + 1] = "label:" .. p:GetText()
+			end
+		elseif p.ClassName == "DNumSlider" and p.Scratch then
+			order[#order + 1] = "slider:" .. tostring(p.Scratch:GetTable().m_strConVar)
+		elseif p.ClassName == "DCheckBoxLabel" and p.Button then
+			local convar = p.Button:GetTable().m_strConVar
+
+			if convar then
+				order[#order + 1] = "box:" .. convar
+			else
+				order[#order + 1] = "action:" .. p:GetText()
+			end
+		elseif p.ClassName == "DComboBox" then
+			order[#order + 1] = "combo:" .. tostring(p.GryConVar)
+		end
+	end
+
+	return order
+end
+
+local function indexOf(list, value)
+	for i, v in ipairs(list) do
+		if v == value then
+			return i
+		end
+	end
+end
+
+local function actionBox(panel, flag)
+	for _, p in ipairs(walk(panel)) do
+		if p[flag] then
+			return p
+		end
+	end
+end
+
+local function asAdmin(isAdmin, fn)
+	local meta = FindMetaTable("Player")
+	local real = meta.IsAdmin
+	meta.IsAdmin = function() return isAdmin end
+	local ok, err = pcall(fn)
+	meta.IsAdmin = real
+
+	if not ok then
+		error(err, 0)
+	end
+end
+
+-- a fresh check box answers nil, not false, to GetChecked
+local function ticked(box)
+	return box:GetChecked() == true
+end
+
+local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"}
+
+-- what must not be in the Config menu any more: the settings of the radar, the compass and the maps
+local RADAR_CONVARS = {
+	"gry_hud_radar", "gry_hud_radarunits", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
+	"gry_minimap_below", "gry_minimap_outside", "gry_minimap_cache_mb", "gry_minimap_tile", "gry_minimap_budget_ms", "gry_radar_range",
+	"gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_zoom_delay", "gry_zonemap_debug",
+	"gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
+}
+
+return {
+	groupName = "GryMod Radar and map menu",
+	beforeEach = function(state)
+		state.panel = nil
+		state.realRun = RunConsoleCommand
+		state.realConfirm = GryMod.Confirm
+		state.realAdd = notification and notification.AddLegacy
+		state.realCache = GryMod.Minimap and GryMod.Minimap.Cache
+		state.realGen = GryMod.Minimap and GryMod.Minimap.Gen
+		state.realSendMessage = GryMod.AdminUI.SendMessage
+		state.realTransport = GryMod.AdminUI.Transport
+		state.realAddOption = spawnmenu.AddToolMenuOption
+		state.writes = {}
+		state.asked = {}
+		state.answer = true
+		state.messages = {}
+		state.notices = {}
+
+		RunConsoleCommand = function(name, value)
+			state.writes[#state.writes + 1] = tostring(name):lower() .. "=" .. tostring(value)
+		end
+
+		GryMod.Confirm = function(text, onYes)
+			state.asked[#state.asked + 1] = tostring(text)
+
+			if state.answer then
+				onYes()
+			end
+		end
+
+		if notification then
+			notification.AddLegacy = function(text)
+				state.notices[#state.notices + 1] = tostring(text)
+			end
+		end
+
+		GryMod.AdminUI.SendMessage = function(name)
+			state.messages[#state.messages + 1] = name
+		end
+		GryMod.AdminUI.Transport = function(name, value)
+			state.messages[#state.messages + 1] = name .. "=" .. value
+		end
+	end,
+	afterEach = function(state)
+		pcall(function()
+			RunConsoleCommand = state.realRun
+			GryMod.Confirm = state.realConfirm
+			spawnmenu.AddToolMenuOption = state.realAddOption
+			GryMod.AdminUI.SendMessage = state.realSendMessage
+			GryMod.AdminUI.Transport = state.realTransport
+
+			if notification then
+				notification.AddLegacy = state.realAdd
+			end
+
+			if GryMod.Minimap then
+				GryMod.Minimap.Cache = state.realCache
+				GryMod.Minimap.Gen = state.realGen
+			end
+
+			if state.panel and IsValid(state.panel) then
+				state.panel:Remove()
+			end
+		end)
+	end,
+	cases = {
+		{
+			-- breaks if: the function or the file is missing, or the entry is not added next to Config in the same category
+			name = "the menu is a second entry of the GryMod category, 'Radar and map', added when the tool menu is populated, and Config is still there",
+			func = function(state)
+				expect(isfunction(GryMod.RadarOptionsPanel)).to.beTrue()
+
+				local added = {}
+
+				spawnmenu.AddToolMenuOption = function(tab, category, name, label, command, config, builder)
+					added[#added + 1] = {tab = tab, category = category, name = name, label = label, command = command, config = config, builder = builder}
+				end
+
+				local ok, err = pcall(GryMod.GryOptionschuteOptionmenu)
+
+				spawnmenu.AddToolMenuOption = state.realAddOption
+
+				if not ok then error(err, 0) end
+
+				expect(#added).to.equal(2)
+				expect(added[1].tab).to.equal("Options")
+				expect(added[1].category).to.equal("GryMod")
+				expect(added[1].name).to.equal("Config")
+				expect(added[1].label).to.equal("Config it !")
+				expect(added[1].builder).to.equal(GryMod.GryOptionschute)
+				expect(added[2].tab).to.equal("Options")
+				expect(added[2].category).to.equal("GryMod")
+				expect(added[2].name).to.equal("Radar")
+				expect(added[2].label).to.equal("Radar and map")
+				expect(added[2].builder).to.equal(GryMod.RadarOptionsPanel)
+
+				-- the one hook of the tool menu is the function that makes both
+				expect(hook.GetTable().PopulateToolMenu.PopulateToolMenu).to.equal(GryMod.GryOptionschuteOptionmenu)
+			end
+		},
+		{
+			-- breaks if: a control is moved, left out or put in another place
+			name = "the menu has, in this order: the title, the two HUD switches of the radar, the Minimap section, the cache action, the automatic zoom, the in/out map, then the server section",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				local expected = {
+					"label:GryMod Radar and map",
+					"box:gry_hud_radar",
+					"box:gry_hud_radarunits",
+					"label:Minimap",
+					"box:gry_minimap",
+					"slider:gry_radar_range",
+					"box:gry_minimap_definition_auto",
+					"slider:gry_minimap_definition",
+					"slider:gry_minimap_opacity",
+					"slider:gry_minimap_below",
+					"slider:gry_minimap_outside",
+					"slider:gry_minimap_cache_mb",
+					"label:Map tile size (pixels)",
+					"combo:gry_minimap_tile",
+					"slider:gry_minimap_budget_ms",
+					"action:Clear the minimap cache",
+					"label:Automatic zoom",
+					"box:gry_radar_autozoom",
+					"slider:gry_radar_zoom_vehicle",
+					"slider:gry_radar_zoom_foot",
+					"slider:gry_radar_zoom_indoor",
+					"slider:gry_radar_zoom_delay",
+					"label:In/out map",
+					"box:gry_zonemap_debug",
+					"label:Server (administrators only)",
+					"admin:gry_radar_allies_always",
+					"admin:gry_radar_objects",
+					"admin:gry_zonemap",
+					"admin:action:gry_zonemap_reset"
+				}
+
+				expect(table.concat(markers(state.panel), "\n")).to.equal(table.concat(expected, "\n"))
+			end
+		},
+		{
+			-- breaks if: the two switches are built with another label, or not from the list of the HUD elements
+			name = "the two HUD switches of the radar are the ones of the HUD element list, with its labels and the same convars",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				for _, name in ipairs({"radar", "radarunits"}) do
+					local option = GryMod.HUDOptions.Find(name)
+					local found
+
+					for _, p in ipairs(walk(state.panel)) do
+						if p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == "gry_hud_" .. name then
+							found = p
+						end
+					end
+
+					expect(found ~= nil).to.beTrue()
+					expect(found:GetText()).to.equal(option.label)
+				end
+			end
+		},
+		{
+			-- breaks if: any button is made in the menu (the owner wants check boxes)
+			name = "there is no button in the menu: not one DButton, for an administrator and for the others",
+			func = function(state)
+				for _, isAdmin in ipairs({true, false}) do
+					asAdmin(isAdmin, function()
+						local panel = vgui.Create("ControlPanel")
+						state.panel = panel
+						GryMod.RadarOptionsPanel(panel)
+
+						for _, p in ipairs(walk(panel)) do
+							-- the knob of a slider is a DButton made by the slider itself: not a control of the menu
+							expect(p.ClassName ~= "DButton" or p:GetParent().ClassName == "DSlider").to.beTrue()
+						end
+
+						panel:Remove()
+						state.panel = nil
+					end)
+				end
+			end
+		},
+		{
+			-- breaks if: the menu writes a convar or sends a message when it is built
+			name = "opening the menu writes nothing: no console command, no message, no convar changed, and the two action boxes are un-ticked",
+			func = function(state)
+				local before = {}
+
+				for _, name in ipairs(RADAR_CONVARS) do
+					before[name] = GetConVar(name):GetString()
+				end
+
+				asAdmin(true, function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.RadarOptionsPanel(state.panel)
+				end)
+
+				expect(#state.writes).to.equal(0)
+				expect(#state.messages).to.equal(0)
+				expect(#state.asked).to.equal(0)
+
+				for _, name in ipairs(RADAR_CONVARS) do
+					expect(GetConVar(name):GetString()).to.equal(before[name])
+				end
+
+				expect(ticked(actionBox(state.panel, "GryMinimapClear"))).to.beFalse()
+				expect(ticked(actionBox(state.panel, "GryZoneMapReset"))).to.beFalse()
+			end
+		},
+		{
+			-- breaks if: a radar control stays in the Config menu
+			name = "the Config menu has no radar, compass or map control any more, only the line that says where they went; the HUD switch and the other elements stay",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				asAdmin(true, function()
+					GryMod.GryOptionschute(state.panel)
+				end)
+
+				local convars = {}
+
+				for _, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DCheckBoxLabel" and p.Button then
+						convars[p.Button:GetTable().m_strConVar or "none"] = true
+					elseif p.ClassName == "DNumSlider" and p.Scratch then
+						convars[tostring(p.Scratch:GetTable().m_strConVar)] = true
+					elseif p.ClassName == "DComboBox" and p.GryConVar then
+						convars[p.GryConVar] = true
+					end
+				end
+
+				for _, name in ipairs(RADAR_CONVARS) do
+					expect(convars[name]).to.beNil()
+				end
+
+				for name in pairs(state.panel.GryAdminControls or {}) do
+					for _, radar in ipairs(SERVER_BOXES) do
+						expect(name ~= radar).to.beTrue()
+					end
+
+					expect(name ~= "action:gry_zonemap_reset").to.beTrue()
+				end
+
+				local lines = {}
+
+				for _, p in ipairs(walk(state.panel)) do
+					if p.ClassName == "DLabel" then
+						lines[p:GetText()] = true
+					end
+				end
+
+				expect(lines["Radar, compass and map options are in the Radar and map menu."]).to.beTrue()
+				expect(lines["The radar range slider is in the Minimap section."]).to.beNil()
+				expect(lines["Minimap"]).to.beNil()
+				expect(lines["Automatic zoom"]).to.beNil()
+				expect(lines["In/out map"]).to.beNil()
+
+				-- what stays
+				expect(convars["gry_hud"]).to.beTrue()
+				expect(convars["gry_hud_status"]).to.beTrue()
+				expect(convars["gry_hud_crosshair"]).to.beTrue()
+				expect(convars["gry_grenade_range"]).to.beTrue()
+				expect(convars["gry_malfunction"] == nil).to.beTrue() -- an admin control: no convar in the box
+				expect(state.panel.GryAdminControls["gry_malfunction"] ~= nil).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the helper makes a button, keeps the tick, writes a setting, or runs the action without asking
+			name = "ActionCheckBox: a check box tied to no setting; ticking it asks, on yes it runs the action, on no it does not, and in both cases the box is un-ticked at once",
+			func = function(state)
+				expect(isfunction(GryMod.ActionCheckBox)).to.beTrue()
+
+				state.panel = vgui.Create("ControlPanel")
+
+				local ran = 0
+				local box = GryMod.ActionCheckBox(state.panel, "Do the thing", function() ran = ran + 1 end, "Really do the thing?")
+
+				expect(box.ClassName).to.equal("DCheckBoxLabel")
+				expect(box:GetText()).to.equal("Do the thing")
+				expect(box.Button:GetTable().m_strConVar).to.beNil()
+				expect(ticked(box)).to.beFalse()
+				expect(#state.asked).to.equal(0)
+
+				state.answer = false
+				box:SetValue(true)
+				expect(#state.asked).to.equal(1)
+				expect(state.asked[1]).to.equal("Really do the thing?")
+				expect(ran).to.equal(0)
+				expect(ticked(box)).to.beFalse()
+
+				state.answer = true
+				box:SetValue(true)
+				expect(#state.asked).to.equal(2)
+				expect(ran).to.equal(1)
+				expect(ticked(box)).to.beFalse()
+
+				-- unticking by hand asks nothing
+				box:SetValue(false)
+				expect(#state.asked).to.equal(2)
+				expect(ran).to.equal(1)
+
+				-- an action that raises still leaves the box un-ticked
+				local raising = GryMod.ActionCheckBox(state.panel, "Raises", function() error("boom") end)
+				pcall(function() raising:SetValue(true) end)
+				expect(ticked(raising)).to.beFalse()
+
+				expect(#state.writes).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the cache box runs without asking, ignores the answer, or is not exposed as GryMod.ClearMinimapCache
+			name = "the 'Clear the minimap cache' box asks first, clears the cache of this level only on yes, tells the player, and is un-ticked after",
+			func = function(state)
+				expect(isfunction(GryMod.ClearMinimapCache)).to.beTrue()
+
+				local cleared = {}
+
+				GryMod.Minimap.Cache = {
+					Key = function() return "gm_test_key" end,
+					Clear = function(key) cleared[#cleared + 1] = key return true end
+				}
+				GryMod.Minimap.Gen = {Cancel = function() end}
+
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				local box = actionBox(state.panel, "GryMinimapClear")
+
+				expect(box ~= nil).to.beTrue()
+				expect(box:GetText()).to.equal("Clear the minimap cache")
+
+				state.answer = false
+				box:SetValue(true)
+				expect(#state.asked).to.equal(1)
+				expect(string.find(state.asked[1], "minimap cache", 1, true) ~= nil).to.beTrue()
+				expect(#cleared).to.equal(0)
+				expect(ticked(box)).to.beFalse()
+
+				state.answer = true
+				box:SetValue(true)
+				expect(#state.asked).to.equal(2)
+				expect(#cleared).to.equal(1)
+				expect(cleared[1]).to.equal("gm_test_key")
+				expect(#state.notices).to.equal(1)
+				expect(ticked(box)).to.beFalse()
+				expect(#state.writes).to.equal(0)
+				expect(#state.messages).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the box can be ticked by a player who is not an administrator, or it sends without asking
+			name = "the 'Delete the in/out map' box: an administrator ticks it, it asks first, on no nothing is sent, on yes gry_zonemap_reset goes once; the box is un-ticked each time",
+			func = function(state)
+				asAdmin(true, function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.RadarOptionsPanel(state.panel)
+
+					local box = state.panel.GryAdminControls["action:gry_zonemap_reset"]
+
+					expect(box ~= nil).to.beTrue()
+					expect(box.ClassName).to.equal("DCheckBoxLabel")
+					expect(box:GetText()).to.equal("Delete the in/out map and make it again")
+					expect(box:IsEnabled()).to.beTrue()
+					expect(box.GryZoneMapReset).to.beTrue()
+
+					state.answer = false
+					box:SetValue(true)
+					expect(#state.asked).to.equal(1)
+					expect(string.find(state.asked[1], "Delete the in/out map of this map and make it again?", 1, true) == 1).to.beTrue()
+					expect(#state.messages).to.equal(0)
+					expect(ticked(box)).to.beFalse()
+
+					state.answer = true
+					box:SetValue(true)
+					expect(#state.asked).to.equal(2)
+					expect(#state.messages).to.equal(1)
+					expect(state.messages[1]).to.equal("gry_zonemap_reset")
+					expect(ticked(box)).to.beFalse()
+					expect(#state.writes).to.equal(0)
+				end)
+			end
+		},
+		{
+			-- breaks if: the front prediction is missing on the action box (the box stays enabled, a tick asks or sends for a player who is not an admin)
+			name = "for a player who is not an administrator the 'Delete the in/out map' box is disabled with the tooltip, and a tick that gets through asks nothing, sends nothing and un-ticks",
+			func = function(state)
+				asAdmin(false, function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.RadarOptionsPanel(state.panel)
+
+					local box = state.panel.GryAdminControls["action:gry_zonemap_reset"]
+
+					expect(box:IsEnabled()).to.beFalse()
+					expect(box:GetParent():GetTooltip()).to.equal("Server setting: administrators only")
+
+					box:SetValue(true) -- a tick that got through the mouse
+					expect(#state.asked).to.equal(0)
+					expect(#state.messages).to.equal(0)
+					expect(ticked(box)).to.beFalse()
+				end)
+			end
+		},
+		{
+			-- breaks if: one of the three server boxes is enabled for a player who is not an admin, or sends
+			name = "for a player who is not an administrator the three server check boxes are disabled with the tooltip and send nothing; the other controls stay as they are",
+			func = function(state)
+				asAdmin(false, function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.RadarOptionsPanel(state.panel)
+
+					for _, name in ipairs(SERVER_BOXES) do
+						local box = state.panel.GryAdminControls[name]
+
+						expect(box ~= nil).to.beTrue()
+						expect(box.ClassName).to.equal("DCheckBoxLabel")
+						expect(box:IsEnabled()).to.beFalse()
+						expect(box:GetParent():GetTooltip()).to.equal("Server setting: administrators only")
+						expect(box.Button:GetTable().m_strConVar).to.beNil()
+
+						box:SetValue(not box:GetChecked()) -- a change that got through the mouse
+					end
+
+					expect(#state.messages).to.equal(0)
+					expect(#state.writes).to.equal(0)
+
+					-- the client controls are not the administrators'
+					expect(actionBox(state.panel, "GryMinimapClear"):IsEnabled()).to.beTrue()
+
+					for _, p in ipairs(walk(state.panel)) do
+						if p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == "gry_minimap" then
+							expect(p:IsEnabled()).to.beTrue()
+						end
+					end
+				end)
+			end
+		},
+		{
+			-- breaks if: a server box does not send the white-listed name, or sends a convar write
+			name = "for an administrator the three server check boxes are enabled and send the name and the value through the one net message, and no convar is written from the client",
+			func = function(state)
+				asAdmin(true, function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.RadarOptionsPanel(state.panel)
+
+					for _, name in ipairs(SERVER_BOXES) do
+						local box = state.panel.GryAdminControls[name]
+						local before = GetConVar(name):GetString()
+
+						state.messages = {}
+						expect(box:IsEnabled()).to.beTrue()
+						box:SetValue(not box:GetChecked())
+						expect(#state.messages).to.equal(1)
+						expect(state.messages[1]).to.equal(name .. "=" .. (before == "1" and "0" or "1"))
+						expect(GetConVar(name):GetString()).to.equal(before)
+
+						-- every name is in the server's white list (the server refuses the rest)
+						expect(GryMod.ServerSettings.Find(name) ~= nil).to.beTrue()
+					end
+
+					expect(#state.writes).to.equal(0)
+				end)
+			end
+		},
+		{
+			-- breaks if: the status is only read when the panel is built
+			name = "the menu follows the player's status live: the poll disables every administrators' control, the reset box included, when he stops being an administrator",
+			func = function(state)
+				local box
+
+				asAdmin(true, function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.RadarOptionsPanel(state.panel)
+					box = state.panel.GryAdminControls["action:gry_zonemap_reset"]
+					expect(box:IsEnabled()).to.beTrue()
+				end)
+
+				asAdmin(false, function()
+					GryMod.AdminUI.Poll(state.panel, state.panel.GryAdminPolled + 1.01)
+					expect(box:IsEnabled()).to.beFalse()
+					expect(state.panel.GryAdminControls["gry_zonemap"]:IsEnabled()).to.beFalse()
+				end)
+
+				asAdmin(true, function()
+					GryMod.AdminUI.Poll(state.panel, state.panel.GryAdminPolled + 1.01)
+					expect(box:IsEnabled()).to.beTrue()
+				end)
+			end
+		}
+	}
+}

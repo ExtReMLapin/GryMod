@@ -46,6 +46,9 @@ local function addColourMixer(Panel, label, convarName)
 	Panel:AddItem(mixer)
 end
 
+-- The HUD elements whose switches are in the Radar and map menu (cl_options_radar.lua), not in the list of this panel.
+GryMod.RadarHUDElements = {radar = true, radarunits = true}
+
 -- The HUD settings: the colours (the four sets of the original game, or your own), and one switch for each
 -- element of the interface.
 function GryMod.GryHUDOptions(Panel)
@@ -68,7 +71,9 @@ function GryMod.GryHUDOptions(Panel)
 	Panel:Help("HUD elements")
 
 	for _, option in ipairs(GryMod.HUDOptions.List) do
-		Panel:CheckBox(option.label, "gry_hud_" .. option.name)
+		if not GryMod.RadarHUDElements[option.name] then
+			Panel:CheckBox(option.label, "gry_hud_" .. option.name)
+		end
 	end
 
 	-- what was added to the binoculars, each on its own: the screen itself is the "Binoculars" element above (the zoom key is in the Keys
@@ -105,10 +110,10 @@ function GryMod.GryHUDOptions(Panel)
 	-- client setting: the start-up log and its sounds belong to the start of the level in the original
 	Panel:CheckBox("Start-up log and sounds at every spawn (off: only at the first spawn after the map loads, as in the original)", "gry_boot_every_spawn")
 
+	-- the radar, the compass and the maps have a menu of their own (cl_options_radar.lua)
+	Panel:Help("Radar, compass and map options are in the Radar and map menu.")
+
 	-- client settings: how far the grenade warning reaches, the old warning for the player's own hand grenade, walls (the original has no range and warns through walls)
-	-- client setting: the radius of the radar's map (the original's is 75 m; a smaller one makes the icons of big things nearer their real size)
-	-- the range slider is in the Minimap section now, next to the automatic definition that follows it
-	Panel:Help("The radar range slider is in the Minimap section.")
 	Panel:NumSlider("Grenade warning range (metres)", "gry_grenade_range", 5, 200, 0)
 	Panel:CheckBox("Grenade warning also for the hand grenade you threw (only within 15 m). Off: a grenade you threw never warns; your own missiles never do", "gry_grenade_own_warn")
 	Panel:CheckBox("Grenade warning only for what you can see (off: also through walls, as in the original game)", "gry_grenade_los")
@@ -225,24 +230,6 @@ function GryMod.KeysOptions(Panel)
 	end
 end
 
--- The button that deletes the map of the level and makes it again: it asks first, then asks the server (which checks the administrator itself).
-local function zoneMapResetButton(Panel)
-	-- the usual administrators' button (dimmed with a tooltip for the others, looked at every second), with its own click
-	local button = GryMod.AdminOption(Panel, "Delete the in/out map and make it again", nil, "button", {command = "gry_zonemap_reset"})
-
-	button.GryZoneMapReset = true
-	button.DoClick = function()
-		if not GryMod.AdminUI.IsAdmin() then
-			return
-		end
-
-		GryMod.Confirm("Delete the in/out map of this map and make it again? The server computes it again from the node graph; the automatic zoom uses its own rays meanwhile.", function()
-			net.Start("gry_zonemap_reset")
-			net.SendToServer()
-		end)
-	end
-end
-
 -- The settings of the server, at the bottom of the panel: for the administrators only (greyed and disabled for the others). They do not write a
 -- convar from the client: they ask the server (cl_admin_option.lua).
 function GryMod.AdminOptions(Panel)
@@ -258,17 +245,13 @@ function GryMod.AdminOptions(Panel)
 		}
 	})
 	GryMod.AdminOption(Panel, "Camouflage: striders, hunters and manhacks forget you", "gry_cloak_ai", "bool")
-	GryMod.AdminOption(Panel, "Radar: allies (NPCs that like you) show in blue from the start (off: only when alerted, fighting or scanned)", "gry_radar_allies_always", "bool")
 	GryMod.AdminOption(Panel, "Movement: the original game's walk and run speeds (177 and 266 units a second, the speed mode's sprint 757) instead of GryMod's own; the energy is not touched", "gry_movement", "bool")
-	GryMod.AdminOption(Panel, "Radar: vehicles and Combine mines show once the binoculars have scanned them", "gry_radar_objects", "bool")
 	GryMod.AdminOption(Panel, "Grenade warning only for armed grenades, mines in the air... (off: also the ones lying around)", "gry_grenade_armed_only", "bool")
-	GryMod.AdminOption(Panel, "In/out map: the server makes it from the node graph (the automatic zoom and other features use it)", "gry_zonemap", "bool")
-	zoneMapResetButton(Panel)
 	GryMod.AdminOption(Panel, "Toggle health regeneration", nil, "button", {command = "gry_Health"})
 	GryMod.AdminOption(Panel, "Toggle infinite armor", nil, "button", {command = "gry_Armor"})
 end
 
--- Tells the player what the cache button did (a notice on the screen).
+-- Tells the player what the cache box did (a notice on the screen).
 local function minimapNotice(text, kind)
 	if notification and notification.AddLegacy then
 		notification.AddLegacy(text, kind, 4)
@@ -280,7 +263,7 @@ function GryMod.Confirm(text, onYes)
 	Derma_Query(text, "GryMod", "Yes", onYes, "Cancel")
 end
 
--- The button that clears the minimap's cache: the files of the current level, made again the next time the radar needs them. It asks the
+-- What the "Clear the minimap cache" check box of the Radar and map menu does: the files of the current level, made again the next time the radar needs them. It asks the
 -- Cache module (another file, which may be missing or fail): nothing here may raise.
 local function clearMinimapCache()
 	local cache = GryMod.Minimap and GryMod.Minimap.Cache
@@ -309,6 +292,9 @@ local function clearMinimapCache()
 		minimapNotice("The minimap cache could not be cleared: " .. tostring(ok and reason or result), NOTIFY_ERROR)
 	end
 end
+
+-- the check box of the Radar and map menu (cl_options_radar.lua) runs it, after asking
+GryMod.ClearMinimapCache = clearMinimapCache
 
 -- Numbers the panels of the definition slider, so that each one has its own change callback (a name that no other panel uses, also across a reload of this file).
 GryMod.MinimapDefinitionPanels = GryMod.MinimapDefinitionPanels or 0
@@ -366,7 +352,7 @@ end
 
 -- The map behind the radar: the switch, the distance the radar shows (the radar range) and how sharp the map is (pixels per metre of the tiles: chosen by
 -- itself from the range and the screen, or by the slider, which the check box greys), the size of
--- one tile, how opaque the map is, how much disk the cache of a map may take, how visible the floor below is through the empty parts of the current one, how visible the outside (the whole height of the map) is behind both, how much time the generator may take in a frame, and the button that clears the cache. The
+-- one tile, how opaque the map is, how much disk the cache of a map may take, how visible the floor below is through the empty parts of the current one, how visible the outside (the whole height of the map) is behind both, how much time the generator may take in a frame. The
 -- settings are written when the player changes a control, never when the panel opens.
 function GryMod.MinimapOptions(Panel)
 	Panel:Help("Minimap")
@@ -415,12 +401,6 @@ function GryMod.MinimapOptions(Panel)
 	Panel:AddItem(tileBox)
 
 	Panel:NumSlider("Map generator time per frame (milliseconds)", "gry_minimap_budget_ms", 1, 30, 0)
-
-	local clearButton = Panel:Button("Clear the minimap cache")
-	clearButton.GryMinimapClear = true
-	clearButton.DoClick = function()
-		GryMod.Confirm("Clear the minimap cache of this level? The map is made again as you play.", clearMinimapCache)
-	end
 end
 
 -- The radar's automatic zoom (cl_hud_radar_zoom.lua): the switch, the range of each of the three modes (nothing ties one to another: the player puts what he
@@ -436,7 +416,7 @@ function GryMod.RadarZoomOptions(Panel)
 end
 
 -- The in/out map the server makes (cl_zonemap.lua): the line with its state (as it is when the panel is built: nothing runs while the panel is
--- open) and the check box of the debug drawing. The switch and the button that makes the map again are the administrators' (GryMod.AdminOptions).
+-- open) and the check box of the debug drawing. The switch and the box that makes the map again are the administrators' (the server section of the Radar and map menu).
 function GryMod.ZoneMapOptions(Panel)
 	Panel:Help("In/out map")
 
@@ -471,9 +451,6 @@ function GryMod.GryOptionschute(Panel)
 	Panel:CheckBox("Camouflage: firing out of it plays the glitch (flash, HUD jump, shake) at any energy, not only above 20 %", "gry_decloak_glitch")
 
 	GryMod.GryHUDOptions(Panel)
-	GryMod.MinimapOptions(Panel)
-	GryMod.RadarZoomOptions(Panel)
-	GryMod.ZoneMapOptions(Panel)
 
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)
@@ -493,6 +470,7 @@ end
 
 function GryMod.GryOptionschuteOptionmenu()
 	spawnmenu.AddToolMenuOption("Options", "GryMod", "Config", "Config it !", "test1", "test23", GryMod.GryOptionschute)
+	spawnmenu.AddToolMenuOption("Options", "GryMod", "Radar", "Radar and map", "", "", GryMod.RadarOptionsPanel)
 end
 
 hook.Add("PopulateToolMenu", "PopulateToolMenu", GryMod.GryOptionschuteOptionmenu)

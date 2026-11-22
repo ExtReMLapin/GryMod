@@ -54,6 +54,12 @@ function UI.RunCommand(command)
 	RunConsoleCommand(command)
 end
 
+-- The real way to send a message of the server that has no payload (the action options): the server checks the right again.
+function UI.SendMessage(name)
+	net.Start(name)
+	net.SendToServer()
+end
+
 -- ---------------------------------------------------------------------------------------------------------
 -- The controls
 -- ---------------------------------------------------------------------------------------------------------
@@ -185,6 +191,25 @@ local function install(panel)
 	end
 end
 
+-- A momentary check box: ticking it (never saved, no setting behind it) un-ticks it at once, then asks `question` (GryMod.Confirm) and on yes runs `run`.
+-- Un-ticking by hand asks nothing. `allowed` (optional) is asked after the un-tick: a tick that is not allowed asks nothing and does nothing.
+function UI.Momentary(control, question, run, allowed)
+	control.OnChange = function(self, value)
+		if not value then
+			return
+		end
+
+		-- first, so that the box is un-ticked in every case (a question that raises, an action that raises)
+		self:SetValue(false)
+
+		if allowed and not allowed() then
+			return
+		end
+
+		GryMod.Confirm(question, run)
+	end
+end
+
 -- The title of the section and the line that says whether the player is an admin.
 function UI.Section(Panel, title)
 	install(Panel)
@@ -195,7 +220,9 @@ function UI.Section(Panel, title)
 end
 
 -- One option of the server. kind: "bool" (a check box on the setting `convarName`), "choice" (a selector, opts.choices = {{text, value}, ...}),
--- "button" (a button that runs the server command opts.command, which checks the admin itself). Returns the control.
+-- "button" (a button that runs the server command opts.command, which checks the admin itself), "action" (a check box that is never saved: it is a
+-- momentary switch, ticking it asks GryMod.Confirm(opts.confirm) and on yes runs opts.onTick() or sends the net message opts.message with no payload; the
+-- box un-ticks itself at once whatever the answer; the server checks the right again). Returns the control.
 function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 	opts = opts or {}
 	install(Panel)
@@ -244,6 +271,26 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 
 		entry.parts = {control, title}
 		entry.holders = {control:GetParent(), title:GetParent()}
+	elseif kind == "action" then
+		control = vgui.Create("DCheckBoxLabel", Panel)
+		control:SetText(label)
+		control:SetDark(true)
+		Panel:AddItem(control)
+
+		-- the front prediction: a tick that gets through for a player who is not an admin asks nothing and sends nothing (the server checks again)
+		UI.Momentary(control, opts.confirm or (label .. "?"), function()
+			if opts.onTick then
+				opts.onTick()
+			else
+				UI.SendMessage(opts.message)
+			end
+		end, function()
+			return UI.IsAdmin()
+		end)
+
+		entry.parts = {control, control.Button}
+		entry.inner = {control.Button}
+		entry.holders = {control:GetParent()}
 	else
 		control = vgui.Create("DButton", Panel)
 		control:SetText(label)
@@ -262,7 +309,7 @@ function GryMod.AdminOption(Panel, label, convarName, kind, opts)
 
 	entry.control = control
 	Panel.GryAdminEntries[#Panel.GryAdminEntries + 1] = entry
-	Panel.GryAdminControls[convarName or ("button:" .. tostring(opts.command))] = control
+	Panel.GryAdminControls[convarName or ((kind == "action" and "action:" .. tostring(opts.message or label)) or ("button:" .. tostring(opts.command)))] = control
 
 	-- the item that holds it (and the one of its title) is how the tests and the tooltip find the control
 	for _, holder in ipairs(entry.holders) do

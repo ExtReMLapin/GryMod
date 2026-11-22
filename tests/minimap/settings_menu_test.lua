@@ -1,6 +1,7 @@
--- Tests of the minimap section of the options panel (GryMod.MinimapOptions in cl_options.lua), GLuaTest format, client realm. Every control
--- is bound to its convar (the settings are saved and opening the panel writes nothing), and the button that clears the cache goes through the
--- Cache module when there is one and does nothing (with a message) when there is not.
+-- Tests of the minimap section of the options (GryMod.MinimapOptions in cl_options.lua, shown in the Radar and map menu of cl_options_radar.lua), GLuaTest
+-- format, client realm. Every control is bound to its convar (the settings are saved and opening the panel writes nothing), and the check box that
+-- clears the cache (it asks first and un-ticks itself: there is no button) goes through the Cache module when there is one and does nothing (with a
+-- message) when there is not.
 
 local function walk(panel, found)
 	found = found or {}
@@ -37,12 +38,20 @@ local function comboOn(panel, convarName)
 	end
 end
 
-local function clearButton(panel)
+-- the check box that clears the cache: it is in the Radar and map menu, right after the Minimap section
+local function clearBox(panel)
 	for _, p in ipairs(walk(panel)) do
 		if p.GryMinimapClear then
 			return p
 		end
 	end
+end
+
+local function buildRadarMenu()
+	local panel = vgui.Create("ControlPanel")
+	GryMod.RadarOptionsPanel(panel)
+
+	return panel
 end
 
 local function hasLabel(panel, text)
@@ -116,7 +125,7 @@ return {
 			state.messages[#state.messages + 1] = tostring(text)
 		end
 
-		-- the confirmation of the Clear button: asked, and answered "yes" (a case that answers "no" sets state.confirmAnswer = false)
+		-- the confirmation of the Clear check box: asked, and answered "yes" (a case that answers "no" sets state.confirmAnswer = false)
 		state.realConfirm = GryMod.Confirm
 		state.asked = {}
 		state.confirmAnswer = true
@@ -163,6 +172,19 @@ return {
 				state.panel = build()
 				expect(hasLabel(state.panel, "Minimap")).to.beTrue()
 				expect(#state.writes).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the old Clear button comes back inside the Minimap section (the action is a check box of the Radar and map menu)
+			name = "the Minimap section itself has no button and no Clear control (the action is a check box of the Radar and map menu)",
+			func = function(state)
+				state.panel = build()
+
+				for _, p in ipairs(walk(state.panel)) do
+					-- the knob of a slider is a DButton made by the slider itself: not a control of the menu
+					expect(p.ClassName ~= "DButton" or p:GetParent().ClassName == "DSlider").to.beTrue()
+					expect(p.GryMinimapClear).to.beNil()
+				end
 			end
 		},
 		{
@@ -293,22 +315,36 @@ return {
 			end
 		},
 		{
-			name = "the whole options panel has the automatic definition check box and the range slider once each, and the Radar section only points to the Minimap section",
+			name = "the Radar and map menu has the automatic definition check box and the range slider once each, and the Config menu has neither (it only points to the menu)",
 			func = function(state)
-				state.panel = vgui.Create("ControlPanel")
-				GryMod.GryOptionschute(state.panel)
+				local function count(panel)
+					local ranges, autos = 0, 0
 
-				local order = controlsInOrder(state.panel)
-				local ranges, autos = 0, 0
+					for _, entry in ipairs(controlsInOrder(panel)) do
+						if entry == "slider:gry_radar_range" then ranges = ranges + 1 end
+						if entry == "box:" .. AUTO then autos = autos + 1 end
+					end
 
-				for _, entry in ipairs(order) do
-					if entry == "slider:gry_radar_range" then ranges = ranges + 1 end
-					if entry == "box:" .. AUTO then autos = autos + 1 end
+					return ranges, autos
 				end
+
+				state.panel = buildRadarMenu()
+
+				local ranges, autos = count(state.panel)
 
 				expect(ranges).to.equal(1)
 				expect(autos).to.equal(1)
-				expect(hasLabel(state.panel, "The radar range slider is in the Minimap section.")).to.beTrue()
+				state.panel:Remove()
+
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.GryOptionschute(state.panel)
+
+				ranges, autos = count(state.panel)
+
+				expect(ranges).to.equal(0)
+				expect(autos).to.equal(0)
+				expect(hasLabel(state.panel, "Radar, compass and map options are in the Radar and map menu.")).to.beTrue()
+				expect(hasLabel(state.panel, "The radar range slider is in the Minimap section.")).to.beFalse()
 				expect(#state.writes).to.equal(0)
 			end
 		},
@@ -442,7 +478,7 @@ return {
 			end
 		},
 		{
-			name = "the Clear button calls Cache.Clear with the current key, and tells the player",
+			name = "the Clear check box calls Cache.Clear with the current key, and tells the player",
 			func = function(state)
 				local cleared = {}
 
@@ -451,11 +487,11 @@ return {
 					Clear = function(key) cleared[#cleared + 1] = key return true end
 				}
 
-				state.panel = build()
+				state.panel = buildRadarMenu()
 
-				local button = clearButton(state.panel)
+				local button = clearBox(state.panel)
 				expect(button ~= nil).to.beTrue()
-				button:DoClick()
+				button:SetValue(true)
 
 				expect(#cleared).to.equal(1)
 				expect(cleared[1]).to.equal("gm_test_123_v1")
@@ -463,7 +499,7 @@ return {
 			end
 		},
 		{
-			name = "the Clear button asks for a confirmation first: on \"no\" (or no answer) nothing is cleared and the generator is left alone, on \"yes\" it clears",
+			name = "the Clear check box asks for a confirmation first: on \"no\" (or no answer) nothing is cleared and the generator is left alone, on \"yes\" it clears",
 			func = function(state)
 				local cleared, cancelled = 0, 0
 
@@ -473,12 +509,12 @@ return {
 				}
 				GryMod.Minimap.Gen = {Cancel = function() cancelled = cancelled + 1 end}
 
-				state.panel = build()
+				state.panel = buildRadarMenu()
 				state.confirmAnswer = false
 
-				local button = clearButton(state.panel)
+				local button = clearBox(state.panel)
 
-				button:DoClick()
+				button:SetValue(true)
 				expect(#state.asked).to.equal(1)
 				expect(string.find(state.asked[1], "minimap cache", 1, true) ~= nil).to.beTrue()
 				expect(cleared).to.equal(0)
@@ -486,7 +522,7 @@ return {
 				expect(#state.messages).to.equal(0)
 
 				state.confirmAnswer = true
-				button:DoClick()
+				button:SetValue(true)
 				expect(#state.asked).to.equal(2)
 				expect(cleared).to.equal(1)
 				expect(cancelled).to.equal(1)
@@ -500,7 +536,7 @@ return {
 				local before = #(cvars.GetConVarCallbacks("gry_radar_autozoom", false) or {})
 				local ok, err = pcall(function()
 					convar:SetString("1")
-					state.panel = build()
+					state.panel = buildRadarMenu()
 
 					local slider = sliderOn(state.panel, "gry_radar_range")
 
@@ -524,7 +560,7 @@ return {
 			end
 		},
 		{
-			name = "the Clear button also calls Gen.Cancel, after Cache.Clear (a request Gen remembers would otherwise make nothing)",
+			name = "the Clear check box also calls Gen.Cancel, after Cache.Clear (a request Gen remembers would otherwise make nothing)",
 			func = function(state)
 				local order = {}
 
@@ -534,8 +570,8 @@ return {
 				}
 				GryMod.Minimap.Gen = {Cancel = function() order[#order + 1] = "cancel" end}
 
-				state.panel = build()
-				clearButton(state.panel):DoClick()
+				state.panel = buildRadarMenu()
+				clearBox(state.panel):SetValue(true)
 
 				expect(#order).to.equal(2)
 				expect(order[1]).to.equal("clear")
@@ -543,7 +579,7 @@ return {
 			end
 		},
 		{
-			name = "the Clear button does not crash when Gen is missing, has no Cancel, or Cancel raises, and still clears the cache",
+			name = "the Clear check box does not crash when Gen is missing, has no Cancel, or Cancel raises, and still clears the cache",
 			func = function(state)
 				local cleared = 0
 
@@ -552,61 +588,70 @@ return {
 					Clear = function() cleared = cleared + 1 return true end
 				}
 
-				state.panel = build()
+				state.panel = buildRadarMenu()
 
-				local button = clearButton(state.panel)
+				local button = clearBox(state.panel)
 
 				for _, gen in ipairs({false, {}, {Cancel = function() error("boom") end}}) do
 					GryMod.Minimap.Gen = gen or nil
-					expect(function() button:DoClick() end).to.succeed()
+					expect(function() button:SetValue(true) end).to.succeed()
 				end
 
 				expect(cleared).to.equal(3)
 			end
 		},
 		{
-			name = "the Clear button does not crash when the Cache module is missing, and says so",
+			name = "the Clear check box does not crash when the Cache module is missing, and says so",
 			func = function(state)
 				GryMod.Minimap.Cache = nil
-				state.panel = build()
+				state.panel = buildRadarMenu()
 
-				local button = clearButton(state.panel)
+				local button = clearBox(state.panel)
 				expect(button ~= nil).to.beTrue()
-				expect(function() button:DoClick() end).to.succeed()
+				expect(function() button:SetValue(true) end).to.succeed()
 				expect(#state.messages).to.equal(1)
 			end
 		},
 		{
-			name = "the Clear button does not crash when Cache.Clear raises or Key is missing",
+			name = "the Clear check box does not crash when Cache.Clear raises or Key is missing",
 			func = function(state)
-				state.panel = build()
+				state.panel = buildRadarMenu()
 
-				local button = clearButton(state.panel)
+				local button = clearBox(state.panel)
 
 				GryMod.Minimap.Cache = {Key = function() return "k" end, Clear = function() error("boom") end}
-				expect(function() button:DoClick() end).to.succeed()
+				expect(function() button:SetValue(true) end).to.succeed()
 				expect(#state.messages).to.equal(1)
 
 				GryMod.Minimap.Cache = {Clear = function() return true end}
-				expect(function() button:DoClick() end).to.succeed()
+				expect(function() button:SetValue(true) end).to.succeed()
 				expect(#state.messages).to.equal(2)
 			end
 		},
 		{
-			name = "the whole options panel contains the Minimap section once",
+			name = "the Radar and map menu contains the Minimap section once, and the Config menu not at all",
 			func = function(state)
-				state.panel = vgui.Create("ControlPanel")
-				GryMod.GryOptionschute(state.panel)
+				local function count(panel)
+					local n = 0
 
-				local count = 0
-
-				for _, p in ipairs(walk(state.panel)) do
-					if p.ClassName == "DNumSlider" and p.Scratch and p.Scratch:GetTable().m_strConVar == "gry_minimap_definition" then
-						count = count + 1
+					for _, p in ipairs(walk(panel)) do
+						if p.ClassName == "DNumSlider" and p.Scratch and p.Scratch:GetTable().m_strConVar == "gry_minimap_definition" then
+							n = n + 1
+						end
 					end
+
+					return n
 				end
 
-				expect(count).to.equal(1)
+				state.panel = buildRadarMenu()
+				expect(count(state.panel)).to.equal(1)
+				expect(hasLabel(state.panel, "Minimap")).to.beTrue()
+				state.panel:Remove()
+
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.GryOptionschute(state.panel)
+				expect(count(state.panel)).to.equal(0)
+				expect(hasLabel(state.panel, "Minimap")).to.beFalse()
 				expect(#state.writes).to.equal(0)
 			end
 		}

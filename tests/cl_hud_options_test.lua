@@ -119,6 +119,52 @@ return {
 			end
 		},
 		{
+			-- breaks if: an element has no check box in either menu, the two radar elements stay in the Config menu, or the radar menu does not have them
+			name = "every HUD element has a check box in the Config menu or in the Radar and map menu: the two radar ones (radar, radarunits) only in the radar menu, all the others only in Config",
+			func = function(state)
+				local function convarsOf(build)
+					local found = {}
+					local panel = vgui.Create("ControlPanel")
+					local ok, err = pcall(function()
+						build(panel)
+
+						local function walk(p)
+							for _, child in ipairs(p:GetChildren()) do
+								if child.ClassName == "DCheckBoxLabel" and child.Button and child.Button:GetTable().m_strConVar then
+									found[child.Button:GetTable().m_strConVar] = true
+								end
+
+								walk(child)
+							end
+						end
+
+						walk(panel)
+					end)
+
+					panel:Remove()
+
+					if not ok then error(err, 0) end
+
+					return found
+				end
+
+				local config = convarsOf(GryMod.GryOptionschute)
+				local radar = convarsOf(GryMod.RadarOptionsPanel)
+
+				for _, option in ipairs(GryMod.HUDOptions.List) do
+					local convar = "gry_hud_" .. option.name
+
+					if option.name == "radar" or option.name == "radarunits" then
+						expect(radar[convar]).to.beTrue()
+						expect(config[convar]).to.beNil()
+					else
+						expect(config[convar]).to.beTrue()
+						expect(radar[convar]).to.beNil()
+					end
+				end
+			end
+		},
+		{
 			name = "dragging in a colour mixer writes the colour once, after a short pause, not at every step",
 			func = function(state)
 				local writes = {}

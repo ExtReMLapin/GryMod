@@ -392,13 +392,13 @@ return {
 			end
 		},
 		{
-			name = "the options panel has the Automatic zoom section: a check box, three range sliders from 5 to 100 and the delay slider from 0.1 to 5",
+			name = "the Radar and map menu has the Automatic zoom section: a check box, three range sliders from 5 to 100 and the delay slider from 0.1 to 5",
 			func = function()
 				local found = {}
 				local box = false
 				local panel = vgui.Create("ControlPanel")
 				local ok, err = pcall(function()
-					GryMod.GryOptionschute(panel)
+					GryMod.RadarOptionsPanel(panel)
 
 					local function walk(p)
 						for _, child in ipairs(p:GetChildren()) do

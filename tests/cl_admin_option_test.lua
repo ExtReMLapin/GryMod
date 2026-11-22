@@ -7,7 +7,7 @@
 
 local UI = function() return GryMod.AdminUI end
 
-local realTransport, realRunner
+local realTransport, realRunner, realSendMessage
 
 local function asAdmin(isAdmin, fn)
 	local meta = FindMetaTable("Player")
@@ -35,13 +35,16 @@ end
 
 local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DNumSlider = true, DBinder = true, DColorMixer = true}
 
+-- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
+local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_zonemap = true}
+
 return {
 	groupName = "GryMod administrators' settings (options panel)",
 	beforeEach = function()
-		realTransport, realRunner = UI().Transport, UI().RunCommand
+		realTransport, realRunner, realSendMessage = UI().Transport, UI().RunCommand, UI().SendMessage
 	end,
 	afterEach = function()
-		UI().Transport, UI().RunCommand = realTransport, realRunner
+		UI().Transport, UI().RunCommand, UI().SendMessage = realTransport, realRunner, realSendMessage
 	end,
 	cases = {
 		{
@@ -281,7 +284,7 @@ return {
 			end
 		},
 		{
-			name = "the options panel has a Server (administrators only) section at the bottom with every server setting of the white list, the two admin buttons, and only those",
+			name = "the Config menu has a Server (administrators only) section at the bottom with the settings of the white list that are not about the radar, the two admin buttons, and only those",
 			func = function()
 				local panel = newPanel()
 				local ok, err = pcall(function()
@@ -296,7 +299,9 @@ return {
 
 					local expected = {}
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
-						expected[#expected + 1] = setting.name
+						if not RADAR_MENU[setting.name] then
+							expected[#expected + 1] = setting.name
+						end
 					end
 
 					expected[#expected + 1] = "button:gry_Health"
@@ -308,7 +313,11 @@ return {
 					-- the kind of each control is the kind of the list
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
 						local control = panel.GryAdminControls[setting.name]
-						expect(control.ClassName).to.equal(setting.kind == "choice" and "DComboBox" or "DCheckBoxLabel")
+						if RADAR_MENU[setting.name] then
+							expect(control).to.beNil()
+						else
+							expect(control.ClassName).to.equal(setting.kind == "choice" and "DComboBox" or "DCheckBoxLabel")
+						end
 					end
 
 					-- order: the title, then all of the admin controls; no other control comes after the title
@@ -372,7 +381,7 @@ return {
 							end
 						end)
 
-						expect(admins >= 8).to.beTrue() -- 6 settings and 2 buttons
+						expect(admins).to.equal(9) -- 7 settings and 2 buttons
 						expect(others > 20).to.beTrue()
 					end)
 				end)
@@ -396,11 +405,158 @@ return {
 							end
 						end)
 
-						expect(admins >= 8).to.beTrue()
+						expect(admins).to.equal(9)
 					end)
 				end)
 				panel:Remove()
 				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: a setting of the white list is in neither menu, or in both (the radar ones moved, the others stayed)
+			name = "the Config menu and the Radar and map menu together hold every setting of the white list exactly once, and the radar menu holds the three radar ones",
+			func = function()
+				local config, radar = newPanel(), newPanel()
+				local ok, err = pcall(function()
+					asAdmin(true, function()
+						GryMod.GryOptionschute(config)
+						GryMod.RadarOptionsPanel(radar)
+					end)
+
+					for _, setting in ipairs(GryMod.ServerSettings.List) do
+						local inConfig = config.GryAdminControls[setting.name] ~= nil
+						local inRadar = radar.GryAdminControls[setting.name] ~= nil
+
+						expect(inConfig ~= inRadar).to.beTrue()
+						expect(inRadar).to.equal(RADAR_MENU[setting.name] == true)
+					end
+
+					-- the radar menu's server section has only those three and the reset action
+					local names = {}
+
+					for name in pairs(radar.GryAdminControls) do
+						names[#names + 1] = name
+					end
+
+					table.sort(names)
+					expect(table.concat(names, ",")).to.equal("action:gry_zonemap_reset,gry_radar_allies_always,gry_radar_objects,gry_zonemap")
+				end)
+				config:Remove()
+				radar:Remove()
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: the action box sends without asking, ignores the answer, or stays ticked
+			name = "an action option is a check box that is never saved: ticking it asks first, on yes it sends its message (no payload), on no it sends nothing, and it is un-ticked at once in both cases",
+			func = function()
+				local panel = newPanel()
+				local sent, asked = {}, {}
+				local realSend, realConfirm = UI().SendMessage, GryMod.Confirm
+				UI().SendMessage = function(name) sent[#sent + 1] = name end
+
+				local answer = true
+				GryMod.Confirm = function(text, onYes)
+					asked[#asked + 1] = text
+
+					if answer then
+						onYes()
+					end
+				end
+
+				local ok, err = pcall(function()
+					asAdmin(true, function()
+						local box = GryMod.AdminOption(panel, "Do it", nil, "action", {message = "gry_test_message", confirm = "Really do it?"})
+						expect(box.ClassName).to.equal("DCheckBoxLabel")
+						expect(box:GetText()).to.equal("Do it")
+						expect(box.Button.m_strConVar).to.beNil()
+						expect(box:GetChecked() == true).to.beFalse() -- nothing is read from the server: it opens un-ticked
+						expect(box:IsEnabled()).to.beTrue()
+
+						answer = false
+						box:SetValue(true)
+						expect(#asked).to.equal(1)
+						expect(asked[1]).to.equal("Really do it?")
+						expect(#sent).to.equal(0)
+						expect(box:GetChecked()).to.beFalse()
+
+						answer = true
+						box:SetValue(true)
+						expect(#asked).to.equal(2)
+						expect(#sent).to.equal(1)
+						expect(sent[1]).to.equal("gry_test_message")
+						expect(box:GetChecked()).to.beFalse()
+
+						-- the poll leaves it alone (no value to show) and nothing is asked again
+						UI().Poll(panel, panel.GryAdminPolled + 3)
+						expect(#sent).to.equal(1)
+						expect(box:GetChecked()).to.beFalse()
+					end)
+				end)
+
+				UI().SendMessage, GryMod.Confirm = realSend, realConfirm
+				panel:Remove()
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: the front prediction is missing from the action kind
+			name = "an action option for a player who is not an admin is disabled with the tooltip, and a tick that gets through asks nothing, sends nothing and un-ticks; the poll enables it when he becomes an admin",
+			func = function()
+				local panel = newPanel()
+				local sent, asked, ran = 0, 0, 0
+				local realSend, realConfirm = UI().SendMessage, GryMod.Confirm
+				UI().SendMessage = function() sent = sent + 1 end
+				GryMod.Confirm = function(_, onYes) asked = asked + 1 onYes() end
+
+				local ok, err = pcall(function()
+					local box
+					asAdmin(false, function()
+						box = GryMod.AdminOption(panel, "Do it", nil, "action", {onTick = function() ran = ran + 1 end, confirm = "Sure?"})
+						expect(box:IsEnabled()).to.beFalse()
+						expect(box:GetAlpha() < 255).to.beTrue()
+						expect(box:GetParent():GetTooltip()).to.equal("Server setting: administrators only")
+
+						box:SetValue(true)
+						expect(asked).to.equal(0)
+						expect(sent).to.equal(0)
+						expect(ran).to.equal(0)
+						expect(box:GetChecked()).to.beFalse()
+					end)
+
+					asAdmin(true, function()
+						UI().Poll(panel, panel.GryAdminPolled + 1.01)
+						expect(box:IsEnabled()).to.beTrue()
+
+						-- opts.onTick runs instead of a message
+						box:SetValue(true)
+						expect(asked).to.equal(1)
+						expect(ran).to.equal(1)
+						expect(sent).to.equal(0)
+						expect(box:GetChecked()).to.beFalse()
+					end)
+				end)
+
+				UI().SendMessage, GryMod.Confirm = realSend, realConfirm
+				panel:Remove()
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			name = "the real SendMessage is the net message with no payload",
+			func = function()
+				local realStart, realSend = net.Start, net.SendToServer
+				local log = {}
+				local ok, err = pcall(function()
+					net.Start = function(name) log[#log + 1] = "start:" .. name end
+					net.SendToServer = function() log[#log + 1] = "send" end
+					realSendMessage("gry_zonemap_reset")
+				end)
+
+				net.Start, net.SendToServer = realStart, realSend
+				if not ok then error(err, 0) end
+
+				expect(table.concat(log, "|")).to.equal("start:gry_zonemap_reset|send")
 			end
 		},
 		{

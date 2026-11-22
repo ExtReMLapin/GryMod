@@ -44,6 +44,7 @@ local function checkBoxOn(panel, convarName)
 	end
 end
 
+-- the check box of the radar menu that deletes the in/out map and makes it again (flagged by cl_options_radar.lua)
 local function resetButton(panel)
 	for _, p in ipairs(walk(panel)) do
 		if p.GryZoneMapReset then
@@ -1260,43 +1261,63 @@ return {
 			end
 		},
 		{
-			-- breaks if: the section is not called from the options, or comes before the automatic zoom
-			name = "the whole options panel has the zone map section once, right after the automatic zoom section",
+			-- breaks if: the section is not called from the radar menu, or comes before the automatic zoom, or is still in the Config menu
+			name = "the Radar and map menu has the zone map section once, right after the automatic zoom section, and the Config menu has none",
 			func = function(state)
-				state.panel = vgui.Create("ControlPanel")
-				GryMod.GryOptionschute(state.panel)
+				local function order(panel)
+					local found = {}
 
-				local order = {}
-
-				for _, p in ipairs(walk(state.panel)) do
-					if p.ClassName == "DNumSlider" and p.Scratch and p.Scratch:GetTable().m_strConVar == "gry_radar_zoom_delay" then
-						order[#order + 1] = "delay"
-					elseif p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == DEBUG then
-						order[#order + 1] = "debug"
+					for _, p in ipairs(walk(panel)) do
+						if p.ClassName == "DNumSlider" and p.Scratch and p.Scratch:GetTable().m_strConVar == "gry_radar_zoom_delay" then
+							found[#found + 1] = "delay"
+						elseif p.ClassName == "DCheckBoxLabel" and p.Button and p.Button:GetTable().m_strConVar == DEBUG then
+							found[#found + 1] = "debug"
+						end
 					end
+
+					return found
 				end
 
-				expect(#order).to.equal(2)
-				expect(order[1]).to.equal("delay")
-				expect(order[2]).to.equal("debug")
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.RadarOptionsPanel(state.panel)
+
+				local found = order(state.panel)
+
+				expect(#found).to.equal(2)
+				expect(found[1]).to.equal("delay")
+				expect(found[2]).to.equal("debug")
+				state.panel:Remove()
+
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.GryOptionschute(state.panel)
+				expect(#order(state.panel)).to.equal(0)
 			end
 		},
 		{
-			name = "the administrators' section has the gry_zonemap switch (asked through the server, not a convar) and the button",
+			name = "the Radar and map menu's server section has the gry_zonemap switch (asked through the server, not a convar) and the check box that makes the map again; the Config menu's has neither",
 			func = function(state)
 				state.panel = vgui.Create("ControlPanel")
-				GryMod.AdminOptions(state.panel)
+				GryMod.RadarOptionsPanel(state.panel)
 
 				local control = state.panel.GryAdminControls["gry_zonemap"]
 
 				expect(control ~= nil).to.beTrue()
 				expect(control.ClassName).to.equal("DCheckBoxLabel")
 				expect(control:GetText()).to.equal("In/out map: the server makes it from the node graph (the automatic zoom and other features use it)")
+				expect(control.Button:GetTable().m_strConVar).to.beNil()
 
-				local button = resetButton(state.panel)
+				local box = resetButton(state.panel)
 
-				expect(button ~= nil).to.beTrue()
-				expect(button:GetText()).to.equal("Delete the in/out map and make it again")
+				expect(box ~= nil).to.beTrue()
+				expect(box.ClassName).to.equal("DCheckBoxLabel")
+				expect(box:GetText()).to.equal("Delete the in/out map and make it again")
+				state.panel:Remove()
+
+				-- the administrators' section of the Config menu
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.AdminOptions(state.panel)
+				expect(state.panel.GryAdminControls["gry_zonemap"]).to.beNil()
+				expect(resetButton(state.panel)).to.beNil()
 			end
 		},
 		{
@@ -1310,44 +1331,47 @@ return {
 			end
 		},
 		{
-			-- breaks if: the button sends without asking, or asks and sends on "no"
-			name = "the reset button asks first; on no nothing is sent, on yes gry_zonemap_reset goes to the server with no payload",
+			-- breaks if: the box sends without asking, asks and sends on "no", or stays ticked
+			name = "the reset check box asks first; on no nothing is sent, on yes gry_zonemap_reset goes to the server with no payload; it is un-ticked each time",
 			func = function(state)
 				GryMod.AdminUI.IsAdmin = function() return true end
 
 				state.panel = vgui.Create("ControlPanel")
-				GryMod.AdminOptions(state.panel)
+				GryMod.RadarOptionsPanel(state.panel)
 
-				local button = resetButton(state.panel)
+				local box = resetButton(state.panel)
 
 				state.confirmAnswer = false
-				button:DoClick()
+				box:SetValue(true)
 				expect(#state.asked).to.equal(1)
 				expect(string.find(state.asked[1], "Delete the in/out map of this map and make it again?", 1, true) == 1).to.beTrue()
 				expect(#state.sent).to.equal(0)
+				expect(box:GetChecked()).to.beFalse()
 
 				state.confirmAnswer = true
-				button:DoClick()
+				box:SetValue(true)
 				expect(#state.asked).to.equal(2)
 				expect(state.sent[1]).to.equal("gry_zonemap_reset")
 				expect(state.sent[2]).to.equal("send")
 				expect(#state.sent).to.equal(2)
+				expect(box:GetChecked()).to.beFalse()
 			end
 		},
 		{
-			name = "for a player who is not an administrator the button asks nothing and sends nothing even if a click gets through",
+			name = "for a player who is not an administrator the reset check box is disabled, and a tick that gets through asks nothing and sends nothing",
 			func = function(state)
 				GryMod.AdminUI.IsAdmin = function() return false end
 
 				state.panel = vgui.Create("ControlPanel")
-				GryMod.AdminOptions(state.panel)
+				GryMod.RadarOptionsPanel(state.panel)
 
-				local button = resetButton(state.panel)
+				local box = resetButton(state.panel)
 
-				expect(button:IsEnabled()).to.beFalse()
-				button:DoClick()
+				expect(box:IsEnabled()).to.beFalse()
+				box:SetValue(true)
 				expect(#state.asked).to.equal(0)
 				expect(#state.sent).to.equal(0)
+				expect(box:GetChecked()).to.beFalse()
 			end
 		},
 		-- ----------------------------------------------------------------------------------------------------------------------

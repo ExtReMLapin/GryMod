@@ -179,14 +179,16 @@ return {
 			end
 		},
 		{
-			-- the slider moved to the Minimap section (next to the automatic definition, which follows it); the Radar section keeps a line that says where it went
-			name = "the options panel has ONE slider for the range, in the Minimap section (the Radar section only points to it), with the recommended values in its label",
+			-- the slider lives in the Radar and map menu (next to the automatic definition, which follows it); the Config menu has none and only says where the radar options went
+			name = "the Radar and map menu has ONE slider for the range, in the Minimap section, with the recommended values in its label; the Config menu has none and points to the menu",
 			func = function()
 				local found, sliderMin, sliderMax
-				local count, position, minimapAt, helpAt, sliderAt = 0, 0, nil, nil, nil
+				local count, position, minimapAt, sliderAt = 0, 0, nil, nil
 				local panel = vgui.Create("ControlPanel")
+				local config = vgui.Create("ControlPanel")
+				local configSliders, configLine = 0, false
 				local ok, err = pcall(function()
-					GryMod.GryOptionschute(panel)
+					GryMod.RadarOptionsPanel(panel)
 
 					local function walk(p)
 						for _, child in ipairs(p:GetChildren()) do
@@ -199,8 +201,6 @@ return {
 								sliderAt = position
 							elseif child.ClassName == "DLabel" and child:GetText() == "Minimap" then
 								minimapAt = position
-							elseif child.ClassName == "DLabel" and child:GetText() == "The radar range slider is in the Minimap section." then
-								helpAt = position
 							end
 
 							walk(child)
@@ -208,16 +208,33 @@ return {
 					end
 
 					walk(panel)
+
+					GryMod.GryOptionschute(config)
+
+					local function walkConfig(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DNumSlider" and child.Scratch and child.Scratch.m_strConVar == OPTION then
+								configSliders = configSliders + 1
+							elseif child.ClassName == "DLabel" and child:GetText() == "Radar, compass and map options are in the Radar and map menu." then
+								configLine = true
+							end
+
+							walkConfig(child)
+						end
+					end
+
+					walkConfig(config)
 				end)
 
 				panel:Remove()
+				config:Remove()
 
 				if not ok then error(err, 0) end
 
 				expect(count).to.equal(1)
 				expect(minimapAt ~= nil and sliderAt ~= nil and sliderAt > minimapAt).to.beTrue()
-				-- the pointer is in the Radar section, before the Minimap one
-				expect(helpAt ~= nil and helpAt < minimapAt).to.beTrue()
+				expect(configSliders).to.equal(0)
+				expect(configLine).to.beTrue()
 				expect(found ~= nil).to.beTrue()
 				expect(string.find(found, "40", 1, true) ~= nil).to.beTrue()
 				expect(string.find(found, "75", 1, true) ~= nil).to.beTrue()
