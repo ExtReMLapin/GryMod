@@ -305,8 +305,8 @@ return {
 
 				local real = origKey()
 
-				expect(kx).to.equal("test_e2e_mapx_0_v5") -- no such .bsp: size 0
-				expect(ky).to.equal("test_e2e_mapy_0_v5")
+				expect(kx).to.equal("test_e2e_mapx_0_v6") -- no such .bsp: size 0
+				expect(ky).to.equal("test_e2e_mapy_0_v6")
 				expect(Cache.Dir(kx) ~= Cache.Dir(ky)).to.beTrue()
 				expect(Cache.Dir(kx) ~= Cache.Dir(real)).to.beTrue()
 				expect(real).to.equal(Cache.KeyFor(game.GetMap(), file.Size("maps/" .. game.GetMap() .. ".bsp", "GAME")))

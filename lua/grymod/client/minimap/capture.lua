@@ -166,49 +166,55 @@ function Capture.IsVoid(b, g, r, a)
 	return a == 0 and b == 0 and g == 0 and r == 0
 end
 
--- THE OPAQUE BLACK OF "NOTHING" (measured on gm_funkis): where the slab of a floor below, or of the outside, is inside solid earth or looks at a sky brush, the engine
--- sometimes draws exactly (0, 0, 0, 255) instead of leaving the cleared (0, 0, 0, 0). The same tile came back void from one render and entirely (0, 0, 0, 255) from
--- the next (seen: the first capture of a frame gave it and a second one in the same frame did not; it also came and went with where the player stood). The geometry never has that alpha: it writes 1 (black geometry is
--- (0, 0, 0, 1)). By the void rule above that black is solid, so a tile of the floor below stored with it was a black wall painted over the outside: an invisible thing
--- erasing a visible one. IsBlackOpaque is the rule; BlackOpaqueToVoid and IsAllBlackOpaque apply it to a whole picture (the Gen module decides for which set of tiles).
--- Pure: no engine call. The pictures are strings of BGRA pixels; only a whole pixel at a position that is a multiple of 4 counts (the bytes 0, 0, 0, 255 also
--- appear across two pixels). A pixel that is almost that (a blue of 1, an alpha of 254, a near-black colour with alpha 255) is geometry and is never touched.
-function Capture.IsBlackOpaque(b, g, r, a)
-	return a == 255 and b == 0 and g == 0 and r == 0
-end
-
+-- THE BACKGROUND OF THE ENGINE (measured on gm_funkis, d1_canals_01, d2_coast_07, gm_everpine_mall, ep2_outland_02 and gm_boreas, with tests/minimap/void_survey_job.lua):
+-- where nothing is drawn, the engine sometimes paints a flat colour with alpha 255 instead of leaving the cleared (0, 0, 0, 0). The colour is the one of the map's sky or fog:
+-- black on funkis, canals, coast and everpine, a sky blue on boreas (a tunnel there was drawn inside a solid light-blue wall). The same tile came back void from one render and
+-- entirely that colour from the next (seen on funkis: it came and went with where the player stood). The geometry's own alpha is 1, so the alpha 255 is the engine's fill.
+--   * the colour of the fill is the same over a whole picture but NOT over time (on boreas it drifted from (123, 161, 201) to (128, 168, 209) within seconds): it is read from each
+--     picture (FindBackground), never kept per map;
+--   * it is not "every alpha-255 pixel": translucent geometry drawn over the fill keeps alpha 255 with its own colour at its edges (dark greens, near blacks: 0.01 to 0.7 % of the
+--     alpha-255 pixels on the maps above, never a whole area). Only the colour of the fill is void; those pixels stay solid;
+--   * by the void rule above a pixel of the fill is solid, so a tile of the floor below stored with it was a wall painted over the outside: an invisible thing erasing a visible one.
+-- IsBackground is the rule; BackgroundToVoid and IsAllBackground apply it to a whole picture and FindBackground finds the colour (the Gen module decides for which set of tiles).
+-- A background (`bg`) is a pixel as a string of four bytes B, G, R, 255 (the format of the pictures); none given means black, the first version of the rule (IsBlackOpaque,
+-- BlackOpaqueToVoid and IsAllBlackOpaque are kept under their old names). Pure: no engine call. The pictures are strings of BGRA pixels; only a whole pixel at a position that is a
+-- multiple of 4 counts (the bytes of a colour followed by 255 also appear across two pixels). A pixel that is almost the fill (a channel off by one, an alpha of 254) is geometry and
+-- is never touched.
+local BLACK_BACKGROUND = "\0\0\0\255"
 local sfind, ssub, srep, sbyte, concat = string.find, string.sub, string.rep, string.byte, table.concat
-local OPAQUE_PIXEL, VOID_PIXEL = "\0\0\0\255", "\0\0\0\0"
--- the sizes (bytes) of the chunks IsAllBlackOpaque compares, largest first: a string of opaque black pixels of each size
-local RUN_SIZES = {65536, 16384, 4096, 1024, 256, 64, 16, 4}
-local RUN_STRINGS = {}
+local VOID_PIXEL = "\0\0\0\0"
 local VOID_RUNS = {} -- number of pixels (up to 512) -> a string of that many void pixels: the short runs are the most frequent, and the same ones come back
 
-for i = 1, #RUN_SIZES do
-	RUN_STRINGS[i] = srep(OPAQUE_PIXEL, RUN_SIZES[i] / 4)
+function Capture.IsBackground(b, g, r, a, bg)
+	if a ~= 255 then
+		return false
+	end
+
+	local bb, bgg, br, ba = sbyte(bg or BLACK_BACKGROUND, 1, 4)
+
+	return b == bb and g == bgg and r == br and ba == 255
 end
 
--- the position after the run of opaque black pixels that starts at `q` (a multiple of 4, plus 1). The run is read four pixels at a time with string.byte, which makes no
--- string (measured: 8 ns per step once compiled, a whole 1024 x 1024 picture in 2 ms; comparing chunks made megabytes of garbage and cost ten times more): the sum of the four
--- alphas is 1020 and the sum of the twelve colour bytes is 0 only for four opaque black pixels.
-local function runEnd(s, q)
+-- the position after the run of pixels of the colour (B, G, R) with alpha 255 that starts at `q` (a multiple of 4, plus 1). The run is read four pixels at a time with string.byte,
+-- which makes no string (measured: a whole 1024 x 1024 picture in 2 to 4 ms; comparing chunks made megabytes of garbage and cost ten times more).
+local function runEnd(s, q, B, G, R)
 	local n = #s
 
 	while q + 15 <= n do
 		local b1, g1, r1, a1, b2, g2, r2, a2, b3, g3, r3, a3, b4, g4, r4, a4 = sbyte(s, q, q + 15)
 
-		if a1 + a2 + a3 + a4 ~= 1020 or b1 + g1 + r1 + b2 + g2 + r2 + b3 + g3 + r3 + b4 + g4 + r4 ~= 0 then
+		if a1 + a2 + a3 + a4 ~= 1020 or b1 ~= B or b2 ~= B or b3 ~= B or b4 ~= B or g1 ~= G or g2 ~= G or g3 ~= G or g4 ~= G or r1 ~= R or r2 ~= R or r3 ~= R or r4 ~= R then
 			break
 		end
 
 		q = q + 16
 	end
 
-	-- the last pixels (fewer than four, or the first of the block that was not all opaque black), one at a time
+	-- the last pixels (fewer than four, or the first of the group that was not all the fill), one at a time
 	while q + 3 <= n do
 		local b, g, r, a = sbyte(s, q, q + 3)
 
-		if a ~= 255 or b ~= 0 or g ~= 0 or r ~= 0 then
+		if a ~= 255 or b ~= B or g ~= G or r ~= R then
 			break
 		end
 
@@ -230,14 +236,33 @@ local function checkPicture(bgra)
 	return true
 end
 
--- BlackOpaqueToVoid(bgra) -> the picture with every opaque black pixel (0, 0, 0, 255) turned into a void pixel (0, 0, 0, 0), the number of pixels changed | nil, reason.
--- The same string and 0 when there is none (nothing is copied). The scan looks for the alpha byte (255), which is rare in the void and in the geometry (the search for the
--- bytes 0, 0, 0, 255 would stop at every zero of the void), and checks the three bytes before it.
-function Capture.BlackOpaqueToVoid(bgra)
+-- the bytes of bg (black when nil) | nil, reason
+local function backgroundBytes(bg)
+	if bg == nil then
+		return 0, 0, 0
+	end
+
+	if type(bg) ~= "string" or #bg ~= 4 or sbyte(bg, 4) ~= 255 then
+		return nil, "the background is not a pixel of alpha 255 (four bytes B, G, R, 255)"
+	end
+
+	return sbyte(bg, 1, 3)
+end
+
+-- BackgroundToVoid(bgra, bg) -> the picture with every pixel of the fill (the colour of bg, alpha 255) turned into a void pixel (0, 0, 0, 0), the number of pixels changed | nil, reason.
+-- The same string and 0 when there is none (nothing is copied). The scan looks for the alpha byte (255), which is rare in the void and in the geometry (the search for the whole
+-- pixel would stop at every zero of the void), and checks the three bytes before it.
+function Capture.BackgroundToVoid(bgra, bg)
 	local valid, why = checkPicture(bgra)
 
 	if not valid then
 		return nil, why
+	end
+
+	local B, G, R = backgroundBytes(bg)
+
+	if not B then
+		return nil, G
 	end
 
 	local pos = sfind(bgra, "\255", 1, true)
@@ -255,9 +280,9 @@ function Capture.BlackOpaqueToVoid(bgra)
 			b, g, r = sbyte(bgra, pos - 3, pos - 1)
 		end
 
-		if b == 0 and g == 0 and r == 0 then
-			-- the pixel at pos - 3 .. pos is opaque black: follow the run, then replace all of it at once
-			local start, stop = pos - 3, runEnd(bgra, pos + 1)
+		if b == B and g == G and r == R then
+			-- the pixel at pos - 3 .. pos is of the fill: follow the run, then replace all of it at once
+			local start, stop = pos - 3, runEnd(bgra, pos + 1, B, G, R)
 
 			if start > last then
 				n = n + 1
@@ -281,7 +306,7 @@ function Capture.BlackOpaqueToVoid(bgra)
 			last = stop
 			pos = sfind(bgra, "\255", stop, true)
 		else
-			-- a 255 that is not the alpha of an opaque black pixel (geometry, a colour, or a byte of another pixel)
+			-- a 255 that is not the alpha of a pixel of the fill (geometry, a colour, or a byte of another pixel)
 			pos = sfind(bgra, "\255", pos + 1, true)
 		end
 	end
@@ -297,8 +322,8 @@ function Capture.BlackOpaqueToVoid(bgra)
 	return concat(parts), count
 end
 
--- IsAllBlackOpaque(bgra) -> true when every pixel is (0, 0, 0, 255), false as soon as one is not | nil, reason (an empty picture is not a picture of anything)
-function Capture.IsAllBlackOpaque(bgra)
+-- IsAllBackground(bgra, bg) -> true when every pixel is the fill, false as soon as one is not | nil, reason (an empty picture is not a picture of anything)
+function Capture.IsAllBackground(bgra, bg)
 	local valid, why = checkPicture(bgra)
 
 	if not valid then
@@ -311,18 +336,74 @@ function Capture.IsAllBlackOpaque(bgra)
 		return nil, "the picture is empty"
 	end
 
-	local pos = 1
+	local B, G, R = backgroundBytes(bg)
 
-	-- from the largest chunk to the smallest: after the last loop pos is n + 1 only when the whole picture matched
-	for level = 1, #RUN_SIZES do
-		local size, chunk = RUN_SIZES[level], RUN_STRINGS[level]
+	if not B then
+		return nil, G
+	end
 
-		while pos + size - 1 <= n and ssub(bgra, pos, pos + size - 1) == chunk do
-			pos = pos + size
+	return runEnd(bgra, 1, B, G, R) == n + 1
+end
+
+-- FindBackground(bgra) -> the fill of the picture as a pixel (B, G, R, 255), or nil when it has none | nil, reason (not a picture).
+-- The fill is the colour that most of the alpha-255 pixels have, counted on a sample: the pixels 0, BACKGROUND_STEP, 2 * BACKGROUND_STEP... (a prime step: the sample does not
+-- follow the rows). It needs at least BACKGROUND_MIN_SAMPLES samples of that colour and a strict majority of the alpha-255 samples: the edge pixels of translucent geometry are
+-- few and each of its own colour, so they never make one, and a picture that has none of the fill (a floor of solid geometry) gives nil. A picture with nil: the caller uses the
+-- black, as the first version of the rule did. About 15000 samples for a 1024 x 1024 picture.
+Capture.BACKGROUND_STEP = 67
+Capture.BACKGROUND_MIN_SAMPLES = 8
+
+function Capture.FindBackground(bgra)
+	local valid, why = checkPicture(bgra)
+
+	if not valid then
+		return nil, why
+	end
+
+	local len = #bgra
+
+	if len == 0 then
+		return nil, "the picture is empty"
+	end
+
+	local step = Capture.BACKGROUND_STEP * 4
+	local counts, total = {}, 0
+	local bestKey, bestCount = nil, 0
+
+	for i = 1, len - 3, step do
+		local b, g, r, a = sbyte(bgra, i, i + 3)
+
+		if a == 255 then
+			local key = b * 65536 + g * 256 + r
+			local c = (counts[key] or 0) + 1
+
+			counts[key] = c
+			total = total + 1
+
+			if c > bestCount then
+				bestKey, bestCount = key, c
+			end
 		end
 	end
 
-	return pos == n + 1
+	if not bestKey or bestCount < Capture.BACKGROUND_MIN_SAMPLES or bestCount * 2 <= total then
+		return nil
+	end
+
+	return string.char(math.floor(bestKey / 65536), math.floor(bestKey / 256) % 256, bestKey % 256, 255)
+end
+
+-- the first version of the rule, with the black as the fill: kept under its names
+function Capture.IsBlackOpaque(b, g, r, a)
+	return Capture.IsBackground(b, g, r, a)
+end
+
+function Capture.BlackOpaqueToVoid(bgra)
+	return Capture.BackgroundToVoid(bgra)
+end
+
+function Capture.IsAllBlackOpaque(bgra)
+	return Capture.IsAllBackground(bgra)
 end
 
 local function answerTrue()
