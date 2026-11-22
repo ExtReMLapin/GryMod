@@ -255,6 +255,11 @@ local function minimapNotice(text, kind)
 	end
 end
 
+-- Asks "are you sure" before an action that cannot be undone: the text, and what to run on "yes". A function of GryMod so that a test can answer it.
+function GryMod.Confirm(text, onYes)
+	Derma_Query(text, "GryMod", "Yes", onYes, "Cancel")
+end
+
 -- The button that clears the minimap's cache: the files of the current level, made again the next time the radar needs them. It asks the
 -- Cache module (another file, which may be missing or fail): nothing here may raise.
 local function clearMinimapCache()
@@ -291,43 +296,52 @@ GryMod.MinimapDefinitionPanels = GryMod.MinimapDefinitionPanels or 0
 -- The definition slider is greyed (disabled, it keeps its value) while the automatic definition is on, and wakes when it is off, also when the convar is
 -- changed from the console. The convar's change callback lives only as long as the panel: it takes itself off when the panel is removed (OnRemove) or
 -- finds it dead; no hook, no Think.
-local function followDefinitionAuto(slider)
-	local Settings = GryMod.Minimap and GryMod.Minimap.Settings
-	local name = "gry_minimap_definition_auto"
-
-	local function isAuto(text)
-		if Settings and isfunction(Settings.ParseDefinitionAuto) then
-			return Settings.ParseDefinitionAuto(text)
-		end
-
-		return (tonumber(text) or 1) ~= 0
-	end
-
+-- The same for any control and any switch: `control` is greyed while the convar `name` is on (`isOn` reads its text), and wakes when it is off.
+local function greyWhileOn(control, name, isOn)
 	local convar = GetConVar(name)
 
-	slider:SetEnabled(not (convar and isAuto(convar:GetString())))
+	control:SetEnabled(not (convar and isOn(convar:GetString())))
 
 	GryMod.MinimapDefinitionPanels = GryMod.MinimapDefinitionPanels + 1
 
-	local id = "GryMod_MinimapDefinitionAuto_" .. GryMod.MinimapDefinitionPanels
+	local id = "GryMod_MinimapGrey_" .. GryMod.MinimapDefinitionPanels
 
 	-- a callback does not take itself off here: cvars.OnConVarChanged walks the list by index, and removing an entry during the walk would call a nil. The engine
 	-- calls OnRemove when it deletes the panel (at the end of the frame of its Remove), which is outside any walk.
 	cvars.AddChangeCallback(name, function(_, _, new)
-		if IsValid(slider) then
-			slider:SetEnabled(not isAuto(new))
+		if IsValid(control) then
+			control:SetEnabled(not isOn(new))
 		end
 	end, id)
 
-	local removed = slider.OnRemove
+	local removed = control.OnRemove
 
-	slider.OnRemove = function(self)
+	control.OnRemove = function(self)
 		cvars.RemoveChangeCallback(name, id)
 
 		if removed then
 			removed(self)
 		end
 	end
+end
+
+local function followDefinitionAuto(slider)
+	local Settings = GryMod.Minimap and GryMod.Minimap.Settings
+
+	greyWhileOn(slider, "gry_minimap_definition_auto", function(text)
+		if Settings and isfunction(Settings.ParseDefinitionAuto) then
+			return Settings.ParseDefinitionAuto(text)
+		end
+
+		return (tonumber(text) or 1) ~= 0
+	end)
+end
+
+-- The radar range slider is greyed while the automatic zoom is on: the three ranges of the zoom's modes take its place.
+local function followAutoZoom(slider)
+	greyWhileOn(slider, "gry_radar_autozoom", function(text)
+		return (tonumber(text) or 0) ~= 0
+	end)
 end
 
 -- The map behind the radar: the switch, the distance the radar shows (the radar range) and how sharp the map is (pixels per metre of the tiles: chosen by
@@ -339,7 +353,11 @@ function GryMod.MinimapOptions(Panel)
 
 	Panel:CheckBox("Draw the map of the level behind the radar", "gry_minimap")
 	-- the range sits right before the automatic definition, which follows it (and the screen)
-	Panel:NumSlider("Radar range (metres; 75 is the original's, 40 to 75 are good values, down to 5 zooms the map right in; raise the map definition for a sharp picture)", "gry_radar_range", 5, 100, 0)
+	local range = Panel:NumSlider("Radar range (metres; 75 is the original's, 40 to 75 are good values, down to 5 zooms the map right in; raise the map definition for a sharp picture)", "gry_radar_range", 5, 100, 0)
+
+	if IsValid(range) then
+		followAutoZoom(range)
+	end
 	Panel:CheckBox("Automatic definition (follows the radar range and the screen)", "gry_minimap_definition_auto")
 
 	local definition = Panel:NumSlider("Map definition (pixels per metre of the map tiles; more is sharper and takes longer to make)", "gry_minimap_definition", 1, 64, 0)
@@ -380,7 +398,21 @@ function GryMod.MinimapOptions(Panel)
 
 	local clearButton = Panel:Button("Clear the minimap cache")
 	clearButton.GryMinimapClear = true
-	clearButton.DoClick = clearMinimapCache
+	clearButton.DoClick = function()
+		GryMod.Confirm("Clear the minimap cache of this level? The map is made again as you play.", clearMinimapCache)
+	end
+end
+
+-- The radar's automatic zoom (cl_hud_radar_zoom.lua): the switch, the range of each of the three modes (nothing ties one to another: the player puts what he
+-- wants) and how long a mode has to hold before the radar goes there. The radar range slider of the Minimap section is greyed while the switch is on.
+function GryMod.RadarZoomOptions(Panel)
+	Panel:Help("Automatic zoom")
+
+	Panel:CheckBox("Automatic zoom: the radar's range follows where you are (in a vehicle, on foot outside, indoors under a ceiling in a narrow place)", "gry_radar_autozoom")
+	Panel:NumSlider("Range in a vehicle (metres)", "gry_radar_zoom_vehicle", 5, 100, 0)
+	Panel:NumSlider("Range on foot outside (metres)", "gry_radar_zoom_foot", 5, 100, 0)
+	Panel:NumSlider("Range indoors (metres)", "gry_radar_zoom_indoor", 5, 100, 0)
+	Panel:NumSlider("Time a mode must hold before the radar goes there (seconds; in a mode for less than that, nothing changes)", "gry_radar_zoom_delay", 0.1, 5, 1)
 end
 
 -- Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
@@ -409,6 +441,7 @@ function GryMod.GryOptionschute(Panel)
 
 	GryMod.GryHUDOptions(Panel)
 	GryMod.MinimapOptions(Panel)
+	GryMod.RadarZoomOptions(Panel)
 
 	Panel:NumSlider("Mirror Distance", "gry_xadd", -5000, 5000, 0)
 	Panel:NumSlider("X Position", "gry_xdist", -5000, 5000, 0)

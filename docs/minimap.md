@@ -50,6 +50,12 @@ number gives the default).
 | `gry_minimap_cache_mb` | 256 | 16 to 4096 | Size limit of the cache of one map, in megabytes. |
 | `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: the automatic definition goes up to 64 pixels per metre by itself, or raise `gry_minimap_definition` (with the automatic definition off) for a sharp picture. |
 
+| `gry_radar_autozoom` | 0 | 0 or 1 | Automatic zoom: the radar's range follows three modes instead of the slider `gry_radar_range` (greyed in the menu while it is on). See "Automatic zoom" below. |
+| `gry_radar_zoom_vehicle` | 100 | 5 to 100 | Range in metres while the player drives a vehicle (automatic zoom on). |
+| `gry_radar_zoom_foot` | 75 | 5 to 100 | Range in metres on foot outside. |
+| `gry_radar_zoom_indoor` | 25 | 5 to 100 | Range in metres indoors (under a ceiling in a narrow place). |
+| `gry_radar_zoom_delay` | 0.7 | 0.1 to 5 | Seconds a mode has to hold before the radar goes to its range. |
+
 The map always turns with the player's view, like the contacts: there is no fixed-north mode.
 
 Changing the definition or the tile size makes a new set of tiles (the name of a tile contains both), so the first change generates
@@ -85,6 +91,31 @@ make huge sets of tiles.
   sharp. In the voids of a new tile the previous tile shows through for as long as the set is incomplete.
 - **The cost of a high level.** A tile is 1024 pixels at every level, so a level of 64 pixels per metre covers 16 m a side, and at 5 m the
   radar needs about nine tiles around the player: they are made once and kept in the cache like the others.
+
+## Automatic zoom
+
+An option (off by default, `gry_radar_autozoom 1`, section "Automatic zoom" of the menu) that changes the radar's range by itself between three
+modes. The three ranges are the player's sliders and nothing ties one to another (an indoor range bigger than the vehicle's is taken as it is).
+
+- **The modes.** *Vehicle*: the player drives (`Player:InVehicle()`); it wins over the others, a vehicle ignores the ceiling. *Indoor*: under a
+  ceiling AND in a narrow place. *Foot*: everything else. Under a ceiling means that the level of `Floors.CurrentAt` is not the open one (that
+  function asks the engine at most once a second). Narrow means that the median of eight free distances around the player at chest height (rays
+  with the brush mask, each distance capped at 20 m) is under 12 m; it stays narrow until the median goes over 18 m. The eight rays are cast only
+  under a ceiling, at most four times a second, and only again if the player moved 24 units (else once a second). A large hall, a very wide
+  tunnel or a huge cavern is not narrow and stays in the foot mode; a bridge or an awning is not narrow either.
+- **The delay.** A mode has to hold for `gry_radar_zoom_delay` seconds (0.7 by default) before the radar goes there, in both directions: a door, a
+  passing ceiling or a short ride changes nothing. The first observation sets the mode at once.
+- **The glide.** The radar has two ranges. `Radar.TargetRange()` is the range of the mode in use (whole metres). `Radar.Range()` is the range the
+  radar DRAWS with: it glides to the target in 0.8 s, in a straight line in the logarithm of the range with an ease at both ends, so a zoom looks
+  even in ratio. The contacts and the map are placed with the range shown. The glide is only a scale of the tiles that are there: the definition
+  of the map (the pyramid, see above), the tiles asked of the generator and the range told to the server all follow the TARGET at once, so a glide
+  never makes tiles on the way and the server sees the new range as soon as the mode changes (the message `gry_radar_want` is sent at once, not at
+  the next tick of its one second timer; it carries the target). A new target in the middle of a glide starts from the range shown.
+- **Cost.** Nothing while the option is off. On: no hook of its own (`Radar.Feed` calls `GryMod.RadarZoom.Update` at every frame the HUD
+  draws; the glide is a pure function of the time), one probe at most every quarter of a second.
+- **Limits.** The contacts follow the same range as the map, so indoors at 25 m an enemy 40 m away is not on the radar (a separate range for the
+  contacts is a later change). A roof made of props is not seen (the rays use the brush mask), the same trap as the floors. Going from a small range
+  to a big one shows tiles that may not exist yet (the veil rules above apply).
 
 ## The cache
 

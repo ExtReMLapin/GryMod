@@ -485,13 +485,17 @@ local function drawMap(self, x, y, scale)
 
 	local pos = ply:GetPos()
 	local px, py = pos.x, pos.y
+	-- the range the map is DRAWN with (it glides while the automatic zoom changes mode) and the range the player asked for (the target, whole metres): the
+	-- definition of the tiles and the tiles asked for follow the target at once, so a glide only scales what is there and makes no tiles on the way
 	local metres = Radar.Range()
+	local target = Radar.TargetRange()
 	local range = metres / GryMod.RadarShared.METRES_PER_UNIT
+	local requestRange = target / GryMod.RadarShared.METRES_PER_UNIT
 
 	-- the automatic definition: the level of the pyramid for what the screen shows now, given to Settings (which then answers it as the definition in use, to
 	-- Gen, View and the tile looked up below). Done before anything asks for the definition. A failure here is told once and the map goes on at the level it had.
 	if Settings.DefinitionAuto and Settings.AutoDefinitionFor and Settings.SetAutoDefinition and Settings.DefinitionAuto() then
-		local ok, err = pcall(autoDefinition, Settings, xf, metres)
+		local ok, err = pcall(autoDefinition, Settings, xf, target)
 
 		if not ok then
 			reportError(err)
@@ -559,7 +563,7 @@ local function drawMap(self, x, y, scale)
 	local extent = M.View.ExtentFactor and M.View.ExtentFactor() or Radar.MAP_EXTENT
 
 	-- a request the generator refuses answers nil and a reason (too many tiles, no tile size): nothing waits for it, it is told once
-	local requested, refusal = M.Gen.Request(level, px, py, range * extent, below, outside)
+	local requested, refusal = M.Gen.Request(level, px, py, requestRange * extent, below, outside)
 
 	if not requested and refusal then
 		reportError("Gen.Request: " .. tostring(refusal))

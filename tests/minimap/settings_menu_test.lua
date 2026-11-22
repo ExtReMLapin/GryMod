@@ -115,9 +115,23 @@ return {
 		notification.AddLegacy = function(text)
 			state.messages[#state.messages + 1] = tostring(text)
 		end
+
+		-- the confirmation of the Clear button: asked, and answered "yes" (a case that answers "no" sets state.confirmAnswer = false)
+		state.realConfirm = GryMod.Confirm
+		state.asked = {}
+		state.confirmAnswer = true
+
+		GryMod.Confirm = function(text, onYes)
+			state.asked[#state.asked + 1] = tostring(text)
+
+			if state.confirmAnswer then
+				onYes()
+			end
+		end
 	end,
 	afterEach = function(state)
 		pcall(function()
+			GryMod.Confirm = state.realConfirm
 			RunConsoleCommand = state.realRun
 			notification.AddLegacy = state.realAdd
 			GryMod.Minimap.Cache = state.cache
@@ -446,6 +460,67 @@ return {
 				expect(#cleared).to.equal(1)
 				expect(cleared[1]).to.equal("gm_test_123_v1")
 				expect(#state.messages).to.equal(1)
+			end
+		},
+		{
+			name = "the Clear button asks for a confirmation first: on \"no\" (or no answer) nothing is cleared and the generator is left alone, on \"yes\" it clears",
+			func = function(state)
+				local cleared, cancelled = 0, 0
+
+				GryMod.Minimap.Cache = {
+					Key = function() return "k" end,
+					Clear = function() cleared = cleared + 1 return true end
+				}
+				GryMod.Minimap.Gen = {Cancel = function() cancelled = cancelled + 1 end}
+
+				state.panel = build()
+				state.confirmAnswer = false
+
+				local button = clearButton(state.panel)
+
+				button:DoClick()
+				expect(#state.asked).to.equal(1)
+				expect(string.find(state.asked[1], "minimap cache", 1, true) ~= nil).to.beTrue()
+				expect(cleared).to.equal(0)
+				expect(cancelled).to.equal(0)
+				expect(#state.messages).to.equal(0)
+
+				state.confirmAnswer = true
+				button:DoClick()
+				expect(#state.asked).to.equal(2)
+				expect(cleared).to.equal(1)
+				expect(cancelled).to.equal(1)
+			end
+		},
+		{
+			name = "the radar range slider is greyed while the automatic zoom is on, and wakes when it is off, and leaves no change callback behind",
+			func = function(state)
+				local convar = GetConVar("gry_radar_autozoom")
+				local saved = convar:GetString()
+				local before = #(cvars.GetConVarCallbacks("gry_radar_autozoom", false) or {})
+				local ok, err = pcall(function()
+					convar:SetString("1")
+					state.panel = build()
+
+					local slider = sliderOn(state.panel, "gry_radar_range")
+
+					expect(slider ~= nil).to.beTrue()
+					expect(slider:IsEnabled()).to.beFalse()
+					convar:SetString("0")
+					expect(slider:IsEnabled()).to.beTrue()
+				end)
+
+				convar:SetString(saved)
+
+				if IsValid(state.panel) then
+					state.panel:Remove()
+					state.panel = nil
+				end
+
+				if not ok then error(err, 0) end
+
+				-- OnRemove takes the callback off at the end of the frame, so only the build's own callback may be waiting
+				expect(#(cvars.GetConVarCallbacks("gry_radar_autozoom", false) or {}) <= before + 1).to.beTrue()
 			end
 		},
 		{

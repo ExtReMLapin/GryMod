@@ -387,6 +387,63 @@ return {
 			end
 		},
 		{
+			-- breaks if: the map is asked for (or the definition chosen from) the range shown instead of the target: a glide would then change the tiles asked for at every
+			-- frame, or the pyramid's level on the way; or if the view is drawn with the target (no glide to see)
+			name = "Automatic zoom: during a glide View.Draw gets the range SHOWN, while Gen.Request and the automatic definition get the TARGET, the same at every frame of the glide",
+			func = function(state)
+				installAuto(state)
+
+				local auto = GetConVar("gry_radar_autozoom")
+				local foot, indoor, delay = GetConVar("gry_radar_zoom_foot"), GetConVar("gry_radar_zoom_indoor"), GetConVar("gry_radar_zoom_delay")
+				local saved = {auto:GetString(), foot:GetString(), indoor:GetString(), delay:GetString()}
+				local Z = GryMod.RadarZoom
+
+				local ok, err = pcall(function()
+					auto:SetString("1")
+					foot:SetString("75")
+					indoor:SetString("25")
+					delay:SetString("0.7")
+					Z.Reset()
+
+					-- on foot, then indoors for 0.7 s: the mode went to indoor 0.6 s ago, so the glide from 75 to 25 is at 3/4 of its time
+					local now = RealTime()
+
+					Z.Observe(now - 2, false, false)
+					Z.Observe(now - 1.3, false, true)
+					Z.Observe(now - 0.6, false, true)
+					expect(Z.Mode()).to.equal("indoor")
+
+					local mpu = GryMod.RadarShared.METRES_PER_UNIT
+					local panel = newPanel()
+
+					state.autoCalls = {}
+					panel:Draw(0, 0, 1)
+
+					local shown = state.args.draw[5] * mpu
+					local firstExtent = state.args.request[4]
+					local firstDensity = state.autoCalls[1][1]
+
+					expect(shown < 75 and shown > 25).to.beTrue()
+					expect(firstExtent).to.aboutEqual(25 / mpu * GryMod.FlashRadar.MAP_EXTENT, 0.001)
+					expect(firstDensity).to.aboutEqual(expectedDensity(panel, 1, 25), 1e-6)
+
+					panel:Draw(0, 0, 1)
+					expect(state.args.request[4]).to.aboutEqual(firstExtent, 0.001)
+					expect(state.autoCalls[#state.autoCalls][1]).to.aboutEqual(firstDensity, 1e-6)
+				end)
+
+				pcall(function()
+					auto:SetString(saved[1])
+					foot:SetString(saved[2])
+					indoor:SetString(saved[3])
+					delay:SetString(saved[4])
+					Z.Reset()
+				end)
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "at 5 metres (gry_radar_range at its minimum) Gen and View get a small finite extent, the real View needs a handful of tiles, and the contact at 4 m shows while the one at 6 m does not",
 			func = function(state)
 				local convar = GetConVar("gry_radar_range")

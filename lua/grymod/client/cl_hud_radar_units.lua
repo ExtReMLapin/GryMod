@@ -36,7 +36,27 @@ Radar.MAP_LEFT = -65.8
 local RangeConVar = CreateClientConVar("gry_radar_range", "75", true, false,
 	"Radius of the radar in metres (5 to 100). 75 is the original game's; 40 to 75 are good values: at 75 an icon of a vehicle stands for about 14 metres of ground; down to 5 zooms the map right in", 5, 100)
 
+-- The radius the player asked for (whole metres): the slider, or, with the automatic zoom on (cl_hud_radar_zoom.lua), the range of the mode in use.
+-- The server, the map's definition and the tiles asked for follow THIS one at once.
+function Radar.TargetRange()
+	local Zoom = GryMod.RadarZoom
+
+	if Zoom and Zoom.Enabled() then
+		return Zoom.TargetRange()
+	end
+
+	return S.ClampRange(RangeConVar:GetFloat())
+end
+
+-- The radius the radar DRAWS with: the same, except while the automatic zoom glides from one range to another (then a number with decimals, on its way to
+-- the target). The contacts and the map are placed with it.
 function Radar.Range()
+	local Zoom = GryMod.RadarZoom
+
+	if Zoom and Zoom.Enabled() then
+		return Zoom.Displayed(RealTime())
+	end
+
 	return S.ClampRange(RangeConVar:GetFloat())
 end
 
@@ -367,7 +387,7 @@ end
 
 -- Tells the server whether this client wants the contacts and in which radius (8 bits, metres): at a change of either, and not otherwise.
 function Radar.TellServer(want)
-	local range = Radar.Range()
+	local range = Radar.TargetRange()
 
 	if want ~= wanted or (want and range ~= sentRange) then
 		wanted, sentRange = want, range
@@ -375,6 +395,14 @@ function Radar.TellServer(want)
 		net.WriteBool(want)
 		net.WriteUInt(range, 8)
 		net.SendToServer()
+	end
+end
+
+-- The target range changed (the automatic zoom went to another mode): tells the server now, not at the next tick of the one second timer. Does nothing
+-- while the server was not told that the contacts are wanted.
+function Radar.RangeChanged()
+	if wanted then
+		Radar.TellServer(true)
 	end
 end
 
@@ -458,9 +486,23 @@ Radar.Stealth = 0
 -- Each frame the HUD draws: the phase of the pulse, the contacts of the server placed for this frame, the stealth bar.
 local phase = 0
 
+local zoomError
+
 function Radar.Feed(panel, ply, dt)
 	lastFeed = RealTime()
 	phase = (phase + dt * Radar.PULSE_SPEED) % (2 * math.pi)
+
+	-- the automatic zoom looks at the place (nothing at all while it is off); a failure is told once and the radar goes on with the range it has
+	local Zoom = GryMod.RadarZoom
+
+	if Zoom then
+		local ok, err = pcall(Zoom.Update, ply, lastFeed)
+
+		if not ok and err ~= zoomError then
+			zoomError = err
+			ErrorNoHalt("[GryMod] radar automatic zoom: " .. tostring(err) .. "\n")
+		end
+	end
 
 	-- off to on at once (the timer notices the other way within a second)
 	if not wanted then
