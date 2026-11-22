@@ -36,6 +36,9 @@ local function fakeMe(mode)
 	function me:IsValid() return true end
 	function me:GetViewModel() return NULL end
 	function me:GetHands() return NULL end
+	-- what the tint of a mode change reads of the player (cl_mode_fx.lua, FX.TintNow): alive, and no malfunction
+	function me:Alive() return true end
+	function me:GetNW2Bool(_, default) return default end
 
 	return me
 end
