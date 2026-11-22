@@ -1,4 +1,4 @@
--- Tests of the minimap's AIN module (lua/grymod/client/minimap/ain.lua): the strict reader of the .ain node graph (version 37), GLuaTest format,
+-- Tests of the minimap's AIN module (lua/grymod/sh_ain.lua): the strict reader of the .ain node graph (version 37), GLuaTest format,
 -- client realm. The synthetic files are built here with an encoder that shares nothing with the decoder (string.char and arithmetic, math.frexp
 -- for the float32), so a wrong decoder cannot hide behind a wrong encoder. The expected values of the real files come from the reference
 -- parser the orchestrator wrote in Python (130 files checked, size = 16 + 65 * N + 14 * L).
@@ -283,20 +283,40 @@ return {
 			end
 		},
 		{
-			-- fails if the maximum N is refused (off by one on the bound)
-			name = "N = 1500, the largest allowed, is accepted",
+			-- fails if the maximum N is refused (off by one on the bound). The bound is a memory guard, not the engine's 1500: the Workshop maps gm_cloak (4629),
+			-- gm_fugu_lawson (4477) and gm_boreas (4019) are real, exact graphs (the survey of 2026-11-22 found no real graph over 5000)
+			name = "N = 20000, the largest allowed, is accepted (the real Workshop graphs go to 4629)",
 			func = function()
 				local nodes = {}
 
-				for i = 1, 1500 do
+				for i = 1, 20000 do
 					nodes[i] = {x = i}
 				end
 
 				local r = ain().Parse(build({nodes = nodes}))
 
 				expect(r ~= nil).to.beTrue()
-				expect(#r.nodes).to.equal(1500)
-				expect(r.nodes[1500].x).to.equal(1500)
+				expect(#r.nodes).to.equal(20000)
+				expect(r.nodes[20000].x).to.equal(20000)
+				expect(ain().MAX_NODES).to.equal(20000)
+			end
+		},
+		{
+			-- fails if a graph with more than 1500 nodes (the old bound) is refused
+			name = "N = 4629 (the size of gm_cloak) and N = 1501 are accepted",
+			func = function()
+				for _, count in ipairs({1501, 4629}) do
+					local nodes = {}
+
+					for i = 1, count do
+						nodes[i] = {x = i}
+					end
+
+					local r, err = ain().Parse(build({nodes = nodes}))
+
+					expect(err).to.beNil()
+					expect(#r.nodes).to.equal(count)
+				end
 			end
 		},
 		{
@@ -378,10 +398,10 @@ return {
 			end
 		},
 		{
-			-- fails if N = 1501 or a negative N (int32 read as unsigned) is accepted or crashes
-			name = "refused: N = 1501, N negative (signed int32), N huge",
+			-- fails if N = 20001 or a negative N (int32 read as unsigned) is accepted or crashes
+			name = "refused: N = 20001, N negative (signed int32), N huge",
 			func = function()
-				refused(build({count = 1501}), "node count")
+				refused(build({count = 20001}), "node count")
 				refused(build({count = -1}), "node count")
 				refused(build({count = -2147483648}), "node count")
 				refused(build({count = 2147483647}), "node count")
@@ -699,8 +719,8 @@ return {
 			-- fails if any real file is refused: the 130 files of the game, plus the cross check size = 16 + 65 N + 14 L
 			name = "every .ain of maps/graphs parses without error and the sum of the sizes is the sum of 16 + 65 N + 14 L",
 			func = function()
-				-- "MOD" = the game folder only (130 files). "GAME" also lists the maps of mounted addons (181 here): four of those are not valid v37
-				-- graphs (ep1_intro is version 35, three others announce more than 1500 nodes) and the strict reader rightly refuses them
+				-- "MOD" = the game folder only (130 files). "GAME" also lists the maps of mounted addons (181 here): some of those are not valid v37
+				-- graphs (ep1_intro is version 35) and the strict reader rightly refuses them; the next case reads the version 37 ones of "GAME"
 				local files = file.Find(GRAPHS .. "*.ain", "MOD")
 
 				expect(#files >= 100).to.beTrue() -- 130 on the dev machine
@@ -735,6 +755,43 @@ return {
 
 				expect(formulaSum).to.equal(sizeSum)
 				expect(nodes > 0 and links > 0).to.beTrue()
+			end
+		},
+		{
+			-- fails if a real version 37 graph of a mounted addon is refused, big ones included (the Workshop maps with more than 1500 nodes) or does not
+			-- match the exact size formula. Files of another version are not graphs this reader knows and are left out
+			name = "every version 37 .ain visible to the game (mounted addons included) parses, and its size is 16 + 65 N + 14 L",
+			func = function()
+				local files = file.Find(GRAPHS .. "*.ain", "GAME")
+				local checked, big = 0, 0
+
+				for i = 1, #files do
+					local path = GRAPHS .. files[i]
+					local bytes = file.Read(path, "GAME")
+
+					if type(bytes) == "string" and #bytes >= 16 then
+						local a, b, c, d = string.byte(bytes, 1, 4)
+
+						if a + b * 256 + c * 65536 + d * 16777216 == 37 then
+							local r, err = ain().Parse(bytes)
+
+							if not r then
+								error(files[i] .. ": " .. tostring(err), 0)
+							end
+
+							expect(#bytes).to.equal(16 + 65 * #r.nodes + 14 * #r.links)
+							checked = checked + 1
+
+							if #r.nodes > 1500 then
+								big = big + 1
+							end
+						end
+					end
+				end
+
+				expect(checked >= 100).to.beTrue()
+				-- how many are over the old bound is only information: 3 on the dev machine (gm_cloak, gm_fugu_lawson, gm_boreas)
+				expect(big >= 0).to.beTrue()
 			end
 		},
 		{

@@ -1,21 +1,26 @@
--- GryMod minimap: module ain. Filled by its owner agent (see docs/superpowers/specs/2026-11-21-minimap-design.md).
+-- GryMod: the node graph reader (module ain). SHARED: the client's minimap reads the graph for its floors (module floors) and the server reads it to make the
+-- indoor / outdoor map (sv_zonemap.lua). Also reachable as GryMod.Minimap.AIN (the name the minimap and its tests use).
 GryMod = GryMod or {}
+GryMod.AIN = GryMod.AIN or {}
 GryMod.Minimap = GryMod.Minimap or {}
-GryMod.Minimap.AIN = GryMod.Minimap.AIN or {}
+GryMod.Minimap.AIN = GryMod.AIN
 
 -- Strict reader of the engine's node graph (maps/graphs/<map>.ain, version 37). The minimap uses the ground nodes to find the levels (floors)
 -- of a map (module floors). Layout, all little-endian, no padding, size = 16 + 65 * N + 14 * L:
---   header      int32 version (37), int32 map version, int32 N (0 to 1500)
+--   header      int32 version (37), int32 map version, int32 N (0 to MAX_NODES)
 --   N nodes     61 bytes: float32 x, y, z, yaw; 10 float32 vertical offsets (one per hull, not read); int8 type; uint16 info; int16 zone
 --   links       int32 L, then L records of 14 bytes: int16 src, int16 dest (0-based), 10 uint8 move capabilities (not read)
 --   lookup      N int32
 -- The whole file is read with one file.Read and decoded from the string with string.byte ranges and arithmetic: no ffi in this build, no
 -- engine call and no table or closure created per value besides the result itself.
 
-local AIN = GryMod.Minimap.AIN
+local AIN = GryMod.AIN
 
 local VERSION = 37
-local MAX_NODES = 1500
+-- A memory guard, not a rule of the format: the file has to match the exact size 16 + 65 N + 14 L, which is the real check. The engine's own constant is 1500, but
+-- real Workshop maps go over it (gm_cloak 4629 nodes, gm_fugu_lawson 4477, gm_boreas 4019; the survey of 2026-11-22 over 146 graphs found nothing over 5000).
+local MAX_NODES = 20000
+AIN.MAX_NODES = MAX_NODES
 local HEADER_SIZE = 16 -- version, map version, N, L
 local NODE_SIZE = 61
 local LINK_SIZE = 14
