@@ -13,10 +13,6 @@ GryMod.Modes = {
 	DROP = 4
 }
 
-function math.MapSimple(numb, endA, endB)
-	return numb * (endB / endA)
-end
-
 
 if SERVER then
 	AddCSLuaFile()
