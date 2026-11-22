@@ -16,7 +16,7 @@ local DEFAULT_DEFINITION = 3
 local DEFAULT_TILE = 1024
 local DEFAULT_BUDGET_MS = 6
 local DEFAULT_BELOW = 40
-local DEFAULT_OUTSIDE = 30
+local DEFAULT_OUTSIDE = 80
 local DEFAULT_OPACITY = 90
 local DEFAULT_CACHE_MB = 256
 local BYTES_PER_MB = 1048576
@@ -37,7 +37,7 @@ local BudgetConVar = GetConVar("gry_minimap_budget_ms") or CreateClientConVar("g
 	"Milliseconds per frame the map generator may use (1 to 30). One capture of a tile (about 7 ms) may exceed it", 1, 30)
 local BelowConVar = GetConVar("gry_minimap_below") or CreateClientConVar("gry_minimap_below", "40", true, false,
 	"Opacity in percent of the floor below, seen through the empty parts of the current floor (0 = off)", 0, 100)
-local OutsideConVar = GetConVar("gry_minimap_outside") or CreateClientConVar("gry_minimap_outside", "30", true, false,
+local OutsideConVar = GetConVar("gry_minimap_outside") or CreateClientConVar("gry_minimap_outside", "80", true, false,
 	"Opacity in percent of the outside (the whole height of the map) seen through the voids of the floors, under the floor below (0 = off)", 0, 100)
 local CacheMBConVar = GetConVar("gry_minimap_cache_mb") or CreateClientConVar("gry_minimap_cache_mb", "256", true, false,
 	"Size limit in megabytes of the minimap cache of one map; the oldest tiles are deleted above it", 16, 4096)

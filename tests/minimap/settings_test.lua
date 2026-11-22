@@ -62,7 +62,7 @@ return {
 				local defaults = {
 					gry_minimap = "1", gry_minimap_definition = "3", gry_minimap_tile = "1024",
 					gry_minimap_budget_ms = "6", gry_minimap_below = "40", gry_minimap_cache_mb = "256", gry_minimap_opacity = "90",
-						gry_minimap_outside = "30", gry_minimap_definition_auto = "1"
+						gry_minimap_outside = "80", gry_minimap_definition_auto = "1"
 				}
 
 				for name, default in pairs(defaults) do
@@ -429,7 +429,7 @@ return {
 			end
 		},
 		{
-			name = "ParseOutside: a whole percent from 0 to 100 divided by 100 (33.6 gives 0.34), the default (0.3) when the text is no number",
+			name = "ParseOutside: a whole percent from 0 to 100 divided by 100 (33.6 gives 0.34), the default (0.8) when the text is no number",
 			func = function()
 				local P = GryMod.Minimap.Settings.ParseOutside
 
@@ -444,7 +444,7 @@ return {
 				expect(P("33.6")).to.aboutEqual(0.34, 1e-9)
 
 				for _, text in ipairs({"", "banana", "nan", "inf", " "}) do
-					expect(P(text)).to.aboutEqual(0.3, 1e-9)
+					expect(P(text)).to.aboutEqual(0.8, 1e-9)
 				end
 			end
 		},
