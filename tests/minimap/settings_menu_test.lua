@@ -62,6 +62,36 @@ local function build()
 	return panel
 end
 
+-- the convar of every slider and check box of the panel, in the order they are shown ("slider:name" or "box:name")
+local function controlsInOrder(panel)
+	local order = {}
+
+	for _, p in ipairs(walk(panel)) do
+		if p.ClassName == "DNumSlider" and p.Scratch then
+			order[#order + 1] = "slider:" .. tostring(p.Scratch:GetTable().m_strConVar)
+		elseif p.ClassName == "DCheckBoxLabel" and p.Button then
+			order[#order + 1] = "box:" .. tostring(p.Button:GetTable().m_strConVar)
+		end
+	end
+
+	return order
+end
+
+local function indexOf(list, value)
+	for i, v in ipairs(list) do
+		if v == value then
+			return i
+		end
+	end
+end
+
+local AUTO = "gry_minimap_definition_auto"
+
+-- how many change callbacks the convar has (a panel that leaves one behind makes it grow)
+local function callbackCount(name)
+	return #(cvars.GetConVarCallbacks(name, false) or {})
+end
+
 return {
 	groupName = "GryMod minimap options menu",
 	beforeEach = function(state)
@@ -73,6 +103,9 @@ return {
 		state.writes = {}
 		state.messages = {}
 		state.tile = GetConVar("gry_minimap_tile") and GetConVar("gry_minimap_tile"):GetString()
+		state.auto = GetConVar(AUTO) and GetConVar(AUTO):GetString()
+		state.definition = GetConVar("gry_minimap_definition") and GetConVar("gry_minimap_definition"):GetString()
+		state.callbacks = callbackCount(AUTO)
 
 		-- stand-ins: the console commands are only recorded, the notices too
 		RunConsoleCommand = function(name, value)
@@ -97,6 +130,14 @@ return {
 			if state.tile and GetConVar("gry_minimap_tile") then
 				GetConVar("gry_minimap_tile"):SetString(state.tile)
 			end
+
+			if state.auto and GetConVar(AUTO) then
+				GetConVar(AUTO):SetString(state.auto)
+			end
+
+			if state.definition and GetConVar("gry_minimap_definition") then
+				GetConVar("gry_minimap_definition"):SetString(state.definition)
+			end
 		end)
 	end,
 	cases = {
@@ -119,15 +160,142 @@ return {
 			end
 		},
 		{
-			name = "the definition slider is bound to gry_minimap_definition: 1 to 16, whole numbers",
+			-- the upper bound went from 16 to 64 with the automatic definition (its levels go up to 64)
+			name = "the definition slider is bound to gry_minimap_definition: 1 to 64, whole numbers",
 			func = function(state)
 				state.panel = build()
 
 				local slider = sliderOn(state.panel, "gry_minimap_definition")
 				expect(slider ~= nil).to.beTrue()
 				expect(slider:GetMin()).to.equal(1)
-				expect(slider:GetMax()).to.equal(16)
+				expect(slider:GetMax()).to.equal(64)
 				expect(slider:GetDecimals()).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the range slider stays in the Radar section only, or comes after the check box, or is not right before it
+			name = "the Minimap section has, in this order, the radar range slider (gry_radar_range, 5 to 100), the automatic definition check box, then the definition slider",
+			func = function(state)
+				state.panel = build()
+
+				local range = sliderOn(state.panel, "gry_radar_range")
+				expect(range ~= nil).to.beTrue()
+				expect(range:GetMin()).to.equal(5)
+				expect(range:GetMax()).to.equal(100)
+				expect(range:GetDecimals()).to.equal(0)
+				-- the short label of the Radar section, unchanged
+				expect(string.find(range:GetText(), "75", 1, true) ~= nil).to.beTrue()
+				expect(string.find(range:GetText(), "down to 5", 1, true) ~= nil).to.beTrue()
+
+				local box = checkBoxOn(state.panel, AUTO)
+				expect(box ~= nil).to.beTrue()
+				expect(string.find(box:GetText(), "Automatic definition", 1, true)).to.equal(1)
+				expect(#state.writes).to.equal(0)
+
+				local order = controlsInOrder(state.panel)
+				local at = indexOf(order, "slider:gry_radar_range")
+				expect(at ~= nil).to.beTrue()
+				expect(order[at + 1]).to.equal("box:" .. AUTO)
+				expect(order[at + 2]).to.equal("slider:gry_minimap_definition")
+			end
+		},
+		{
+			-- breaks if: the slider is built enabled whatever the check box says
+			name = "the definition slider is greyed (disabled, its value kept) when the automatic definition is on, and active when it is off, at the moment the panel is built",
+			func = function(state)
+				GetConVar("gry_minimap_definition"):SetString("7")
+
+				GetConVar(AUTO):SetString("1")
+				state.panel = build()
+				local slider = sliderOn(state.panel, "gry_minimap_definition")
+				expect(slider:IsEnabled()).to.beFalse()
+				expect(GetConVar("gry_minimap_definition"):GetString()).to.equal("7")
+				state.panel:Remove()
+
+				GetConVar(AUTO):SetString("0")
+				state.panel = build()
+				expect(sliderOn(state.panel, "gry_minimap_definition"):IsEnabled()).to.beTrue()
+				expect(#state.writes).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the slider follows the box only when the panel is built (a change by the console is not seen)
+			name = "ticking or unticking the box, or changing gry_minimap_definition_auto from the console, greys or wakes the slider at once, and keeps its value",
+			func = function(state)
+				GetConVar("gry_minimap_definition"):SetString("7")
+				GetConVar(AUTO):SetString("0")
+				state.panel = build()
+
+				local slider = sliderOn(state.panel, "gry_minimap_definition")
+				expect(slider:IsEnabled()).to.beTrue()
+
+				GetConVar(AUTO):SetString("1")
+				expect(slider:IsEnabled()).to.beFalse()
+				expect(GetConVar("gry_minimap_definition"):GetString()).to.equal("7")
+
+				GetConVar(AUTO):SetString("0")
+				expect(slider:IsEnabled()).to.beTrue()
+				expect(GetConVar("gry_minimap_definition"):GetString()).to.equal("7")
+
+				-- a text like the engine reads a switch: 0.4 is off, 2 is on
+				GetConVar(AUTO):SetString("1")
+				GetConVar(AUTO):SetString("0")
+				expect(slider:IsEnabled()).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the callback stays after the panel is gone (a permanent hook, and it would hold the dead panel), or it raises on a dead panel
+			name = "each panel has its own change callback, taken off by the panel's OnRemove (the engine's call when it deletes the panel), and a change of the convar between Remove and that deletion raises nothing",
+			func = function(state)
+				state.panel = build()
+				local one = callbackCount(AUTO)
+				expect(one).to.equal(state.callbacks + 1)
+
+				-- two panels do not share a callback
+				local second = build()
+				expect(callbackCount(AUTO)).to.equal(state.callbacks + 2)
+
+				local slider = sliderOn(second, "gry_minimap_definition")
+
+				-- Remove only marks the panel: the engine deletes it (and calls OnRemove) at the end of the frame, so a change in between meets the callback of a dead panel
+				second:Remove()
+				expect(function()
+					GetConVar(AUTO):SetString("1")
+					GetConVar(AUTO):SetString("0")
+				end).to.succeed()
+				expect(#state.writes).to.equal(0)
+
+				-- the engine's deletion: OnRemove takes this panel's callback off and no other
+				expect(isfunction(slider.OnRemove)).to.beTrue()
+				slider:OnRemove()
+				expect(callbackCount(AUTO)).to.equal(state.callbacks + 1)
+
+				-- the other panel still follows the convar
+				local other = sliderOn(state.panel, "gry_minimap_definition")
+				GetConVar(AUTO):SetString("1")
+				expect(other:IsEnabled()).to.beFalse()
+				GetConVar(AUTO):SetString("0")
+				expect(other:IsEnabled()).to.beTrue()
+			end
+		},
+		{
+			name = "the whole options panel has the automatic definition check box and the range slider once each, and the Radar section only points to the Minimap section",
+			func = function(state)
+				state.panel = vgui.Create("ControlPanel")
+				GryMod.GryOptionschute(state.panel)
+
+				local order = controlsInOrder(state.panel)
+				local ranges, autos = 0, 0
+
+				for _, entry in ipairs(order) do
+					if entry == "slider:gry_radar_range" then ranges = ranges + 1 end
+					if entry == "box:" .. AUTO then autos = autos + 1 end
+				end
+
+				expect(ranges).to.equal(1)
+				expect(autos).to.equal(1)
+				expect(hasLabel(state.panel, "The radar range slider is in the Minimap section.")).to.beTrue()
+				expect(#state.writes).to.equal(0)
 			end
 		},
 		{

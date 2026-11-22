@@ -382,6 +382,61 @@ function Panel:_mapProgress(present, percent)
 	end
 end
 
+-- The pixels of the screen that show one metre of ground: the radar's pixels per metre (PIXELS for the range, as Radar.Contacts places the contacts) times the
+-- screen pixels of one radar pixel (the length of a column of the transform `xf`, which MapTransform builds from the live matrices of the movie). Nil when it is
+-- no usable number.
+function Radar.ScreenPixelsPerMetre(xf, metres)
+	local pixels = GryMod.RadarShared.PIXELS
+
+	if type(xf) ~= "table" or type(pixels) ~= "number" or type(metres) ~= "number" or metres <= 0 then
+		return nil
+	end
+
+	local density = pixels / metres * math.sqrt(xf[1] * xf[1] + xf[2] * xf[2])
+
+	if density ~= density or density == math.huge then
+		return nil
+	end
+
+	return density
+end
+
+-- Gives Settings the level of the automatic definition for this frame: the rule (pure, in Settings) from the density of the screen, keeping the level in use
+-- while the density stays near it.
+local function autoDefinition(Settings, xf, metres)
+	local density = Radar.ScreenPixelsPerMetre(xf, metres)
+
+	if density then
+		Settings.SetAutoDefinition(Settings.AutoDefinitionFor(density, Settings.Definition()))
+	end
+end
+
+-- Whether the tile under the player exists at the previous definition of the automatic pyramid (Settings.PreviousDefinition), when that is another one than
+-- `ppm`. `tile` (the tile asked at `ppm`) is given back as it was.
+local function coveredByPrevious(Settings, Cache, tile, px, py, res, ppm)
+	local previous = Settings.PreviousDefinition and Settings.PreviousDefinition()
+
+	if type(previous) ~= "number" or previous ~= previous or previous <= 0 or previous == ppm then
+		return false
+	end
+
+	local ptx, pty = Cache.TileOf(px, py, res, previous)
+
+	if not ptx then
+		return false
+	end
+
+	local tx, ty = tile.tx, tile.ty
+
+	tile.tx, tile.ty, tile.ppm = ptx, pty, previous
+
+	local found = Cache.Has(tile)
+
+	tile.tx, tile.ty, tile.ppm = tx, ty, ppm
+
+	return found and true or false
+end
+
 -- Asks the minimap for its tiles and draws them (called with pcall by Draw, so no closure and no table made here when nothing changes).
 local function drawMap(self, x, y, scale)
 	local M = GryMod.Minimap
@@ -430,7 +485,18 @@ local function drawMap(self, x, y, scale)
 
 	local pos = ply:GetPos()
 	local px, py = pos.x, pos.y
-	local range = Radar.Range() / GryMod.RadarShared.METRES_PER_UNIT
+	local metres = Radar.Range()
+	local range = metres / GryMod.RadarShared.METRES_PER_UNIT
+
+	-- the automatic definition: the level of the pyramid for what the screen shows now, given to Settings (which then answers it as the definition in use, to
+	-- Gen, View and the tile looked up below). Done before anything asks for the definition. A failure here is told once and the map goes on at the level it had.
+	if Settings.DefinitionAuto and Settings.AutoDefinitionFor and Settings.SetAutoDefinition and Settings.DefinitionAuto() then
+		local ok, err = pcall(autoDefinition, Settings, xf, metres)
+
+		if not ok then
+			reportError(err)
+		end
+	end
 	-- the level of the player: CurrentAt looks up for a ceiling (an open level outdoors), the height alone is the older rule
 	local Floors = M.Floors
 	local level
@@ -517,7 +583,21 @@ local function drawMap(self, x, y, scale)
 
 	local present = M.Cache.Has(tile)
 
-	if present then
+	-- a change of level of the automatic definition (a zoom) leaves the new tile missing while the tiles of the previous level, which the view goes on drawing,
+	-- already cover the player: no veil then
+	local covered = present
+
+	if not present then
+		local ok, found = pcall(coveredByPrevious, Settings, M.Cache, tile, px, py, res, ppm)
+
+		if ok then
+			covered = found
+		else
+			reportError(found)
+		end
+	end
+
+	if covered then
 		self:_mapProgress(true)
 	else
 		self:_mapProgress(false, progress and progress.percent)

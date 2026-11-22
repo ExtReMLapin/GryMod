@@ -34,6 +34,10 @@ local function install(state)
 	state.level = {id = "a1", zlo = -32, zhi = 128}
 	state.progress = {done = 0, total = 4, percent = 0, active = true, failed = 0}
 	state.calls, state.args, state.logged, state.tiles = {}, {}, {}, {}
+	state.tileOfCalls = {}
+	-- the state table is shared by the cases of the group: what an earlier case made the stand-ins do is cleared
+	state.requestError, state.requestResult, state.requestReason, state.drawError, state.viewLastError = nil, nil, nil, nil, nil
+	state.autoForError = nil
 
 	GryMod.Minimap.Settings = {
 		Enabled = function() return state.enabled end,
@@ -67,6 +71,7 @@ local function install(state)
 	GryMod.Minimap.Cache = {
 		TileOf = function(x, y, res, ppm)
 			state.args.tileOf = {x, y, res, ppm}
+			state.tileOfCalls[#state.tileOfCalls + 1] = {x, y, res, ppm}
 
 			return math.floor(x / 1000), math.floor(y / 1000)
 		end,
@@ -139,6 +144,47 @@ local function uninstall(state)
 	if state.savedSetDrawColor then
 		surface.SetDrawColor = state.savedSetDrawColor
 	end
+end
+
+-- The settings' side of the automatic definition, as stand-ins on top of the ones install made: the level in use (state.definition), the level the rule will
+-- give (state.autoLevel), the one before the current one (state.previousDefinition, kept as the real settings do when the level changes), and what the radar asked.
+local function installAuto(state)
+	local S = GryMod.Minimap.Settings
+
+	state.auto, state.definition, state.autoLevel, state.previousDefinition = true, 8, 8, nil
+	state.autoCalls, state.setCalls = {}, {}
+
+	S.DefinitionAuto = function() return state.auto end
+	S.Definition = function() return state.definition end
+	S.AutoDefinitionFor = function(density, previous)
+		state.calls[#state.calls + 1] = "Settings.AutoDefinitionFor"
+		state.autoCalls[#state.autoCalls + 1] = {density, previous}
+
+		if state.autoForError then
+			error(state.autoForError, 0)
+		end
+
+		return state.autoLevel
+	end
+	S.SetAutoDefinition = function(ppm)
+		state.calls[#state.calls + 1] = "Settings.SetAutoDefinition"
+		state.setCalls[#state.setCalls + 1] = ppm
+
+		if ppm ~= state.definition then
+			state.previousDefinition = state.definition
+			state.definition = ppm
+		end
+
+		return true
+	end
+	S.PreviousDefinition = function() return state.previousDefinition end
+end
+
+-- the density the radar must give the rule: its pixels per metre times the screen pixels per radar pixel (the length of a column of the transform)
+local function expectedDensity(panel, scale, metres)
+	local xf = panel:MapTransform(0, 0, scale)
+
+	return GryMod.RadarShared.PIXELS / metres * math.sqrt(xf[1] * xf[1] + xf[2] * xf[2])
 end
 
 -- applies a matrix {a, b, c, d, tx, ty} to a point, the way the movie's drawing does
@@ -1260,6 +1306,200 @@ return {
 				state.level = nil
 				newPanel():Draw(0, 0, 1)
 				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+			end
+		},
+		-- the automatic definition
+		{
+			-- breaks if: the density is not the pixels per metre of the radar times the pixels of the screen per radar pixel (a wrong constant, the range in units,
+			-- the scale left out), or if the level in use is not given as the previous one for the hysteresis
+			name = "Auto: the rule gets the density (radar pixels per metre times screen pixels per radar pixel, 43 / range * the length of a column of the transform) and the level in use",
+			func = function(state)
+				installAuto(state)
+
+				local convar = GetConVar("gry_radar_range")
+				local old = convar:GetString()
+
+				local ok, err = pcall(function()
+					for _, metres in ipairs({5, 38}) do
+						for _, scale in ipairs({1, 2.5}) do
+							convar:SetString(tostring(metres))
+							state.autoCalls = {}
+							state.definition = 8
+
+							local panel = newPanel()
+							panel:Draw(0, 0, scale)
+
+							expect(#state.autoCalls).to.equal(1)
+							expect(state.autoCalls[1][1]).to.aboutEqual(expectedDensity(panel, scale, metres), 1e-6)
+							expect(state.autoCalls[1][2]).to.equal(8)
+						end
+					end
+
+					-- a hand-computed number: at 5 m the radar has 43 / 5 = 8.6 pixels a metre, and the length of a column is the scale times the transforms'
+					-- lengths; on this panel it is what MapTransform says, so the density is 8.6 times that
+					state.autoCalls = {}
+					convar:SetString("5")
+
+					local panel = newPanel()
+					panel:Draw(0, 0, 4)
+
+					local xf = panel:MapTransform(0, 0, 4)
+					expect(state.autoCalls[1][1]).to.aboutEqual(8.6 * math.sqrt(xf[1] ^ 2 + xf[2] ^ 2), 1e-6)
+				end)
+
+				pcall(function() convar:SetString(old) end)
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: the level is given to Settings after Gen.Request (the generator would ask for the old definition once more), or not at all
+			name = "Auto: the level the rule gave goes to Settings.SetAutoDefinition once a draw, before Gen.Request, and the tile looked up for the veil is at that definition",
+			func = function(state)
+				installAuto(state)
+				state.autoLevel = 32
+				state.has = false
+
+				newPanel():Draw(0, 0, 1)
+
+				expect(state.setCalls[1]).to.equal(32)
+				expect(#state.setCalls).to.equal(1)
+				expect(state.calls[1]).to.equal("Settings.AutoDefinitionFor")
+				expect(state.calls[2]).to.equal("Settings.SetAutoDefinition")
+				expect(state.calls[3]).to.equal("Gen.Request")
+				expect(state.tiles[1].ppm).to.equal(32)
+				-- the first tile looked up is at the new definition (the previous one comes after, for the veil)
+				expect(state.tileOfCalls[1][4]).to.equal(32)
+			end
+		},
+		{
+			-- breaks if: the rule is run with the automatic definition off (the slider would be overwritten, and Settings would keep a level for nothing)
+			name = "Auto: with the automatic definition off the rule is not asked and nothing is given to Settings",
+			func = function(state)
+				installAuto(state)
+				state.auto = false
+
+				newPanel():Draw(0, 0, 1)
+
+				expect(#state.autoCalls).to.equal(0)
+				expect(#state.setCalls).to.equal(0)
+				expect(state.calls[1]).to.equal("Gen.Request")
+			end
+		},
+		{
+			-- breaks if: an error in the rule (or settings answering nothing) stops the map: the radar draws on, the error is told once
+			name = "Auto: a rule that raises is told once and the map is still asked and drawn (at the definition in use)",
+			func = function(state)
+				installAuto(state)
+				state.autoForError = "rule blew up"
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+
+				expect(#state.logged).to.equal(1)
+				expect(string.find(state.logged[1], "rule blew up", 1, true) ~= nil).to.beTrue()
+
+				local draws = 0
+
+				for _, call in ipairs(state.calls) do
+					if call == "View.Draw" then draws = draws + 1 end
+				end
+
+				expect(draws).to.equal(2)
+				expect(#state.setCalls).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the veil is decided by the current definition's tile alone (a zoom would hide the map under noise while the previous tiles are drawn)
+			name = "Auto: the veil does not appear when the tile under the player does not exist at the new definition but does at the previous one",
+			func = function(state)
+				installAuto(state)
+				state.autoLevel = 32
+				state.definition = 8
+				state.progress = {done = 0, total = 9, percent = 0, active = true, failed = 0}
+				local asked = {}
+
+				GryMod.Minimap.Cache.Has = function(tile)
+					asked[#asked + 1] = {level = tile.level, ppm = tile.ppm, tx = tile.tx, ty = tile.ty}
+
+					return tile.ppm == 8
+				end
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(panel.progressText).to.beNil()
+				expect(asked[1].ppm).to.equal(32)
+				expect(asked[2].ppm).to.equal(8)
+				expect(asked[2].level).to.equal("a1")
+
+				-- the previous tile is the one under the player at the previous definition: Cache.TileOf was asked for that definition too
+				local last = state.tileOfCalls[#state.tileOfCalls]
+				expect(last[4]).to.equal(8)
+				expect(last[3]).to.equal(1024)
+			end
+		},
+		{
+			-- breaks if: any tile of another definition (not the previous one of Settings) hides the veil, or no tile at all does
+			name = "Auto: the veil appears (with the percentage) when neither the new nor the previous definition has the tile under the player, and with no previous definition at all",
+			func = function(state)
+				installAuto(state)
+				state.autoLevel = 32
+				state.definition = 8
+				state.progress = {done = 1, total = 4, percent = 40.7, active = true, failed = 0}
+				GryMod.Minimap.Cache.Has = function() return false end
+
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.progressText).to.equal("40%")
+
+				-- no previous definition (the start): the veil as before
+				installAuto(state)
+				state.autoLevel, state.definition = 8, 8
+				state.has = false
+				GryMod.Minimap.Cache.Has = function() return false end
+
+				local second = newPanel()
+				second:Draw(0, 0, 1)
+				expect(second.main:Child("Noise").visible).to.beTrue()
+				expect(second.progressText).to.equal("40%")
+			end
+		},
+		{
+			-- breaks if: the previous definition is looked up while the current tile exists (a needless call at every frame), or when it is the current definition
+			name = "Auto: with the current tile present, or a previous definition equal to the current one, no other definition is looked up",
+			func = function(state)
+				installAuto(state)
+				state.autoLevel, state.definition = 16, 16
+				state.previousDefinition = 4
+				state.progress = {done = 4, total = 4, percent = 100, active = false, failed = 0}
+				local asked = {}
+
+				GryMod.Minimap.Cache.Has = function(tile)
+					asked[#asked + 1] = tile.ppm
+
+					return true
+				end
+
+				newPanel():Draw(0, 0, 1)
+				expect(#asked).to.equal(1)
+				expect(asked[1]).to.equal(16)
+
+				-- missing, with a previous definition equal to the current one: the previous one is no other definition
+				asked = {}
+				state.previousDefinition = 16
+				GryMod.Minimap.Cache.Has = function(tile)
+					asked[#asked + 1] = tile.ppm
+
+					return false
+				end
+
+				newPanel():Draw(0, 0, 1)
+				expect(#asked).to.equal(1)
 			end
 		},
 		-- no hook

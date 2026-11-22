@@ -179,18 +179,28 @@ return {
 			end
 		},
 		{
-			name = "the options panel has a slider for the range, with the recommended values in its label",
+			-- the slider moved to the Minimap section (next to the automatic definition, which follows it); the Radar section keeps a line that says where it went
+			name = "the options panel has ONE slider for the range, in the Minimap section (the Radar section only points to it), with the recommended values in its label",
 			func = function()
 				local found, sliderMin, sliderMax
+				local count, position, minimapAt, helpAt, sliderAt = 0, 0, nil, nil, nil
 				local panel = vgui.Create("ControlPanel")
 				local ok, err = pcall(function()
 					GryMod.GryOptionschute(panel)
 
 					local function walk(p)
 						for _, child in ipairs(p:GetChildren()) do
+							position = position + 1
+
 							if child.ClassName == "DNumSlider" and child.Scratch and child.Scratch.m_strConVar == OPTION then
 								found = child:GetText()
 								sliderMin, sliderMax = child:GetMin(), child:GetMax()
+								count = count + 1
+								sliderAt = position
+							elseif child.ClassName == "DLabel" and child:GetText() == "Minimap" then
+								minimapAt = position
+							elseif child.ClassName == "DLabel" and child:GetText() == "The radar range slider is in the Minimap section." then
+								helpAt = position
 							end
 
 							walk(child)
@@ -204,6 +214,10 @@ return {
 
 				if not ok then error(err, 0) end
 
+				expect(count).to.equal(1)
+				expect(minimapAt ~= nil and sliderAt ~= nil and sliderAt > minimapAt).to.beTrue()
+				-- the pointer is in the Radar section, before the Minimap one
+				expect(helpAt ~= nil and helpAt < minimapAt).to.beTrue()
 				expect(found ~= nil).to.beTrue()
 				expect(string.find(found, "40", 1, true) ~= nil).to.beTrue()
 				expect(string.find(found, "75", 1, true) ~= nil).to.beTrue()

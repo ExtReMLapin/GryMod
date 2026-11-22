@@ -758,7 +758,42 @@ local function loadQuad(i)
 	end
 end
 
-local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha)
+-- The previous definition of the automatic definition's pyramid (Settings.PreviousDefinition), or nil: no such function, a function that raises, or an answer
+-- that is no definition (a number above 0) are all "none".
+local function previousDefinition(Settings)
+	if type(Settings.PreviousDefinition) ~= "function" then
+		return nil
+	end
+
+	local ok, previous = pcall(Settings.PreviousDefinition)
+
+	if ok and finite(previous) and previous > 0 then
+		return previous
+	end
+
+	return nil
+end
+
+-- Whether one of the tiles of the box (tx0..tx1, ty0..ty1) of level `levelId` is missing from the cache (Cache.Has: from memory, no material is loaded).
+local function anyMissing(Cache, levelId, tx0, tx1, ty0, ty1, res, ppm)
+	scratchTile.level, scratchTile.res, scratchTile.ppm = levelId, res, ppm
+
+	for txi = tx0, tx1 do
+		for tyi = ty0, ty1 do
+			scratchTile.tx, scratchTile.ty = txi, tyi
+
+			if not Cache.Has(scratchTile) then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+-- `ppmOverride` (the fallback below) draws the three passes with the tiles of another definition and returns 0, then the number of materials it asked for; `budgetCap`
+-- is the most it may ask for. The normal call (no override) first draws the fallback when it is needed and gets the budget that is left.
+local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, ppmOverride, budgetCap)
 	if type(xf) ~= "table" then
 		return 0
 	end
@@ -801,7 +836,7 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 		return 0
 	end
 
-	local res, ppm = Settings.TileRes(), Settings.Definition()
+	local res, ppm = Settings.TileRes(), ppmOverride or Settings.Definition()
 	local T = tileUnits(res, ppm)
 
 	if not (T and finite(res) and finite(ppm)) then
@@ -814,6 +849,38 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 		return 0
 	end
 
+	local budget = finite(View.MAX_MATERIALS) and View.MAX_MATERIALS or 96
+
+	-- 0. the previous definition (the automatic definition changed level): while the tiles of the current one are not all there (the main level, and the floor
+	-- below and the outside when they are drawn), the tiles of the previous one are drawn first, so the map is never empty after a zoom. The new tiles come over
+	-- them. The fallback takes at most half of the budget of materials, the current level the rest.
+	if not ppmOverride then
+		local previous = previousDefinition(Settings)
+
+		if previous and previous ~= ppm then
+			local belowShown = drawingBelow(below, belowAlpha, level)
+			local outsideShown = drawingOutside(outside, outsideAlpha, level, below)
+			local missing = alpha > 0 and anyMissing(Cache, level.id, tx0, tx1, ty0, ty1, res, ppm)
+				or belowShown and anyMissing(Cache, below.id, tx0, tx1, ty0, ty1, res, ppm)
+				or outsideShown and anyMissing(Cache, outside.id, tx0, tx1, ty0, ty1, res, ppm)
+
+			if missing then
+				local ok, err, spent = pcall(drawImpl, xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, previous, floor(budget / 2))
+
+				if ok then
+					budget = budget - (spent or 0)
+				else
+					-- told like any other error of the view, and the current level is drawn all the same
+					View.LastError = tostring(err)
+				end
+			end
+		end
+	elseif budgetCap and budgetCap < budget then
+		budget = budgetCap
+	end
+
+	local startBudget = budget
+
 	local radians = rad(yawDeg)
 	local s, co = sin(radians), cos(radians)
 	local k = pixels / rangeUnits
@@ -824,7 +891,6 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 	local id = level.id
 	local height = ty1 - ty0 + 1
 	local width = tx1 - tx0 + 1
-	local budget = finite(View.MAX_MATERIALS) and View.MAX_MATERIALS or 96
 
 	-- the range circle's bounding square, for the tiles the coverage needs
 	local diskMinX, diskMaxX, diskMinY, diskMaxY = px - rangeUnits, px + rangeUnits, py - rangeUnits, py + rangeUnits
@@ -966,6 +1032,11 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 			loadQuad(i)
 			emitTile(mainMat[i], pieces, a, b, c, d, tx, ty, flip)
 		end
+	end
+
+	-- the fallback has no coverage to give: it says how many materials it used
+	if ppmOverride then
+		return 0, startBudget - budget
 	end
 
 	-- 6. which tiles under the range circle exist: what the cache gave for the ones asked, Cache.Has for the others (no material is loaded for this)

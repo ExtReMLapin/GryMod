@@ -63,6 +63,12 @@ local function replaceModules(state)
 	state.outsideAll = false
 	state.outsideCalls = {}
 	state.hasCalls = {}
+	-- the definitions of the pyramid of the automatic definition: which ppm has ALL its tiles (true) or fails when asked (the string "error"), how many
+	-- times each was asked for a material, and the previous definition the settings stand-in reports
+	state.allAt = {}
+	state.callsByPpm = {}
+	state.previous = nil
+	state.previousError = false
 	recorded = {polys = {}, colors = {}, materials = {}, current = nil}
 
 	-- the cache: the geometry of the real one (tile edge = res / ppm / metres per unit) is replaced by the stand-in's (res / ppm units), so the numbers
@@ -70,6 +76,15 @@ local function replaceModules(state)
 	M.Cache = {
 		TileUnits = function(res, ppm) return res / ppm end,
 		Material = function(tile)
+			state.callsByPpm[tile.ppm] = (state.callsByPpm[tile.ppm] or 0) + 1
+
+			-- a definition of the pyramid that has every tile (or that fails)
+			if state.allAt[tile.ppm] == "error" then
+				error("material of ppm " .. tile.ppm .. " failed")
+			elseif state.allAt[tile.ppm] == true then
+				return {token = tile.tx .. "," .. tile.ty, level = tile.level, res = tile.res, ppm = tile.ppm}
+			end
+
 			-- the outside is level "open" in these tests: its own set of existing tiles and its own list of calls
 			if tile.level == "open" then
 				state.outsideCalls[#state.outsideCalls + 1] = tile.tx .. "," .. tile.ty
@@ -103,6 +118,10 @@ local function replaceModules(state)
 		Has = function(tile)
 			state.hasCalls[#state.hasCalls + 1] = tile.tx .. "," .. tile.ty
 
+			if state.allAt[tile.ppm] == true then
+				return true
+			end
+
 			if tile.level == "open" then
 				return state.outsideAll or state.outsideExisting[tile.tx .. "," .. tile.ty] == true
 			end
@@ -123,7 +142,14 @@ local function replaceModules(state)
 		Definition = function() return 8 end,
 		Rotate = function() return true end,
 		Enabled = function() return true end,
-		BudgetMs = function() return 6 end
+		BudgetMs = function() return 6 end,
+		PreviousDefinition = function()
+			if state.previousError then
+				error("settings blew up")
+			end
+
+			return state.previous
+		end
 	}
 
 	-- the generator: any use of it raises (the view never asks for a tile)
@@ -1990,6 +2016,229 @@ return {
 				-- the other orientation is the same polygon
 				local reversed = V.ConvexPieces({{0, 1}, {1, 1}, {1, 0}, {0, 0}})
 				expect(#reversed).to.equal(1)
+			end
+		},
+		-- The previous definition (the pyramid of the automatic definition) -----------------------------------------------------------
+		{
+			-- breaks if: the view draws a fallback when there is no previous definition, or one that is the current definition
+			name = "Fallback: no previous definition (nil), or the same as the current one, draws the current tiles only and asks for nothing else",
+			func = function(state)
+				state.all = true
+
+				for _, previous in ipairs({false, 8}) do
+					state.previous = previous or nil
+					state.callsByPpm = {}
+					recorded.polys = {}
+					draw(state, IDENTITY)
+					expect(#recorded.polys > 0).to.beTrue()
+
+					for _, poly in ipairs(recorded.polys) do
+						expect(poly.material.ppm).to.equal(8)
+					end
+
+					expect(state.callsByPpm[8] ~= nil).to.beTrue()
+
+					for ppm, count in pairs(state.callsByPpm) do
+						expect(ppm).to.equal(8)
+					end
+				end
+			end
+		},
+		{
+			-- breaks if: the tiles of the previous definition are not drawn while the tiles of the current one are missing (the map would be empty after a zoom)
+			name = "Fallback: with none of the current tiles (ppm 8) and all the previous ones (ppm 4), the previous tiles are drawn and no current ones; the coverage returned is the current one's (0)",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = true
+
+				local coverage = draw(state, IDENTITY)
+
+				expect(#recorded.polys > 0).to.beTrue()
+
+				for _, poly in ipairs(recorded.polys) do
+					expect(poly.material.ppm).to.equal(4)
+					-- the main level is white, with the alpha given to Draw
+					expect(poly.colour[1]).to.equal(255)
+				end
+
+				expect(coverage).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the fallback is drawn over the new tiles, or the new tiles are not drawn once they exist
+			name = "Fallback: the previous tiles are drawn UNDER the current ones that exist (all the previous polygons come before the first current one), and both are there",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = true
+				-- only the tile the player stands on exists at the current definition
+				state.existing["0,0"] = true
+
+				local coverage = draw(state, IDENTITY)
+				local firstCurrent, lastPrevious, current, previous = nil, nil, 0, 0
+
+				for i, poly in ipairs(recorded.polys) do
+					if poly.material.ppm == 8 then
+						current = current + 1
+						firstCurrent = firstCurrent or i
+					else
+						previous = previous + 1
+						lastPrevious = i
+					end
+				end
+
+				expect(current > 0).to.beTrue()
+				expect(previous > 0).to.beTrue()
+				expect(lastPrevious < firstCurrent).to.beTrue()
+				-- the coverage is the current definition's: tile (0, 0) of 64 units under a circle of radius 64
+				expect(coverage > 0 and coverage < 1).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the fallback is drawn when the current set is complete (it would show through the voids of the new tiles for nothing)
+			name = "Fallback: once every current tile of the window exists (ppm 8) nothing of the previous definition is asked or drawn",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = true
+				state.all = true
+
+				draw(state, IDENTITY)
+				expect(#recorded.polys > 0).to.beTrue()
+
+				for _, poly in ipairs(recorded.polys) do
+					expect(poly.material.ppm).to.equal(8)
+				end
+
+				expect(state.callsByPpm[4]).to.beNil()
+			end
+		},
+		{
+			-- breaks if: the completeness looks at the tile under the player only, not at the whole set the generator wants
+			name = "Fallback: one missing current tile far from the player (all but one exist) still draws the previous tiles under the current ones",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = true
+				state.all = true
+				-- a stand-in for a cache that has every tile but one corner of the window
+				local has = GryMod.Minimap.Cache.Has
+				GryMod.Minimap.Cache.Has = function(tile)
+					if tile.ppm == 8 and tile.tx == 2 and tile.ty == 2 then
+						return false
+					end
+
+					return has(tile)
+				end
+
+				draw(state, IDENTITY)
+
+				local previous = 0
+
+				for _, poly in ipairs(recorded.polys) do
+					if poly.material.ppm == 4 then
+						previous = previous + 1
+					end
+				end
+
+				expect(previous > 0).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: the floor below and the outside are not drawn at the previous definition too
+			name = "Fallback: the floor below and the outside are drawn at the previous definition as well, under the previous main level",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = true
+
+				draw(state, IDENTITY, {below = lower(), belowAlpha = 0.4, outside = open(), outsideAlpha = 0.3})
+
+				local seen = {}
+
+				for _, poly in ipairs(recorded.polys) do
+					if poly.material.ppm == 4 then
+						seen[poly.material.level] = true
+					end
+				end
+
+				expect(seen["open"]).to.beTrue()
+				expect(seen["z0"]).to.beTrue()
+				expect(seen["a1"]).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: a fallback that needs its own 96 materials on top of the current ones (the cache keeps 160 and would push out what it just loaded)
+			name = "Fallback: the materials of one Draw never pass View.MAX_MATERIALS, the fallback taking at most half of it and the current level the rest",
+			func = function(state)
+				local V = GryMod.Minimap.View
+				state.previous = 4
+				state.allAt[4] = true
+				state.all = true
+
+				-- every current tile exists but one: the fallback is drawn, and the budget is the question
+				local has = GryMod.Minimap.Cache.Has
+				GryMod.Minimap.Cache.Has = function(tile)
+					if tile.ppm == 8 and tile.tx == 2 and tile.ty == 2 then
+						return false
+					end
+
+					return has(tile)
+				end
+
+				V.MAX_MATERIALS = 10
+				draw(state, IDENTITY)
+
+				local previous, current = state.callsByPpm[4] or 0, state.callsByPpm[8] or 0
+
+				expect(previous > 0).to.beTrue()
+				expect(previous <= 5).to.beTrue()
+				expect(current > 0).to.beTrue()
+				expect(previous + current <= 10).to.beTrue()
+			end
+		},
+		{
+			-- breaks if: an error of the fallback stops the current level from being drawn
+			name = "Fallback: a previous level that fails (its materials raise) does not stop the current level from being drawn; the error is kept in View.LastError",
+			func = function(state)
+				state.previous = 4
+				state.allAt[4] = "error"
+				state.existing["0,0"] = true
+
+				local coverage = draw(state, IDENTITY)
+				local current = 0
+
+				for _, poly in ipairs(recorded.polys) do
+					if poly.material.ppm == 8 then
+						current = current + 1
+					end
+				end
+
+				expect(current > 0).to.beTrue()
+				expect(coverage > 0).to.beTrue()
+				expect(type(GryMod.Minimap.View.LastError)).to.equal("string")
+			end
+		},
+		{
+			-- breaks if: a settings module whose PreviousDefinition raises, is missing or answers garbage stops the drawing
+			name = "Fallback: a Settings without PreviousDefinition, one that raises, and one that answers something that is no definition draw the current level as before",
+			func = function(state)
+				state.existing["0,0"] = true
+
+				local settings = GryMod.Minimap.Settings
+
+				for _, mode in ipairs({"raises", "text", "zero", "negative", "nan", "missing"}) do
+					recorded.polys = {}
+					state.previousError = mode == "raises"
+					state.previous = ({text = "4", zero = 0, negative = -4, nan = 0 / 0})[mode]
+
+					if mode == "missing" then
+						settings.PreviousDefinition = nil
+					end
+
+					draw(state, IDENTITY)
+					expect(#recorded.polys > 0).to.beTrue()
+
+					for _, poly in ipairs(recorded.polys) do
+						expect(poly.material.ppm).to.equal(8)
+					end
+				end
 			end
 		}
 	}

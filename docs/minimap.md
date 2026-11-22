@@ -41,27 +41,59 @@ number gives the default).
 | Convar | Default | Range | Effect |
 | --- | --- | --- | --- |
 | `gry_minimap` | 1 | 0 or 1 | Draw the map behind the radar. |
-| `gry_minimap_definition` | 3 | 1 to 16, whole numbers | Pixels per metre of the tiles. More is sharper, takes longer to make and takes more disk. |
+| `gry_minimap_definition_auto` | 1 | 0 or 1 | Automatic definition: the map chooses its own definition from the radar range and the screen (see "Automatic definition" below). With 1 the slider `gry_minimap_definition` is not used (and is greyed in the menu). |
+| `gry_minimap_definition` | 3 | 1 to 64, whole numbers | Pixels per metre of the tiles, when the automatic definition is off. More is sharper, takes longer to make and takes more disk. (The upper bound was 16 before the automatic definition.) |
 | `gry_minimap_tile` | 1024 | 512, 1024 or 2048 (another number goes to the nearest) | Size of one tile in pixels. At 3 pixels per metre a 1024 tile covers about 341 m. Small tiles are quick to make, big tiles are fewer. |
 | `gry_minimap_budget_ms` | 6 | 1 to 30 | Milliseconds per frame the generator may use. One capture (about 7 ms) may go over it. |
 | `gry_minimap_below` | 40 | 0 to 100, whole numbers | Opacity in percent of the floor below, seen through the empty parts of the current floor. 0 turns the floor below off (and it is not generated). |
 | `gry_minimap_outside` | 30 | 0 to 100, whole numbers | Opacity in percent of the outside (the open level, the whole height of the map) behind the floors, drawn under the floor below. 0 turns it off (and it is not generated). It is drawn only when the player is inside; outdoors the current level is already the open level. |
 | `gry_minimap_cache_mb` | 256 | 16 to 4096 | Size limit of the cache of one map, in megabytes. |
-| `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: raise `gry_minimap_definition` (for example 12 to 16 pixels per metre) for a sharp picture. |
+| `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: the automatic definition goes up to 64 pixels per metre by itself, or raise `gry_minimap_definition` (with the automatic definition off) for a sharp picture. |
 
 The map always turns with the player's view, like the contacts: there is no fixed-north mode.
 
 Changing the definition or the tile size makes a new set of tiles (the name of a tile contains both), so the first change generates
 the map again. The old tiles stay in the cache until the size limit removes them.
 
-The same options are in the options menu, under "Minimap", with a button "Clear the minimap cache".
+The same options are in the options menu, under "Minimap", with a button "Clear the minimap cache". In that section the radar range slider
+comes first, then the check box "Automatic definition (follows the radar range and the screen)", then the definition slider, which is greyed
+(it keeps its value) while the check box is on, also when the convar is changed from the console.
+
+## Automatic definition
+
+With `gry_minimap_definition_auto 1` (the default) the map picks its own definition, so that a close range is sharp and a wide one does not
+make huge sets of tiles.
+
+- **The density.** At every draw the radar works out how many screen pixels show one metre of ground: its pixels per metre (43 pixels for
+  the range, so `43 / range in metres`, as the contacts are placed) times the screen pixels of one radar pixel (the length of a column of
+  the matrix the map is drawn with, which follows the screen height and the movie's matrices). On a 3840 x 2160 screen that is 3.29 screen
+  pixels per radar pixel, so 28.3 pixels per metre at 5 m, 14.2 at 10 m, 8.3 at 17 m, 3.7 at 38 m, 1.9 at 75 m and 1.4 at 100 m.
+- **The pyramid.** The level is one of 2, 4, 8, 16, 32 or 64 pixels per metre. The rule is the smallest level that has at least 0.7 times the
+  density of the screen, so the picture is stretched at most 1.43 times. On the 4K screen: 5 m gives 32, 10 m gives 16, 17 m gives 8, 38 m
+  gives 4, 75 m and 100 m give 2. Above 91 pixels per metre the level stays at 64, below 2.9 it stays at 2.
+- **Hysteresis.** The level in use is kept while the density stays between 0.6 and 1.6 times it (level 16: 9.6 to 25.6), so dragging the range
+  slider does not make the map again at every step. A level chosen by the rule is always inside that band, so a density that goes back and forth
+  around an edge changes the level at most once.
+- **The definition in use.** `Settings.Definition()` gives the level the radar calculated (4 until it has calculated one) when the automatic
+  definition is on, and the slider's value when it is off, so the generator, the view and the cache do not know which of the two it is.
+  `Settings.PreviousDefinition()` gives the level before the current one (only one is kept), or nil.
+- **What happens on a change of level.** Each level has its own tiles (the definition is in the name of a tile). The tiles of the new level do
+  not exist yet, so while the tiles around the player (the main level, and the floor below and the outside when they are drawn) are not all
+  there, `View.Draw` first draws the tiles of the previous level, at most half of the budget of 96 materials, and the new tiles go over them as
+  they come. The noise veil and the percentage are not shown while a tile of the previous level covers the player (the veil only comes back
+  when neither level has the tile under the player). The previous tiles are stretched or shrunk, so the map is blurry for a moment and then
+  sharp. In the voids of a new tile the previous tile shows through for as long as the set is incomplete.
+- **The cost of a high level.** A tile is 1024 pixels at every level, so a level of 64 pixels per metre covers 16 m a side, and at 5 m the
+  radar needs about nine tiles around the player: they are made once and kept in the cache like the others.
 
 ## The cache
 
 - **Where:** `garrysmod/data/grymod/minimap/<key>/`. One directory per map, with `index.json` and, for each tile, a `.vtf` and a `.vmt`.
 - **Key:** the map name, the size in bytes of `maps/<map>.bsp`, and the version of the format, written in lower case with every
-  character outside `a-z 0-9 _` turned into `_`, for example `gm_example_6540988_v2` (the number is only an example). A map that is updated has another size, so it
-  gets a new directory, and the old directories of the same map name are deleted at the first request after the map loads.
+  character outside `a-z 0-9 _` turned into `_`, for example `gm_example_6540988_v4` (the number is only an example). A map that is updated has another size, so it
+  gets a new directory, and the old directories of the same map name are deleted at the first request after the map loads. The version changes when
+  the content of the tiles changes: `v4` replaced `v2` when the opaque black of "nothing" became void in every set (see Known traps), so a cache made by an older
+  version is deleted and made again by itself.
 - **Tile name:** `t_<level>_<tx>_<ty>_<res>_<ppm>`, a negative number is written with an `n` in front (`n3`).
 - **Size limit:** `gry_minimap_cache_mb`, for the directory of the current map. Above the limit the least recently used tiles are
   deleted, until the size is at 90 % of the limit. The check runs at the first request of a map and then every 64 tiles made. The
@@ -76,6 +108,7 @@ While the tile under the player does not exist, the map area of the radar is cov
 field of the radar, which normally shows the name of the sector, shows the percentage, for example `40%`. The percentage is the share of
 the wanted tiles (the ones around the player, plus one tile of margin) that exist. As soon as the tile under the player exists, the
 noise and the text go away, even if tiles farther away are still being made. After that the map fills in around the player as they walk.
+With the automatic definition, a tile of the previous level that covers the player also removes the noise (see "Automatic definition").
 
 ## For developers
 
@@ -89,15 +122,15 @@ A **level** is a table `{id, zlo, zhi, ...}`. A **tile** is `{level = <level id>
 
 | Module | Main public functions |
 | --- | --- |
-| `Settings` | `Enabled()`, `Definition()`, `TileRes()`, `BudgetMs()`, `Below()` (0 to 1), `Outside()` (0 to 1), `CacheBytes()`, `Opacity()`: the convars, clamped, never nil. `ParseSwitch`, `ParseDefinition`, `ParseTileRes`, `ParseBudgetMs`, `ParseBelow`, `ParseOutside`, `ParseCacheMB`, `ParseOpacity`: the same rules on any text (pure). |
+| `Settings` | `Enabled()`, `Definition()` (the level in use: the automatic one or the slider's), `DefinitionAuto()`, `TileRes()`, `BudgetMs()`, `Below()` (0 to 1), `Outside()` (0 to 1), `CacheBytes()`, `Opacity()`: the convars, clamped, never nil. `ParseSwitch`, `ParseDefinition`, `ParseDefinitionAuto`, `ParseTileRes`, `ParseBudgetMs`, `ParseBelow`, `ParseOutside`, `ParseCacheMB`, `ParseOpacity`: the same rules on any text (pure). The automatic definition: `AUTO_LEVELS` (2, 4, 8, 16, 32, 64), `AutoDefinitionFor(screenPixelsPerMetre, previousPpm)` (pure: the rule and the hysteresis), `SetAutoDefinition(ppm)` (the radar gives the level it calculated; a level outside the pyramid is ignored and answers false), `PreviousDefinition()`, and the state `AutoState = {current, previous}`. |
 | `Floors` | `CurrentAt(pos)`: the level for the feet at `pos` (a Vector), with the rays up; it remembers its last answer and does not shoot again for a second unless the feet moved 48 units. `Below(level)`: the level one storey lower (`nil, "open"` for an outdoor level). `Outside(level)`: the open level of the map (the whole height of the world, id `open`, the same table every time, read-only) for any level that is not open; `nil, "open"` for an open level (nothing behind it), `nil, "no world bounds"` when the world is unknown. `Current(z)` and `Fallback(z)`: the slab of the feet height alone, in steps of 32 units. `Known()`, `Reset()`. |
-| `Capture` | `Render(tile, level)`: one tile as BGRA bytes (`res * res * 4`), or `nil, reason`; needs the render context of a hook. `IsCapturing()`: true during a render (other render hooks of GryMod return early). `IsVoid(b, g, r, a)`: the void rule. `HideNonMap()` and `Restore(list)`. `GetRT(res)`. |
+| `Capture` | `Render(tile, level)`: one tile as BGRA bytes (`res * res * 4`), or `nil, reason`; needs the render context of a hook. `IsCapturing()`: true during a render (other render hooks of GryMod return early). `IsVoid(b, g, r, a)`: the void rule. `IsBlackOpaque(b, g, r, a)`, `BlackOpaqueToVoid(bgra)` and `IsAllBlackOpaque(bgra)`: the rule of the opaque black of "nothing" (pure, used by `Gen`). `HideNonMap()` and `Restore(list)`. `GetRT(res)`. |
 | `DXT1` | `Compress(bgra, w, h, opts)` and `CompressRows(bgra, w, h, firstBlockRow, lastBlockRow, opts)`: BGRA to DXT1, `opts.alpha = true` makes void pixels transparent. `Decode(dxt, w, h)`, `Error(a, b)`: for tests. |
 | `VTF` | `Build(w, h, format, data)` and `Write(path, w, h, format, data)`: a VTF 7.2 file (formats `FORMAT_BGRA8888` 12, `FORMAT_DXT1` 13, `FORMAT_DXT1A` 20). `VMTText(path)`, `WriteVMT(path, basetexturePath)`, `Parse(bytes)`. |
 | `AIN` | `Parse(bytes)` and `Load(mapName)`: the node graph of the map (`maps/graphs/<map>.ain`, version 37). Used by `Floors.FromNodes`, which today is not used to choose the level. |
 | `Cache` | `Key()`, `Dir(key)`, `Name(tile)`, `Path(tile)`, `TileUnits(res, ppm)`, `TileOf(x, y, res, ppm)`, `TileBounds(tile)`: naming and geometry. `Has(tile)` (from memory, safe at every frame), `Store(tile, data, format)`, `Material(tile)`, `Forget(tile)`, `Count()`, `KnownLevels()`. `Clear(key)`, `Prune()`, `Trim(maxBytes)`: the cleaning. |
-| `Gen` | `Request(level, cx, cy, extentUnits, below, outside)`: wants the tiles around a point (plus one tile of margin) for the level, and optionally for the floor below and for the outside (the open level), made in that order; it does nothing when the request is the same as the previous one, so it is cheap to call at every draw. `Progress()`, `Pending()`, `Cancel()`. `Step(now)`: the body of the hook. When the work is over and in `Cancel` it calls `Cache.Flush()`. |
-| `View` | `ToRadar(px, py, yawDeg, x, y, rangeUnits, rotate)`: world to radar pixels. `VisibleTiles(level, px, py, extentUnits, res, ppm)`. `Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha)`: draws the tiles of the outside, the floor below and the level (in that order) through the matrix `xf = {a, b, c, d, tx, ty}` and returns the share of the range circle of the level that is covered (the other two do not count). `MapFrame()`. |
+| `Gen` | `Request(level, cx, cy, extentUnits, below, outside)`: wants the tiles around a point (plus one tile of margin) for the level, and optionally for the floor below and for the outside (the open level), made in that order; it does nothing when the request is the same as the previous one, so it is cheap to call at every draw. `Progress()`, `Pending()`, `Cancel()`. `Step(now)`: the body of the hook. Between the capture and the compression it applies the rule of the opaque black (see Known traps). When the work is over and in `Cancel` it calls `Cache.Flush()`. |
+| `View` | `ToRadar(px, py, yawDeg, x, y, rangeUnits, rotate)`: world to radar pixels. `VisibleTiles(level, px, py, extentUnits, res, ppm)`. `Draw(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha)`: draws the tiles of the outside, the floor below and the level (in that order) through the matrix `xf = {a, b, c, d, tx, ty}` and returns the share of the range circle of the level that is covered (the other two do not count). With a previous definition (`Settings.PreviousDefinition()`) and tiles missing at the current one, it first draws the same three passes with the tiles of the previous definition (at most half the materials budget). `MapFrame()`. |
 
 The radar side is in `lua/grymod/client/cl_hud_radar_flash.lua`: `Panel:MapTransform(x, y, scale)` builds `xf` from the live matrices of the
 radar film, `Panel:SetNoise(v, keepUnits)` and `Panel:SetProgressText(text)` show the noise and the percentage.
@@ -165,6 +198,17 @@ Every test that replaces a module or a global puts it back in a `pcall` in `afte
 - **The void rule.** The target is cleared to alpha 0 and the depth is not written to the alpha, but about 5 % of the pixels that have alpha 0
   still carry a colour. The alpha alone is not a mask: a pixel is void (transparent) only when its alpha is 0 **and** its colour is
   black. Every other pixel is solid, a black one included. `Capture.IsVoid` is that rule.
+- **The opaque black of "nothing".** Where the slab of a level lies inside solid earth or looks at a sky brush, the engine sometimes draws exactly
+  (0, 0, 0, 255) instead of leaving the cleared (0, 0, 0, 0): the same tile can come back void from one render and nearly all (0, 0, 0, 255) from the
+  next (measured on gm_funkis, where a tile of the floor below came back 99 % of that black and was stored as a black solid wall). The geometry never
+  has that alpha (it writes 1, so black geometry is (0, 0, 0, 1)). By the void rule above that pixel is solid, so the floor below, drawn over the
+  outside, painted a black wall over it: an invisible thing erased a visible one. The rule, in `Gen` after the capture and before the compression: every
+  exact (0, 0, 0, 255) pixel becomes void (0, 0, 0, 0), and a tile that has nothing else is an empty tile. It applies to the tiles of every set (main
+  level, floor below, outside), because a tile is stored under the name of its level and not of its role: the main level of today is the floor below
+  of tomorrow and the cache gives the same file to both, so what is in a tile must not depend on who asked for it first. `Gen.VOID_FILL_SETS`
+  (`{main = true, below = true, outside = true}`) says which sets get it; a set left out is compressed as it is, except that a tile that is nothing
+  but (0, 0, 0, 255) becomes an empty tile. The solid earth of the current level thus becomes transparent and lets the outside and the floor below show through. A pixel that is almost that (alpha 254, a colour of 1, black geometry with alpha 1, a dark room) is never
+  touched. The pass costs under 1 ms on a tile without that black and about 5 ms on a 1024 x 1024 tile that is almost all of it (once per tile).
 - **The slab needs a high camera.** The capture camera is placed 50000 units above the top of the slab, with `znear` and `zfar` cutting the
   slab. With a low camera the engine ignores the slab.
 - **A rewritten tile must be forgotten.** The engine keeps the texture of a material by name. `Cache.Store` calls `Forget` for a tile it
