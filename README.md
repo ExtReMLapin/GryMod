@@ -111,9 +111,20 @@ Tests
 Releases
 -------------
 
-Publishing a GitHub release (tag `vX.Y.Z`) attaches a zip of the addon to it and uploads the addon to the
+Publishing a GitHub release (tag `4.3` or `v4.3`) attaches a zip of the addon to it and uploads the addon to the
 Steam Workshop (`.github/workflows/release.yml`; the secrets it needs are listed at the top of that file).
 The release notes become the Workshop change note: no double quote (`"`) in them.
+
+Before anything is published a `verify` job checks the Lua, the compiled shaders, the package (file types, names, size,
+version) and that the Workshop id of the `WORKSHOP_ID` secret is the `GryMod.WSID` of the code. A rehearsal that publishes
+nothing: Actions > Release > Run workflow. The same checks run locally:
+
+    python tools/prepare_release.py --version 4.3 --out dist/workshop --workshop --expect-wsid <the item id>
+    python tools/check_lua_syntax.py            # needs: pip install lupa
+    python dev_resources/shaders/check_compiled.py
+
+The compiled shaders (`shaders/fxc/*.vcs`) are committed: after changing a `.hlsl`, recompile it
+(`dev_resources/shaders/README.md`) and run `check_compiled.py --update`.
 
 Credits    
 ----------

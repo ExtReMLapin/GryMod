@@ -1,59 +1,120 @@
-# Publishing a GitHub release (tag vX.Y.Z) attaches a zip of the addon to the release, then uploads the
-# addon to the Steam Workshop (GryMod HUD, item 153963150).
+# Publishing a GitHub release (tag 4.3 or v4.3) checks everything, attaches a zip of the addon to the release, then uploads the addon to the Steam Workshop.
 #
 # One-time setup (repository Settings > Secrets and variables > Actions):
 #   secrets  STEAM_USERNAME  Steam account that owns the Workshop item
 #            STEAM_VDF       base64 of SteamCMD's config/config.vdf after one interactive login
 #                            (steamcmd +login <user> +quit, Steam Guard code typed once), see
 #                            https://github.com/gmod-workshop/workshop-upload
-#            WORKSHOP_ID     153963150
-#   variable WORKSHOP_UPLOAD = true   switches the Workshop job on (it stays off until the secrets exist)
+#            WORKSHOP_ID     the Workshop item's id (the number at the end of its page's address). It must be the same number as `GryMod.WSID` in
+#                            lua/autorun/grymod_shared.lua (the servers ask their players to subscribe to that item): the `verify` job stops when
+#                            they differ or when the secret is empty, so a release can never go to the wrong item. Changing the item = change both.
+#   variable WORKSHOP_UPLOAD = true   switches the Workshop job on (it stays off until it is set)
 #
-# The release notes become the Workshop change note. The action writes them into a VDF file without
-# escaping: do not use a double quote (") in them, it makes the upload fail. To retry a failed upload
-# without deleting anything: `gh release edit vX --draft=true`, then `--draft=false`.
+# What the `verify` job checks before anything is published (tools/prepare_release.py, and the checks of ci.yml): the Lua parses, the compiled shaders
+# are the ones of their sources, the tag is a version, the package holds only files the Workshop takes (lower case names, white-listed types, no
+# development file), is under the size limit, the Workshop id matches, and the release notes hold no double quote. The zip and the Workshop package are then
+# built again from the same commit by the same script: the version is written in lua/autorun/grymod_shared.lua (GryMod.Version) and the Workshop one
+# gets GryMod.Workshop = true (the servers then ask the clients to subscribe instead of sending every file).
+#
+# A rehearsal that publishes nothing: Actions > Release > Run workflow, with a version (it builds both packages and keeps them as artifacts for 3 days).
+# The release notes become the Workshop change note. The upload action writes them into a VDF file without escaping: a double quote (") makes the upload
+# fail, which the `verify` job refuses before. To retry a failed upload without deleting anything: `gh release edit TAG --draft=true`, then `--draft=false`.
 name: Release
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build for the rehearsal (4.3 or v4.3). Nothing is published."
+        required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  zip:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ github.event.release.tag_name || inputs.version }}
+      WORKSHOP_ID: ${{ secrets.WORKSHOP_ID }}
+      RELEASE_BODY: ${{ github.event.release.body }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Build the release zip
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install lupa numpy pillow
+      - name: The release notes hold no double quote (it would make the Workshop upload fail)
         run: |
-          mkdir -p dist
-          git archive --format=zip --prefix=grymod/ -o "dist/grymod-${GITHUB_REF_NAME}.zip" "${GITHUB_REF_NAME}"
-      - name: Attach it to the release
+          case "$RELEASE_BODY" in
+            *\"*) echo "::error::the release notes contain a double quote (\"): edit the release and remove it"; exit 1 ;;
+          esac
+      - name: Every Lua file parses
+        run: python tools/check_lua_syntax.py
+      - name: The compiled shaders match their sources
+        run: python dev_resources/shaders/check_compiled.py
+      - name: Tests of the release tools and of the shipped resources
+        run: python -m unittest tools.test_prepare_release tools.test_check_lua_syntax tools.test_shipped_resources tools.test_sound_files
+      - name: Build the zip package (checks the files, the version and the size)
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/zip
+      - name: Build the Workshop package (also checks the Workshop id against the secret)
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/workshop --workshop --expect-wsid "$WORKSHOP_ID"
+      - name: Keep both packages (rehearsal only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: grymod-${{ env.VERSION }}-rehearsal
+          path: dist
+          retention-days: 3
+
+  zip:
+    needs: verify
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Build the zip package
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/grymod
+      - name: Zip it (everything under a grymod/ folder) and attach it to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/*.zip --clobber
+        run: |
+          cd dist
+          zip -qr "grymod-${VERSION}.zip" grymod
+          gh release upload "$VERSION" "grymod-${VERSION}.zip" --clobber
 
   workshop:
-    if: ${{ vars.WORKSHOP_UPLOAD == 'true' }}
+    needs: verify
+    if: ${{ github.event_name == 'release' && !github.event.release.prerelease && vars.WORKSHOP_UPLOAD == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.release.tag_name }}
+      WORKSHOP_ID: ${{ secrets.WORKSHOP_ID }}
     steps:
-      - uses: actions/checkout@v4
-      # The repository ships GryMod.Workshop = false: every file is then sent to the clients with
-      # resource.AddFile, even to the players who already have the Workshop item. The Workshop package
-      # must be the one where servers only ask clients to subscribe (resource.AddWorkshop).
-      - name: Build the Workshop flavour
-        run: |
-          sed -i 's/^GryMod\.Workshop = false/GryMod.Workshop = true/' lua/autorun/grymod_shared.lua
-          grep -q '^GryMod\.Workshop = true' lua/autorun/grymod_shared.lua
-      # addon.json "ignore" keeps tests, tools and docs out of the .gma
-      - uses: gmod-workshop/workshop-upload@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      # the Workshop flavour of the package, with the version written and the Workshop id checked against the secret once more
+      - name: Build the Workshop package
+        run: python tools/prepare_release.py --version "$VERSION" --out dist/workshop --workshop --expect-wsid "$WORKSHOP_ID"
+      # addon.json "ignore" is applied again by the action when it packs the .gma
+      - uses: gmod-workshop/workshop-upload@8588ccf539eca957904547557454b4dd96bf5fa2 # v1.2.0
         with:
           id: ${{ secrets.WORKSHOP_ID }}
           username: ${{ secrets.STEAM_USERNAME }}
           vdf: ${{ secrets.STEAM_VDF }}
-          # the v1 tag of the action has no markdown-changelog input: use changelog
+          # the release notes become the change note (the action's v1 has no markdown-changelog input: use changelog)
           changelog: ${{ github.event.release.body }}
           # the action reads `folder` (its README still says `dir`, which it ignores)
-          folder: ./
+          folder: dist/workshop

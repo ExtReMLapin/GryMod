@@ -5,3 +5,8 @@ dev_resources/ export-ignore
 docs/ export-ignore
 .github/ export-ignore
 .gitattributes export-ignore
+
+# compiled files are binary: a checkout must never change a byte (their hashes are in dev_resources/shaders/compiled.sha256)
+shaders/fxc/*.vcs binary
+*.vtf binary
+*.wav binary

@@ -3,3 +3,6 @@ __pycache__/
 
 # Working notes, plans and specs: kept on disk, never tracked
 docs/superpowers/
+
+# local builds of the release packages (tools/prepare_release.py --out dist/...)
+/dist/

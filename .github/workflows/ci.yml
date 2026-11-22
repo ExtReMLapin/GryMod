@@ -1,0 +1,61 @@
+# Checks on every push to master and every pull request. Nothing here publishes anything.
+#
+#   package     the Lua parses (LuaJIT), the compiled shaders are the ones of their sources, the release tools work, and the two packages (the zip and the
+#               Workshop one) can be built from this commit: right files, right types, right size (tools/prepare_release.py)
+#   converters  the tests of the Flash -> Lua converter and of the other development tools (slow: about 3 minutes, so a job of its own)
+#
+# The game itself is not started here: the GLuaTest files of tests/ need Garry's Mod and run on the developer's machine.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install what the checks need (lupa carries LuaJIT, numpy and pillow are for the tools' tests)
+        run: python -m pip install lupa numpy pillow
+      - name: Every Lua file parses
+        run: python tools/check_lua_syntax.py
+      - name: The compiled shaders match their sources
+        run: python dev_resources/shaders/check_compiled.py
+      - name: Tests of the release tools and of the shipped resources
+        run: python -m unittest tools.test_prepare_release tools.test_check_lua_syntax tools.test_shipped_resources tools.test_sound_files
+      - name: Tests of the shader tools
+        run: python -m unittest discover -s dev_resources/shaders
+      - name: The zip can be built (the plain package)
+        run: python tools/prepare_release.py --version 0.0-ci --out dist/zip
+      - name: The Workshop package can be built
+        run: python tools/prepare_release.py --version 0.0-ci --out dist/workshop --workshop
+
+  converters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install numpy pillow
+      - name: Flash to Lua converter
+        run: python -m unittest discover -s dev_resources/flash2lua -t .
+      - name: Camouflage textures and Flash audit tools
+        run: |
+          python -m unittest dev_resources.cloak.test_extract_cloak_textures dev_resources.cloak.test_make_cloak_sparks
+          python -m unittest discover -s dev_resources/flash_audit
