@@ -44,6 +44,9 @@ local CacheMBConVar = GetConVar("gry_minimap_cache_mb") or CreateClientConVar("g
 local OpacityConVar = GetConVar("gry_minimap_opacity") or CreateClientConVar("gry_minimap_opacity", "90", true, false,
 	"Opacity in percent of the minimap background in the radar (the floor below uses its own setting on top of it)", 0, 100)
 
+local VeilDiscoveryConVar = GetConVar("gry_minimap_veil_discovery") or CreateClientConVar("gry_minimap_veil_discovery", "0", true, false,
+	"Show the noise veil and the percentage whenever the map tile under the player is missing (1, the old behaviour), or only when there is nothing to show (0, the default: while the map is discovered the last picture stays and the new tile comes when it is ready)", 0, 1)
+
 -- The number a text holds, or nil for a text that is no number (empty, a word, nan).
 local function number(text)
 	local n = tonumber(text)
@@ -71,6 +74,17 @@ function Settings.ParseSwitch(text)
 
 	if n == nil then
 		return true
+	end
+
+	return n >= 1 or n <= -1
+end
+
+-- The veil in discovery: the whole part of the number is not 0 (1: the old veil whenever the tile under the player is missing). No number: the default (0, no veil).
+function Settings.ParseVeilDiscovery(text)
+	local n = number(text)
+
+	if n == nil then
+		return false
 	end
 
 	return n >= 1 or n <= -1
@@ -278,6 +292,11 @@ end
 
 function Settings.Enabled()
 	return Settings.ParseSwitch(EnabledConVar:GetString())
+end
+
+-- true: the old behaviour (the noise veil as soon as the tile under the player is missing); false (the default): the discovery mode (the veil only for a real loading).
+function Settings.VeilInDiscovery()
+	return Settings.ParseVeilDiscovery(VeilDiscoveryConVar:GetString())
 end
 
 function Settings.DefinitionAuto()

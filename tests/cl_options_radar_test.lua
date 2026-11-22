@@ -219,8 +219,10 @@ return {
 					"slider:gry_minimap_opacity",
 					"slider:gry_minimap_below",
 					"slider:gry_minimap_outside",
+					-- the two preload boxes were added to the menu without this list (red since then); the third is the discovery mode's
 					"box:gry_minimap_preload",
 					"box:gry_minimap_preload_around",
+					"box:gry_minimap_veil_discovery",
 					"slider:gry_minimap_cache_mb",
 					"label:Map tile size (pixels)",
 					"combo:gry_minimap_tile",

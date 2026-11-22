@@ -799,6 +799,35 @@ local function anyMissing(Cache, levelId, altId, tx0, tx1, ty0, ty1, res, ppm)
 	return false
 end
 
+-- The share (0..1) of the range circle that lies on existing tiles: a regular grid over its square, no engine call. `exists` (indexed by
+-- (tx - tx0) * height + (ty - ty0) + 1) says which tiles of the box that starts at (tx0, ty0) and is width x height tiles big exist.
+local function gridShare(px, py, rangeUnits, T, tx0, ty0, width, height)
+	local N = COVERAGE_GRID
+	local radius2 = rangeUnits * rangeUnits
+	local inside, covered = 0, 0
+
+	for i = 0, N - 1 do
+		local ox = ((i + 0.5) * 2 / N - 1) * rangeUnits
+		local column = floor((px + ox) / T) - tx0
+
+		for j = 0, N - 1 do
+			local oy = ((j + 0.5) * 2 / N - 1) * rangeUnits
+
+			if ox * ox + oy * oy <= radius2 then
+				inside = inside + 1
+
+				local row = floor((py + oy) / T) - ty0
+
+				if column >= 0 and column < width and row >= 0 and row < height and exists[column * height + row + 1] then
+					covered = covered + 1
+				end
+			end
+		end
+	end
+
+	return inside > 0 and covered / inside or 0
+end
+
 -- `ppmOverride` (the fallback below) draws the three passes with the tiles of another definition and returns 0, then the number of materials it asked for; `budgetCap`
 -- is the most it may ask for. The normal call (no override) first draws the fallback when it is needed and gets the budget that is left.
 local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, belowAlpha, outside, outsideAlpha, base, belowBase, ppmOverride, budgetCap)
@@ -1101,31 +1130,85 @@ local function drawImpl(xf, px, py, yawDeg, rangeUnits, level, alpha, below, bel
 		return 0
 	end
 
-	-- the share of the range circle that lies on existing tiles: a regular grid over its square, no engine call
-	local N = COVERAGE_GRID
-	local radius2 = rangeUnits * rangeUnits
-	local inside, covered = 0, 0
+	return gridShare(px, py, rangeUnits, T, tx0, ty0, width, height)
+end
 
-	for i = 0, N - 1 do
-		local ox = ((i + 0.5) * 2 / N - 1) * rangeUnits
-		local column = floor((px + ox) / T) - tx0
+-- The share (0..1) of the range circle around (px, py) that lies on existing tiles of `level` (the tile of `base` standing in where `level` has none, as in Draw),
+-- at the current tile size and definition, WITHOUT drawing: only Cache.Has is asked (no material is loaded). The radar uses it to tell a map with a hole in it
+-- (something to show: the discovery mode) from a map with nothing to show. 0 for anything it cannot use; never raises.
+local function coverageImpl(px, py, rangeUnits, level, base)
+	if not (finite(px) and finite(py) and finite(rangeUnits) and rangeUnits > 0 and validLevel(level)) then
+		return 0
+	end
 
-		for j = 0, N - 1 do
-			local oy = ((j + 0.5) * 2 / N - 1) * rangeUnits
+	if math.abs(px) > MAX_COORD or math.abs(py) > MAX_COORD or rangeUnits > MAX_COORD then
+		return 0
+	end
 
-			if ox * ox + oy * oy <= radius2 then
-				inside = inside + 1
+	local M = GryMod.Minimap
+	local Settings, Cache = M.Settings, M.Cache
 
-				local row = floor((py + oy) / T) - ty0
+	if not (type(Settings) == "table" and type(Cache) == "table") then
+		return 0
+	end
 
-				if column >= 0 and column < width and row >= 0 and row < height and exists[column * height + row + 1] then
-					covered = covered + 1
-				end
+	local res, ppm = Settings.TileRes(), Settings.Definition()
+	local T = tileUnits(res, ppm)
+
+	if not (T and finite(res) and finite(ppm)) then
+		return 0
+	end
+
+	local tx0, tx1, ty0, ty1 = tileRange(px, py, rangeUnits, T)
+
+	if not tx0 then
+		return 0
+	end
+
+	local baseId = validLevel(base) and base.id ~= level.id and base.id or nil
+	local height = ty1 - ty0 + 1
+	local width = tx1 - tx0 + 1
+	local anyExists = false
+
+	scratchTile.level, scratchTile.res, scratchTile.ppm = level.id, res, ppm
+
+	for txi = tx0, tx1 do
+		for tyi = ty0, ty1 do
+			scratchTile.tx, scratchTile.ty = txi, tyi
+			scratchTile.level = level.id
+
+			local found = Cache.Has(scratchTile)
+
+			if not found and baseId then
+				scratchTile.level = baseId
+				found = Cache.Has(scratchTile)
+			end
+
+			exists[(txi - tx0) * height + (tyi - ty0) + 1] = found and true or false
+
+			if found then
+				anyExists = true
 			end
 		end
 	end
 
-	return inside > 0 and covered / inside or 0
+	scratchTile.level = level.id
+
+	if not anyExists then
+		return 0
+	end
+
+	return gridShare(px, py, rangeUnits, T, tx0, ty0, width, height)
+end
+
+function View.Coverage(px, py, rangeUnits, level, base)
+	local ok, share = pcall(coverageImpl, px, py, rangeUnits, level, base)
+
+	if ok and finite(share) then
+		return share
+	end
+
+	return 0
 end
 
 -- Draws the existing tiles of `level` around (px, py) under the radar: `xf = {a, b, c, d, tx, ty}` (named or numbered) sends a radar pixel (rx, ry) to

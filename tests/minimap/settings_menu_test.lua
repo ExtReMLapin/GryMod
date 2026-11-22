@@ -446,6 +446,19 @@ return {
 			end
 		},
 		{
+			-- the discovery mode (no noise veil while the map is discovered, the last picture kept) is optional: a check box that gives back the old veil, default off, saved, nothing written on opening
+			name = "the veil in discovery has a check box bound to gry_minimap_veil_discovery (a toggle is a check box), default off, and opening the panel writes nothing",
+			func = function(state)
+				state.panel = build()
+
+				local box = checkBoxOn(state.panel, "gry_minimap_veil_discovery")
+
+				expect(box ~= nil).to.beTrue()
+				expect(GetConVar("gry_minimap_veil_discovery"):GetDefault()).to.equal("0")
+				expect(#state.writes).to.equal(0)
+			end
+		},
+		{
 			name = "the cache size slider is bound to gry_minimap_cache_mb: 16 to 4096, whole numbers, right after the outside slider (which follows the floor below slider)",
 			func = function(state)
 				state.panel = build()

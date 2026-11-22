@@ -148,10 +148,13 @@ function DW.walk(route, mode, job, made0)
 	end
 
 	local out = {mode = mode, steps = 0, units = 0, changes = 0, veils = 0, madeMain = 0, madeMainUnder = 0, madeHeld = 0, madeBelow = 0, madeOutside = 0, heldSteps = 0, examples = {}}
+	-- the discovery rule's verdict on each veil event (see the veil block): how many would still be a veil, how many keep the last picture, how many have a part of the map to show
+	out.after, out.veilExamples = {kept = 0, coverage = 0, veil = 0}, {}
+
 	local veilSeen = {}
 	local clock = 1000
 	local realRT, realHas = RealTime, C.Has
-	local prevDrawn, prev
+	local prevDrawn, prev, keptId
 
 	local function key(id, tx, ty, d)
 		return id .. "|" .. tx .. "," .. ty .. "," .. d
@@ -221,7 +224,22 @@ function DW.walk(route, mode, job, made0)
 				if not veilSeen[vk] then
 					veilSeen[vk] = true
 					out.veils = out.veils + 1
+
+					-- the discovery mode (2026-11-22): the same event with the new rule. "kept": the level drawn at the last step with a tile still has its tile under the player (the
+					-- generator is working on the new one, since the tile is wanted); "coverage": some tile of the range circle exists (View.Coverage); else "veil" (nothing to show: the
+					-- veil and the percentage stay). The old behaviour is every event as a veil.
+					local keptOk = keptId and keptId ~= drawn.id and keptId ~= shown.id and keptId ~= own.id and has(keptId, ux, uy, def)
+					local cov = (M.View and M.View.Coverage) and M.View.Coverage(p.x, p.y, range / mpu, shown, mode ~= "old" and own or nil) or 0
+					local after = keptOk and "kept" or (cov > 0 and "coverage" or "veil")
+
+					out.after[after] = out.after[after] + 1
+
+					if after == "veil" and #out.veilExamples < 8 then
+						out.veilExamples[#out.veilExamples + 1] = string.format("%d,%d,%d level %s", p.x, p.y, p.z, drawn.id)
+					end
 				end
+			else
+				keptId = drawn.id
 			end
 
 			if prevDrawn and not p.jump and prevDrawn ~= drawn.id then
@@ -375,8 +393,10 @@ end
 
 -- one line for a result of DW.walk (the full tables are long)
 function DW.line(r)
-	return string.format("u=%d ch=%d (%.1f/1000) held=%d veils=%d made main=%d (held-level %d, under player %d) below=%d outside=%d", r.units, r.changes, r.changesPer1000, r.heldSteps, r.veils,
-		r.madeMain, r.madeHeld, r.madeMainUnder, r.madeBelow, r.madeOutside)
+	local a = r.after or {}
+
+	return string.format("u=%d ch=%d (%.1f/1000) held=%d veils=%d (discovery rule: kept %d, coverage %d, still veil %d) made main=%d (held-level %d, under player %d) below=%d outside=%d", r.units, r.changes,
+		r.changesPer1000, r.heldSteps, r.veils, a.kept or 0, a.coverage or 0, a.veil or 0, r.madeMain, r.madeHeld, r.madeMainUnder, r.madeBelow, r.madeOutside)
 end
 
 function DW.lines(res)
