@@ -1658,6 +1658,52 @@ return {
 			end
 		},
 		{
+			-- OpenAt is what the tile preload asks for each outdoor place of the in/out map: the same level the game would give a player standing there, without
+			-- a player. breaks if: it answers another table than CurrentAt for the same height (tiles made twice), shoots more than one ray, or gives a level under a roof
+			name = "OpenAt: one up ray from the place gives the open level of its hit (the very table CurrentAt gives), nothing under a roof (within 512), a level under the piece above far over it",
+			func = function(state)
+				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
+				standIn(state, {})
+				expect(isfunction(F().OpenAt)).to.beTrue()
+
+				-- the sky at 5000
+				state.ray = {Hit = true, HitSky = true, HitPos = Vector(0, 0, 5000)}
+
+				local level = F().OpenAt(10, 20, 30)
+
+				expect(level.id).to.equal("open_t4928")
+				expect(#state.traces).to.equal(1)
+				expect(state.traces[1].start.x).to.equal(10)
+				expect(state.traces[1].start.y).to.equal(20)
+				expect(state.traces[1].start.z).to.equal(30)
+				expect(state.traces[1].endpos.z).to.equal(30 + 32768)
+				expect(state.traces[1].mask).to.equal(MASK_SOLID_BRUSHONLY)
+				expect(F().CurrentAt(Vector(0, 0, 0))).to.equal(level)
+
+				-- a roof 300 over the place: not an open place
+				state.ray = ceil(330)
+
+				local none, why = F().OpenAt(10, 20, 30)
+
+				expect(none).to.beNil()
+				expect(why).to.equal("roofed")
+
+				-- the underside of a piece far over it (3000): a level under it
+				state.ray = ceil(3000)
+				expect(F().OpenAt(10, 20, 30).id).to.equal("open_t2944")
+
+				-- a ray that hits nothing: the open level of the map
+				state.ray = nothing()
+				expect(F().OpenAt(10, 20, 30).id).to.equal("open_t4928")
+
+				-- bad numbers
+				local bad, reason = F().OpenAt(0 / 0, 0, 0)
+
+				expect(bad).to.beNil()
+				expect(reason).to.equal("bad position")
+			end
+		},
+		{
 			-- breaks if: the cap makes thousands of rays on a big graph (the cost is once per map, at most 96 nodes), or uses nodes that are not ground
 			name = "open level: at most 96 nodes are used for the cap (a graph of 5000 nodes), and only the ground ones (type 2)",
 			func = function(state)

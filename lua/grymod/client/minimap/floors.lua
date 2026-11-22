@@ -812,6 +812,45 @@ function Floors.CurrentAt(pos)
 	return level
 end
 
+-- OpenAt(x, y, z) -> level | nil, reason. The open level a player standing at (x, y) with the ground at height z would get from CurrentAt, found with ONE
+-- up ray (brush mask) and no player, no memory of the last shot: for the tile preload, which asks it for the outdoor places of the in/out map.
+--   * the ray sees the sky or nothing: the open level at the sky it hit (the very table CurrentAt gives, so the tiles are shared);
+--   * it hits a solid more than MAX_RISE over z (the underside of a piece far above): the open level under it;
+--   * it hits a solid within MAX_RISE (a roof, a ceiling): nil, "roofed" (an anchor level of the floors, not an open one);
+--   * nil, "bad position", "ray failed" or "no world bounds" when it cannot say.
+function Floors.OpenAt(x, y, z)
+	if not (isFinite(x) and isFinite(y) and isFinite(z)) then
+		return nil, "bad position"
+	end
+
+	local ok, tr = pcall(util.TraceLine, {
+		start = Vector(x, y, z),
+		endpos = Vector(x, y, z + RAY_LENGTH),
+		mask = MASK_SOLID_BRUSHONLY
+	})
+
+	if not ok or type(tr) ~= "table" then
+		return nil, "ray failed"
+	end
+
+	local hit = tr.HitPos and tr.HitPos.z
+	local hasHit = isFinite(hit)
+	local isSky = tr.HitSky or not tr.Hit or not hasHit
+
+	if not isSky and hit - z <= MAX_RISE then
+		return nil, "roofed"
+	end
+
+	local skyZ = tr.HitSky and hasHit and hit or nil
+	local zmin = worldHeights(game.GetMap(), skyZ)
+
+	if not zmin then
+		return nil, "no world bounds"
+	end
+
+	return openAt(zmin, isSky and skyZ or hit)
+end
+
 -- Outside(level) -> level | nil, reason: the level that shows what is OUTSIDE the slab of `level`, the open level of the map (the whole height of the world:
 -- rocks, roofs and terrain, the same table, id "open", that CurrentAt gives outdoors, so the tiles already made for it are used). The radar draws it under
 -- the floor below, faintly, so that the solid parts of a floor (earth cut by the slice) show a part of what is outside.
