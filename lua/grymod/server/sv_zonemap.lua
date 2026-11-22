@@ -18,6 +18,10 @@
 -- lies inside the area's rectangle (a small area with no cell centre gives its own centre), one point per (layer, cell) pair, at most 60000 of them. Both classify a
 -- point with the same SampleNode and give the samples to the same GryMod.ZoneMap.Build. Each source keeps its own file side by side (<key>.dat, <key>_navmesh.dat):
 -- changing the setting reads the file of the other source when it is there, and makes it otherwise; Reset deletes the file of the CURRENT source only.
+-- A navmesh that loads late: on a map from the Workshop the engine can still answer "0 areas" when the map starts, although the map ships its .nav file (the mesh is
+-- there some seconds later). So "0 areas" is not "no navmesh" while maps/<map>.nav exists: the source stays "navmesh" and (unless the cache file of the navmesh is
+-- valid: a file is read with no navmesh) the module WAITS in state 2 with a poll timer (every 0.5 s, at most NAV_WAIT_MAX = 20 s), removed as soon as the wait ends;
+-- when the count is above 0 it logs the time it took and computes; after 20 s it makes the map from the nodes. No .nav file: the nodes at once.
 -- Cost: NO permanent hook. The computation adds a Think hook when it starts and removes it when it ends; a frame works until the budget in milliseconds is used
 -- (the clock is read after each node, or after each sample, or after each nav area while the points are listed, never inside the 13 rays of one node) and the tables
 -- of the rays are made once. One map is a few hundred bytes to a few KB.
@@ -94,6 +98,24 @@ end
 
 function ZS.NavAreas()
 	return navmesh.GetAllNavAreas()
+end
+
+-- does the map ship a navigation mesh file (the mesh may still be loading when NavCount says 0)
+function ZS.NavFileExists(map)
+	return file.Exists("maps/" .. tostring(map) .. ".nav", "GAME")
+end
+
+-- the poll timer of the wait for a navmesh that loads late (replaced by the tests)
+ZS.NAV_WAIT_MAX = 20 -- seconds
+ZS.NAV_POLL = 0.5 -- seconds between two polls
+local NAV_TIMER = "GryMod zonemap navwait"
+
+function ZS.TimerCreate(name, delay, reps, fn)
+	timer.Create(name, delay, reps, fn)
+end
+
+function ZS.TimerRemove(name)
+	timer.Remove(name)
 end
 
 ZS.NAV_MAX = 60000 -- the most points the navmesh source takes in one map (the first ones; more is flagged incomplete and over budget)
@@ -343,9 +365,18 @@ end
 -- the computation
 -- ---------------------------------------------------------------------------------------------------------
 
+-- ends the wait for the navmesh (if there is one): the poll timer goes away
+local function stopNavWait()
+	if st.navWait then
+		st.navWait = nil
+		pcall(ZS.TimerRemove, NAV_TIMER)
+	end
+end
+
 local function cancelJob()
 	st.job = nil
 	hook.Remove("Think", HOOK)
+	stopNavWait()
 end
 
 local function failed(err)
@@ -359,17 +390,24 @@ local function pathFor(map, size, source)
 	return DIR .. "/" .. GryMod.ZoneMap.Key(map, size, source) .. ".dat"
 end
 
--- the source of the map: "navmesh" when the setting is on and the level has a navmesh, else "nodes". A level with no navmesh (or an API that raises or answers
--- nonsense) falls back on the nodes; that is logged once (not when `silent`).
+-- the source of the map: "navmesh" when the setting is on and the level has a navmesh, else "nodes"; the second answer is true when the navmesh is not loaded YET
+-- (0 areas, but the map's .nav file exists: the engine is still loading it). A level with no navmesh and no file (or an API that raises or answers nonsense) falls
+-- back on the nodes; that is logged once (not when `silent`).
 local function chooseSource(silent)
 	if not navmeshVar:GetBool() then
-		return "nodes"
+		return "nodes", false
 	end
 
 	local ok, count = pcall(ZS.NavCount)
 
 	if ok and type(count) == "number" and count > 0 then
-		return "navmesh"
+		return "navmesh", false
+	end
+
+	local fok, exists = pcall(ZS.NavFileExists, ZS.MapName())
+
+	if fok and exists then
+		return "navmesh", true
 	end
 
 	if not silent and not st.navLogged then
@@ -377,7 +415,7 @@ local function chooseSource(silent)
 		ZS.Log("no navmesh: the in/out map is made from the AI node graph")
 	end
 
-	return "nodes"
+	return "nodes", false
 end
 
 -- the budget of a frame in seconds
@@ -681,18 +719,59 @@ local function noGraph(reason)
 	setState(STATE.NO_GRAPH, 0, 0)
 end
 
--- the whole start: the switch, the file of this map, the graph, the job. `sync`: no hook (RunNow steps it itself)
-local function startInner(sync)
-	if not switch:GetBool() then
-		setState(STATE.OFF, 0, 0)
+local startSource
+
+-- the poll of the wait for a navmesh that loads late: the count above 0 ends the wait (the time it took is logged) and the computation starts with the navmesh;
+-- 20 seconds with no navmesh end it with the nodes. Called by the timer (through pcall: an error is the failed state, not a timer that raises for ever).
+function ZS.NavWaitPoll()
+	local wait = st.navWait
+
+	if not wait then
+		pcall(ZS.TimerRemove, NAV_TIMER) -- a poll of a wait that is over (a start ended it): nothing to do
 
 		return
 	end
 
+	local ok, count = pcall(ZS.NavCount)
+	local elapsed = ZS.Now() - wait.t0
+
+	if ok and type(count) == "number" and count > 0 then
+		stopNavWait()
+		ZS.Log(string.format("navigation mesh available after %.1f s", elapsed))
+
+		local sok, err = pcall(startSource, "navmesh", wait.sync, false)
+
+		if not sok then
+			failed(err)
+		end
+	elseif elapsed >= ZS.NAV_WAIT_MAX then
+		stopNavWait()
+		ZS.Log(string.format("the navigation mesh did not load in %d s: the in/out map is made from the AI node graph", ZS.NAV_WAIT_MAX))
+
+		local sok, err = pcall(startSource, "nodes", wait.sync, false)
+
+		if not sok then
+			failed(err)
+		end
+	end
+end
+
+-- the wait: state 2 (the clients' radar veils), one log line, a poll timer that the end of the wait removes
+local function beginNavWait(sync)
+	st.navWait = {t0 = ZS.Now(), sync = sync}
+	ZS.Log("waiting for the navigation mesh (the file exists): checking every 0.5 s")
+	setState(STATE.WAITING, 0, 0)
+	ZS.TimerCreate(NAV_TIMER, ZS.NAV_POLL, 0, function()
+		ZS.NavWaitPoll()
+	end)
+end
+
+-- the start with a chosen source: the file of this map, the job. `pending`: the navmesh is not loaded yet (the wait begins when the cache file cannot be read).
+-- `sync`: no hook (RunNow steps it itself)
+function startSource(source, sync, pending)
 	local Z = GryMod.ZoneMap
 	local map = ZS.MapName()
 	local size = ZS.BspSize(map) or 0
-	local source = chooseSource(false)
 	local path = pathFor(map, size, source)
 
 	st.path, st.bsp, st.source = path, size, source
@@ -709,6 +788,12 @@ local function startInner(sync)
 
 			return
 		end
+	end
+
+	if source == "navmesh" and pending then
+		beginNavWait(sync)
+
+		return
 	end
 
 	if source == "navmesh" then
@@ -781,6 +866,19 @@ local function startInner(sync)
 	end
 end
 
+-- the whole start: the switch, then the source (the setting, the navmesh, its file) and the rest of the start
+local function startInner(sync)
+	if not switch:GetBool() then
+		setState(STATE.OFF, 0, 0)
+
+		return
+	end
+
+	local source, pending = chooseSource(false)
+
+	startSource(source, sync, pending)
+end
+
 local function start(sync)
 	cancelJob()
 	st.started = true
@@ -847,7 +945,7 @@ function ZS.RunNow(budgetMs, fresh)
 
 		local map = ZS.MapName()
 
-		pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0, chooseSource(true)))
+		pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0, (chooseSource(true))))
 	end
 
 	start(true)
@@ -868,13 +966,13 @@ function ZS.Reset()
 
 	local map = ZS.MapName()
 
-	pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0, chooseSource(true)))
+	pcall(ZS.DeleteFile, pathFor(map, ZS.BspSize(map) or 0, (chooseSource(true))))
 	start(false)
 end
 
 -- Source() -> "nodes" | "navmesh": the source of the last start, or the one the setting and the level would choose now
 function ZS.Source()
-	return st.source or chooseSource(true)
+	return st.source or (chooseSource(true))
 end
 
 -- the source setting changed: the start begins again with the other source (its file is read when it is there). Nothing while the in/out map is off.

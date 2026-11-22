@@ -12,7 +12,8 @@ local MAPNAME = "grymod_test_zonemap_nav"
 local BSP = 4321
 local ORIGINAL = {}
 local FIELDS = {"Trace", "Graph", "Clock", "ReadFile", "WriteFile", "DeleteFile", "BspSize", "MapName", "Now", "Log", "OnSwitch", "OnSource", "NavAreas", "NavCount",
-	"SampleNode"}
+	"SampleNode", "NavFileExists", "TimerCreate", "TimerRemove"}
+local NAV_TIMER = "GryMod zonemap navwait"
 local CONVARS = {"gry_zonemap", "gry_zonemap_budget_ms", "gry_zonemap_max_nodes", "gry_zonemap_navmesh"}
 local CONVAR_ORIGINAL = {}
 
@@ -129,6 +130,8 @@ end
 -- fake nav areas
 -- ---------------------------------------------------------------------------------------------------------
 local clockT, nowT, navCalls, getZCalls, graphCalls, sampleCalls, logs, disk, deleted
+-- the late load of the navmesh: what the fake NavCount answers (nil: the number of fake areas), whether the fake .nav file exists, and the fake timers
+local navNow, fileExists, fileCalls, timers, timerCreates, timerRemoves
 
 -- a nav area: the rectangle (x1, y1) .. (x2, y2) at height z. opts.zAt(px, py) answers GetZ (default: z); opts.getZ replaces GetZ altogether (to raise or to
 -- answer something that is not a number); opts.swap gives the corners the other way round (corner 0 is the larger one); opts.tick moves the fake clock at each GetZ
@@ -239,6 +242,7 @@ end
 -- The sample of a point is the real SampleNode over the fake trace (spec), unless a case replaces it.
 local function useFakes(areas, graph, spec)
 	clockT, nowT, navCalls, getZCalls, graphCalls, sampleCalls, logs, disk, deleted = 0, 0, 0, 0, 0, 0, {}, {}, {}
+	navNow, fileExists, fileCalls, timers, timerCreates, timerRemoves = nil, false, 0, {}, 0, {}
 
 	stubNet()
 	stub(ZS, "OnSwitch", noop)
@@ -264,7 +268,26 @@ local function useFakes(areas, graph, spec)
 
 		return graph
 	end)
-	stub(ZS, "NavCount", function() return areas and #areas or 0 end)
+	stub(ZS, "NavCount", function()
+		if navNow ~= nil then
+			return navNow
+		end
+
+		return areas and #areas or 0
+	end)
+	stub(ZS, "NavFileExists", function()
+		fileCalls = fileCalls + 1
+
+		return fileExists
+	end)
+	stub(ZS, "TimerCreate", function(name, delay, reps, fn)
+		timerCreates = timerCreates + 1
+		timers[name] = {delay = delay, reps = reps, fn = fn}
+	end)
+	stub(ZS, "TimerRemove", function(name)
+		timerRemoves[#timerRemoves + 1] = name
+		timers[name] = nil
+	end)
 	stub(ZS, "NavAreas", function()
 		navCalls = navCalls + 1
 
@@ -982,6 +1005,300 @@ return {
 			GetConVar("gry_zonemap_navmesh"):SetString("0")
 			GetConVar("gry_zonemap_navmesh"):SetString("1")
 			expect(table.concat(seen, ",")).to.equal("1>0,0>1")
+		end),
+
+		-- ----------------------------------------------------------------------------------------------- the navmesh that loads late
+		-- The engine can answer "0 areas" at the start of a map whose .nav file exists (a Workshop map: the file is in the map's GMA) and have the navmesh some
+		-- seconds later. The choice of the source must not give up at the first 0 when the file is there.
+		-- breaks if: the choice goes back to "0 areas means nodes": the state would be 3 (the nodes) at once, with no timer
+		case("0 areas at the start, but the map's .nav file exists and there is no cache file: the source is the navmesh, the state is 2 (waiting), nothing is computed, a poll timer every 0.5 s runs and the wait is logged once", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			recordSamples()
+			ZS.Start()
+			expect(ZS.Source()).to.equal("navmesh")
+			expect((ZS.State())).to.equal(2)
+			expect(thinkHook()).to.beNil()
+			expect(sampleCalls).to.equal(0)
+			expect(navCalls).to.equal(0)
+			expect(graphCalls).to.equal(0)
+			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+			expect(timers[NAV_TIMER].delay).to.equal(0.5)
+			expect(timers[NAV_TIMER].reps).to.equal(0)
+			expect(timerCreates).to.equal(1)
+			expect(#logs).to.equal(1)
+			expect(string.find(logs[1], "waiting for the navigation mesh (the file exists): checking every 0.5 s", 1, true) ~= nil).to.beTrue()
+
+			-- the clients are told once (the radar veils on the state 2)
+			local list = stateMessages()
+			expect(#list).to.equal(1)
+			expect(list[1].state).to.equal(2)
+		end),
+		-- breaks if: the poll does not remove the timer, does not start the computation with the navmesh source, or does not log the elapsed time
+		case("the count becomes > 0 after some polls: the timer is removed, 'navigation mesh available after X.X s' is logged (the real elapsed time), the computation runs with the navmesh source and ends in state 4", function()
+			useFakes({area(0, 0, 300, 300, 50), area(400, 0, 700, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			nowT = 100 -- the elapsed time is a difference, not the clock
+			ZS.Start()
+
+			for i = 1, 2 do
+				nowT = nowT + 0.5
+				timers[NAV_TIMER].fn()
+				expect((ZS.State())).to.equal(2)
+				expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+				expect(#logs).to.equal(1)
+			end
+
+			navNow = 2
+			nowT = 101.46
+			timers[NAV_TIMER].fn()
+			expect(timers[NAV_TIMER]).to.beNil()
+			expect(#timerRemoves).to.equal(1)
+			expect(timerRemoves[1]).to.equal(NAV_TIMER)
+			expect(#logs).to.equal(2)
+			expect(logs[2]).to.equal("navigation mesh available after 1.5 s")
+			expect((ZS.State())).to.equal(3)
+			expect(ZS.Source()).to.equal("navmesh")
+			expect(thinkHook() ~= nil).to.beTrue()
+
+			finish()
+			expect((ZS.State())).to.equal(4)
+			expect(ZS.Source()).to.equal("navmesh")
+			expect(thinkHook()).to.beNil()
+			expect(graphCalls).to.equal(0)
+			expect(disk[navPath()] ~= nil).to.beTrue()
+			expect(disk[nodesPath()]).to.beNil()
+			expect(ZS.Stats().source).to.equal("navmesh")
+
+			local states = {}
+
+			for _, m in ipairs(stateMessages()) do
+				states[#states + 1] = m.state
+			end
+
+			expect(states[1]).to.equal(2)
+			expect(states[#states]).to.equal(4)
+			expect(timerCreates).to.equal(1)
+		end),
+		-- breaks if: a poll that raises (NavCount fails) stops the wait or the timer is left behind
+		case("a poll where NavCount raises or answers nonsense counts as 'not yet': the wait goes on", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			ZS.Start()
+			stub(ZS, "NavCount", function() error("not loaded") end)
+			nowT = 0.5
+			expect(function() timers[NAV_TIMER].fn() end).to.succeed()
+			stub(ZS, "NavCount", function() return "many" end)
+			nowT = 1
+			expect(function() timers[NAV_TIMER].fn() end).to.succeed()
+			expect((ZS.State())).to.equal(2)
+			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+		end),
+		-- breaks if: the timeout is ignored (the wait would go on for ever), the timer is left behind, or the nodes are not used
+		case("the count stays 0 for 20 s: the timer is removed, 'the navigation mesh did not load in 20 s' is logged and the map is made from the nodes", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			expect(ZS.NAV_WAIT_MAX).to.equal(20)
+			nowT = 10
+			ZS.Start()
+			nowT = 29.5
+			timers[NAV_TIMER].fn()
+			expect((ZS.State())).to.equal(2) -- 19.5 s: still waiting
+			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+			expect(ZS.Source()).to.equal("navmesh")
+
+			nowT = 30
+			timers[NAV_TIMER].fn()
+			expect(timers[NAV_TIMER]).to.beNil()
+			expect(#timerRemoves).to.equal(1)
+			expect(#logs).to.equal(2)
+			expect(logs[2]).to.equal("the navigation mesh did not load in 20 s: the in/out map is made from the AI node graph")
+			expect(ZS.Source()).to.equal("nodes")
+			expect((ZS.State())).to.equal(3)
+			expect(graphCalls).to.equal(1)
+			expect(navCalls).to.equal(0)
+
+			finish()
+			expect((ZS.State())).to.equal(4)
+			expect(disk[nodesPath()] ~= nil).to.beTrue()
+			expect(disk[navPath()]).to.beNil()
+			expect(thinkHook()).to.beNil()
+		end),
+		-- breaks if: the choice waits when there is no .nav file (a level with no navmesh would be veiled for 20 s)
+		case("no .nav file and 0 areas: the nodes at once, 'no navmesh' logged, no timer, the file was asked", function()
+			useFakes({}, graphOf(5))
+			navNow, fileExists = 0, false
+			ZS.Start()
+			expect(ZS.Source()).to.equal("nodes")
+			expect((ZS.State())).to.equal(3)
+			expect(next(timers)).to.beNil()
+			expect(timerCreates).to.equal(0)
+			expect(#logs).to.equal(1)
+			expect(string.find(logs[1], "no navmesh", 1, true) ~= nil).to.beTrue()
+			expect(fileCalls).to.equal(1)
+		end),
+		-- breaks if: a loaded navmesh still asks for the file or waits
+		case("the count is already > 0: the navmesh at once, no wait, no timer, the file is not even asked", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			fileExists = true
+			ZS.Start()
+			expect(ZS.Source()).to.equal("navmesh")
+			expect((ZS.State())).to.equal(3)
+			expect(next(timers)).to.beNil()
+			expect(fileCalls).to.equal(0)
+			expect(#logs).to.equal(0)
+		end),
+		-- breaks if: the cache file is not read at once when the engine's navmesh is not loaded (the wait would be useless: a file is read with no navmesh)
+		case("a valid navmesh cache file is read at once even when the count is 0 and the file exists: state 4, the data sent, no wait, no timer, no area read", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			disk[navPath()] = Z.Encode(Z.Build({{x = 64, y = 64, z = 50, indoor = true, ceil = 2}}), {bspSize = BSP, nodeCount = 1, complete = true, overBudget = false})
+			ZS.Start()
+			expect((ZS.State())).to.equal(4)
+			expect(ZS.Source()).to.equal("navmesh")
+			expect(ZS.Bytes()).to.equal(disk[navPath()])
+			expect(next(timers)).to.beNil()
+			expect(timerCreates).to.equal(0)
+			expect(thinkHook()).to.beNil()
+			expect(navCalls).to.equal(0)
+			expect(#logs).to.equal(0)
+
+			local data = 0
+
+			for _, m in ipairs(sent) do
+				if m.name == "gry_zonemap_data" then
+					data = data + 1
+				end
+			end
+
+			expect(data).to.equal(1)
+		end),
+		-- breaks if: any cache file is trusted during the wait (a file made for another bsp must not end it)
+		case("a navmesh cache file of another bsp size does not count: the wait starts", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			disk[navPath()] = Z.Encode(Z.Build({{x = 64, y = 64, z = 50, indoor = true, ceil = 2}}), {bspSize = BSP + 1, nodeCount = 1, complete = true, overBudget = false})
+			ZS.Start()
+			expect((ZS.State())).to.equal(2)
+			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+		end),
+		-- breaks if: the setting at 0 waits for a navmesh the owner did not ask for
+		case("the setting at 0: the nodes at once, even with 0 areas and a .nav file: no wait, no timer", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			setConvar("gry_zonemap_navmesh", "0")
+			ZS.Start()
+			expect(ZS.Source()).to.equal("nodes")
+			expect((ZS.State())).to.equal(3)
+			expect(next(timers)).to.beNil()
+			expect(#logs).to.equal(0)
+		end),
+		-- breaks if: the switch of the setting during the wait does not cancel it (a timer left behind that would start a computation later)
+		case("switching the setting during the wait cancels it: the timer is removed, the other source starts, and the old poll does nothing if it fires", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			stub(ZS, "OnSource", ORIGINAL.OnSource)
+			navNow, fileExists = 0, true
+			ZS.Start()
+			expect((ZS.State())).to.equal(2)
+
+			local oldPoll = timers[NAV_TIMER].fn
+
+			GetConVar("gry_zonemap_navmesh"):SetString("0")
+			expect(timers[NAV_TIMER]).to.beNil()
+			expect(#timerRemoves).to.equal(1)
+			expect(ZS.Source()).to.equal("nodes")
+			expect((ZS.State())).to.equal(3)
+			expect(thinkHook() ~= nil).to.beTrue()
+
+			-- a poll that still fires (the engine's timer was already due) changes nothing
+			navNow = 1
+			nowT = 5
+			oldPoll()
+			expect(ZS.Source()).to.equal("nodes")
+			expect((ZS.State())).to.equal(3)
+			expect(next(timers)).to.beNil()
+
+			finish()
+			expect((ZS.State())).to.equal(4)
+			expect(disk[nodesPath()] ~= nil).to.beTrue()
+			expect(disk[navPath()]).to.beNil()
+		end),
+		-- breaks if: the switch back to the navmesh does not start a new wait (the navmesh is still 0) or leaves the first one
+		case("switching to the navmesh while it is not loaded starts the wait again with ONE timer", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			stub(ZS, "OnSource", ORIGINAL.OnSource)
+			navNow, fileExists = 0, true
+			setConvar("gry_zonemap_navmesh", "0")
+			ZS.Start()
+			finish()
+			GetConVar("gry_zonemap_navmesh"):SetString("1")
+			expect(ZS.Source()).to.equal("navmesh")
+			expect((ZS.State())).to.equal(2)
+			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+			expect(timerCreates).to.equal(1)
+		end),
+		-- breaks if: a Reset leaves the wait's timer behind
+		case("a Reset during the wait removes the timer and starts again (here the navmesh is there by then: the computation runs)", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			ZS.Start()
+			expect(timers[NAV_TIMER] ~= nil).to.beTrue()
+			navNow = 1
+			ZS.Reset()
+			expect(timers[NAV_TIMER]).to.beNil()
+			expect(#timerRemoves).to.equal(1)
+			expect(ZS.Source()).to.equal("navmesh")
+			expect((ZS.State())).to.equal(3)
+			expect(thinkHook() ~= nil).to.beTrue()
+			finish()
+			expect((ZS.State())).to.equal(4)
+		end),
+		-- breaks if: the module's cancel or the forgetting of the map (a map change) does not stop the wait
+		case("Cancel and Unload during the wait remove the timer; a stale poll that still fires does nothing", function()
+			for _, stop in ipairs({"Cancel", "Unload"}) do
+				useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+				navNow, fileExists = 0, true
+				ZS.Start()
+
+				local poll = timers[NAV_TIMER].fn
+
+				ZS[stop]()
+				expect(timers[NAV_TIMER]).to.beNil()
+				expect(#timerRemoves).to.equal(1)
+
+				navNow = 1
+				poll()
+				expect(thinkHook()).to.beNil()
+				expect(next(timers)).to.beNil()
+				expect(#logs).to.equal(1) -- the log of the wait; the poll said nothing
+				cleanup()
+			end
+		end),
+		-- breaks if: the switch of the in/out map going off leaves the timer (cancelJob is the one place that stops the wait)
+		case("turning the in/out map off during the wait removes the timer", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			ZS.Start()
+			ORIGINAL.OnSwitch("1", "0")
+			expect(timers[NAV_TIMER]).to.beNil()
+			expect((ZS.State())).to.equal(0)
+		end),
+		-- breaks if: a start that ends (a computation, a file) leaves the poll timer of an earlier wait
+		case("a start that follows a wait never leaves two timers: the wait's timer is removed before the new start", function()
+			useFakes({area(0, 0, 300, 300, 50)}, graphOf(5))
+			navNow, fileExists = 0, true
+			ZS.Start()
+			ZS.Start()
+			expect(timerCreates).to.equal(2)
+			expect(#timerRemoves).to.equal(1)
+
+			local n = 0
+
+			for _ in pairs(timers) do
+				n = n + 1
+			end
+
+			expect(n).to.equal(1)
 		end),
 
 		-- ----------------------------------------------------------------------------------------------- Reset
