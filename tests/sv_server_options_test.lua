@@ -7,8 +7,8 @@
 -- players are not needed to check who is allowed, and the real convars are put back after each case.
 
 local WHITELIST = {
-	"gry_cloak_ai", "gry_drown_rules", "gry_energy_net", "gry_grenade_armed_only", "gry_malfunction", "gry_mechanics",
-	"gry_movement", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
+	"gry_cloak_ai", "gry_drown_rules", "gry_energy_net", "gry_grenade_armed_only", "gry_health_regen", "gry_infinite_armor", "gry_malfunction",
+	"gry_mechanics", "gry_movement", "gry_radar_allies_always", "gry_radar_objects", "gry_zonemap"
 }
 
 local saved = {}
@@ -245,14 +245,17 @@ return {
 			end
 		},
 		{
-			name = "the admin toggles of the panel (gry_Health, gry_Armor) keep refusing a player who is not an admin",
+			name = "the admin toggles of the console (gry_Health, gry_Armor), now settings of the white list too, keep refusing a player who is not an admin",
 			func = function()
 				local health, armor = GryMod.Config.ShouldRegen, GryMod.Config.InfiniteArmor
+				local healthConvar, armorConvar = GetConVar("gry_health_regen"):GetString(), GetConVar("gry_infinite_armor"):GetString()
 
 				expect(GryMod.ToggleHealthRegen(fakePlayer(false))).to.beFalse()
 				expect(GryMod.ToggleInfiniteArmor(fakePlayer(false))).to.beFalse()
 				expect(GryMod.Config.ShouldRegen).to.equal(health)
 				expect(GryMod.Config.InfiniteArmor).to.equal(armor)
+				expect(GetConVar("gry_health_regen"):GetString()).to.equal(healthConvar)
+				expect(GetConVar("gry_infinite_armor"):GetString()).to.equal(armorConvar)
 			end
 		},
 	}

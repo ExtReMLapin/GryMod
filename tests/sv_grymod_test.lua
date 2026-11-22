@@ -2,6 +2,9 @@
 -- Needs a loaded map with one player (singleplayer is enough).
 
 local savedConfig
+-- the two toggles are real (archived) settings now: the cases that flip them put the convars back
+local TOGGLE_CONVARS = {"gry_health_regen", "gry_infinite_armor"}
+local savedConvars = {}
 
 local function ply()
 	return player.GetAll()[1]
@@ -24,6 +27,15 @@ return {
 	groupName = "GryMod server",
 	beforeAll = function(state)
 		savedConfig = table.Copy(GryMod.Config)
+
+		for _, name in ipairs(TOGGLE_CONVARS) do
+			savedConvars[name] = GetConVar(name):GetString()
+		end
+	end,
+	afterAll = function(state)
+		for _, name in ipairs(TOGGLE_CONVARS) do
+			GetConVar(name):SetString(savedConvars[name])
+		end
 	end,
 	beforeEach = function(state)
 		local p = ply()
@@ -48,6 +60,10 @@ return {
 		if IsValid(p) then
 			p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
 		end
+		for _, name in ipairs(TOGGLE_CONVARS) do
+			GetConVar(name):SetString(savedConvars[name])
+		end
+
 		GryMod.Config = table.Copy(savedConfig)
 	end,
 	cases = {

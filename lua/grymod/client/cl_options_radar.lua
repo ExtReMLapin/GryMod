@@ -1,10 +1,10 @@
 -- The Radar and map menu of the options: a second entry of the GryMod category (Options tab), next to Config. It holds everything about the radar, the
 -- compass and the maps, which was in the Config menu: the two HUD switches of the radar, the minimap, the automatic zoom, the in/out map, and the
 -- settings of the server that touch them.
--- No button in it, only check boxes:
+-- An action is a BUTTON, a toggle (an on/off state) is a check box:
 --   * a setting of the player is a check box (or a slider) bound to its convar; opening the menu writes nothing;
---   * an action is a momentary check box (GryMod.ActionCheckBox, GryMod.AdminOption kind "action"): ticking it asks "are you sure", on yes it runs the
---     action, and the box un-ticks itself at once whatever the answer (nothing is saved, no convar);
+--   * an action is a button (GryMod.ActionButton, GryMod.AdminOption kind "action"): a click asks "are you sure", on yes it runs the action, on no
+--     nothing happens (nothing is saved, no convar);
 --   * a setting of the server is a check box that never writes a convar: it sends ONE net message and the server decides (cl_admin_option.lua,
 --     sv_server_options.lua). The administrators' right is predicted here (the control is disabled with a tooltip for the others) and validated
 --     there (GryMod.MayConfigure).
@@ -12,18 +12,19 @@
 
 GryMod = GryMod or {}
 
--- A check box for an action of the player alone (no server): ticking it asks `question` (GryMod.Confirm; the label followed by a question mark when
--- none is given), on yes it runs onConfirmed(), and the box is un-ticked at once in every case. Returns the box.
-function GryMod.ActionCheckBox(Panel, label, onConfirmed, question)
-	local box = vgui.Create("DCheckBoxLabel", Panel)
+-- A button for an action of the player alone (no server): a click asks `question` (GryMod.Confirm; the label followed by a question mark when none is
+-- given) and on yes runs onConfirmed(). Returns the button.
+function GryMod.ActionButton(Panel, label, onConfirmed, question)
+	local button = vgui.Create("DButton", Panel)
 
-	box:SetText(label)
-	box:SetDark(true)
-	Panel:AddItem(box)
+	button:SetText(label)
+	Panel:AddItem(button)
 
-	GryMod.AdminUI.Momentary(box, question or (label .. "?"), onConfirmed)
+	button.DoClick = function()
+		GryMod.Confirm(question or (label .. "?"), onConfirmed)
+	end
 
-	return box
+	return button
 end
 
 -- The HUD switches of the radar: the compass and radar panel, and its contacts. Same list, same labels, same settings as the other elements.
@@ -36,7 +37,7 @@ local function radarHUDSwitches(Panel)
 end
 
 -- The settings of the server about the radar and the in/out map, for the administrators only: three check boxes (a request to the server each) and the
--- action that deletes the in/out map and makes it again (the server checks the right again).
+-- button that deletes the in/out map and makes it again (the server checks the right again).
 local function serverOptions(Panel)
 	GryMod.AdminUI.Section(Panel, "Server (administrators only)")
 
@@ -52,7 +53,7 @@ local function serverOptions(Panel)
 	reset.GryZoneMapReset = true
 end
 
--- The menu, in this order: the title, the HUD switches of the radar, the minimap (and its cache action), the automatic zoom, the in/out map, the server.
+-- The menu, in this order: the title, the HUD switches of the radar, the minimap (and its cache button), the automatic zoom, the in/out map, the server.
 function GryMod.RadarOptionsPanel(Panel)
 	Panel:AddControl("Label", {
 		Text = "GryMod Radar and map"
@@ -62,7 +63,7 @@ function GryMod.RadarOptionsPanel(Panel)
 
 	GryMod.MinimapOptions(Panel)
 
-	local clear = GryMod.ActionCheckBox(Panel, "Clear the minimap cache", function()
+	local clear = GryMod.ActionButton(Panel, "Clear the minimap cache", function()
 		GryMod.ClearMinimapCache()
 	end, "Clear the minimap cache of this level? The map is made again as you play.")
 

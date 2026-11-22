@@ -284,7 +284,7 @@ return {
 			end
 		},
 		{
-			name = "the Config menu has a Server (administrators only) section at the bottom with the settings of the white list that are not about the radar, the two admin buttons, and only those",
+			name = "the Config menu has a Server (administrators only) section at the bottom with the settings of the white list that are not about the radar (the two toggles included, as check boxes), and only those",
 			func = function()
 				local panel = newPanel()
 				local ok, err = pcall(function()
@@ -304,8 +304,6 @@ return {
 						end
 					end
 
-					expected[#expected + 1] = "button:gry_Health"
-					expected[#expected + 1] = "button:gry_Armor"
 					table.sort(seen)
 					table.sort(expected)
 					expect(table.concat(seen, ",")).to.equal(table.concat(expected, ","))
@@ -361,6 +359,121 @@ return {
 			end
 		},
 		{
+			-- breaks if: a toggle is left as a button (or made as another control), is bound to another name, or moves out of its place after the grenade line
+			name = "the two toggles (health regeneration, infinite armor) are check boxes of the section, bound to the names of the white list, with their labels, where the two buttons were, and no button option is left",
+			func = function()
+				local panel = newPanel()
+				local ok, err = pcall(function()
+					asAdmin(true, function()
+						GryMod.GryOptionschute(panel)
+					end)
+
+					local regen = panel.GryAdminControls["gry_health_regen"]
+					local armor = panel.GryAdminControls["gry_infinite_armor"]
+
+					for _, control in ipairs({regen, armor}) do
+						expect(control ~= nil).to.beTrue()
+						expect(control.ClassName).to.equal("DCheckBoxLabel")
+						expect(control.Button.m_strConVar).to.beNil() -- never a client convar: the server decides
+					end
+
+					expect(regen:GetText()).to.equal("Health regeneration: the suit repairs the health over time (off: no regeneration)")
+					expect(armor:GetText()).to.equal("Infinite armor: the suit never loses energy and no malfunction happens (off: the normal rules)")
+
+					-- they show what the server has
+					expect(regen:GetChecked()).to.equal(GetConVar("gry_health_regen"):GetBool())
+					expect(armor:GetChecked()).to.equal(GetConVar("gry_infinite_armor"):GetBool())
+
+					-- no control of the section is a button, and no entry is named after a command
+					for name in pairs(panel.GryAdminControls) do
+						expect(string.sub(name, 1, 7) ~= "button:").to.beTrue()
+					end
+
+					walk(panel, function(child, admin)
+						if admin then
+							expect(child.ClassName ~= "DButton").to.beTrue()
+						end
+					end)
+
+					-- the order: the grenade line, the regeneration, the armor, last of the section (the two lines took the place of the two buttons)
+					local names = {}
+
+					for _, entry in ipairs(panel.GryAdminEntries) do
+						names[#names + 1] = entry.name
+					end
+
+					expect(table.concat(names, ",", #names - 2)).to.equal("gry_grenade_armed_only,gry_health_regen,gry_infinite_armor")
+
+					-- the section's other buttons are not the administrators' options: they stay buttons of the panel
+					local labels = {}
+
+					walk(panel, function(child)
+						if child.ClassName == "DButton" and child:GetParent().ClassName ~= "DSlider" and child.GetText then
+							labels[child:GetText()] = true
+						end
+					end)
+
+					expect(labels["Switch every element back on"]).to.beTrue()
+					expect(labels["Open the effects test window"]).to.beTrue()
+				end)
+				panel:Remove()
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- breaks if: the front prediction is missing from the toggles, or a click does not send the request
+			name = "the two toggles ask the server like the other check boxes: an admin's click sends the name and the value through the transport (no convar written, no console command), a player who is not an admin has them disabled with the tooltip and sends nothing",
+			func = function()
+				local sent, ran = {}, 0
+				UI().Transport = function(name, value) sent[#sent + 1] = name .. "=" .. value end
+				UI().RunCommand = function() ran = ran + 1 end
+
+				local admin, other = newPanel(), newPanel()
+				local ok, err = pcall(function()
+					asAdmin(true, function()
+						GryMod.GryOptionschute(admin)
+					end)
+
+					asAdmin(false, function()
+						GryMod.GryOptionschute(other)
+					end)
+
+					for _, name in ipairs({"gry_health_regen", "gry_infinite_armor"}) do
+						local box = admin.GryAdminControls[name]
+						local before = GetConVar(name):GetString()
+
+						expect(box:IsEnabled()).to.beTrue()
+
+						sent = {}
+						asAdmin(true, function()
+							box:SetValue(not box:GetChecked())
+						end)
+
+						expect(#sent).to.equal(1)
+						expect(sent[1]).to.equal(name .. "=" .. (before == "1" and "0" or "1"))
+						expect(GetConVar(name):GetString()).to.equal(before)
+
+						local off = other.GryAdminControls[name]
+
+						sent = {}
+						expect(off:IsEnabled()).to.beFalse()
+						expect(off:GetParent():GetTooltip()).to.equal("Server setting: administrators only")
+
+						asAdmin(false, function()
+							off:SetValue(not off:GetChecked()) -- a change that got through the mouse
+						end)
+
+						expect(#sent).to.equal(0)
+					end
+
+					expect(ran).to.equal(0)
+				end)
+				admin:Remove()
+				other:Remove()
+				if not ok then error(err, 0) end
+			end
+		},
+		{
 			name = "for a player who is not an admin every control of the section is disabled and no other control of the panel is",
 			func = function()
 				local panel = newPanel()
@@ -381,7 +494,7 @@ return {
 							end
 						end)
 
-						expect(admins).to.equal(9) -- 7 settings and 2 buttons
+						expect(admins).to.equal(9) -- 9 settings, no button: the two toggles are check boxes
 						expect(others > 20).to.beTrue()
 					end)
 				end)
@@ -447,8 +560,8 @@ return {
 			end
 		},
 		{
-			-- breaks if: the action box sends without asking, ignores the answer, or stays ticked
-			name = "an action option is a check box that is never saved: ticking it asks first, on yes it sends its message (no payload), on no it sends nothing, and it is un-ticked at once in both cases",
+			-- breaks if: the action button sends without asking, ignores the answer, or is made as a check box
+			name = "an action option is a button tied to no setting: a click asks first, on yes it sends its message (no payload), on no it sends nothing",
 			func = function()
 				local panel = newPanel()
 				local sent, asked = {}, {}
@@ -467,30 +580,26 @@ return {
 				local ok, err = pcall(function()
 					asAdmin(true, function()
 						local box = GryMod.AdminOption(panel, "Do it", nil, "action", {message = "gry_test_message", confirm = "Really do it?"})
-						expect(box.ClassName).to.equal("DCheckBoxLabel")
+						expect(box.ClassName).to.equal("DButton")
 						expect(box:GetText()).to.equal("Do it")
-						expect(box.Button.m_strConVar).to.beNil()
-						expect(box:GetChecked() == true).to.beFalse() -- nothing is read from the server: it opens un-ticked
 						expect(box:IsEnabled()).to.beTrue()
+						expect(#asked).to.equal(0) -- building it asks nothing
 
 						answer = false
-						box:SetValue(true)
+						box:DoClick()
 						expect(#asked).to.equal(1)
 						expect(asked[1]).to.equal("Really do it?")
 						expect(#sent).to.equal(0)
-						expect(box:GetChecked()).to.beFalse()
 
 						answer = true
-						box:SetValue(true)
+						box:DoClick()
 						expect(#asked).to.equal(2)
 						expect(#sent).to.equal(1)
 						expect(sent[1]).to.equal("gry_test_message")
-						expect(box:GetChecked()).to.beFalse()
 
 						-- the poll leaves it alone (no value to show) and nothing is asked again
 						UI().Poll(panel, panel.GryAdminPolled + 3)
 						expect(#sent).to.equal(1)
-						expect(box:GetChecked()).to.beFalse()
 					end)
 				end)
 
@@ -501,7 +610,7 @@ return {
 		},
 		{
 			-- breaks if: the front prediction is missing from the action kind
-			name = "an action option for a player who is not an admin is disabled with the tooltip, and a tick that gets through asks nothing, sends nothing and un-ticks; the poll enables it when he becomes an admin",
+			name = "an action option for a player who is not an admin is disabled with the tooltip, and a click that gets through asks nothing and sends nothing; the poll enables it when he becomes an admin",
 			func = function()
 				local panel = newPanel()
 				local sent, asked, ran = 0, 0, 0
@@ -513,27 +622,26 @@ return {
 					local box
 					asAdmin(false, function()
 						box = GryMod.AdminOption(panel, "Do it", nil, "action", {onTick = function() ran = ran + 1 end, confirm = "Sure?"})
+						expect(box.ClassName).to.equal("DButton")
 						expect(box:IsEnabled()).to.beFalse()
-						expect(box:GetAlpha() < 255).to.beTrue()
 						expect(box:GetParent():GetTooltip()).to.equal("Server setting: administrators only")
 
-						box:SetValue(true)
+						box:DoClick()
 						expect(asked).to.equal(0)
 						expect(sent).to.equal(0)
 						expect(ran).to.equal(0)
-						expect(box:GetChecked()).to.beFalse()
 					end)
 
 					asAdmin(true, function()
 						UI().Poll(panel, panel.GryAdminPolled + 1.01)
 						expect(box:IsEnabled()).to.beTrue()
+						expect(box:GetParent():GetTooltip()).to.beNil()
 
 						-- opts.onTick runs instead of a message
-						box:SetValue(true)
+						box:DoClick()
 						expect(asked).to.equal(1)
 						expect(ran).to.equal(1)
 						expect(sent).to.equal(0)
-						expect(box:GetChecked()).to.beFalse()
 					end)
 				end)
 

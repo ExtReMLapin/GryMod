@@ -44,7 +44,7 @@ local function checkBoxOn(panel, convarName)
 	end
 end
 
--- the check box of the radar menu that deletes the in/out map and makes it again (flagged by cl_options_radar.lua)
+-- the button of the radar menu that deletes the in/out map and makes it again (flagged by cl_options_radar.lua)
 local function resetButton(panel)
 	for _, p in ipairs(walk(panel)) do
 		if p.GryZoneMapReset then
@@ -1294,7 +1294,7 @@ return {
 			end
 		},
 		{
-			name = "the Radar and map menu's server section has the gry_zonemap switch (asked through the server, not a convar) and the check box that makes the map again; the Config menu's has neither",
+			name = "the Radar and map menu's server section has the gry_zonemap switch (asked through the server, not a convar) and the button that makes the map again; the Config menu's has neither",
 			func = function(state)
 				state.panel = vgui.Create("ControlPanel")
 				GryMod.RadarOptionsPanel(state.panel)
@@ -1309,7 +1309,7 @@ return {
 				local box = resetButton(state.panel)
 
 				expect(box ~= nil).to.beTrue()
-				expect(box.ClassName).to.equal("DCheckBoxLabel")
+				expect(box.ClassName).to.equal("DButton")
 				expect(box:GetText()).to.equal("Delete the in/out map and make it again")
 				state.panel:Remove()
 
@@ -1331,8 +1331,8 @@ return {
 			end
 		},
 		{
-			-- breaks if: the box sends without asking, asks and sends on "no", or stays ticked
-			name = "the reset check box asks first; on no nothing is sent, on yes gry_zonemap_reset goes to the server with no payload; it is un-ticked each time",
+			-- breaks if: the button sends without asking, or asks and sends on "no"
+			name = "the reset button asks first; on no nothing is sent, on yes gry_zonemap_reset goes to the server with no payload",
 			func = function(state)
 				GryMod.AdminUI.IsAdmin = function() return true end
 
@@ -1342,23 +1342,21 @@ return {
 				local box = resetButton(state.panel)
 
 				state.confirmAnswer = false
-				box:SetValue(true)
+				box:DoClick()
 				expect(#state.asked).to.equal(1)
 				expect(string.find(state.asked[1], "Delete the in/out map of this map and make it again?", 1, true) == 1).to.beTrue()
 				expect(#state.sent).to.equal(0)
-				expect(box:GetChecked()).to.beFalse()
 
 				state.confirmAnswer = true
-				box:SetValue(true)
+				box:DoClick()
 				expect(#state.asked).to.equal(2)
 				expect(state.sent[1]).to.equal("gry_zonemap_reset")
 				expect(state.sent[2]).to.equal("send")
 				expect(#state.sent).to.equal(2)
-				expect(box:GetChecked()).to.beFalse()
 			end
 		},
 		{
-			name = "for a player who is not an administrator the reset check box is disabled, and a tick that gets through asks nothing and sends nothing",
+			name = "for a player who is not an administrator the reset button is disabled, and a click that gets through asks nothing and sends nothing",
 			func = function(state)
 				GryMod.AdminUI.IsAdmin = function() return false end
 
@@ -1368,10 +1366,9 @@ return {
 				local box = resetButton(state.panel)
 
 				expect(box:IsEnabled()).to.beFalse()
-				box:SetValue(true)
+				box:DoClick()
 				expect(#state.asked).to.equal(0)
 				expect(#state.sent).to.equal(0)
-				expect(box:GetChecked()).to.beFalse()
 			end
 		},
 		-- ----------------------------------------------------------------------------------------------------------------------

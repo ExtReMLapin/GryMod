@@ -14,6 +14,39 @@ GryMod.Config = {
 	cloakEnergyDrain = 3
 }
 
+-- The two toggles of the administrators are real settings: replicated convars that the options panel shows as check boxes and changes through
+-- the white list (sh_server_options.lua, sv_server_options.lua). NOT archived: as before, every load starts from the defaults (regeneration on,
+-- infinite armor off), so an infinite armor that an administrator forgot cannot come back at the next start. GryMod.Config stays what the rest of
+-- the code reads: it follows the convars (read here at load, and a change callback on each), and the other code, the tests and the extension keep
+-- writing it.
+local toggleFlags = bit.bor(FCVAR_REPLICATED, FCVAR_NOTIFY)
+
+local healthRegen = CreateConVar("gry_health_regen", "1", toggleFlags,
+	"1: the suit repairs the health over time; 0: no regeneration (the console command gry_Health flips it)", 0, 1)
+local infiniteArmor = CreateConVar("gry_infinite_armor", "0", toggleFlags,
+	"1: the suit never loses energy and no malfunction happens; 0: the normal rules (the console command gry_Armor flips it)", 0, 1)
+
+-- Reads both convars into GryMod.Config (the table of the moment: a test or an addon may have replaced it).
+function GryMod.SyncToggles()
+	GryMod.Config.ShouldRegen = healthRegen:GetBool()
+	GryMod.Config.InfiniteArmor = infiniteArmor:GetBool()
+end
+
+GryMod.SyncToggles()
+
+-- the text of a convar as the engine reads a switch: 0 is off, any other number is on
+local function isOn(text)
+	return (tonumber(text) or 0) ~= 0
+end
+
+cvars.AddChangeCallback("gry_health_regen", function(_, _, new)
+	GryMod.Config.ShouldRegen = isOn(new)
+end, "GryMod_ToggleHealthRegen")
+
+cvars.AddChangeCallback("gry_infinite_armor", function(_, _, new)
+	GryMod.Config.InfiniteArmor = isOn(new)
+end, "GryMod_ToggleInfiniteArmor")
+
 -- The only modes a client is allowed to ask for (DROP is not a real mode, it only drops the weapon)
 local selectableModes = {
 	[GryMod.Modes.ARMOR] = true,
@@ -333,8 +366,13 @@ function GryMod.ToggleInfiniteArmor(ply)
 		return false
 	end
 
-	GryMod.Config.InfiniteArmor = not GryMod.Config.InfiniteArmor
-	tell(ply, "Infinite armor: " .. onOff(GryMod.Config.InfiniteArmor))
+	-- the field is what the rules read, the convar is what the check box of the panel shows: both go to the same value (when the two had drifted apart
+	-- the convar may already hold it, and then it fires no callback)
+	local new = not GryMod.Config.InfiniteArmor
+
+	infiniteArmor:SetBool(new)
+	GryMod.Config.InfiniteArmor = new
+	tell(ply, "Infinite armor: " .. onOff(new))
 
 	return true
 end
@@ -344,8 +382,11 @@ function GryMod.ToggleHealthRegen(ply)
 		return false
 	end
 
-	GryMod.Config.ShouldRegen = not GryMod.Config.ShouldRegen
-	tell(ply, "Health regeneration: " .. onOff(GryMod.Config.ShouldRegen))
+	local new = not GryMod.Config.ShouldRegen
+
+	healthRegen:SetBool(new)
+	GryMod.Config.ShouldRegen = new
+	tell(ply, "Health regeneration: " .. onOff(new))
 
 	return true
 end

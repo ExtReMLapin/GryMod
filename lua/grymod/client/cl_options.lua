@@ -247,11 +247,12 @@ function GryMod.AdminOptions(Panel)
 	GryMod.AdminOption(Panel, "Camouflage: striders, hunters and manhacks forget you", "gry_cloak_ai", "bool")
 	GryMod.AdminOption(Panel, "Movement: the original game's walk and run speeds (177 and 266 units a second, the speed mode's sprint 757) instead of GryMod's own; the energy is not touched", "gry_movement", "bool")
 	GryMod.AdminOption(Panel, "Grenade warning only for armed grenades, mines in the air... (off: also the ones lying around)", "gry_grenade_armed_only", "bool")
-	GryMod.AdminOption(Panel, "Toggle health regeneration", nil, "button", {command = "gry_Health"})
-	GryMod.AdminOption(Panel, "Toggle infinite armor", nil, "button", {command = "gry_Armor"})
+	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
+	GryMod.AdminOption(Panel, "Health regeneration: the suit repairs the health over time (off: no regeneration)", "gry_health_regen", "bool")
+	GryMod.AdminOption(Panel, "Infinite armor: the suit never loses energy and no malfunction happens (off: the normal rules)", "gry_infinite_armor", "bool")
 end
 
--- Tells the player what the cache box did (a notice on the screen).
+-- Tells the player what the cache button did (a notice on the screen).
 local function minimapNotice(text, kind)
 	if notification and notification.AddLegacy then
 		notification.AddLegacy(text, kind, 4)
@@ -263,7 +264,7 @@ function GryMod.Confirm(text, onYes)
 	Derma_Query(text, "GryMod", "Yes", onYes, "Cancel")
 end
 
--- What the "Clear the minimap cache" check box of the Radar and map menu does: the files of the current level, made again the next time the radar needs them. It asks the
+-- What the "Clear the minimap cache" button of the Radar and map menu does: the files of the current level, made again the next time the radar needs them. It asks the
 -- Cache module (another file, which may be missing or fail): nothing here may raise.
 local function clearMinimapCache()
 	local cache = GryMod.Minimap and GryMod.Minimap.Cache
@@ -293,7 +294,7 @@ local function clearMinimapCache()
 	end
 end
 
--- the check box of the Radar and map menu (cl_options_radar.lua) runs it, after asking
+-- the button of the Radar and map menu (cl_options_radar.lua) runs it, after asking
 GryMod.ClearMinimapCache = clearMinimapCache
 
 -- Numbers the panels of the definition slider, so that each one has its own change callback (a name that no other panel uses, also across a reload of this file).
@@ -416,7 +417,7 @@ function GryMod.RadarZoomOptions(Panel)
 end
 
 -- The in/out map the server makes (cl_zonemap.lua): the line with its state (as it is when the panel is built: nothing runs while the panel is
--- open) and the check box of the debug drawing. The switch and the box that makes the map again are the administrators' (the server section of the Radar and map menu).
+-- open) and the check box of the debug drawing. The switch and the button that makes the map again are the administrators' (the server section of the Radar and map menu).
 function GryMod.ZoneMapOptions(Panel)
 	Panel:Help("In/out map")
 

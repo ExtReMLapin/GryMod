@@ -19,7 +19,9 @@ Settings.List = {
 	{name = "gry_radar_allies_always", kind = "bool"},
 	{name = "gry_movement", kind = "bool"},
 	{name = "gry_radar_objects", kind = "bool"},
-	{name = "gry_zonemap", kind = "bool"}
+	{name = "gry_zonemap", kind = "bool"},
+	{name = "gry_health_regen", kind = "bool"},
+	{name = "gry_infinite_armor", kind = "bool"}
 }
 
 local byName = {}
