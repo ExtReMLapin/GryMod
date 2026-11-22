@@ -383,6 +383,61 @@ return {
 				expect(panel.zone:Child("Zone").text).to.equal("")
 			end
 		},
+		-- what the player sees: the text is cut to the rectangle of its field, so it has to fit in it (the field of the movie is 23 pixels wide:
+		-- "In/out 40%" was seen as "In/o")
+		{
+			name = "the zone text fits in its field, not cut: every progress text of the radar and long sector names",
+			func = function(state)
+				local Flash = GryMod.Flash
+				local panel = newPanel()
+				local movie = panel.zone.movie
+
+				for _, text in ipairs({"In/out 0%", "In/out 40%", "In/out 100%", "Navigation mesh...", "40%", "100%", "7%"}) do
+					panel:SetProgressText(text)
+					local field = panel.zone:Field("Zone")
+					local font = movie.fonts[field.f]
+					local line = Flash.LayoutLines(font, field, panel.zone:Child("Zone").text)[1]
+					expect(line.x + line.width <= field.w).to.beTrue()
+				end
+
+				panel:SetProgressText(nil)
+
+				for _, name in ipairs({"gm_construct", "gm_flatgrass", "gm_everpine_mall", "gm_fugu_lawson"}) do
+					panel:SetSector(name)
+					local field = panel.zone:Field("Zone")
+					local line = Flash.LayoutLines(movie.fonts[field.f], field, name)[1]
+					expect(line.x + line.width <= field.w).to.beTrue()
+				end
+			end
+		},
+		{
+			name = "the zone field never grows past the room the map area gives it, and goes back to the movie's width when the text is empty",
+			func = function(state)
+				local panel = newPanel()
+				local original = panel.zone.movie.chars[panel.zone:Child("Zone").id].w
+				panel:SetProgressText(string.rep("W", 60))
+				expect(panel.zone:Field("Zone").w).to.equal(GryMod.FlashRadar.ZONE_MAX_WIDTH)
+				panel:SetProgressText(nil)
+				expect(panel.zone:Field("Zone").w).to.equal(original) -- no sector: the field is empty again
+				panel:SetProgressText("In/out 40%")
+				expect(panel.zone:Field("Zone").w > original).to.beTrue()
+				-- the width is the movie's own for the rest of the movie: the shared definition is never changed
+				expect(panel.zone.movie.chars[panel.zone:Child("Zone").id].w).to.equal(original)
+			end
+		},
+		{
+			name = "a rebuilt movie clip gets its wide Zone field back (_refresh says the text and its width again)",
+			func = function(state)
+				local panel = newPanel()
+				panel:SetProgressText("In/out 40%")
+				panel.main:GotoAndStop("normal") -- the clips are rebuilt: the field is new, with the movie's width
+				panel:Update(0)
+				local field = panel.zone:Field("Zone")
+				local line = GryMod.Flash.LayoutLines(panel.zone.movie.fonts[field.f], field, panel.zone:Child("Zone").text)[1]
+				expect(panel.zone:Child("Zone").text).to.equal("In/out 40%")
+				expect(line.x + line.width <= field.w).to.beTrue()
+			end
+		},
 		{
 			name = "_refresh writes the progress text again after the movie rebuilt the field, else the sector (_refresh only knows the sector)",
 			func = function(state)

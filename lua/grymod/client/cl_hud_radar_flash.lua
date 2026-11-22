@@ -234,12 +234,19 @@ function Panel:SetDamage(value)
 	ring:GotoAndStop(math.min(math.floor(math.max(value, 0) * 100 + 1), ring.n))
 end
 
--- The zone field shows the progress text when there is one, else the sector name. Neither one erases the other.
+-- The widest the "Zone" field is made, in stage pixels. The field of the movie is 23 pixels wide and cuts its text to that width ("In/out 40%"
+-- was seen as "In/o"): it is widened to the text, up to this width, which is what the map area leaves it from the field's left edge at the
+-- bottom of the radar (measured on screen: a text of 86 pixels, "Navigation mesh...", ends well inside the area; 110 still does).
+Radar.ZONE_MAX_WIDTH = 110
+
+-- The zone field shows the progress text when there is one, else the sector name. Neither one erases the other. The field is as wide as
+-- its text needs (up to Radar.ZONE_MAX_WIDTH), and goes back to the movie's width when it is empty.
 function Panel:_applyZoneText()
 	local text = self.progressText or self.sector
 
 	if self.zone and (text ~= nil or self.zoneWritten) then
 		self.zone:SetText("Zone", text)
+		self.zone:FitTextWidth("Zone", text, Radar.ZONE_MAX_WIDTH)
 		self.zoneWritten = true
 	end
 end

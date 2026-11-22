@@ -148,6 +148,63 @@ return {
 				local _, _, w2 = GryMod.Flash.LayoutText(m.fonts[9], m.chars[1], "0\xE9\n1")
 				expect(w2).to.equal((50 + 30) * 20 / 100) -- unknown characters count for nothing
 			end
+		},
+		-- FitTextWidth: a field too narrow for its text (the text is cut to the rectangle of the field) is widened on this clip only
+		{
+			name = "FitTextWidth widens the field of this clip to the text and its two margins, the movie's definition stays",
+			func = function(state)
+				local m = movie()
+				local box = GryMod.Flash.NewRoot(m):Child("Box")
+				local text = string.rep("0", 15) -- 15 * 10 = 150 px
+				expect(box:Field("Digit").w).to.equal(100)
+				expect(box:FitTextWidth("Digit", text, 400)).to.beTrue()
+				expect(box:Field("Digit").w).to.equal(154) -- 150 + 2 * 2
+				expect(box:Field("Digit").ox).to.equal(0) -- the rest of the field is the movie's
+				expect(box:Field("Digit").fh).to.equal(20)
+				expect(m.chars[1].w).to.equal(100)
+			end
+		},
+		{
+			name = "FitTextWidth never makes a field narrower than the movie's, and stops at the room it is given",
+			func = function(state)
+				local m = movie()
+				local box = GryMod.Flash.NewRoot(m):Child("Box")
+				box:FitTextWidth("Digit", "00", 400)
+				expect(box:Field("Digit").w).to.equal(100)
+				box:FitTextWidth("Digit", string.rep("0", 15), 120)
+				expect(box:Field("Digit").w).to.equal(120)
+				box:FitTextWidth("Digit", string.rep("0", 15), 50) -- less room than the movie's width: the movie's width stays
+				expect(box:Field("Digit").w).to.equal(100)
+			end
+		},
+		{
+			name = "FitTextWidth gives the movie's field back when the text is short again, and tells the drawing only when the width changes",
+			func = function(state)
+				local m = movie()
+				local box = GryMod.Flash.NewRoot(m):Child("Box")
+				box:FitTextWidth("Digit", string.rep("0", 15), 400)
+				local version = box.version
+				box:FitTextWidth("Digit", string.rep("0", 15), 400)
+				expect(box.version).to.equal(version) -- the same width: nothing to redraw
+				box:FitTextWidth("Digit", "0", 400)
+				expect(box.version).toNot.equal(version)
+				expect(box:Field("Digit")).to.equal(m.chars[1])
+				expect(box:FitTextWidth("Nothing", "0", 400)).to.beFalse()
+			end
+		},
+		{
+			name = "a field widened by FitTextWidth is not cut: the text it was widened for fits in its width, the one of the movie's field does not",
+			func = function(state)
+				local m = movie()
+				local box = GryMod.Flash.NewRoot(m)
+				box = box:Child("Box")
+				local text = string.rep("0", 15)
+				local narrow = GryMod.Flash.LayoutLines(m.fonts[9], box:Field("Digit"), text)[1]
+				expect(narrow.x + narrow.width <= box:Field("Digit").w).to.beFalse()
+				box:FitTextWidth("Digit", text, 400)
+				local wide = GryMod.Flash.LayoutLines(m.fonts[9], box:Field("Digit"), text)[1]
+				expect(wide.x + wide.width <= box:Field("Digit").w).to.beTrue()
+			end
 		}
 	}
 }
