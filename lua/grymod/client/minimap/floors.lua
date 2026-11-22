@@ -818,6 +818,25 @@ function Floors.PeekAt(x, y, z)
 	return level or Floors.Fallback(z)
 end
 
+-- The two rays the preload asks thousands of times (OpenAt, GroundAt) each keep ONE parameter table with its two Vectors and its answer table, written again at every call: no
+-- garbage per ray (the collector's work fell in the frames of the plan). They are two tables, not one: a call of one never spoils the numbers of the other.
+local openParams, groundParams
+
+local function newRayParams(x, y, z0, z1)
+	local params = {start = Vector(x, y, z0), endpos = Vector(x, y, z1), mask = MASK_SOLID_BRUSHONLY, output = {}}
+
+	return params
+end
+
+local function aimRay(params, x, y, z0, z1)
+	local start, endpos = params.start, params.endpos
+
+	start.x, start.y, start.z = x, y, z0
+	endpos.x, endpos.y, endpos.z = x, y, z1
+
+	return params
+end
+
 -- OpenAt(x, y, z) -> level | nil, reason. The open level a player standing at (x, y) with the ground at height z would get from CurrentAt, found with ONE
 -- up ray (brush mask) and no player, no memory of the last shot: for the tile preload, which asks it for the outdoor places of the in/out map.
 --   * the ray sees the sky or nothing: the open level at the sky it hit (the very table CurrentAt gives, so the tiles are shared);
@@ -829,11 +848,9 @@ function Floors.OpenAt(x, y, z)
 		return nil, "bad position"
 	end
 
-	local ok, tr = pcall(util.TraceLine, {
-		start = Vector(x, y, z),
-		endpos = Vector(x, y, z + RAY_LENGTH),
-		mask = MASK_SOLID_BRUSHONLY
-	})
+	openParams = openParams or newRayParams(0, 0, 0, 0)
+
+	local ok, tr = pcall(util.TraceLine, aimRay(openParams, x, y, z, z + RAY_LENGTH))
 
 	if not ok or type(tr) ~= "table" then
 		return nil, "ray failed"
@@ -866,11 +883,9 @@ function Floors.GroundAt(x, y, top)
 		return nil
 	end
 
-	local ok, tr = pcall(util.TraceLine, {
-		start = Vector(x, y, top),
-		endpos = Vector(x, y, top - GROUND_REACH),
-		mask = MASK_SOLID_BRUSHONLY
-	})
+	groundParams = groundParams or newRayParams(0, 0, 0, 0)
+
+	local ok, tr = pcall(util.TraceLine, aimRay(groundParams, x, y, top, top - GROUND_REACH))
 
 	if not ok or type(tr) ~= "table" or not tr.Hit or tr.StartSolid or tr.HitSky then
 		return nil

@@ -54,6 +54,7 @@ number gives the default).
 | `gry_minimap_below` | 40 | 0 to 100, whole numbers | Opacity in percent of the floor below, seen through the empty parts of the current floor. 0 turns the floor below off (and it is not generated). |
 | `gry_minimap_outside` | 30 | 0 to 100, whole numbers | Opacity in percent of the outside (the open level, the whole height of the map) behind the floors, drawn under the floor below. 0 turns it off (and it is not generated). It is drawn only when the player is inside; outdoors the current level is already the open level. |
 | `gry_minimap_preload` | 1 | 0 or 1 | Make the map tiles of the outdoor places in advance, from the in/out map (see "Tile preload" below). 0: tiles are only made as you play. |
+| `gry_minimap_preload_around` | 1 | 0 or 1 | Also make in advance the places a step from each ground node of the map's graph and the open ground of the outdoor boxes (see "Tile preload" below): fewer veils on ramps, at doors and under roofs, in exchange for a longer plan (about 0.2 to 1.2 s of work in all, spread over frames of about 1 ms) and 15 to 65 % more tiles. 0: the nodes' own places only. |
 | `gry_minimap_cache_mb` | 256 | 16 to 4096 | Size limit of the cache of one map, in megabytes. |
 | `gry_radar_range` | 75 | 5 to 100 | Existing radar setting: the distance the radar shows, in metres. It is the distance; the definition above is the sharpness. At 5 m the map is a close-up: the automatic definition goes up to 64 pixels per metre by itself, or raise `gry_minimap_definition` (with the automatic definition off) for a sharp picture. |
 
@@ -194,15 +195,39 @@ places before you get there, so that a walk outside finds them ready.
   of the box's layer finds the ground, `Floors.GroundAt`, then `PeekAt` gives the level): this reaches the places the graph does not (the underground of
   gm_construct) and works on a map that has only a navigation mesh. Measured on gm_construct on positions that are not the graph's (the centres of the navigation mesh areas): the tiles
   missing under the player go from 98 to 66 with the graph's floors (outdoors 18 to 6, floors 80 to 60), and to 48 with the indoor boxes' floors too. With the
-  level of a place (2026-11-22, the same walk over the centres of the navigation mesh, a fresh cache): gm_construct 77 to 31 (the rule before: 51 to 32),
-  gm_boreas 91 to 27 (77 to 25), gm_funkis over its graph nodes 37 to 9 (36 to 12). What is still missed is a place whose level no node near it has (a node in
-  a doorway sees the sky, the player a step inside sees a ceiling), not the path any more.
+  level of a place (2026-11-22, the same walk over the centres of the navigation mesh, a fresh cache) the tool's first numbers were gm_construct 77 to 31, gm_boreas 91 to 27,
+  gm_funkis 37 to 9; the numbers of the next paragraph are the better measure.
+- **The ring and the cells (`gry_minimap_preload_around`):** the level of a place changes within a few steps on a ramp, at a door or under a roof, so a node alone prepares
+  one level of several. With the switch on, each ground node also makes its RING: four more places 64 units away on the two axes, each at the ground found by a ray
+  down from 48 units over the node (`Floors.GroundAt`), with its own level and its own definitions, and the tiles within 32 units of it (the node's own place makes the
+  tiles within 256). The ring is made for 5000 nodes at most (`Preload.MAX_AROUND_PLACES`, the nearest to the player first). Each CELL of an outdoor box (128 units) is also
+  asked, from the ground up: the open level a ray up from the ground gives, or, when that ray hits a roof, the level of a player standing under it (the in/out map calls
+  such a box open, and its three areas never see the roof). Over 16000 cells (`Preload.MAX_AROUND_CELLS`, gm_boreas has 190000) only every n-th cell on each axis is asked.
+  Each ring place and each cell is one step of the job, so the plan stays in frames of about 1 ms.
+  **Measured 2026-11-22** (`tests/minimap/cov_where_job.lua`; the same walk over the centres of the navigation mesh, forward / backward, a fresh test cache, a test client,
+  2 and 4 pixels per metre, 3000 positions at most; veils = tiles under the player missing the first time; planning cost = the time of the planning frames added up):
+
+  | map | veils before (forward / backward) | veils after | plan before / after | tiles before / after |
+  | --- | --- | --- | --- | --- |
+  | gm_construct | 10 / 11 | 6 / 8 | 39 ms / 219 ms | 87 / 104 |
+  | gm_funkis | 12 / 12 | 3 / 3 | 44 ms / 212 ms | 66 / 110 |
+  | gm_boreas | 9 / 9 | 2 / 3 | 509 ms / 1191 ms | 229 / 283 |
+  | gm_everpine_mall | 19 / 17 | 13 / 11 | 91 ms / 274 ms | 55 / 68 |
+
+  An honest note on the walk: the walk goes in straight lines between the navigation areas, so on a stair or a ramp its steps are in the air or inside the floor, where
+  no player stands (the level of a place there is a level nobody gets). The numbers above put every step on the ground (`snap`: a ray down from 40 units over the step, a step
+  with no ground within 40 units is left out). Without it the tool counted about 3 times more veils (gm_construct 30 / 33, gm_boreas 28 / 27, gm_funkis 28 / 27, gm_everpine_mall
+  23 / 21 before; 26 / 28, 22 / 22, 14 / 15, 17 / 14 with the ring and the cells), most of them places no player can be at. What is still missed: ramps under a low sloping
+  ceiling (the top of the slice moves 8 units for each 8 units of ceiling, so the levels are one every few steps) and the tower of gm_construct. A grid of 32 units over every
+  box removes almost all of the rest (gm_construct 3, gm_everpine_mall 0) for 30000 to 50000 places and 0.6 to 1.8 s of planning, which was judged too much.
 - **How:** the plan is made in one pass over the places (the level of a place depends on the place only), in small steps of a frame (about 1 ms, one up ray per area of a box, at most 3 x 3 areas a box), nearest to the
   player first, and tiles the cache already has are left out. The generator makes them after every tile the radar asks for, with a smaller budget
   (`Gen.PRELOAD_BUDGET_MS`, 2 ms), and not at all in a frame that follows a frame slower than 25 ms: it comes back when frames are fast again. The
   preload never shows in the veil (no percentage).
-- **Cost:** no hook stays: the planning frame hook exists only while a plan is made, and the generator's hook only while tiles wait. A plan for
-  gm_construct (927 boxes) costs about 11 ms of rays in all and makes about 28 tiles at two definitions.
+- **Cost:** no hook stays: the planning frame hook exists only while a plan is made, and the generator's hook only while tiles wait. With the ring and the cells (the
+  default) a plan costs 0.2 s of work on gm_construct, gm_funkis and gm_everpine_mall and 1.2 s on gm_boreas (4000 nodes), in frames of about 1 ms (a frame of 5 to 14
+  ms is the collector's work; the rays of `OpenAt` and `GroundAt` reuse their tables to make less garbage); 0.04 to 0.5 s without. Tiles to make: 15 to 65 % more. The
+  generator keeps its small budget (2 ms a frame). `gry_minimap_preload_around 0` gives back the older plan.
 
 ## Made and shown (the level of the place against the level held on screen)
 

@@ -48,7 +48,7 @@ end
 -- The stand-ins of the driver's world: the settings (the real rule of the automatic definition, the values of the convars given by the case), the in/out map's boxes,
 -- the cache (the real tile size, no tile there), the generator (it keeps what it was handed), Floors.OpenAt (counts its rays), the hook, the timer and the clock.
 -- env.set{...} changes values: preload, autozoom, vehicle, foot, indoor, range (convars), k (screen constant, false = unknown), definition, autodef (0 / 1), boxes (true: an
--- outdoor and an indoor box, false: no map), frame (the last frame's duration). env.restore() puts everything back (a case always calls it, also after a failure).
+-- outdoor and an indoor box, false: no map), around (the convar of the ring of places around each node: 0 in the plain cases), frame (the last frame's duration). env.restore() puts everything back (a case always calls it, also after a failure).
 local function makeEnv()
 	local M = GryMod.Minimap
 	local P0 = M.Preload
@@ -60,7 +60,7 @@ local function makeEnv()
 		savedFields[k] = P0[k]
 	end
 
-	local v = {preload = 1, autozoom = 0, vehicle = 100, foot = 75, indoor = 25, range = 25, k = 130, definition = 4, autodef = 1, boxes = true, frame = 0.005, nodes = {}}
+	local v = {preload = 1, around = 0, autozoom = 0, vehicle = 100, foot = 75, indoor = 25, range = 25, k = 130, definition = 4, autodef = 1, boxes = true, frame = 0.005, nodes = {}}
 
 	local function boxList()
 		if v.boxes == "outdoor" then
@@ -144,6 +144,7 @@ local function makeEnv()
 	P0._convar = function(name)
 		return ({
 			gry_minimap_preload = v.preload,
+			gry_minimap_preload_around = v.around,
 			gry_radar_autozoom = v.autozoom,
 			gry_radar_zoom_vehicle = v.vehicle,
 			gry_radar_zoom_foot = v.foot,
@@ -596,6 +597,329 @@ return {
 				end)
 
 				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- The measure of 2026-11-22 (docs/minimap.md, "Tile preload"): the level of a place changes within a few steps on a ramp or at a door, so a node alone prepares one level and the
+			-- player a step away needs another. The four places a step from a ground node (opts.around units on the two axes) are asked too, each with the ground found under it (opts.groundAt,
+			-- from 48 over the node's height), and make the tiles of their own level, a little around them (not the node's 256 units). breaks if: the ring is not asked, a ring place gets the
+			-- node's height instead of its own ground, a place with no ground makes a tile, the ring makes the node's wide square of tiles, or opts.around nil still makes a ring
+			name = "NewJob: with `around`, the four places a step from a ground node make the tiles of their own level (own ground, a small square), none without ground; without it no ring",
+			func = function()
+				local asked, grounds = {}, {}
+				local function placeLevel(x, y, z)
+					asked[#asked + 1] = x .. "," .. y .. "," .. z
+
+					return {id = "f" .. z .. "c120", zlo = z - 56, zhi = z + 120}
+				end
+				local function groundAt(x, y, top)
+					grounds[#grounds + 1] = x .. "," .. y .. "," .. top
+
+					if x > 100 then
+						return 16 -- only the place at +x has a ground (a stair a step higher)
+					elseif y > 100 then
+						return 0
+					end
+
+					return nil
+				end
+
+				local entries = run({}, options({
+					places = {{x = 100, y = 100, z = 0}},
+					placeLevelAt = placeLevel,
+					around = 64,
+					groundAt = groundAt
+				}))
+
+				-- the node: ground 0, then the four places in a fixed order (+x, -x, +y, -y), the ground searched from 48 over the node
+				expect(text(grounds)).to.equal("164,100,48 36,100,48 100,164,48 100,36,48")
+				expect(text(asked)).to.equal("100,100,0 164,100,16 100,164,0")
+
+				local byLevel = {}
+
+				for _, e in ipairs(entries) do
+					byLevel[e.tile.level] = (byLevel[e.tile.level] or 0) + 1
+				end
+
+				expect(byLevel["f0c120"]).to.equal(9) -- the node's square of 256 units around it: nine tiles of 256, as before
+				expect(byLevel["f16c120"]).to.equal(1) -- the ring place at (164, 100) +- 32 units is inside the tile (0, 0): one tile, not nine
+
+				-- no `around`: no ring, no ground asked
+				asked, grounds = {}, {}
+				run({}, options({places = {{x = 100, y = 100, z = 0}}, placeLevelAt = placeLevel, groundAt = groundAt}))
+				expect(#asked).to.equal(1)
+				expect(#grounds).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: the ring places are not steps of the job (the whole ring of a map would be done in one step, a frame that freezes), a node's ring is not made right after the node,
+			-- or the ring is made for the places over the cap (the cap keeps the plan's cost bounded on a map with thousands of nodes: nearest nodes first)
+			name = "NewJob: each ring place is a step; over Preload.MAX_AROUND_PLACES nodes only the nearest to the player get a ring",
+			func = function()
+				local places = {}
+
+				for i = 1, 3 do
+					places[i] = {x = i * 1000, y = 0, z = 0}
+				end
+
+				local job = P().NewJob({}, options({
+					places = places,
+					placeLevelAt = function() return {id = "c128t192", zlo = -64, zhi = 128} end,
+					around = 64,
+					groundAt = function() return 0 end
+				}))
+
+				expect(job.Step(2)).to.equal(2) -- the node and one ring place
+				expect(job.Done()).to.beFalse()
+				expect(job.Step(100)).to.equal(13) -- three more of the first ring, then 2 x 5
+				expect(job.Done()).to.beTrue()
+
+				-- the cap: three nodes far to near, the cap at two, the origin at 0: the nearest two get a ring
+				local saved = P().MAX_AROUND_PLACES
+
+				P().MAX_AROUND_PLACES = 2
+
+				local ok, err = pcall(function()
+					local far = {{x = 3000, y = 0, z = 0}, {x = 2000, y = 0, z = 0}, {x = 1000, y = 0, z = 0}}
+					local asked = {}
+					local capped = P().NewJob({}, options({
+						places = far,
+						placeLevelAt = function(x)
+							asked[#asked + 1] = x
+
+							return {id = "c128t192", zlo = -64, zhi = 128}
+						end,
+						around = 64,
+						groundAt = function() return 0 end
+					}))
+
+					while not capped.Done() do
+						capped.Step(1000)
+					end
+
+					local ringed = {}
+
+					for _, x in ipairs(asked) do
+						local node = math.floor(x / 1000 + 0.5) * 1000
+
+						ringed[node] = (ringed[node] or 0) + 1
+					end
+
+					expect(ringed[1000]).to.equal(5)
+					expect(ringed[2000]).to.equal(5)
+					expect(ringed[3000]).to.equal(1) -- the farthest: the node alone
+				end)
+
+				P().MAX_AROUND_PLACES = saved
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- the definitions of a ring place are those of ITS place (the in/out map at that spot), not the node's: a node outdoors a step from a door has a ring place indoors.
+			-- breaks if: the ring takes the node's definitions
+			name = "NewJob: a ring place gets the definitions of its own place",
+			func = function()
+				local entries = run({}, options({
+					definitions = {2},
+					places = {{x = 980, y = 100, z = 0}},
+					placeLevelAt = function(_, _, z) return {id = "f" .. z .. "c120", zlo = z - 56, zhi = z + 120} end,
+					definitionsAt = function(x) return x >= 1000 and {4} or {2} end,
+					around = 64,
+					groundAt = function(x, y, top) return x > 980 and 16 or nil end
+				}))
+				local ppm = {}
+
+				for _, e in ipairs(entries) do
+					ppm[e.tile.level .. "@" .. e.tile.ppm] = true
+				end
+
+				expect(ppm["f0c120@2"]).to.beTrue() -- the node outdoors
+				expect(ppm["f16c120@4"]).to.beTrue() -- the ring place indoors (x 1044)
+				expect(ppm["f16c120@2"]).to.beNil()
+			end
+		},
+		{
+			-- the driver reads the switch: the convar gry_minimap_preload_around (default on) gives the ring, 0 takes it away. breaks if: the switch is not read, the ring distance or the
+			-- ground ray is not given to the plan, or the ring is made with the switch at 0 (the stand-in counts the ground rays and the peeks)
+			name = "driver: gry_minimap_preload_around turns the ring of places around each ground node on or off (the node's own place is always made)",
+			func = function()
+				local env = makeEnv()
+
+				local ok, err = pcall(function()
+					local function plan(around)
+						env.set({autozoom = 1, vehicle = 100, foot = 75, indoor = 25, k = 130, boxes = "outdoor", around = around, nodes = {
+							{x = 100, y = 100, z = 0, type = 2},
+							{x = 900, y = 100, z = 0, type = 2},
+							{x = 3000, y = 3000, z = 0, type = 3}
+						}})
+						env.peeks, env.grounds = 0, 0
+						expect(P().Start()).to.beTrue()
+
+						local frames = 0
+
+						while #env.hooks > 0 and frames < 200 do
+							env.frame()
+							frames = frames + 1
+						end
+					end
+
+					plan(0)
+					expect(env.peeks).to.equal(2)
+					expect(env.grounds).to.equal(0)
+
+					-- the ring: four places for each of the two ground nodes; and the 8 x 8 cells of the outdoor box, each asked from its ground (a roofed cell would peek: the stand-in's
+					-- open level answers, so no peek for them)
+					plan(1)
+					expect(env.peeks).to.equal(2 + 2 * 4)
+					expect(env.grounds).to.equal(2 * 4 + 64)
+				end)
+
+				env.restore()
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			-- The measure of 2026-11-22 (gm_everpine_mall, gm_construct): a roof, a porch or a high structure inside an OUTDOOR box (the in/out map calls the box open, its cells have no ceiling
+			-- class) makes levels the three areas of the box never see (and the ray of Floors.OpenAt starts at the top of the layer, over a low roof). With `around` and `groundAt`, each cell of an
+			-- outdoor box is asked: the ground under the top of its layer, then the open level a ray up from the ground gives, or, when that ray hits a roof (nil), the level of a player standing
+			-- there (placeLevelAt, at the definitions of that place). breaks if: the roofed cell makes no tile, the open cell is asked as a floor, a cell with no ground asks a level, an indoor
+			-- box is sampled by cells, or the cells are sampled without `around`
+			name = "NewJob: with `around`, each cell of an outdoor box is asked from the ground up: the open level, or the level of a player under the roof; no ground, no tile; indoor boxes and no `around`: none",
+			func = function()
+				local grounds, opened, peeked = {}, {}, {}
+
+				local function build(extra)
+					grounds, opened, peeked = {}, {}, {}
+
+					local opts = options({
+						around = 64,
+						groundAt = function(x, y, top)
+							grounds[#grounds + 1] = x .. "," .. y .. "," .. top
+
+							if x > 400 then
+								return nil -- the cell at x 448: no ground
+							end
+
+							return top - 100
+						end,
+						levelAt = function(x, y, z)
+							opened[#opened + 1] = x .. "," .. y .. "," .. z
+
+							if x < 300 then
+								return level("open_t960")
+							end
+
+							return nil, "roofed"
+						end,
+						placeLevelAt = function(x, y, z)
+							peeked[#peeked + 1] = x .. "," .. y .. "," .. z
+
+							return {id = "f" .. z .. "c120", zlo = z - 56, zhi = z + 120}
+						end,
+						definitionsAt = function() return {4} end
+					})
+
+					for k, v in pairs(extra or {}) do
+						opts[k] = v
+					end
+
+					return opts
+				end
+
+				-- 4 x 1 cells of the layer 0 (top 63): the cell centres are at x 64, 192, 320, 448; the ground a cell has is 100 under the top, -37
+				local entries = run({box(0, 0, 0, 3, 0)}, build())
+
+				for _, g in ipairs({"64,64,63", "192,64,63", "320,64,63", "448,64,63"}) do
+					local found = false
+
+					for _, asked in ipairs(grounds) do
+						found = found or asked == g
+					end
+
+					expect(found).to.beTrue()
+				end
+
+				-- the open level is asked from the ground (the ray of OpenAt starts over the roof when it starts at the top of the layer), the roofed cell gets the level of a player there
+				expect(text(peeked)).to.equal("320,64,-37")
+
+				local askedOpen = {}
+
+				for _, o in ipairs(opened) do
+					askedOpen[o] = true
+				end
+
+				expect(askedOpen["64,64,-37"]).to.beTrue()
+				expect(askedOpen["192,64,-37"]).to.beTrue()
+				expect(askedOpen["448,64,-37"]).to.beNil() -- no ground: no level asked
+
+				local roofed = 0
+
+				for _, e in ipairs(entries) do
+					if e.tile.level == "f-37c120" then
+						roofed = roofed + 1
+						expect(e.tile.ppm).to.equal(4) -- the definitions of that place, not the box's own
+					end
+				end
+
+				expect(roofed >= 1).to.beTrue()
+
+				-- an indoor box is not sampled by cells (its floors come from indoorLevelAt)
+				run({box(0, 0, 0, 3, 0, 2)}, build())
+				expect(#grounds).to.equal(0)
+
+				-- no `around`: the cells are not sampled
+				run({box(0, 0, 0, 3, 0)}, build({around = false}))
+				expect(#grounds).to.equal(0)
+				expect(#peeked).to.equal(0)
+			end
+		},
+		{
+			-- the cells are steps of the job (a box of a hundred cells in one step would freeze a frame), after the box's own areas; a plan over Preload.MAX_AROUND_CELLS cells samples every
+			-- n-th cell on both axes (n the smallest whole number that brings the count under the cap), at the centres of the cells it keeps. breaks if: a box does all its cells in one
+			-- step, the stride is not applied (a big map, 190000 outdoor cells on gm_boreas, would cost seconds), or the sampled cells are not centres
+			name = "NewJob: each cell of an outdoor box is a step; over Preload.MAX_AROUND_CELLS cells only every n-th cell on each axis is asked",
+			func = function()
+				local asked = {}
+				local function build()
+					asked = {}
+
+					return options({
+						around = 64,
+						groundAt = function(x, y, top)
+							asked[#asked + 1] = x .. "," .. y
+
+							return top - 100
+						end,
+						levelAt = function() return level("open_t960") end
+					})
+				end
+
+				local job = P().NewJob({box(0, 0, 0, 3, 0)}, build())
+
+				expect(job.Step(1)).to.equal(1) -- the box's own areas
+				expect(#asked).to.equal(0)
+				expect(job.Step(2)).to.equal(2) -- two cells
+				expect(#asked).to.equal(2)
+				expect(job.Done()).to.beFalse()
+				expect(job.Step(100)).to.equal(2) -- the last two
+				expect(job.Done()).to.beTrue()
+
+				local saved = P().MAX_AROUND_CELLS
+
+				P().MAX_AROUND_CELLS = 4
+
+				local ok, err = pcall(function()
+					-- 8 x 8 = 64 cells over a cap of 4: the stride is ceil(sqrt(64 / 4)) = 4: the cells 0 and 4 on each axis, centres at 64 and 576
+					run({box(0, 0, 0, 7, 7)}, build())
+					table.sort(asked)
+					expect(text(asked)).to.equal("576,576 576,64 64,576 64,64")
+				end)
+
+				P().MAX_AROUND_CELLS = saved
 
 				if not ok then error(err, 0) end
 			end
