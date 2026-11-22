@@ -2568,6 +2568,12 @@ return {
 				useKey(state, KEY_A)
 				installVTF(state)
 
+				-- the runner's count hook makes LuaJIT run the loop below in its interpreter, which allocates a few KB a window that the compiled code never does (measured: 0
+				-- bytes in a plain lua_exec, 28 to 35 KB under the hook): it is taken off for the measure and put back after
+				local hookFn, hookMask, hookCount = debug.gethook()
+
+				debug.sethook()
+
 				local t, missing = tile("a1", 3, -2, 1024, 3), tile("a1", 9, 9, 1024, 3)
 
 				expect(store(t)).to.beTrue()
@@ -2599,6 +2605,10 @@ return {
 				end
 
 				collectgarbage("restart")
+
+				if hookFn then
+					debug.sethook(hookFn, hookMask, hookCount)
+				end
 
 				expect(drifts[1]).to.beLessThan(16)
 				expect(drifts[2]).to.beLessThan(2)

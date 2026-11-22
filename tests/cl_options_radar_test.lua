@@ -219,6 +219,8 @@ return {
 					"slider:gry_minimap_opacity",
 					"slider:gry_minimap_below",
 					"slider:gry_minimap_outside",
+					"box:gry_minimap_preload",
+					"box:gry_minimap_preload_around",
 					"slider:gry_minimap_cache_mb",
 					"label:Map tile size (pixels)",
 					"combo:gry_minimap_tile",

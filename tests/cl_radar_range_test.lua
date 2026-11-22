@@ -26,9 +26,22 @@ return {
 	groupName = "GryMod radar range (client)",
 	beforeEach = function(state)
 		state.value = option() and option():GetString()
+
+		-- the range tests are about the manual range: the automatic zoom (a setting of the player, archived) would take the slider's place
+		local auto = GetConVar("gry_radar_autozoom")
+
+		state.auto = auto and auto:GetString()
+
+		if auto then
+			auto:SetString("0")
+		end
 	end,
 	afterEach = function(state)
 		pcall(restoreNet)
+
+		if state.auto and GetConVar("gry_radar_autozoom") then
+			GetConVar("gry_radar_autozoom"):SetString(state.auto)
+		end
 
 		if state.value and option() then
 			option():SetString(state.value)
