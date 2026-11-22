@@ -425,6 +425,69 @@ return {
 			end
 		},
 		{
+			name = "Draw: a constant that has not changed is not set again (the same numbers a frame later set nothing, a new strength sets only the strength), and everything is set again after a second",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				stub(S, "works", true)
+				GetConVar(OPTION):SetString("1")
+
+				local material = {sets = {}, count = 0}
+				function material:SetFloat(k, v) self.sets[k] = v self.count = self.count + 1 end
+				stub(S, "Material", function() return material end)
+				stub(render, "MaterialOverride", function() end)
+				stub(S, "Drift", function() return 0.25 end)
+
+				local now = 500
+				stub(_G, "CurTime", function() return 100 end)
+				stub(_G, "RealTime", function() return now end)
+
+				local ent = fakeEntity()
+				ent.pos, ent.ang = Vector(11, 22, 33), Angle(0, 90, 0)
+				local function noop() end
+
+				S.Draw(ent, 0.7, 0.5, noop)
+				expect(material.count).to.equal(16)
+
+				S.Draw(ent, 0.7, 0.5, noop)
+				expect(material.count).to.equal(16)
+
+				S.Draw(ent, 0.3, 0.5, noop)
+				expect(material.count).to.equal(17)
+				expect(near(material.sets["$c0_z"], 0.3)).to.beTrue()
+				expect(near(material.sets["$c3_x"], 11)).to.beTrue()
+
+				-- another entity (the weapon, the hands) goes through the same material: what differs is set, what is the same is not
+				local other = fakeEntity(9)
+				other.pos, other.ang = Vector(11, 22, 33), Angle(0, 90, 0)
+				S.Draw(other, 0.3, 0.5, noop)
+				expect(material.count < 17 + 16).to.beTrue()
+
+				now = now + 1.5
+				local before = material.count
+				S.Draw(other, 0.3, 0.5, noop)
+				expect(material.count).to.equal(before + 16)
+			end
+		},
+		{
+			name = "Constants can fill the tables it is given (the draw makes no new table each frame): same numbers, same tables back",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local into = S.Constants(1, 0.5, 0.8, 1080, 3, 0.1, Vector(1, 2, 3), Angle(10, 20, 30))
+				local first = into[1]
+				local again = S.Constants(2, 0.25, 0.4, 720, 4, 0.2, Vector(4, 5, 6), Angle(40, 50, 60), into)
+				local fresh = S.Constants(2, 0.25, 0.4, 720, 4, 0.2, Vector(4, 5, 6), Angle(40, 50, 60))
+
+				expect(again).to.equal(into)
+				expect(again[1]).to.equal(first)
+
+				for r = 1, 4 do
+					for i = 1, 4 do
+						expect(near(again[r][i], fresh[r][i])).to.beTrue()
+					end
+				end
+			end
+		},
+		{
 			name = "Draw: nothing when the strength is nothing, when the shader is not used, or when the entity is gone",
 			func = function()
 				local S = GryMod.CloakFX.Shader

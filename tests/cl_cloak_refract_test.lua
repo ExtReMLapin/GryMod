@@ -252,6 +252,81 @@ return {
 			end
 		},
 		{
+			name = "Draw: a constant that has not changed is not set again (the same numbers a frame later set nothing, a new alpha sets only the alpha), each part keeps its own tiling, and everything is set again after a second",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				stub(R, "works", true)
+				GetConVar(OPTION):SetString("1")
+
+				local function newMaterial()
+					local m = {sets = {}, count = 0}
+					function m:SetFloat(k, v) self.sets[k] = v self.count = self.count + 1 end
+
+					return m
+				end
+
+				local a, b = newMaterial(), newMaterial()
+				local byPath = {a = {material = a, tiling = 1}, b = {material = b, tiling = 2}}
+				stub(R, "Part", function(path) return byPath[path] end)
+				stub(render, "MaterialOverrideByIndex", function() end)
+
+				local now = 500
+				stub(_G, "CurTime", function() return 100 end)
+				stub(_G, "RealTime", function() return now end)
+
+				local ent = {}
+				function ent:IsValid() return true end
+				function ent:GetMaterials() return {"a", "b"} end
+				local model = "models/test_" .. math.random(1, 1e9) .. ".mdl"
+				function ent:GetModel() return model end
+
+				local function noop() end
+
+				R.Draw(ent, 1.5, 0.7, noop)
+				expect(a.count).to.equal(12)
+				expect(b.count).to.equal(12)
+				expect(a.sets["$c2_x"]).to.equal(1)
+				expect(b.sets["$c2_x"]).to.equal(2)
+
+				-- the same numbers on the next frame: nothing to set
+				R.Draw(ent, 1.5, 0.7, noop)
+				expect(a.count).to.equal(12)
+				expect(b.count).to.equal(12)
+
+				-- the alpha moved (the change of the camouflage): that one constant, on each part
+				R.Draw(ent, 1.5, 0.4, noop)
+				expect(a.count).to.equal(13)
+				expect(b.count).to.equal(13)
+				expect(near(a.sets["$c0_y"], 0.4)).to.beTrue()
+				expect(b.sets["$c2_x"]).to.equal(2)
+
+				-- a material may be changed from outside (a reload): nothing stays wrong for more than a second
+				now = now + 1.5
+				R.Draw(ent, 1.5, 0.4, noop)
+				expect(a.count).to.equal(25)
+				expect(b.count).to.equal(25)
+			end
+		},
+		{
+			name = "Constants can fill the tables it is given (the draw makes no new table for each part of each model each frame): same numbers, same tables back",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				local into = R.Constants(1, 0.5, 10, 1920, 1080, 1)
+				local first = into[1]
+				local again = R.Constants(2, 0.25, 11, 1280, 720, 2, into)
+				local fresh = R.Constants(2, 0.25, 11, 1280, 720, 2)
+
+				expect(again).to.equal(into)
+				expect(again[1]).to.equal(first)
+
+				for r = 1, 3 do
+					for i = 1, 4 do
+						expect(near(again[r][i], fresh[r][i])).to.beTrue()
+					end
+				end
+			end
+		},
+		{
 			name = "Draw: nothing when the layer is not used, when the alpha is nothing, or when the entity is gone",
 			func = function()
 				local R = GryMod.CloakFX.Refract
