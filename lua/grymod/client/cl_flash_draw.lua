@@ -927,7 +927,7 @@ local MAX_GROUP = 4096
 
 -- The image of a group on the screen: the colours in it are already multiplied by their alpha, so "add" adds
 -- them and any other mode is a normal "over".
-local function compositeGroup(cache, blend)
+local function compositeGroup(cache, blend, shiftX, shiftY)
 	render.SetMaterial(groupMaterial(cache.target))
 
 	if blend == BLEND_ADD then
@@ -938,7 +938,7 @@ local function compositeGroup(cache, blend)
 		render.OverrideBlend(true, BLEND_ONE, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
 	end
 
-	local x0, y0, width, height = cache.x0, cache.y0, cache.width, cache.height
+	local x0, y0, width, height = cache.x0 + shiftX, cache.y0 + shiftY, cache.width, cache.height
 	local u1, v1 = width / cache.textureW, height / cache.textureH
 
 	polyA[1], polyA[2], polyA[3], polyA[4] = x0, y0, 0, 0
@@ -989,10 +989,38 @@ local function compositeGroup(cache, blend)
 		render.OverrideBlend(false)
 end
 
+-- How far, in whole pixels, a cached image is from where the clip is drawn now (set by sameKey).
+local shiftX, shiftY = 0, 0
+local WHOLE_SHIFT = 1e-6 -- a placement that differs by a whole number of pixels, give or take the rounding of the additions
+
+-- Whether the image kept with a group is still the picture of the clip: the same colours, the same matrix, and a placement that is
+-- the one it was made for or a whole number of pixels from it (the picture inside the image does not change: only where the image goes).
+-- In that case the shift is left in shiftX and shiftY. A fraction of a pixel makes the image again: the pixels inside it would differ.
 local function sameKey(cache, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
-	return cache.blend == blend and cache.a == a and cache.b == b and cache.c == c and cache.d == d
-		and cache.tx == tx and cache.ty == ty and cache.mr == mr and cache.mg == mg and cache.mb == mb
-		and cache.ma == ma and cache.ar == ar and cache.ag == ag and cache.ab == ab and cache.aa == aa
+	if not (cache.blend == blend and cache.a == a and cache.b == b and cache.c == c and cache.d == d
+		and cache.mr == mr and cache.mg == mg and cache.mb == mb
+		and cache.ma == ma and cache.ar == ar and cache.ag == ag and cache.ab == ab and cache.aa == aa) then
+		return false
+	end
+
+	local dx, dy = tx - cache.tx, ty - cache.ty
+
+	if dx == 0 and dy == 0 then
+		shiftX, shiftY = 0, 0
+
+		return true
+	end
+
+	local kx, ky = math.floor(dx + 0.5), math.floor(dy + 0.5)
+
+	-- written so that a NaN is not a whole shift
+	if not (math.abs(dx - kx) <= WHOLE_SHIFT and math.abs(dy - ky) <= WHOLE_SHIFT) then
+		return false
+	end
+
+	shiftX, shiftY = kx, ky
+
+	return true
 end
 
 -- Draws the clip of `entry` as one image composed with `blend` (see the header). The image is kept with the
@@ -1006,7 +1034,7 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 
 		if cache.target then
 			flush()
-			compositeGroup(cache, blend)
+			compositeGroup(cache, blend, shiftX, shiftY)
 		end
 
 		return
@@ -1070,7 +1098,7 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	render.PopRenderTarget()
 	maskCount, maskFirst = outerMask, outerFirst
 
-	compositeGroup(cache, blend)
+	compositeGroup(cache, blend, 0, 0)
 end
 
 function Flash.ClearGroupCache()
