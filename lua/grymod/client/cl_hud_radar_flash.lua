@@ -209,6 +209,24 @@ function Radar.FovFrame(fov)
 	return math.Clamp(math.floor(math.deg(vertical) / 2 + 0.5), 1, 100)
 end
 
+-- The field of view the player really sees, for the view cone. The binoculars' zoom stages change the view through CalcView (cl_hud_binoculars_flash.lua:
+-- the player's own field of view, GetFOV, does not move), so while they are up the cone follows their eased value, the one the view was given this frame;
+-- otherwise it is GetFOV (also what the suit's own zoom changes).
+function Radar.ViewFov(ply)
+	local Bino = GryMod.FlashBinoculars
+	local zoom = Bino and Bino.ZoomState
+
+	if zoom and zoom.active then
+		local fov = zoom.fov
+
+		if type(fov) == "number" and fov == fov and fov > 0 then
+			return fov
+		end
+	end
+
+	return ply:GetFOV()
+end
+
 -- setFOV: the frame of the view cone (1-100).
 function Panel:SetFOV(frame)
 	self.fov = frame

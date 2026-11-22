@@ -110,6 +110,44 @@ return {
 			end
 		},
 		{
+			-- the binoculars' zoom stages change the view through CalcView (cl_hud_binoculars_flash.lua), the player's own field of view (GetFOV) does not move
+			name = "ViewFov: the field of view the player really sees: the binoculars' eased zoom while it is up (it follows it frame by frame), the player's own field of view otherwise",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				expect(R.ViewFov).toNot.beNil()
+				local ply = {GetFOV = function() return 100 end}
+				local Bino = GryMod.FlashBinoculars
+				local real = Bino.ZoomState
+				local ok, err = pcall(function()
+					Bino.ZoomState = {active = false, fov = nil}
+					expect(R.ViewFov(ply)).to.equal(100)
+
+					Bino.ZoomState = {active = true, fov = 61.5}
+					expect(R.ViewFov(ply)).to.equal(61.5)
+					expect(R.FovFrame(R.ViewFov(ply)) < R.FovFrame(100)).to.beTrue()
+
+					-- a state that holds no usable number (the stages' first frame, a bad value) falls back to the player's own
+					Bino.ZoomState = {active = true, fov = nil}
+					expect(R.ViewFov(ply)).to.equal(100)
+					Bino.ZoomState = {active = true, fov = 0 / 0}
+					expect(R.ViewFov(ply)).to.equal(100)
+					Bino.ZoomState = {active = true, fov = -5}
+					expect(R.ViewFov(ply)).to.equal(100)
+				end)
+				Bino.ZoomState = real
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			name = "the compass panel is given the view's field of view (ViewFov), not the player's own (the cone did not follow the binoculars' zoom)",
+			func = function(state)
+				local text = file.Read("lua/grymod/client/cl_hud_flash.lua", "GAME") or file.Read("grymod/client/cl_hud_flash.lua", "LUA")
+				expect(text).to.exist()
+				expect(string.find(text, "FovFrame(ply:GetFOV())", 1, true)).to.beNil()
+				expect(string.find(text, "FovFrame(Radar.ViewFov(ply))", 1, true)).toNot.beNil()
+			end
+		},
+		{
 			name = "the view cone frame is half the vertical field of view of a 4:3 screen, in degrees",
 			func = function(state)
 				local R = GryMod.FlashRadar

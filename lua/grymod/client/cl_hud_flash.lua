@@ -1118,7 +1118,7 @@ function Module.Paint()
 	if panel then
 		local Radar = GryMod.FlashRadar
 		panel:SetHeading(Radar.BearingFromYaw(Flash.ViewYaw(ply)))
-		panel:SetFOV(Radar.FovFrame(ply:GetFOV()))
+		panel:SetFOV(Radar.FovFrame(Radar.ViewFov(ply)))
 		-- the contacts and the stealth bar (cl_hud_radar_units.lua); the radar still draws if that file did not load
 		if Radar.Feed then
 			Radar.Feed(panel, ply, dt)
