@@ -161,9 +161,9 @@ the automatic zoom asks it first and only falls back on its own rays where the m
 
 - **Where:** `garrysmod/data/grymod/minimap/<key>/`. One directory per map, with `index.json` and, for each tile, a `.vtf` and a `.vmt`.
 - **Key:** the map name, the size in bytes of `maps/<map>.bsp`, and the version of the format, written in lower case with every
-  character outside `a-z 0-9 _` turned into `_`, for example `gm_example_6540988_v4` (the number is only an example). A map that is updated has another size, so it
+  character outside `a-z 0-9 _` turned into `_`, for example `gm_example_6540988_v5` (the number is only an example). A map that is updated has another size, so it
   gets a new directory, and the old directories of the same map name are deleted at the first request after the map loads. The version changes when
-  the content of the tiles changes: `v4` replaced `v2` when the opaque black of "nothing" became void in every set (see Known traps), so a cache made by an older
+  the content of the tiles changes: `v5` replaced `v4` when the level of a place stopped depending on the path (the levels are now named `c<top>t<thickness>`), and `v4` replaced `v2` when the opaque black of "nothing" became void in every set (see Known traps), so a cache made by an older
   version is deleted and made again by itself.
 - **Tile name:** `t_<level>_<tx>_<ty>_<res>_<ppm>`, a negative number is written with an `n` in front (`n3`).
 - **Size limit:** `gry_minimap_cache_mb`, for the directory of the current map. Above the limit the least recently used tiles are

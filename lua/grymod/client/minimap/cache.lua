@@ -2,7 +2,7 @@
 -- Design: docs/superpowers/specs/2026-11-21-minimap-design.md. Everything here is client side; the cache holds the map AS SHIPPED.
 --
 -- Decisions (the design leaves them to the builder):
---   * Key = sanitised "<map name>_<size of maps/<map>.bsp in bytes>_v4" (size 0 when the .bsp is unknown: file.Size gives -1). Sanitised = lowercase, every byte outside
+--   * Key = sanitised "<map name>_<size of maps/<map>.bsp in bytes>_v5" (size 0 when the .bsp is unknown: file.Size gives -1). Sanitised = lowercase, every byte outside
 --     [a-z0-9_] becomes "_" (so the key is safe in a path). A map that changes size gets a new key, hence a new directory; Prune removes the old ones. "_v1" tiles were
 --     written without alpha, and "_v2" tiles (and the "_v3" ones of a development build, which only cleared it for the floor below and the outside) hold the opaque black that the engine draws for "nothing" (a solid black over the
 --     other passes): neither must be reused (Prune removes them too, so a cache of an old version is made again by itself).
@@ -46,7 +46,7 @@ local floor, sfind, smatch, sgsub, slower, sformat, ssub = math.floor, string.fi
 local band = bit.band
 
 local ROOT = "grymod/minimap"
-local VERSION_TAG = "v4" -- v1 tiles had no alpha, v2 and v3 tiles keep the engine's opaque black as a solid (v3 only in the main level): they are stale (Prune removes their directories)
+local VERSION_TAG = "v5" -- v1 tiles had no alpha, v2 and v3 tiles keep the engine's opaque black as a solid (v3 only in the main level), v4 tiles name their level by an anchor ("f<A>c<C>") that no rule makes any more: they are stale (Prune removes their directories)
 local INDEX_FILE = "index.json"
 local MAX_COORD = 2 ^ 31 -- larger tile indices are not tiles any more (and would print with an exponent)
 local HEADER_BYTES = 208 -- 80 bytes of VTF header + 128 of thumbnail, before the image data
