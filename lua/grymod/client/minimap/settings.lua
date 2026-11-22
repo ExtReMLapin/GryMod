@@ -18,7 +18,7 @@ local DEFAULT_BUDGET_MS = 6
 local DEFAULT_BELOW = 40
 local DEFAULT_OUTSIDE = 80
 local DEFAULT_OPACITY = 90
-local DEFAULT_CACHE_MB = 256
+local DEFAULT_CACHE_MB = 768
 local BYTES_PER_MB = 1048576
 
 -- the tile sizes the capture and the cache know (powers of two, see the design)
@@ -39,7 +39,7 @@ local BelowConVar = GetConVar("gry_minimap_below") or CreateClientConVar("gry_mi
 	"Opacity in percent of the floor below, seen through the empty parts of the current floor (0 = off)", 0, 100)
 local OutsideConVar = GetConVar("gry_minimap_outside") or CreateClientConVar("gry_minimap_outside", "80", true, false,
 	"Opacity in percent of the outside (the whole height of the map) seen through the voids of the floors, under the floor below (0 = off)", 0, 100)
-local CacheMBConVar = GetConVar("gry_minimap_cache_mb") or CreateClientConVar("gry_minimap_cache_mb", "256", true, false,
+local CacheMBConVar = GetConVar("gry_minimap_cache_mb") or CreateClientConVar("gry_minimap_cache_mb", "768", true, false,
 	"Size limit in megabytes of the minimap cache of one map; the oldest tiles are deleted above it", 16, 4096)
 local OpacityConVar = GetConVar("gry_minimap_opacity") or CreateClientConVar("gry_minimap_opacity", "90", true, false,
 	"Opacity in percent of the minimap background in the radar (the floor below uses its own setting on top of it)", 0, 100)

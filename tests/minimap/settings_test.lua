@@ -61,7 +61,7 @@ return {
 			func = function()
 				local defaults = {
 					gry_minimap = "1", gry_minimap_definition = "3", gry_minimap_tile = "1024",
-					gry_minimap_budget_ms = "6", gry_minimap_below = "40", gry_minimap_cache_mb = "256", gry_minimap_opacity = "90",
+					gry_minimap_budget_ms = "6", gry_minimap_below = "40", gry_minimap_cache_mb = "768", gry_minimap_opacity = "90",
 						gry_minimap_outside = "80", gry_minimap_definition_auto = "1"
 				}
 
@@ -208,9 +208,9 @@ return {
 				expect(S.TileRes()).to.equal(1024)
 				expect(S.BudgetMs()).to.equal(6)
 				expect(S.Below()).to.equal(0.4)
-				expect(S.CacheBytes()).to.equal(256 * 1048576)
+				expect(S.CacheBytes()).to.equal(768 * 1048576)
 				expect(S.Opacity()).to.aboutEqual(0.9, 1e-9)
-				expect(S.Outside()).to.aboutEqual(0.3, 1e-9)
+				expect(S.Outside()).to.aboutEqual(0.8, 1e-9)
 			end
 		},
 		{
@@ -463,7 +463,7 @@ return {
 			end
 		},
 		{
-			name = "ParseCacheMB: whole megabytes from 16 to 4096 (100.6 gives 101), the default (256) when the text is no number",
+			name = "ParseCacheMB: whole megabytes from 16 to 4096 (100.6 gives 101), the default (768) when the text is no number",
 			func = function()
 				local P = GryMod.Minimap.Settings.ParseCacheMB
 
@@ -478,7 +478,7 @@ return {
 				expect(P("1e999")).to.equal(4096)
 
 				for _, text in ipairs({"", "banana", "nan", "inf", " "}) do
-					expect(P(text)).to.equal(256)
+					expect(P(text)).to.equal(768)
 				end
 
 				expect(P("100.6")).to.equal(math.floor(P("100.6")))
