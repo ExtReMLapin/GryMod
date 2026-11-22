@@ -23,7 +23,7 @@ local function measure(fn, n)
 	return after - before
 end
 
-local anchor = {id = "f0c120", fz = 0, cls = 120, top = 120, z = 0, zlo = -56, zhi = 120}
+local anchor = GryMod.Minimap.Floors.LevelFor(0, 150) -- c128t192, a level of a place (the anchors f<A>c<C> are gone since 2026-11-22)
 local p = LocalPlayer():GetPos()
 
 F.Reset()
