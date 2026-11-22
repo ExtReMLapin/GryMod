@@ -33,17 +33,18 @@ local mathAbs = math.abs
 local tableSort = table.sort
 local type = type
 
--- state: the levels of one map (the cache lives for one map name only), the step number of the level Current gave last, and what CurrentAt remembers:
--- the registry of the anchor levels known for one map name (list in creation order, byId to find a duplicate), the last ray (its place, its time and
--- the level it gave) and the bounds of the world (once per map name)
+-- state: the levels of one map (the cache lives for one map name only), the step number of the level Current gave last, the map name CurrentAt last
+-- worked for, the levels of the places made so far (one table per id, see LevelFor) and the last shot of CurrentAt (its place, its time and the level it
+-- showed)
 local cache = {map = nil, levels = nil, err = nil, nodes = nil}
 local previousStep = nil
-local anchors = {map = nil, list = {}, byId = {}}
+local current = {map = nil}
+local levelCache, levelCount = {}, 0
 -- the last shot of CurrentAt; ONE table that is written again at each shot (valid = false: nothing remembered), so a shot allocates no table for it
-local memo = {valid = false, x = 0, y = 0, z = 0, t = 0, level = nil, since = nil}
+local memo = {valid = false, x = 0, y = 0, z = 0, t = 0, level = nil}
 -- the world's bounds (once per map name) and the open level that goes with them (one table per map: only its z changes from one shot to the next)
 local worldBox = {map = nil, zmin = nil, zmax = nil, worldTop = nil, byTop = nil, open = nil}
--- the level under an anchor, by the floor of the anchor: Below gives the same table every time (see Below), and builds nothing after the first call
+-- the level under a level of a place, by its bottom: Below gives the same table every time (see Below), and builds nothing after the first call
 local belowCache = {}
 local belowCount = 0
 -- the parameters of the five rays: five tables, each with its own two Vectors and its own output table, made at the first shot and written again at each
@@ -59,12 +60,13 @@ local function clearBelow()
 end
 
 -- Reset: forgets the cache of the graph levels, the previous level of Current and everything CurrentAt remembers (public for the tests; ForMap empties
--- its cache by itself when the map name changes, and so does CurrentAt with its registry)
+-- its cache by itself when the map name changes, and so does CurrentAt with its remembered shot)
 function Floors.Reset()
 	resetCache()
 	previousStep = nil
-	anchors.map, anchors.list, anchors.byId = nil, {}, {}
-	memo.valid, memo.level, memo.since = false, nil, nil
+	current.map = nil
+	levelCache, levelCount = {}, 0
+	memo.valid, memo.level = false, nil
 	worldBox.map, worldBox.zmin, worldBox.zmax, worldBox.worldTop, worldBox.byTop, worldBox.open = nil, nil, nil, nil, nil, nil
 	clearBelow()
 end
@@ -287,7 +289,7 @@ end
 
 local STOREY = 128 -- the height of one storey: Below is the level that far under
 
--- the id of an anchor writes a negative number with the prefix n (-96 is "n96"); "+ 0" turns a -0 into 0
+-- the id of a level of a place writes a negative number with the prefix n (-96 is "n96"); "+ 0" turns a -0 into 0
 local function idNumber(v)
 	if v < 0 then
 		return "n" .. (-v)
@@ -296,22 +298,22 @@ local function idNumber(v)
 	return tostring(v + 0)
 end
 
--- An anchor level, the kind CurrentAt gives: {id = "f<A>c<C>", fz = A, cls = C, top = A + C, z = A, zlo = A - 56, zhi = A + C}: a floor at A (absolute) and a
--- slab that goes from 56 under it to C over it (C is a height class). Two anchors with the same A and C are the same level, which is what lets the tiles
--- be reused.
-local function anchorLevel(a, k)
-	return {id = "f" .. idNumber(a) .. "c" .. idNumber(k), fz = a, cls = k, top = a + k, z = a, zlo = a - SLAB_BELOW, zhi = a + k}
+local BELOW_THICK = 192 -- the thickness of the level under a level of a place (a storey and a half)
+
+-- the table of a level of a place: the slab from top - thick to top, named "c<top>t<thick>" (n before a negative top); see LevelFor
+local function placeLevel(top, thick)
+	return {id = "c" .. idNumber(top) .. "t" .. idNumber(thick), top = top, thick = thick, z = top - thick, zlo = top - thick, zhi = top}
 end
 
--- Below(level) -> level | nil, reason: the level one storey lower.
+-- Below(level) -> level | nil, reason: the level under this one.
 --   * an open level (the ray hit the sky) has nothing under it: nil, "open";
---   * an anchor level (it has fz): the fixed level f<A-128>c88, 128 lower and of class 88, whose slab ends at A - 40, under the floor of this one (the
---     floor of this level is the ceiling of the one under it). It does not depend on the class, and it is not entered in the registry;
---   * a step level of Current / Fallback (it has z, no fz): Fallback(level.z - 128) (z0 gives zn4, z4 gives z0), as before.
--- The level under an anchor is made once and kept (by the floor of the anchor): Below gives THE SAME TABLE for the same floor, and allocates nothing after
--- the first call (the radar asks at every frame). So the LEVELS ARE READ-ONLY: a caller that changes a level it was given (or the one Below gave) corrupts
--- the next answers. The kept levels are forgotten by Reset and when CurrentAt starts a new map name.
--- Pure otherwise: the hysteresis of Current is not touched. A level that is nil, or has no finite number fz / z, gives nil, "bad level".
+--   * a level of a place (it has thick, see LevelFor): the slab of 192 right under its bottom, "c<zlo>t192" (its top is the bottom of this one). It does not
+--     depend on the top or the thickness, only on the bottom;
+--   * a step level of Current / Fallback (it has z, no thick): Fallback(level.z - 128) (z0 gives zn4, z4 gives z0), as before.
+-- The level under a level of a place is made once and kept (by that bottom): Below gives THE SAME TABLE for the same bottom, and allocates nothing after the
+-- first call (the radar asks at every frame). So the LEVELS ARE READ-ONLY: a caller that changes a level it was given (or the one Below gave) corrupts the next
+-- answers. The kept levels are forgotten by Reset and when CurrentAt starts a new map name.
+-- Pure otherwise: the hysteresis of Current is not touched. A level that is nil, or has no finite number zlo / z, gives nil, "bad level".
 function Floors.Below(level)
 	if type(level) ~= "table" then
 		return nil, "bad level"
@@ -321,23 +323,23 @@ function Floors.Below(level)
 		return nil, "open"
 	end
 
-	local fz = level.fz
+	if level.thick ~= nil then
+		local zlo = level.zlo
 
-	if fz ~= nil then
-		if not isFinite(fz) then
+		if not isFinite(zlo) then
 			return nil, "bad level"
 		end
 
-		local below = belowCache[fz]
+		local below = belowCache[zlo]
 
 		if not below then
-			-- a few hundred floors at most on a map; the cache starts again if somebody asks for more than that
+			-- a few hundred bottoms at most on a map; the cache starts again if somebody asks for more than that
 			if belowCount >= 512 then
 				clearBelow()
 			end
 
-			below = anchorLevel(fz - STOREY, 88)
-			belowCache[fz] = below
+			below = placeLevel(zlo, BELOW_THICK)
+			belowCache[zlo] = below
 			belowCount = belowCount + 1
 		end
 
@@ -385,38 +387,36 @@ end
 -- The mask is MASK_SOLID_BRUSHONLY on purpose: the rays go through props (measured: a bathtub 130 units over the head is not hit), so only the map's own
 -- brushes are a ceiling.
 --
--- Levels are ANCHORS with HEIGHT CLASSES, never a slab cut at the measured height: on a slope with a sloping ceiling, or under a ceiling that is full of
--- things, the measure changes at every step, and one level per height would make a new set of tiles (bitmaps, traces, starts of a map) all the time.
---   * An anchor is a floor A (feet rounded to 16) and a class C of {56, 88, 120, 160, 224, 320, 448}: id "f<A>c<C>" (n before a negative number), slab
---     zlo = A - 56 .. zhi = A + C.
---   * C is the biggest class <= (highest ceiling - A) - 8, and 56 at least (with a ceiling under A + 64, no room for a player, the slab goes 56 up all
---     the same: there is no lower class).
---   * An anchor is USABLE with feet at f and a highest ceiling at c when A - 36 <= f and f <= A + 40 for the class 56, or A + max(40, C - 72) for the other
---     classes, and C == 56, or A + C >= f + 72 (the head cut is inside) and C <= c - A - 8. The class 56 is always usable on its floor: the head cut does not
---     apply to it (a cut under the head in a low duct). A bigger class has a taller slab, so its window of feet follows it (measured on the ramp of
---     gm_construct, 2026-11-22: 24 units under and 40 over gave a new level every 24 to 32 units of a slope of 0.67, 12 levels for one descent; 36 under and the
---     window that follows the class give 7, and 1 change of level on the way back up; no violation of the rule at the shots of the game).
--- At each shot: (1) the level of the last shot stays while it is usable, and its class goes up only when a bigger class has stayed available at every
--- shot for one second (RealTime) in a row, never at each shot; (2) else, among the known anchors that are usable the one with the biggest class, then the
--- nearest floor; (3) else a new anchor, which enters the registry.
--- The registry is per map name; at the first shot of a map it is seeded with the ids Cache.KnownLevels() gives (the levels that have tiles on disk).
+-- Under a ceiling, the level is the LEVEL OF THE PLACE (LevelFor): a function of the feet f and the highest ceiling c ONLY, never of the path, so that the tile
+-- preload, which asks it for places it has never seen (PeekAt), finds the very level the player will get there (rule of 2026-11-22, measured in
+-- dev_resources/level_survey_analysis.py on whole-map surveys and on the recorded stairs):
+--   * the top of the slab is the ROUNDEST height in the window f + 72 (the head) .. c - 8 (under the ceiling): the multiple of the biggest power of two (1024 down
+--     to 8) that is in it. On a slope under a ceiling that follows the floor the window slides, and the roundest height in it stays while it is in it: one
+--     level per 64 units of rise or so, not one per step. Under a flat roof the window only shrinks from below: the same top for most of a ramp;
+--   * the thickness is the smallest of {192, 320, 576} that keeps the feet 8 over the bottom (the bottom is about a storey under the feet at most, as the
+--     slabs of the anchors before it: a deeper slab mixes the floor below into the picture, seen on captures);
+--   * no room for the head (c - 8 under f + 72, a duct): the top is c - 8 rounded down to 8, the head is cut;
+--   * id "c<top>t<thickness>" (n before a negative top), one table per id.
+-- The display HOLDS the level it shows while that level still holds the feet (8 over its bottom), the head (unless the level of the place cuts it too) under
+-- the ceiling - 8, and its tile under the player is ready (TileReady): walking in and out of a doorway does not flip the picture at each step. A level is held only
+-- when its tile is there, so what is MADE is always a level of a place, which the preload can predict. An open level is never held.
 -- The shot is remembered: CurrentAt shoots again only if the feet moved more than 48 units (3D) from the last shot or a second went by, otherwise it gives
 -- the remembered level back with no engine call but RealTime (the radar asks at every frame).
 -- ---------------------------------------------------------------------------------------------------------
 
-local CLASSES = {448, 320, 224, 160, 120, 88, 56} -- biggest first
-local MIN_CLASS = 56 -- a duct or a thin ceiling: the slab stops 56 over the floor (under 64 units of ceiling there is no passage for a player anyway)
 local RAY_OFFSET = 48
 local RAY_START = 72 -- over the feet
 local RAY_LENGTH = 32768
 local RAY_MOVE_SQ = 48 * 48
-local RAY_INTERVAL = 1 -- seconds; also the time a bigger class has to stay available before it is taken
+local RAY_INTERVAL = 1 -- seconds
 local MAX_RISE = 512 -- a ceiling higher than this over the feet is the open sky
-local FLOOR_BELOW = 36 -- the window of the feet around an anchor's floor: A - 36 .. A + 40 (class 56) or A + max(40, class - 72) (the other classes), see usable
-local FLOOR_ABOVE = 40
-local HEAD_CUT = 72
-local CEILING_GAP = 8
-local FLOOR_ROUND = 16
+local HEAD = 72 -- the head over the feet: the top of the slab is over it
+local CEILING_GAP = 8 -- the top of the slab stays this far under the ceiling (its top face would hide the room)
+local FEET_GAP = 8 -- the bottom of the slab stays this far under the feet
+local ROUND_MAX = 1024 -- the biggest power of two the top is a multiple of
+local ROUND_MIN = 8
+local THICKNESS = {192, 320, 576} -- smallest first
+local LEVEL_CACHE_MAX = 4096
 local OPEN_MARGIN = 16
 local CAP_NODES = 96 -- the ground nodes whose up rays give the sky height of the playable area (once per map)
 local sformat = string.format
@@ -425,115 +425,109 @@ local sformat = string.format
 local RAY_DX = {0, RAY_OFFSET, -RAY_OFFSET, 0, 0}
 local RAY_DY = {0, 0, 0, RAY_OFFSET, -RAY_OFFSET}
 
-local function isClass(c)
-	for i = 1, #CLASSES do
-		if CLASSES[i] == c then
-			return true
+-- LevelFor(f, c) -> level | nil. The level of a place where the feet are at f and the highest ceiling at c (see the block above): {id = "c<top>t<thick>", top,
+-- thick, z, zlo = top - thick, zhi = top}. Pure (no engine call); one table per id, kept until Reset (READ-ONLY, like every level). nil for numbers that are not finite.
+function Floors.LevelFor(f, c)
+	if not (isFinite(f) and isFinite(c)) then
+		return nil
+	end
+
+	local lo, hi = f + HEAD, c - CEILING_GAP
+	local top
+
+	if hi >= lo then
+		local g = ROUND_MAX
+
+		while g >= ROUND_MIN do
+			local t = mathFloor(hi / g) * g
+
+			if t >= lo then
+				top = t
+
+				break
+			end
+
+			g = g / 2
 		end
 	end
 
-	return false
-end
+	if not top then
+		-- no multiple of 8 in the window, or no window (a duct): under the ceiling, the head cut
+		top = mathFloor(hi / ROUND_MIN) * ROUND_MIN
+	end
 
--- the biggest class that fits under a ceiling at c for a floor at a (56 when none does: with a ceiling under a + 64 the slab goes over the ceiling all the
--- same, there is no lower class)
-local function classFor(a, c)
-	local room = c - a - CEILING_GAP
+	local need = top - (f - FEET_GAP)
+	local thick = THICKNESS[#THICKNESS]
 
-	for i = 1, #CLASSES do
-		if CLASSES[i] <= room then
-			return CLASSES[i]
+	for i = 1, #THICKNESS do
+		if THICKNESS[i] >= need then
+			thick = THICKNESS[i]
+
+			break
 		end
 	end
 
-	return MIN_CLASS
-end
+	local byTop = levelCache[top]
+	local level = byTop and byTop[thick]
 
-local function usable(level, f, c)
-	local a, k = level.fz, level.cls
+	if not level then
+		if levelCount >= LEVEL_CACHE_MAX then
+			levelCache, levelCount = {}, 0
+		end
 
-	local above = FLOOR_ABOVE
+		byTop = levelCache[top]
 
-	if k ~= MIN_CLASS and k - HEAD_CUT > above then
-		above = k - HEAD_CUT -- the slab of a big class is tall: the feet may be higher over its floor (the head cut below still decides)
+		if not byTop then
+			byTop = {}
+			levelCache[top] = byTop
+		end
+
+		level = placeLevel(top, thick)
+		byTop[thick] = level
+		levelCount = levelCount + 1
 	end
-
-	if a - FLOOR_BELOW > f or f > a + above then
-		return false
-	end
-
-	-- the lowest class is always usable on its floor (the head cut does not apply to it: a cut under the head in a low duct); the others must have the
-	-- head cut inside and fit under the ceiling
-	return k == MIN_CLASS or (a + k >= f + HEAD_CUT and k <= c - a - CEILING_GAP)
-end
-
-local function addAnchor(a, k)
-	local level = anchorLevel(a, k)
-	local known = anchors.byId[level.id]
-
-	if known then
-		return known
-	end
-
-	anchors.byId[level.id] = level
-	anchors.list[#anchors.list + 1] = level
 
 	return level
 end
 
--- "f<A>c<C>" with a negative A written n<digits> and C one of the classes; nil otherwise
-local function parseAnchorId(id)
-	if type(id) ~= "string" then
-		return nil
-	end
-
-	local a, k = string.match(id, "^f(n?%d+)c(%d+)$")
-
-	if not a then
-		return nil
-	end
-
-	if string.sub(a, 1, 1) == "n" then
-		a = -tonumber(string.sub(a, 2))
-	else
-		a = tonumber(a)
-	end
-
-	k = tonumber(k)
-
-	if not a or not isClass(k) then
-		return nil
-	end
-
-	return a, k
+-- does the level of a place `level` still hold a player with the feet at f under a highest ceiling at c (`own` = the level of that place)? The feet 8 over the
+-- bottom, the top under the ceiling - 8, the head under the top unless the place's own level cuts it too
+local function holds(level, f, c, own)
+	return level.zlo <= f - FEET_GAP and level.zhi <= c - CEILING_GAP and (level.zhi >= f + HEAD or own.zhi < f + HEAD)
 end
 
--- a new map name: the registry starts again from the levels that have tiles on disk (Cache.KnownLevels, written by the Cache module; anything wrong
--- with it only means an empty start), and the remembered shot is of no use
+-- TileReady(level, x, y) -> bool: is the tile of `level` under (x, y) in the cache, at the tile size and the definition in use (Cache.TileOf, Cache.Has,
+-- Settings.TileRes, Settings.Definition)? false when one of them is missing or raises. A field, so that the tests give their own.
+local function tileReady(Cache, Settings, level, x, y)
+	local res, ppm = Settings.TileRes(), Settings.Definition()
+	local tx, ty = Cache.TileOf(x, y, res, ppm)
+
+	if tx == nil or ty == nil then
+		return false
+	end
+
+	-- a new table at each call: at most one call per shot (once a second or every 48 units)
+	return Cache.Has({level = level.id, tx = tx, ty = ty, res = res, ppm = ppm}) == true
+end
+
+function Floors.TileReady(level, x, y)
+	local M = GryMod.Minimap
+	local Cache, Settings = M and M.Cache, M and M.Settings
+
+	if type(Cache) ~= "table" or type(Settings) ~= "table" or not (Cache.Has and Cache.TileOf and Settings.TileRes and Settings.Definition) then
+		return false
+	end
+
+	local ok, ready = pcall(tileReady, Cache, Settings, level, x, y)
+
+	return ok and ready == true
+end
+
+-- a new map name: the remembered shot and the kept levels under others are of no use
 local function startMap(map)
-	anchors.map, anchors.list, anchors.byId = map, {}, {}
-	memo.valid, memo.level, memo.since = false, nil, nil
+	current.map = map
+	memo.valid, memo.level = false, nil
 	clearBelow()
-
-	local Cache = GryMod.Minimap.Cache
-
-	if type(Cache) ~= "table" or type(Cache.KnownLevels) ~= "function" then
-		return
-	end
-
-	local ok, ids = pcall(Cache.KnownLevels)
-
-	if not ok or type(ids) ~= "table" then
-		return
-	end
-
-	for i = 1, #ids do
-		local a, k = parseAnchorId(ids[i])
-
-		if a then
-			addAnchor(a, k)
-		end
-	end
 end
 
 -- The top of the playable area, seen from the sky: the highest SKY hit of an up ray (brush mask) shot from the ground nodes of the node graph (at most CAP_NODES
@@ -684,53 +678,10 @@ local function makeRayParams()
 	return list
 end
 
--- the level for feet at f under a highest ceiling at c, and the time since when a bigger class has been available (nil when it has not been)
--- `last` = the memo of the previous shot (its level and its hold)
-local function chooseAnchor(f, c, last, now)
-	local current = last and last.level
-
-	if current and current.fz and usable(current, f, c) then
-		local better = classFor(current.fz, c)
-
-		if better <= current.cls then
-			return current, nil
-		end
-
-		local since = last.since or now
-
-		if now - since >= RAY_INTERVAL then
-			return addAnchor(current.fz, better), nil
-		end
-
-		return current, since
-	end
-
-	local best
-	local list = anchors.list
-
-	for i = 1, #list do
-		local level = list[i]
-
-		if usable(level, f, c) then
-			if not best or level.cls > best.cls or (level.cls == best.cls and mathAbs(level.fz - f) < mathAbs(best.fz - f)) then
-				best = level
-			end
-		end
-	end
-
-	if best then
-		return best, nil
-	end
-
-	local a = mathFloor(f / FLOOR_ROUND + 0.5) * FLOOR_ROUND
-
-	return addAnchor(a, classFor(a, c)), nil
-end
-
 -- The five up rays and the choice of the level for feet at (x, y, f): the part of CurrentAt that is the same for a player and for a place asked about (PeekAt). `last` is
--- the remembered shot of the player (nil for a place: no hold) and `now` the clock; `map` the map name. Gives level, since (the time since when a bigger class has been
--- available, or nil), or nil when the engine failed for the centre ray. Changes nothing but the registry of anchors (and the open levels): not the remembered shot.
-local function decide(x, y, f, last, now, map)
+-- the level shown at the remembered shot of the player (nil for a place: no hold); `map` the map name. Gives the level, or nil when the engine failed for the
+-- centre ray. Changes nothing but the kept levels (LevelFor, the open levels): not the remembered shot.
+local function decide(x, y, f, held, map)
 	rayParams = rayParams or makeRayParams()
 
 	local ceiling -- the highest ceiling hit by a ray that is not in the sky
@@ -774,13 +725,20 @@ local function decide(x, y, f, last, now, map)
 
 		if zmin then
 			-- the camera goes where the up ray hit: the sky seen by the centre ray, or the highest solid when it hit one far over the feet. One table per top
-			return openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil), nil
+			return openAt(zmin, centreOpen and centreSky or (not centreOpen and ceiling) or nil)
 		end
 
-		return Floors.Fallback(f), nil
+		return Floors.Fallback(f)
 	end
 
-	return chooseAnchor(f, ceiling, last, now)
+	local own = Floors.LevelFor(f, ceiling)
+
+	-- the display hold: the level shown stays while it still holds the player and its tile is there (an open or step level is never held)
+	if held and held ~= own and held.thick and holds(held, f, ceiling, own) and Floors.TileReady(held, x, y) then
+		return held
+	end
+
+	return own
 end
 
 -- CurrentAt(pos) -> level | nil, "bad position". pos = the Vector of the player's feet. See the block above.
@@ -809,16 +767,16 @@ function Floors.CurrentAt(pos)
 	-- new rays
 	local map = game.GetMap()
 
-	if anchors.map ~= map then
+	if current.map ~= map then
 		startMap(map)
 		last = nil
 	end
 
-	local level, since = decide(x, y, f, last, now, map)
+	local level = decide(x, y, f, last and last.level, map)
 
 	if not level then
 		-- the engine failed for the centre ray: the plain slab of the step, and the next call tries again
-		memo.valid, memo.level, memo.since = false, nil, nil
+		memo.valid, memo.level = false, nil
 
 		return Floors.Fallback(f)
 	end
@@ -827,15 +785,14 @@ function Floors.CurrentAt(pos)
 		level.z = f -- the open level of a map is one table per top (only its z, the feet, changes)
 	end
 
-	memo.valid, memo.x, memo.y, memo.z, memo.t, memo.level, memo.since = true, x, y, f, now, level, since
+	memo.valid, memo.x, memo.y, memo.z, memo.t, memo.level = true, x, y, f, now, level
 
 	return level
 end
 
 -- PeekAt(x, y, z) -> level | nil, "bad position". The level CurrentAt would give a player standing at (x, y) with the feet at z, for the tile preload (which asks it for the
 -- ground places of the node graph, the floors). The same rays and the same choice, with no player: the remembered shot is not read and not changed (the player's own level
--- goes on), and a bigger class is taken at once (there is no clock to hold it: a place is not passed under in a moment). The anchors it makes are the ones the player would
--- make there, so the preloaded tiles are the ones the player finds. A centre ray that fails gives the plain slab of the step.
+-- goes on), and nothing is held: the level of the place, the very level a player arriving there gets. A centre ray that fails gives the plain slab of the step.
 function Floors.PeekAt(x, y, z)
 	if not (isFinite(x) and isFinite(y) and isFinite(z)) then
 		return nil, "bad position"
@@ -843,11 +800,11 @@ function Floors.PeekAt(x, y, z)
 
 	local map = game.GetMap()
 
-	if anchors.map ~= map then
+	if current.map ~= map then
 		startMap(map)
 	end
 
-	local level = decide(x, y, z, nil, RealTime(), map)
+	local level = decide(x, y, z, nil, map)
 
 	return level or Floors.Fallback(z)
 end
@@ -856,7 +813,7 @@ end
 -- up ray (brush mask) and no player, no memory of the last shot: for the tile preload, which asks it for the outdoor places of the in/out map.
 --   * the ray sees the sky or nothing: the open level at the sky it hit (the very table CurrentAt gives, so the tiles are shared);
 --   * it hits a solid more than MAX_RISE over z (the underside of a piece far above): the open level under it;
---   * it hits a solid within MAX_RISE (a roof, a ceiling): nil, "roofed" (an anchor level of the floors, not an open one);
+--   * it hits a solid within MAX_RISE (a roof, a ceiling): nil, "roofed" (a level of a place under a ceiling, not an open one);
 --   * nil, "bad position", "ray failed" or "no world bounds" when it cannot say.
 function Floors.OpenAt(x, y, z)
 	if not (isFinite(x) and isFinite(y) and isFinite(z)) then
@@ -953,18 +910,4 @@ function Floors.Outside(level)
 	end
 
 	return worldBox.open
-end
-
--- Known() -> array: a copy of the anchor levels the registry knows for the current map (the tests read it; nothing else should)
-function Floors.Known()
-	local copy = {}
-	local list = anchors.list
-
-	for i = 1, #list do
-		local level = list[i]
-
-		copy[i] = {id = level.id, fz = level.fz, cls = level.cls, top = level.top, z = level.z, zlo = level.zlo, zhi = level.zhi}
-	end
-
-	return copy
 end

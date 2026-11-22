@@ -35,29 +35,6 @@ local function sameLevel(level, id, zlo, zhi, count)
 	end
 end
 
--- the height classes of the slab's top (A + C), from the design
-local CLASSES = {56, 88, 120, 160, 224, 320, 448}
-
-local function isClass(c)
-	for _, v in ipairs(CLASSES) do
-		if v == c then
-			return true
-		end
-	end
-
-	return false
-end
-
--- the rule of the design for an anchor level (floor A, class C) to be usable with feet at f and a highest ceiling at c (written here again, independent
--- of the module): the floor window (36 under, over: 40 for the class 56, else max(40, C - 72)), the class under the ceiling (or the lowest class, 56, when there is no room), and the head cut inside (not for
--- the class 56: a cut under the head in a low duct)
-local function compatible(level, f, c)
-	local A, C = level.fz, level.cls
-	local above = (C == 56) and 40 or math.max(40, C - 72) -- the window of the feet follows the class (the rule of 2026-11-22: 36 under, 40 or class - 72 over)
-
-	return A - 36 <= f and f <= A + above and (C == 56 or A + C >= f + 72) and (C == 56 or C <= c - A - 8)
-end
-
 -- what a ray gives: a ceiling at height h, the sky, or nothing (the Vector is the hit position the engine gives)
 local function ceil(h)
 	return {Hit = true, HitSky = false, HitPos = Vector(0, 0, h)}
@@ -81,19 +58,6 @@ local function rounds(state)
 	expect(#state.traces % 5).to.equal(0)
 
 	return #state.traces / 5
-end
-
--- the sorted list of the floors (A) of the anchors the module knows
-local function knownFloors()
-	local list = {}
-
-	for _, level in ipairs(F().Known()) do
-		list[#list + 1] = level.fz
-	end
-
-	table.sort(list)
-
-	return list
 end
 
 -- a stand-in of AIN: Load(map) answers from `graphs[map]` and counts its calls
@@ -216,6 +180,10 @@ return {
 			end
 		}
 
+		-- the test of a ready tile (the display hold): none is ready unless a case says so; the real one is kept for its own case and put back
+		state.realTileReady = F().TileReady
+		F().TileReady = function() return false end
+
 		if F().Reset then
 			F().Reset()
 		end
@@ -228,6 +196,7 @@ return {
 		pcall(function() game.GetWorld = state.realGetWorld end)
 		pcall(function() RealTime = state.realRealTime end)
 		pcall(function() GryMod.Minimap.Cache = state.realCache end)
+		pcall(function() F().TileReady = state.realTileReady end)
 		pcall(function() if F().Reset then F().Reset() end end)
 	end,
 	cases = {
@@ -657,9 +626,7 @@ return {
 				-- the bounds of the stand-in world are z -300 .. 900
 				expect(level.zlo).to.equal(-316)
 				expect(level.zhi).to.equal(916)
-				expect(level.fz).to.beNil()
-				-- the open level makes no anchor
-				expect(#F().Known()).to.equal(0)
+				expect(level.thick).to.beNil()
 
 				F().Reset()
 				state.ray = nothing()
@@ -671,7 +638,7 @@ return {
 				-- a skylight: the centre has a ceiling, the four others see the sky or nothing, they are ignored
 				F().Reset()
 				rays(state, ceil(150), sky(), nothing(), sky(), sky())
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
 
 				-- the player is outside: the centre sees the sky although the four others hit something
 				F().Reset()
@@ -690,132 +657,388 @@ return {
 				expect(F().CurrentAt(Vector(0, 0, 0)).open).to.beTrue()
 				F().Reset()
 				state.ray = ceil(512)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c448")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c256t320")
 			end
 		},
 		{
-			-- breaks if: the shape of an anchor level, its id or its slab (A - 56 .. A + C) change
-			name = "CurrentAt: a ceiling at 150 over the feet makes the anchor f0c120 (fz, cls, top, z, zlo -56, zhi 120), remembered in the registry",
+			-- breaks if: the shape of a closed level, its id or its slab change (rule of 2026-11-22: the top is the ROUNDEST height between the head and the ceiling)
+			name = "CurrentAt: a ceiling at 150 over the feet gives the level c128t192 (top 128 = the roundest height in 72 .. 142, thickness 192, slab -64 .. 128)",
 			func = function(state)
 				state.ray = ceil(150)
 
 				local level = F().CurrentAt(Vector(0, 0, 0))
 
-				-- A = floor(0 / 16 + 0.5) * 16 = 0; the room under the ceiling is 150 - 0 - 8 = 142: the biggest class under it is 120
-				expect(level.id).to.equal("f0c120")
-				expect(level.fz).to.equal(0)
-				expect(level.cls).to.equal(120)
-				expect(level.top).to.equal(120)
-				expect(level.z).to.equal(0)
-				expect(level.zlo).to.equal(-56)
-				expect(level.zhi).to.equal(120)
+				-- the window of the top is feet + 72 (the head) .. ceiling - 8 = 72 .. 142: 128 is the only multiple of 128 in it, and no multiple of 256 is
+				expect(level.id).to.equal("c128t192")
+				expect(level.top).to.equal(128)
+				expect(level.thick).to.equal(192)
+				expect(level.zlo).to.equal(-64)
+				expect(level.zhi).to.equal(128)
 				expect(level.open).to.beNil()
-
-				local known = F().Known()
-
-				expect(#known).to.equal(1)
-				expect(known[1].id).to.equal("f0c120")
+				expect(level.fz).to.beNil()
 			end
 		},
 		{
-			-- breaks if: a class limit is off by one, the minimum 56 is lost, or a class is missing
-			name = "CurrentAt: the class is the biggest of 56 88 120 160 224 320 448 that is <= the ceiling - A - 8 (56 also when there is no room)",
-			func = function(state)
-				-- {ceiling, class}: the room is the ceiling - 8 for feet at 0
-				local table_ = {
-					{20, 56}, {63, 56}, {64, 56}, {80, 56}, {95, 56}, {96, 88}, {127, 88}, {128, 120}, {167, 120}, {168, 160}, {231, 160}, {232, 224},
-					{327, 224}, {328, 320}, {455, 320}, {456, 448}, {512, 448}
+			-- breaks if: the top is not the multiple of the biggest power of two in the window, the window is off by one at either end, the thickness is not the smallest
+			-- of 192 / 320 / 576 that holds the feet 8 over the bottom, or a negative top is not written with n
+			name = "LevelFor: the top is the roundest height in feet + 72 .. ceiling - 8, the thickness the smallest of 192 320 576 that holds the feet 8 over the bottom",
+			func = function()
+				expect(isfunction(F().LevelFor)).to.beTrue()
+
+				-- {feet, ceiling, id, zlo, zhi}, checked by hand
+				local rows = {
+					{0, 150, "c128t192", -64, 128}, -- 72 .. 142: 128
+					{0, 170, "c128t192", -64, 128}, -- 72 .. 162: 128 (no 256)
+					{0, 264, "c256t320", -64, 256}, -- 72 .. 256: 256 is in (the upper end counts); need 264 > 192: 320
+					{0, 263, "c128t192", -64, 128}, -- 72 .. 255: 256 is not
+					{0, 512, "c256t320", -64, 256}, -- 72 .. 504: 256 (512 is out)
+					{0, 90, "c80t192", -112, 80}, -- 72 .. 82: no 64, no 32, 80 = 5 x 16
+					{56, 136, "c128t192", -64, 128}, -- 128 .. 128: the lower end counts too
+					{-100, 50, "c0t192", -192, 0}, -- -28 .. 42: 0 is a multiple of everything
+					{-300, -150, "cn192t192", -384, -192}, -- -228 .. -158: -192 = -3 x 64
+					{100, 600, "c512t576", -64, 512}, -- 172 .. 592: 512; need 420 > 320: 576
 				}
 
-				for _, row in ipairs(table_) do
-					F().Reset()
-					state.ray = ceil(row[1])
+				for _, row in ipairs(rows) do
+					local level = F().LevelFor(row[1], row[2])
 
-					local level = F().CurrentAt(Vector(0, 0, 0))
-
-					expect(level.id).to.equal("f0c" .. row[2])
-					expect(level.cls).to.equal(row[2])
-					expect(level.zhi).to.equal(row[2])
-					expect(level.zlo).to.equal(-56)
+					expect(level.id).to.equal(row[3])
+					expect(level.zlo).to.equal(row[4])
+					expect(level.zhi).to.equal(row[5])
 				end
 
-				-- 95 gives 56, not 88 (the slab of 88 would go over the ceiling and its top face would hide the room): its top is under the ceiling - 8
-				F().Reset()
-				state.ray = ceil(95)
-				expect(F().CurrentAt(Vector(0, 0, 0)).zhi).to.equal(56)
+				-- no room for the head (a duct: ceiling - 8 under feet + 72): the top is the ceiling - 8 rounded down to 8, the head is cut
+				local duct = F().LevelFor(0, 40)
 
-				-- under 64 over the floor there is no room for a player: the class 56 all the same (the lowest there is), its top over the ceiling - 8
-				F().Reset()
-				state.ray = ceil(40)
+				expect(duct.id).to.equal("c32t192")
+				expect(duct.zhi).to.equal(32)
 
-				local level = F().CurrentAt(Vector(0, 0, 0))
-
-				expect(level.id).to.equal("f0c56")
-				expect(level.zhi).to.equal(56)
+				-- bad numbers
+				expect(F().LevelFor(0 / 0, 100)).to.beNil()
+				expect(F().LevelFor(0, math.huge)).to.beNil()
+				expect(F().LevelFor("0", 100)).to.beNil()
 			end
 		},
 		{
-			-- breaks if: A is not the feet rounded to 16 (half up), or a negative floor is written without the n prefix
-			name = "CurrentAt: A is the feet rounded to 16 (24 gives 32, 20 gives 16), the room counts from A; negative numbers are written with n (fn96c120)",
-			func = function(state)
-				-- f 20: 20 / 16 + 0.5 = 1.75 -> 1 -> A 16; room = 170 - 16 - 8 = 146 -> 120
-				state.ray = ceil(170)
-				expect(F().CurrentAt(Vector(0, 0, 20)).id).to.equal("f16c120")
+			-- breaks if: a level is not one table per id (the radar compares ids, Below keeps tables by height, and a shot must not build a new table each time)
+			name = "LevelFor: the same table for the same id, whatever feet and ceiling gave it; Reset forgets them",
+			func = function()
+				local a = F().LevelFor(0, 150)
 
-				-- f 24: 24 / 16 + 0.5 = 2 -> A 32; room = 174 - 32 - 8 = 134 -> 120
+				expect(rawequal(F().LevelFor(10, 160), a)).to.beTrue()
+				expect(rawequal(F().LevelFor(0, 300), a)).to.beFalse()
 				F().Reset()
-				state.ray = ceil(174)
-				expect(F().CurrentAt(Vector(0, 0, 24)).id).to.equal("f32c120")
 
-				-- f -100: -6.25 + 0.5 = -5.75 -> -6 -> A -96; room = 50 + 96 - 8 = 138 -> 120
-				F().Reset()
-				state.ray = ceil(50)
+				local b = F().LevelFor(0, 150)
 
-				local level = F().CurrentAt(Vector(0, 0, -100))
-
-				expect(level.id).to.equal("fn96c120")
-				expect(level.fz).to.equal(-96)
-				expect(level.top).to.equal(24)
-				expect(level.zlo).to.equal(-152)
-				expect(level.zhi).to.equal(24)
-
-				-- a low ceiling at -10: room = 86 - 8 = 78, class 56, top -40 (under the ceiling - 8 = -18)
-				F().Reset()
-				state.ray = ceil(-10)
-				level = F().CurrentAt(Vector(0, 0, -100))
-
-				expect(level.id).to.equal("fn96c56")
-				expect(level.zhi).to.equal(-40)
+				expect(rawequal(b, a)).to.beFalse()
+				expect(b.id).to.equal(a.id)
 			end
 		},
 		{
 			-- breaks if: the ceiling is the lowest or the centre one instead of the highest of the five
 			name = "CurrentAt: the ceiling kept is the highest of the five rays (a pipe on a ray, even on the centre one, does not lower it; the skies are ignored)",
 			func = function(state)
-				-- the pipe at 90 on one lateral ray
+				-- the pipe at 90 on one lateral ray: the ceiling stays 150
 				rays(state, ceil(150), ceil(90))
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
 
 				-- the pipe on the centre one, the four others at 150
 				F().Reset()
 				rays(state, ceil(90), ceil(150), ceil(90), ceil(90), ceil(90))
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
 
-				-- the ceiling is at 90 everywhere: class 56 (room 82, 88 does not fit)
+				-- the ceiling is at 90 everywhere: 72 .. 82, top 80
 				F().Reset()
 				state.rays = nil
 				state.ray = ceil(90)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c56")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c80t192")
 
-				-- the highest is a lateral one: 170 (room 162, class 160) over the centre's 150
+				-- the highest is a lateral one: 300 (window 72 .. 292: 256) over the centre's 150
 				F().Reset()
-				rays(state, ceil(150), ceil(170), sky(), nothing(), ceil(120))
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c160")
+				rays(state, ceil(150), ceil(300), sky(), nothing(), ceil(120))
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c256t320")
 
 				-- the four others in the sky: the centre's ceiling
 				F().Reset()
 				rays(state, ceil(150), sky(), sky(), sky(), sky())
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
+			end
+		},
+		{
+			-- breaks if: the level of a place depends on the path (what came before), which the preload cannot predict
+			name = "CurrentAt: with no tile to hold on to, the level of a place is the same whatever the order of the visits (40 places, two orders, and PeekAt)",
+			func = function(state)
+
+				local seed = 7
+				local places = {}
+
+				local function rnd(n)
+					seed = (seed * 1664525 + 1013904223) % 4294967296
+
+					return seed % n
+				end
+
+				for i = 1, 40 do
+					local f = rnd(1200) - 400
+
+					places[i] = {x = i * 100, f = f, c = f + 60 + rnd(453)}
+				end
+
+				local first = {}
+
+				for i = 1, 40 do
+					local p = places[i]
+
+					state.ox, state.oy = p.x, 0
+					state.ray = ceil(p.c)
+					state.now = state.now + 2
+					first[i] = F().CurrentAt(Vector(p.x, 0, p.f)).id
+				end
+
+				F().Reset()
+
+				for i = 40, 1, -1 do
+					local p = places[i]
+
+					state.ox, state.oy = p.x, 0
+					state.ray = ceil(p.c)
+					state.now = state.now + 2
+					expect(F().CurrentAt(Vector(p.x, 0, p.f)).id).to.equal(first[i])
+					expect(F().PeekAt(p.x, 0, p.f).id).to.equal(first[i])
+				end
+			end
+		},
+		{
+			-- breaks if: a slope makes a level every few units again (the anchors made 2 to 10 here, the plain step rule 13 or more), or going back down makes others
+			name = "CurrentAt: on a slope (floor up 8 per 16 units, the ceiling 150 over it) a rise of 400 gives 7 levels, the same ones up and down",
+			func = function(state)
+				util.TraceLine = function(t)
+					state.traces[#state.traces + 1] = t
+
+					return {Hit = true, HitSky = false, HitPos = Vector(t.start.x, t.start.y, t.start.z - 72 + 150)}
+				end
+
+				local up, ids, count = {}, {}, 0
+
+				for k = 0, 50 do
+					state.now = state.now + 2
+
+					local level = F().CurrentAt(Vector(16 * k, 0, 8 * k))
+
+					up[k] = level.id
+
+					if not ids[level.id] then
+						ids[level.id] = true
+						count = count + 1
+					end
+				end
+
+				-- the window of the top is 70 high and slides with the floor: one level per 64 of rise at most (128, 192, ... 512)
+				expect(count).to.equal(7)
+				expect(ids["c128t192"]).to.beTrue()
+				expect(ids["c512t192"]).to.beTrue()
+
+				for k = 50, 0, -1 do
+					state.now = state.now + 2
+					expect(F().CurrentAt(Vector(16 * k, 0, 8 * k)).id).to.equal(up[k])
+				end
+			end
+		},
+		{
+			-- breaks if: any level misses the feet (8 over its bottom), the head (feet + 72 under its top when there is room), goes over the ceiling - 8, has a thickness
+			-- outside the three, or is not the ROUNDEST height of its window (a multiple of a bigger power of two is in the window)
+			name = "CurrentAt: on 500 deterministic random positions every level holds the feet and the head, stays under the ceiling - 8, and its top is the roundest of its window",
+			func = function(state)
+
+				local seed = 20261122
+
+				local function rnd(n)
+					seed = (seed * 1664525 + 1013904223) % 4294967296
+
+					return seed % n
+				end
+
+				local function lateral(f)
+					local kind = rnd(5)
+
+					if kind == 0 then
+						return sky()
+					elseif kind == 1 then
+						return nothing()
+					end
+
+					return ceil(f + 60 + rnd(453))
+				end
+
+				local thick = {[192] = true, [320] = true, [576] = true}
+
+				for i = 1, 500 do
+					local f = rnd(2501) - 500 + rnd(100) / 100
+					local ox, oy = rnd(2000), rnd(2000)
+					local centre = ceil(f + 60 + rnd(453))
+					local px, nx, py, ny = lateral(f), lateral(f), lateral(f), lateral(f)
+					local cmax = centre.HitPos.z
+
+					for _, r in ipairs({px, nx, py, ny}) do
+						if not r.HitSky and r.Hit and r.HitPos.z > cmax then
+							cmax = r.HitPos.z
+						end
+					end
+
+					state.ox, state.oy = ox, oy
+					rays(state, centre, px, nx, py, ny)
+					state.now = state.now + 2
+
+					local level = F().CurrentAt(Vector(ox, oy, f))
+
+					expect(level.open).to.beNil()
+					expect(thick[level.thick]).to.beTrue()
+					expect(level.zlo <= f - 8).to.beTrue()
+					expect(level.zhi).to.equal(level.top)
+					expect(level.zlo).to.equal(level.top - level.thick)
+					expect(level.top % 8).to.equal(0)
+
+					local lo, hi = f + 72, cmax - 8
+
+					if hi >= lo then
+						expect(level.top >= lo and level.top <= hi).to.beTrue()
+
+						-- the biggest power of two (up to 1024) that divides the top: no multiple of twice it is in the window
+						local p = 8
+
+						while p < 1024 and level.top % (p * 2) == 0 do
+							p = p * 2
+						end
+
+						if p < 1024 then
+							local m = math.ceil(lo / (p * 2)) * (p * 2)
+
+							expect(m > hi).to.beTrue()
+						end
+					else
+						expect(level.top <= hi).to.beTrue()
+					end
+				end
+			end
+		},
+		{
+			-- the display holds a level while it is still right for the player and its tile is there (no change of picture at each doorway), but only then: what is
+			-- MADE is always the level of the place. breaks if: a level is held without its tile, held when it no longer holds the feet / the head or goes over the
+			-- ceiling, or not held when it could be
+			name = "CurrentAt: the level shown is kept while it still holds the feet and the head under the ceiling and its tile is ready; else the level of the place",
+			func = function(state)
+				local ready = {}
+
+				F().TileReady = function(level, x, y)
+					state.asked = (state.asked or 0) + 1
+
+					return ready[level.id] == true
+				end
+
+				-- in a shop: ceiling 192, level c128t192 (72 .. 184)
+				state.ray = ceil(192)
+
+				local shop = F().CurrentAt(Vector(0, 0, 0))
+
+				expect(shop.id).to.equal("c128t192")
+
+				-- out into the hall: ceiling 272, its own level is c256t320 (72 .. 264); the shop's still holds the feet and the head under 264, but no tile: not kept
+				state.ray = ceil(272)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(100, 0, 0)).id).to.equal("c256t320")
+
+				-- back in the shop, then out again with the shop's tile ready: kept (the same table)
+				state.ray = ceil(192)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
+				ready["c128t192"] = true
+				state.ray = ceil(272)
+				state.now = state.now + 2
+				expect(rawequal(F().CurrentAt(Vector(100, 0, 0)), shop)).to.beTrue()
+
+				-- the top must stay under the ceiling - 8: a ceiling at 136 keeps it (128 <= 128), one at 135 does not: the place's own level, 72 .. 127: 96
+				state.ray = ceil(136)
+				state.now = state.now + 2
+				expect(rawequal(F().CurrentAt(Vector(200, 0, 0)), shop)).to.beTrue()
+				state.ray = ceil(135)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(300, 0, 0)).id).to.equal("c96t192")
+
+				-- a lower level is held too when its tile is ready (c96t192 under a ceiling at 192: feet and head in, under 184)
+				ready["c96t192"] = true
+				state.ray = ceil(192)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c96t192")
+
+				-- the feet up a stair: from c128t192 (ceiling 192, feet 0) to feet at 60 under 260: the head (132) is over 128, not kept: the place's level, 132 .. 252: 192
+				F().Reset()
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
+				state.ray = ceil(260)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, 60)).id).to.equal("c192t192")
+
+				-- the feet under the bottom + 8: not kept
+				ready["c192t192"] = true
+				state.ray = ceil(200)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, -10)).id).to.equal("c128t192")
+
+				-- an open level is never held, nor held on to: the sky gives the open level, a ceiling after it the place's level
+				state.ray = sky()
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, 0)).open).to.beTrue()
+				state.ray = ceil(150)
+				state.now = state.now + 2
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
+			end
+		},
+		{
+			-- breaks if: the default test of a ready tile asks something else than the cache's tile under the player at the definition in use, or raises
+			name = "TileReady (default): the cache's Has for the tile under (x, y) at the tile size and definition in use; false when anything is missing or raises",
+			func = function(state)
+				local Settings = GryMod.Minimap.Settings
+				local asked
+
+				GryMod.Minimap.Cache = {
+					TileOf = function(x, y, res, ppm) return math.floor(x / 100), math.floor(y / 100) end,
+					Has = function(tile)
+						asked = tile
+
+						return tile.level == "c128t192"
+					end
+				}
+				GryMod.Minimap.Settings = {TileRes = function() return 512 end, Definition = function() return 16 end}
+
+				local ok, result = pcall(function()
+					local level = F().LevelFor(0, 150)
+					local TR = state.realTileReady
+				local yes = TR(level, 250, -150)
+					local tile = asked
+					local no = TR(F().LevelFor(0, 300), 0, 0)
+
+					GryMod.Minimap.Cache = {Has = function() error("boom") end, TileOf = function() return 0, 0 end}
+
+					local raised = TR(level, 0, 0)
+
+					GryMod.Minimap.Cache = nil
+
+					return {yes = yes, tile = tile, no = no, raised = raised, missing = TR(level, 0, 0)}
+				end)
+
+				GryMod.Minimap.Settings = Settings
+
+				expect(ok and "ok" or tostring(result)).to.equal("ok") -- the message of the error when there is one
+				expect(result.yes).to.beTrue()
+				expect(result.tile.level).to.equal("c128t192")
+				expect(result.tile.tx).to.equal(2)
+				expect(result.tile.ty).to.equal(-2)
+				expect(result.tile.res).to.equal(512)
+				expect(result.tile.ppm).to.equal(16)
+				expect(result.no).to.beFalse()
+				expect(result.raised).to.beFalse()
+				expect(result.missing).to.beFalse()
 			end
 		},
 		{
@@ -838,388 +1061,6 @@ return {
 
 				for _, key in ipairs({"10,20,77", "58,20,77", "-38,20,77", "10,68,77", "10,-28,77"}) do
 					expect(starts[key]).to.beTrue()
-				end
-			end
-		},
-		{
-			-- breaks if: a ceiling that moves a little makes new anchors or classes
-			name = "CurrentAt: a ceiling that goes between 150 and 170 for 100 steps gives one anchor and one class",
-			func = function(state)
-				local ids = {}
-				local count = 0
-
-				for i = 1, 100 do
-					state.now = state.now + 0.25
-					state.ray = ceil(i % 2 == 1 and 150 or 170)
-
-					local level = F().CurrentAt(Vector(60 * i, 0, 0))
-
-					if not ids[level.id] then
-						ids[level.id] = true
-						count = count + 1
-					end
-				end
-
-				expect(count).to.equal(1)
-				expect(ids["f0c120"]).to.beTrue()
-				expect(#F().Known()).to.equal(1)
-			end
-		},
-		{
-			-- breaks if: a bigger class is taken at once, never taken, or taken before one second; a smaller one is held when the ceiling drops
-			name = "CurrentAt: the ceiling goes from 150 to 260 for good: the class goes up after one second, not before; a lower ceiling brings the lower class at once",
-			func = function(state)
-				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-
-				-- 260: room 252, class 224. The first measure is at 0 s, then every 0.25 s: 0.75 s after it nothing has changed
-				state.ray = ceil(260)
-
-				for i = 1, 4 do
-					state.now = state.now + 0.25
-					expect(F().CurrentAt(Vector(60 * i, 0, 0)).id).to.equal("f0c120")
-				end
-
-				-- a whole second after the first measure of the bigger class: it is taken
-				state.now = state.now + 0.25
-				expect(F().CurrentAt(Vector(300, 0, 0)).id).to.equal("f0c224")
-				expect(#F().Known()).to.equal(2)
-
-				-- the ceiling falls back to 150: 224 does not fit under it, the known f0c120 is taken at once (and nothing is created)
-				state.ray = ceil(150)
-				state.now = state.now + 0.25
-				expect(F().CurrentAt(Vector(360, 0, 0)).id).to.equal("f0c120")
-				expect(#F().Known()).to.equal(2)
-
-				-- 260 again for good: the hold starts again from zero
-				state.ray = ceil(260)
-
-				for i = 1, 4 do
-					state.now = state.now + 0.25
-					expect(F().CurrentAt(Vector(360 + 60 * i, 0, 0)).id).to.equal("f0c120")
-				end
-
-				state.now = state.now + 0.25
-				expect(F().CurrentAt(Vector(660, 0, 0)).id).to.equal("f0c224")
-				expect(#F().Known()).to.equal(2)
-			end
-		},
-		{
-			-- breaks if: a class that was seen only now and then is taken (the hold is not reset when the better class goes away)
-			name = "CurrentAt: a bigger class that is available for less than a second at a time is never taken (the hold starts again each time it goes away)",
-			func = function(state)
-				state.ray = ceil(150)
-				F().CurrentAt(Vector(0, 0, 0))
-
-				-- 0.75 s at 260, one measure at 150, 0.75 s at 260, ... for 20 rounds: never a whole second in a row
-				local ids = {}
-
-				for round = 1, 20 do
-					state.ray = ceil(260)
-
-					for i = 1, 3 do
-						state.now = state.now + 0.25
-						ids[F().CurrentAt(Vector(60 * (round * 4 + i), 0, 0)).id] = true
-					end
-
-					state.ray = ceil(150)
-					state.now = state.now + 0.25
-					ids[F().CurrentAt(Vector(60 * (round * 4 + 4), 0, 0)).id] = true
-				end
-
-				expect(ids["f0c224"]).to.beNil()
-				expect(ids["f0c120"]).to.beTrue()
-				expect(#F().Known()).to.equal(1)
-			end
-		},
-		{
-			-- breaks if: a usable current level is not kept, or one that is no longer usable is
-			name = "CurrentAt: the current level is kept while it is usable (feet in A - 36 .. A + max(40, class - 72), class under the ceiling); the feet out of the window make a new anchor",
-			func = function(state)
-				state.ray = ceil(150)
-
-				local first = F().CurrentAt(Vector(0, 0, 0))
-
-				-- 60 units away, feet 30 up, ceiling 180 (a bigger class would fit, it is not taken at once): still f0c120, the same table
-				state.ray = ceil(180)
-				expect(F().CurrentAt(Vector(60, 0, 30))).to.equal(first)
-				-- 36 under A (the lower end of the window since 2026-11-22; it was 24), ceiling 150
-				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(120, 0, -36))).to.equal(first)
-				-- 48 over A: the window of the class 120 goes to A + max(40, 120 - 72) = A + 48, and the head cut is inside (0 + 120 >= 48 + 72)
-				expect(F().CurrentAt(Vector(150, 0, 48))).to.equal(first)
-				expect(#F().Known()).to.equal(1)
-
-				-- feet at 52 (over A + 48, and the head cut is no longer inside): a new anchor, A = floor(52 / 16 + 0.5) * 16 = 48, room = 195 - 48 - 8 = 139: 120
-				state.ray = ceil(195)
-
-				local second = F().CurrentAt(Vector(300, 0, 52)) -- far enough from the last shot (over 48 units) for new rays
-
-				expect(second.id).to.equal("f48c120")
-				expect(#F().Known()).to.equal(2)
-			end
-		},
-		{
-			-- breaks if: a class that does not fit under the ceiling is kept
-			name = "CurrentAt: a ceiling too low for the class makes a new anchor (same floor, class 88), and it is kept when the ceiling goes up again",
-			func = function(state)
-				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-
-				-- ceiling 100: room 92, 120 does not fit; class 88
-				state.ray = ceil(100)
-
-				local low = F().CurrentAt(Vector(60, 0, 0))
-
-				expect(low.id).to.equal("f0c88")
-				expect(#F().Known()).to.equal(2)
-
-				-- ceiling 150 again: the current f0c88 is still usable and kept (no jump up before a second)
-				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(120, 0, 0))).to.equal(low)
-				expect(#F().Known()).to.equal(2)
-
-				-- the registry has no duplicate: the same low ceiling again, a second later
-				F().Reset()
-				state.ray = ceil(90)
-				F().CurrentAt(Vector(0, 0, 0))
-				state.now = state.now + 2
-				F().CurrentAt(Vector(1, 0, 0))
-				expect(#F().Known()).to.equal(1)
-			end
-		},
-		{
-			-- breaks if: the choice among known anchors is not the biggest class, then the nearest floor
-			name = "CurrentAt: with no current level the usable known anchor with the biggest class wins, then the nearest floor",
-			func = function(state)
-				-- f 10, c 200: f32c160 (floor 22 away), f16c160 (6 away) and f0c120 are all usable
-				state.known = {"f32c160", "f0c120", "f16c160"}
-				state.ray = ceil(200)
-				expect(F().CurrentAt(Vector(0, 0, 10)).id).to.equal("f16c160")
-				expect(#F().Known()).to.equal(3)
-
-				-- the same floor: the bigger class
-				F().Reset()
-				state.known = {"f0c120", "f0c88"}
-				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-
-				-- a class that does not fit under the ceiling is never taken: a new anchor
-				F().Reset()
-				state.known = {"f0c224"}
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-				expect(#F().Known()).to.equal(2)
-
-				-- a floor that is out of the window of the feet is never taken
-				F().Reset()
-				state.known = {"f40c88"}
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-			end
-		},
-		{
-			-- breaks if: the registry is not seeded from Cache.KnownLevels, is seeded more than once per map, or takes ids that are not anchors
-			name = "CurrentAt: the registry is seeded once per map from Cache.KnownLevels (ids f<A>c<C> only, C a class), then the anchors are reused with no creation",
-			func = function(state)
-				state.known = {"f0c120", "fn96c88", "z3", "a1", "f5", "fx", "f0c120", "f100t50", "f1c", "f0c121", "f0c", "open", "fn5c"}
-				state.ray = ceil(50)
-
-				-- f -100, c 50: fn96c88 is usable (window -120 .. -56, A + C = -8 >= -28)
-				local level = F().CurrentAt(Vector(0, 0, -100))
-
-				expect(level.id).to.equal("fn96c88")
-				expect(level.fz).to.equal(-96)
-				expect(level.cls).to.equal(88)
-				expect(level.top).to.equal(-8)
-				expect(level.zlo).to.equal(-152)
-				expect(level.zhi).to.equal(-8)
-				expect(state.knownCalls).to.equal(1)
-
-				-- only the two valid, different anchors; no creation
-				local known = F().Known()
-
-				expect(#known).to.equal(2)
-				expect(known[1].id).to.equal("f0c120")
-				expect(known[2].id).to.equal("fn96c88")
-
-				-- more rays on the same map: no new seeding, the anchors are reused
-				state.now = state.now + 2
-				state.ray = ceil(150)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-				expect(state.knownCalls).to.equal(1)
-				expect(#F().Known()).to.equal(2)
-
-				-- a new map name: seeded again, and the registry holds the new map's anchors only
-				setMap(state, "another_map")
-				state.known = {"f64c160"}
-				state.now = state.now + 2
-				state.ray = ceil(264)
-				expect(F().CurrentAt(Vector(0, 0, 64)).id).to.equal("f64c160")
-				expect(state.knownCalls).to.equal(2)
-				expect(#F().Known()).to.equal(1)
-
-				-- Reset empties the registry; the next ray seeds again
-				F().Reset()
-				expect(#F().Known()).to.equal(0)
-				F().CurrentAt(Vector(0, 0, 64))
-				expect(state.knownCalls).to.equal(3)
-			end
-		},
-		{
-			-- breaks if: a missing Cache, a KnownLevels that raises or answers badly stops CurrentAt
-			name = "CurrentAt: without Cache.KnownLevels (missing, raising, or answering a non-table) it works with an empty registry",
-			func = function(state)
-				state.ray = ceil(150)
-
-				GryMod.Minimap.Cache = nil
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-
-				F().Reset()
-				GryMod.Minimap.Cache = {}
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-
-				F().Reset()
-				GryMod.Minimap.Cache = {KnownLevels = function() error("boom") end}
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-
-				F().Reset()
-				GryMod.Minimap.Cache = {KnownLevels = function() return "f0c64" end}
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
-				expect(#F().Known()).to.equal(1)
-			end
-		},
-		{
-			-- breaks if: a slope makes an anchor every 32 units again, or going back down makes new ones
-			name = "CurrentAt: on a slope (floor up 8 per 16 units, the ceiling 150 over it) a rise of 400 makes a few anchors of one class, and going back down makes none",
-			func = function(state)
-				util.TraceLine = function(t)
-					state.traces[#state.traces + 1] = t
-
-					return {Hit = true, HitSky = false, HitPos = Vector(t.start.x, t.start.y, t.start.z - 72 + 150)}
-				end
-
-				for k = 0, 50 do
-					local level = F().CurrentAt(Vector(16 * k, 0, 8 * k))
-
-					expect(level ~= nil and level.open == nil).to.beTrue()
-				end
-
-				local count = #F().Known()
-
-				-- the window of an anchor is 62 wide and the rays are 48 units apart or more: about 9 anchors (one per 32 units would be 13 or more)
-				expect(count >= 2).to.beTrue()
-				expect(count <= 10).to.beTrue()
-
-				-- one class only
-				for _, level in ipairs(F().Known()) do
-					expect(level.cls).to.equal(120)
-				end
-
-				-- two anchors are never closer than 32 units
-				local floors = knownFloors()
-
-				for i = 2, #floors do
-					expect(floors[i] - floors[i - 1] >= 32).to.beTrue()
-				end
-
-				-- back down the same slope (a first ray at once): everything is reused
-				state.now = state.now + 2
-
-				for k = 50, 0, -1 do
-					F().CurrentAt(Vector(16 * k, 0, 8 * k))
-				end
-
-				expect(#F().Known()).to.equal(count)
-
-				-- and up again
-				state.now = state.now + 2
-
-				for k = 0, 50 do
-					F().CurrentAt(Vector(16 * k, 0, 8 * k))
-				end
-
-				expect(#F().Known()).to.equal(count)
-			end
-		},
-		{
-			-- breaks if: any returned level is not usable with the feet and the highest ceiling it was chosen for, or its slab misses the head cut or the ceiling
-			name = "CurrentAt: on 500 deterministic random positions every level is usable with (feet, highest ceiling), its class is one of the six, zlo <= f - 8 and f + 72 <= zhi <= c - 8",
-			func = function(state)
-				local seed = 20261121
-
-				local function rnd(n)
-					seed = (seed * 1664525 + 1013904223) % 4294967296
-
-					return seed % n
-				end
-
-				-- a ray at random: the sky, nothing, or a ceiling 60 .. 512 over the feet
-				local function lateral(f)
-					local kind = rnd(5)
-
-					if kind == 0 then
-						return sky()
-					elseif kind == 1 then
-						return nothing()
-					end
-
-					return ceil(f + 60 + rnd(453))
-				end
-
-				for i = 1, 500 do
-					local f = rnd(2501) - 500
-					local ox, oy = rnd(2000), rnd(2000)
-					local centre = ceil(f + 60 + rnd(453))
-					local px, nx, py, ny = lateral(f), lateral(f), lateral(f), lateral(f)
-					local cmax = centre.HitPos.z
-
-					for _, r in ipairs({px, nx, py, ny}) do
-						if not r.HitSky and r.Hit and r.HitPos.z > cmax then
-							cmax = r.HitPos.z
-						end
-					end
-
-					state.ox, state.oy = ox, oy
-					rays(state, centre, px, nx, py, ny)
-					-- the clock moves on at each call so that each one shoots its rays
-					state.now = state.now + 2
-
-					local level = F().CurrentAt(Vector(ox, oy, f))
-
-					expect(level.open).to.beNil()
-					expect(isClass(level.cls)).to.beTrue()
-					expect(compatible(level, f, cmax)).to.beTrue()
-					expect(level.zlo <= f - 8).to.beTrue()
-
-					-- the head cut is inside, except for the class 56 (a cut under the head in a low duct)
-					if level.cls ~= 56 then
-						expect(f + 72 <= level.zhi).to.beTrue()
-					end
-
-					-- the slab stays under the ceiling, except when there is no room for the lowest class (a ceiling under A + 64)
-					if cmax >= level.fz + 64 then
-						expect(level.zhi <= cmax - 8).to.beTrue()
-					end
-
-					expect(level.zhi).to.equal(level.fz + level.cls)
-					expect(level.top).to.equal(level.zhi)
-					expect(level.zlo).to.equal(level.fz - 56)
-				end
-
-				-- many positions, a bounded number of anchors
-				expect(#F().Known() < 500).to.beTrue()
-
-				-- the centre in the sky, or a highest ceiling over 512: open
-				for i = 1, 50 do
-					local f = rnd(1000) - 200
-
-					state.now = state.now + 2
-					rays(state, sky(), ceil(f + 200))
-					state.ox, state.oy = 0, 0
-					expect(F().CurrentAt(Vector(0, 0, f)).open).to.beTrue()
-
-					state.now = state.now + 2
-					rays(state, ceil(f + 200), ceil(f + 513 + rnd(500)))
-					expect(F().CurrentAt(Vector(0, 0, f)).open).to.beTrue()
 				end
 			end
 		},
@@ -1324,97 +1165,27 @@ return {
 			end
 		},
 		{
-			-- breaks if: Reset leaves the remembered level or the registry
-			name = "CurrentAt: Reset forgets the remembered level (new rays) and the registry of anchors",
+			-- breaks if: Reset leaves the remembered level
+			name = "CurrentAt: Reset forgets the remembered level (new rays)",
 			func = function(state)
 				F().CurrentAt(Vector(0, 0, 0))
-				expect(#F().Known()).to.equal(1)
 				F().Reset()
-				expect(#F().Known()).to.equal(0)
 				F().CurrentAt(Vector(0, 0, 0))
 				expect(rounds(state)).to.equal(2)
-				expect(#F().Known()).to.equal(1)
-			end
-		},
-		{
-			-- breaks if: Known hands out the registry itself
-			name = "Known: a copy of the registry (changing it changes nothing), empty at the start",
-			func = function(state)
-				expect(#F().Known()).to.equal(0)
-
-				F().CurrentAt(Vector(0, 0, 0))
-
-				local known = F().Known()
-
-				known[1].top = 9999
-				known[2] = {id = "x"}
-				table.remove(known, 1)
-
-				local again = F().Known()
-
-				expect(#again).to.equal(1)
-				expect(again[1].id).to.equal("f0c120")
-				expect(again[1].top).to.equal(120)
 			end
 		},
 		{
 			-- breaks if: Current shoots a ray, or reads the world
-			name = "Current, Fallback and Below stay pure: no ray, no bounds, no registry",
+			name = "Current, Fallback, LevelFor and Below stay pure: no ray, no bounds",
 			func = function(state)
 				F().Current(0)
 				F().Current(300)
 				F().Fallback(10)
 				F().Below(F().Fallback(10))
+				F().Below(F().LevelFor(0, 150))
 
 				expect(#state.traces).to.equal(0)
 				expect(state.boundsCalls).to.equal(0)
-				expect(#F().Known()).to.equal(0)
-			end
-		},
-		{
-			-- breaks if: the class 56 has the head-cut rule, a class 88 is usable under a ceiling that has no room for it, or the 56 never goes up
-			name = "CurrentAt: the class 56 under a low ceiling (a duct) is kept though its top is under the head; a known class 88 is not usable there; 56 goes up after a second",
-			func = function(state)
-				-- ceiling 64: room 56, class 56, top 56 (under f + 72 = 72: the head cut does not apply to this class)
-				state.ray = ceil(64)
-
-				local level = F().CurrentAt(Vector(0, 0, 0))
-
-				expect(level.id).to.equal("f0c56")
-				expect(level.zlo).to.equal(-56)
-				expect(level.zhi).to.equal(56)
-
-				-- a second later, 10 units up: still usable, the same table
-				state.now = state.now + 2
-				expect(rawequal(F().CurrentAt(Vector(0, 0, 10)), level)).to.beTrue()
-				expect(#F().Known()).to.equal(1)
-
-				-- a known 88 is not usable under a ceiling at 90 (room 82): a new anchor of class 56; a known 56 is
-				F().Reset()
-				state.known = {"f0c88"}
-				state.ray = ceil(90)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c56")
-				expect(#F().Known()).to.equal(2)
-
-				F().Reset()
-				state.known = {"f0c56"}
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c56")
-				expect(#F().Known()).to.equal(1)
-
-				-- the room appears for good (150): 120 is taken after one second in a row, not before
-				F().Reset()
-				state.known = {}
-				state.ray = ceil(64)
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c56")
-				state.ray = ceil(150)
-
-				for i = 1, 4 do
-					state.now = state.now + 0.25
-					expect(F().CurrentAt(Vector(60 * i, 0, 0)).id).to.equal("f0c56")
-				end
-
-				state.now = state.now + 0.25
-				expect(F().CurrentAt(Vector(300, 0, 0)).id).to.equal("f0c120")
 			end
 		},
 		{
@@ -1493,7 +1264,7 @@ return {
 
 					return ceil(150)
 				end
-				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("f0c120")
+				expect(F().CurrentAt(Vector(0, 0, 0)).id).to.equal("c128t192")
 
 				-- a world that is not there: the open level cannot be built, the plain slab is given
 				F().Reset()
@@ -1691,8 +1462,8 @@ return {
 		{
 			-- PeekAt is what the preload asks for each ground place of the node graph (the floors): the level CurrentAt would give a player standing there, with no player: no
 			-- memory of a last shot, none made. breaks if: it gives another level than CurrentAt for the same rays, it spoils the remembered shot of the player (the next
-			-- CurrentAt would shoot again, or give another level), or it holds a bigger class back as the player's clock does
-			name = "PeekAt: the level CurrentAt gives for the same place (an anchor under a ceiling, the open level under the sky), without touching the remembered shot, and no hold",
+			-- CurrentAt would shoot again, or give another level), or it holds a level as the display does
+			name = "PeekAt: the level CurrentAt gives for the same place (the level of the place under a ceiling, the open level under the sky), without touching the remembered shot, and no hold",
 			func = function(state)
 				state.world = {GetModelBounds = function() return Vector(-1000, -2000, -300), Vector(3000, 4000, 15360) end}
 				standIn(state, {})
@@ -1703,23 +1474,24 @@ return {
 
 				local mine = F().CurrentAt(Vector(0, 0, 0))
 
-				expect(mine.id).to.equal("f0c120")
+				expect(mine.id).to.equal("c128t192")
 				expect(rounds(state)).to.equal(1)
 
-				-- a place far away, on another floor (feet at 100: the floor 96), under a ceiling at 300: the class is taken at once, 160 (the biggest that fits under 300 - 96 - 8)
-				-- (a hold is for a player who may be passing under a pipe)
+				-- a place far away, on another floor (feet at 100) under a ceiling at 300: 172 .. 292, top 256, thickness 192 (need 164); even with every tile ready,
+				-- nothing is held for a place
+				F().TileReady = function() return true end
 				state.ray = ceil(300)
 
 				local other = F().PeekAt(2000, 0, 100)
 
-				expect(other.id).to.equal("f96c160")
+				expect(other.id).to.equal("c256t192")
 				expect(rounds(state)).to.equal(2) -- five rays for the peek
 
 				-- the remembered shot is the player's: no new ray, the same level
 				expect(F().CurrentAt(Vector(1, 0, 0))).to.equal(mine)
 				expect(rounds(state)).to.equal(2)
 
-				-- the same place as the player's gives the same table (the registry is shared)
+				-- the same place as the player's gives the same table (one table per id)
 				state.ray = ceil(150)
 				expect(F().PeekAt(0, 0, 0)).to.equal(mine)
 
@@ -1976,83 +1748,47 @@ return {
 			end
 		},
 		{
-			-- breaks if: the anchor below is not the fixed level of class 88 one storey lower
-			name = "Below: an anchor gives the level one storey lower, f<A-128>c88 (f0c120 gives fn128c88 from -184 to -40)",
+			-- breaks if: the level below is not the slab of 192 right under the bottom of the level (its top is the bottom of this one)
+			name = "Below: a level of the place gives the slab of 192 right under its bottom, c<zlo>t192 (c128t192, slab -64 .. 128, gives cn64t192 from -256 to -64)",
 			func = function(state)
 				state.ray = ceil(150)
 
 				local level = F().CurrentAt(Vector(0, 0, 0))
 				local below = F().Below(level)
 
-				expect(level.id).to.equal("f0c120")
-				expect(below.id).to.equal("fn128c88")
-				expect(below.fz).to.equal(-128)
-				expect(below.cls).to.equal(88)
-				expect(below.top).to.equal(-40)
-				expect(below.z).to.equal(-128)
-				expect(below.zlo).to.equal(-184)
-				expect(below.zhi).to.equal(-40)
+				expect(level.id).to.equal("c128t192")
+				expect(below.id).to.equal("cn64t192")
+				expect(below.top).to.equal(-64)
+				expect(below.thick).to.equal(192)
+				expect(below.zlo).to.equal(-256)
+				expect(below.zhi).to.equal(-64)
 				expect(below.open).to.beNil()
 
-				-- it does not depend on the class: the same below for f0c224
-				expect(F().Below({id = "f0c224", fz = 0, cls = 224, top = 224, z = 0, zlo = -56, zhi = 224}).id).to.equal("fn128c88")
+				-- a thicker level: its own bottom (c256t320: -64 .. 256, the same bottom, the same below)
+				expect(rawequal(F().Below(F().LevelFor(0, 300)), below)).to.beTrue()
 
-				-- A 64: -64 and top 24; A 128: 0 and top 88; A -96: -224 and top -136
-				local a = F().Below({id = "f64c160", fz = 64, cls = 160, top = 224, z = 64, zlo = 8, zhi = 224})
-
-				expect(a.id).to.equal("fn64c88")
-				expect(a.zlo).to.equal(-120)
-				expect(a.zhi).to.equal(24)
-
-				local b = F().Below({id = "f128c320", fz = 128, cls = 320, top = 448, z = 128, zlo = 72, zhi = 448})
-
-				expect(b.id).to.equal("f0c88")
-				expect(b.z).to.equal(0)
-				expect(b.zlo).to.equal(-56)
-				expect(b.zhi).to.equal(88)
-
-				local c = F().Below({id = "fn96c120", fz = -96, cls = 120, top = 24, z = -96, zlo = -152, zhi = 24})
-
-				expect(c.id).to.equal("fn224c88")
-				expect(c.fz).to.equal(-224)
-				expect(c.zlo).to.equal(-280)
-				expect(c.zhi).to.equal(-136)
+				-- c512t576 (bottom -64) and cn192t192 (bottom -384)
+				expect(F().Below(F().LevelFor(-300, -150)).id).to.equal("cn384t192")
 
 				-- the below of the below is made the same way
-				expect(F().Below(below).id).to.equal("fn256c88")
-
-				-- the registry is not touched by Below
-				expect(#F().Known()).to.equal(1)
+				expect(F().Below(below).id).to.equal("cn256t192")
 			end
 		},
 		{
-			-- breaks if: Below builds a new table (and a new id string) at each call, or gives one table for two floors, or keeps the cache over a Reset
-			name = "Below: the same table for the same floor (whatever table the level is), another one for another floor; Reset forgets (the memory is measured by tests/minimap/floors_alloc_job.lua)",
+			-- breaks if: Below builds a new table (and a new id string) at each call, or gives one table for two bottoms, or keeps the cache over a Reset
+			name = "Below: the same table for the same bottom (whatever table the level is), another one for another bottom; Reset forgets (the memory is measured by tests/minimap/floors_alloc_job.lua)",
 			func = function(state)
-				local a1 = {id = "f0c120", fz = 0, cls = 120, top = 120, z = 0, zlo = -56, zhi = 120}
-				local a2 = {id = "f0c224", fz = 0, cls = 224, top = 224, z = 0, zlo = -56, zhi = 224}
+				local a1 = F().LevelFor(0, 150)
 				local b1 = F().Below(a1)
 
-				expect(b1.id).to.equal("fn128c88")
 				expect(rawequal(F().Below(a1), b1)).to.beTrue()
-				-- the same floor from another table of another class: the same answer
-				expect(rawequal(F().Below(a2), b1)).to.beTrue()
+				expect(rawequal(F().Below({id = "x", top = 0, thick = 64, zlo = -64, zhi = 0}), b1)).to.beTrue()
 
-				local other = F().Below({id = "f64c160", fz = 64, cls = 160, top = 224, z = 64, zlo = 8, zhi = 224})
+				local other = F().Below(F().LevelFor(64, 200)) -- 136 .. 192: top 192, bottom 0
 
 				expect(rawequal(other, b1)).to.beFalse()
-				expect(other.id).to.equal("fn64c88")
 				expect(rawequal(F().Below(F().Below(a1)), F().Below(F().Below(a1)))).to.beTrue()
 
-				-- the level CurrentAt gives
-				state.ray = ceil(150)
-
-				local level = F().CurrentAt(Vector(0, 0, 0))
-
-				expect(rawequal(F().Below(level), F().Below(level))).to.beTrue()
-				expect(F().Below(level).id).to.equal("fn128c88")
-
-				-- Reset forgets the kept levels: a new table with the same content
 				F().Reset()
 
 				local again = F().Below(a1)
@@ -2102,14 +1838,14 @@ return {
 		},
 		{
 			-- breaks if: the rule of the anchors is applied to the old step levels, or the old one is lost
-			name = "Below: a step level (z<N>, no fz) keeps the plain rule (Fallback of z - 128); an anchor with a bad floor or a level with nothing is a bad level",
+			name = "Below: a step level (z<N>, no thick) keeps the plain rule (Fallback of z - 128); a level with a bad bottom or with nothing is a bad level",
 			func = function()
 				local plain = F().Below(F().Fallback(0))
 
 				sameLevel(plain, "zn4", -184, -56)
-				expect(plain.fz).to.beNil()
+				expect(plain.thick).to.beNil()
 
-				for _, bad in ipairs({{id = "f0c88", fz = 0 / 0, cls = 88}, {id = "f0c88", fz = "0", cls = 88}, {id = "z0h4", cap = 128}}) do
+				for _, bad in ipairs({{id = "c0t192", top = 0, thick = 192, zlo = 0 / 0}, {id = "c0t192", top = 0, thick = 192, zlo = "0"}, {id = "z0h4", cap = 128}}) do
 					local level, err = F().Below(bad)
 
 					expect(level).to.beNil()
