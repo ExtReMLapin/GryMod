@@ -536,6 +536,75 @@ return {
 					error(err, 0)
 				end
 			end
+		},
+		{
+			name = "Contacts given a table to fill reuses it and its entries, and says the same as a fresh list, with no stale field",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				local S = GryMod.RadarShared
+				local mine = {}
+				local ally = {contact(10, 0, {id = 1, sub = S.SUB_ALLY}), contact(20, 5, {id = 2, sub = 3, type = 2}), contact(30, -5, {id = 3})}
+				local filled = R.Contacts(Vector(0, 0, 0), 0, ally, 1, nil, mine)
+				expect(filled).to.equal(mine)
+				local fresh = R.Contacts(Vector(0, 0, 0), 0, ally, 1)
+				expect(#filled).to.equal(#fresh)
+
+				for i = 1, #fresh do
+					for _, key in ipairs({"id", "x", "y", "rotation", "frame", "scale", "alpha", "tint"}) do
+						expect(filled[i][key]).to.equal(fresh[i][key])
+					end
+				end
+
+				-- the next call: fewer contacts, the first one is no ally any more (its tint must be gone), the entries are the same tables
+				local first, second = filled[1], filled[2]
+				local again = R.Contacts(Vector(0, 0, 0), 0, {contact(10, 0, {id = 7, sub = 4})}, 0, nil, mine)
+				expect(again).to.equal(mine)
+				expect(#again).to.equal(1)
+				expect(again[1]).to.equal(first)
+				expect(again[1].id).to.equal(7)
+				expect(again[1].tint).to.beNil()
+				expect(second.id).to.equal(2) -- the dropped entry is left alone, it is only out of the list
+				-- nothing at all empties the list
+				expect(#R.Contacts(Vector(0, 0, 0), 0, nil, 0, nil, mine)).to.equal(0)
+			end
+		},
+		{
+			name = "an icon whose size and turn are the same is not recomputed, and any change made to it from outside is put back",
+			func = function(state)
+				local panel = newPanel()
+				local R = GryMod.FlashRadar
+				local list = R.Contacts(Vector(0, 0, 0), 0, {contact(37.5, 0, {yaw = 90, z = metres(20)})}, 0)
+				panel:SetObjects(list)
+				local icon = panel.main:Child("Units"):Child("ObjectIcon_100")
+				local calls = 0
+				local ok, err = pcall(function()
+					icon.SetScale = function(self, ...) calls = calls + 1 return getmetatable(self).__index.SetScale(self, ...) end
+					icon.SetRotation = function(self, ...) calls = calls + 1 return getmetatable(self).__index.SetRotation(self, ...) end
+					panel:SetObjects(list)
+					expect(calls).to.equal(0)
+					-- the contact moves: its place changes, its size and turn do not
+					local moved = R.Contacts(Vector(0, 0, 0), 0, {contact(40, 3, {yaw = 90, z = metres(20)})}, 0)
+					panel:SetObjects(moved)
+					expect(calls).to.equal(0)
+					expect(icon.entry.m[5]).to.aboutEqual(moved[1].x, 0.001)
+					-- someone else turns the icon: the next feed puts it back
+					icon.SetScale, icon.SetRotation = nil, nil
+					icon:SetRotation(10)
+					icon:SetScale(300, 300)
+					panel:SetObjects(moved)
+					expect(icon.entry.m[1]).to.aboutEqual(0, 0.001)
+					expect(icon.entry.m[2]).to.aboutEqual(0.625, 0.001)
+					-- a new turn is applied
+					panel:SetObjects(R.Contacts(Vector(0, 0, 0), 90, {contact(40, 3, {yaw = 90, z = metres(20)})}, 0))
+					expect(icon.entry.m[2]).to.aboutEqual(0, 0.001)
+					expect(icon.entry.m[1]).to.aboutEqual(-0.625, 0.001)
+				end)
+				icon.SetScale, icon.SetRotation = nil, nil
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }
