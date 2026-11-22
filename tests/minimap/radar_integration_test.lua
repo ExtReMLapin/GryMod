@@ -230,10 +230,37 @@ end
 return {
 	groupName = "GryMod radar and minimap (integration)",
 	beforeEach = function(state)
+		-- The cases that set gry_radar_range by hand assume the MANUAL range. With the automatic zoom on (the player's own setting, archived) the range follows the
+		-- three modes and the slider is ignored, so these cases failed on his machine and passed on a clean one. Every case starts with the automatic zoom off
+		-- (the cases about the automatic zoom turn it on themselves) and the player's value is put back in afterEach.
+		local auto = GetConVar("gry_radar_autozoom")
+
+		state.savedAutoZoom = auto and auto:GetString() or nil
+
+		if auto then
+			auto:SetString("0")
+		end
+
+		if GryMod.RadarZoom and GryMod.RadarZoom.Reset then
+			pcall(GryMod.RadarZoom.Reset)
+		end
+
 		install(state)
 	end,
 	afterEach = function(state)
 		pcall(uninstall, state)
+
+		pcall(function()
+			local auto = GetConVar("gry_radar_autozoom")
+
+			if auto and state.savedAutoZoom then
+				auto:SetString(state.savedAutoZoom)
+			end
+
+			if GryMod.RadarZoom and GryMod.RadarZoom.Reset then
+				GryMod.RadarZoom.Reset()
+			end
+		end)
 	end,
 	cases = {
 		{
