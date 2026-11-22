@@ -8,18 +8,33 @@ local Flash = GryMod.Flash
 local Radar = GryMod.FlashRadar
 local S = GryMod.RadarShared
 
--- The radar frame in radar pixels around its centre (x right, y down): the polygon the original clips the units with.
--- At the original's scale (43 pixels for 75 m) it is 73 m ahead, 78 m behind, 101 m to the left and 108 m to the right.
-Radar.FRAME = {
+-- The polygon the original game clips its units with, in radar pixels around the player (x right, y down). At the original's scale (43 pixels for 75 m) it is
+-- 73 m ahead, 78 m behind, 101 m to the left and 108 m to the right. It is smaller than the glass the movie draws, so with it a contact vanished while still
+-- over the glass (and the minimap stopped short of the glass): see Radar.FRAME.
+Radar.ORIGINAL_FRAME = {
 	{-58, 17}, {-58, -42}, {62, -42}, {62, 32.15}, {46.25, 45}, {-46.75, 45}, {-46.75, 25.8}
 }
 
+-- The radar frame, in the same radar pixels: the glass the movie really shows, which is the outline of its NoiseMask clip (the clip that masks the units) taken
+-- through the conversion below (the player at (64.1, 52.3) of the Units clip, 110 / 94 movie pixels for a radar pixel, the matrices of NoiseMask and Units). A contact
+-- is drawn until it leaves the glass, and the minimap fills it (View.MapFrame is this polygon without the strip of the danger bar, left of the notch). It is 46 pixels
+-- ahead, 49.5 behind, 77 to the left and 71 to the right of the player; at 38 m for 43 pixels that is 40.5, 43.8, 68.4 and 62.6 m. tests/minimap/radar_frame_test.lua
+-- derives the polygon from the movie's data and compares. GryMod.RadarShared.SCAN_FACTOR (the server's search radius) has to reach its farthest corner.
+Radar.FRAME = {
+	{-77.38, 11.75}, {-77.38, -45.95}, {70.8, -45.95}, {70.8, 36.19}, {54.22, 49.99}, {-51.23, 49.09}, {-51.23, 28.37}
+}
+
+-- The left edge of the map, in radar pixels: the movie's own map window (the mask of its MapArea) starts there, right of the danger bar (the StealthBar clip, -74.9 to -66.7).
+-- The part of the glass between this and the notch of the frame (x = -51.23) is map too: cutting the map at the notch left a hole 14.6 pixels wide beside the bar.
+-- tests/minimap/radar_frame_test.lua derives it from the movie's data. View.MapFrame() starts the map here.
+Radar.MAP_LEFT = -65.8
+
 -- The movie turns radar pixels into its own coordinates: x = n * 110 + 10 and y = n * 110 - 3.5, with n over the 94 pixels
 -- of the radar's square; so the centre of the radar is at (65, 51.5) and one radar pixel is 110 / 94 movie pixels.
--- The radius of the radar is the player's choice (the original has a constant 75 m, or the level's mapRadius): 20 to 100 metres, 75 by default.
+-- The radius of the radar is the player's choice (the original has a constant 75 m, or the level's mapRadius): 5 to 100 metres, 75 by default (at 5 the map is a close-up).
 -- A smaller radius makes the same pixels stand for fewer metres: the icons of big things (a vehicle) are then closer to their real size.
 local RangeConVar = CreateClientConVar("gry_radar_range", "75", true, false,
-	"Radius of the radar in metres (20 to 100). 75 is the original game's; 40 to 75 are good values: at 75 an icon of a vehicle stands for about 14 metres of ground", 20, 100)
+	"Radius of the radar in metres (5 to 100). 75 is the original game's; 40 to 75 are good values: at 75 an icon of a vehicle stands for about 14 metres of ground; down to 5 zooms the map right in", 5, 100)
 
 function Radar.Range()
 	return S.ClampRange(RangeConVar:GetFloat())

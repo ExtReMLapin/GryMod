@@ -14,12 +14,14 @@ S.RANGE = 75
 S.PIXELS = 43
 -- The player may choose another radius (the client's gry_radar_range, sent with its request): the original's is the constant 75 m, or the
 -- level's `mapRadius`; nothing in the demo changes it while playing. Between these, in metres.
-S.MIN_RANGE = 20
+S.MIN_RANGE = 5
 S.MAX_RANGE = 100
 -- A hostile that is alerted is first noticed within 15 of these pixels (26.2 m).
 S.GATE_PIXELS = 15
--- The entities are looked for in a box 1.3 times the radius around the player, so that nothing pops in at the edge.
-S.SCAN_FACTOR = 1.3
+-- The entities are looked for in a sphere this many times the radius around the player, so that nothing pops in at the edge of the radar window. The window is
+-- the glass of the movie (GryMod.FlashRadar.FRAME): its farthest corner is 90 radar pixels from the player, 2.09 radiuses; the original's smaller polygon
+-- (74.9 pixels, 1.74 radiuses) was already past the 1.3 used before, so a contact in the corners never came.
+S.SCAN_FACTOR = 2.1
 -- How long the unit that hurt the player stays marked.
 S.MARKER_SECONDS = 10
 -- A unit more than this many metres above or below the player is not drawn.

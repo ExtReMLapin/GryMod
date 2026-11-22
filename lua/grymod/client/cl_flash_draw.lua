@@ -1078,13 +1078,43 @@ function Flash.ClearGroupCache()
 	groupMaterials = {}
 end
 
+-- Something outside the movie may draw in the middle of a clip: with `clip.drawBefore = fn` and `clip.drawBeforeDepth = depth` the function is called
+-- with the clip's matrix (a, b, c, d, tx, ty: the stage point (x, y) of the clip is at (a * x + c * y + tx, b * x + d * y + ty) on the screen) just before the
+-- first entry at that depth or above, once a frame (after the last entry when there is none). The pictures already queued are drawn first, and what the
+-- function draws with `surface` or `render` does not leak into the next entry. It is not called in the pass that measures a group, and its error is
+-- told once and stops nothing. The radar draws its map this way, between the glass of its panel and the rest.
+local lastHookError
+
+local function runHook(hook, a, b, c, d, tx, ty)
+	flush()
+
+	local ok, err = pcall(hook, a, b, c, d, tx, ty)
+
+	-- whatever the function drew, the batch starts again with its own material
+	batchMaterial, batchBlend = nil, nil
+
+	if ok then
+		lastHookError = nil
+	elseif err ~= lastHookError then
+		lastHookError = err
+		ErrorNoHalt("[GryMod] Flash drawing hook failed: " .. tostring(err) .. "\n")
+	end
+end
+
 function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
 	local movie = clip.movie
 	local entries = clip:Entries()
 	local maskUntil
+	local hook = not measuring and clip.drawBefore or nil
+	local hookDepth = clip.drawBeforeDepth or 0
 
 	for i = 1, #entries do
 		local entry = entries[i]
+
+		if hook and entry.depth >= hookDepth then
+			runHook(hook, a, b, c, d, tx, ty)
+			hook = nil
+		end
 
 		if maskUntil and entry.depth > maskUntil then
 			endMask()
@@ -1142,6 +1172,11 @@ function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
 
 	if maskUntil then
 		endMask()
+	end
+
+	-- no entry at or above the depth: the function still runs, after the last one
+	if hook then
+		runHook(hook, a, b, c, d, tx, ty)
 	end
 end
 

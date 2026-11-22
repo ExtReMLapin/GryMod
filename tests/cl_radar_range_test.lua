@@ -1,5 +1,5 @@
 -- Tests of the radar's range option on the client (gry_radar_range in cl_hud_radar_units.lua), GLuaTest format, client realm. The original's radar
--- has a radius of 75 m (a constant, or the level's mapRadius: the demo's levels give none) and no zoom; GryMod lets the player choose 20 to 100
+-- has a radius of 75 m (a constant, or the level's mapRadius: the demo's levels give none) and no zoom; GryMod lets the player choose 5 to 100
 -- metres, 75 by default, because at 75 m a vehicle's icon stands for about 14 m of ground. The radius changes where the icons are (the
 -- pixels of the radar are the same, the metres they stand for change) and what the server looks for (the range goes with the request).
 
@@ -42,18 +42,18 @@ return {
 	end,
 	cases = {
 		{
-			name = "the option exists: saved, 75 metres by default (the original's), from 20 to 100",
+			name = "the option exists: saved, 75 metres by default (the original's), from 5 to 100",
 			func = function()
 				local c = option()
 
 				expect(c ~= nil).to.beTrue()
 				expect(c:GetDefault()).to.equal("75")
-				expect(c:GetMin()).to.equal(20)
+				expect(c:GetMin()).to.equal(5)
 				expect(c:GetMax()).to.equal(100)
 			end
 		},
 		{
-			name = "Range reads the option as whole metres between 20 and 100, whatever the text",
+			name = "Range reads the option as whole metres between 5 and 100, whatever the text",
 			func = function()
 				local R = GryMod.FlashRadar
 
@@ -62,12 +62,19 @@ return {
 				option():SetString("40.6")
 				expect(R.Range()).to.equal(41)
 				option():SetString("5")
+				expect(R.Range()).to.equal(5)
+				option():SetString("5.4")
+				expect(R.Range()).to.equal(5)
+				option():SetString("20")
 				expect(R.Range()).to.equal(20)
+				-- under the minimum the engine's own clamping of the convar and ClampRange both hold at 5, never at the old 20
+				option():SetString("2")
+				expect(R.Range()).to.equal(5)
 				option():SetString("900")
 				expect(R.Range()).to.equal(100)
 				-- text that is no number: the engine's own clamping of the convar (0 becomes its minimum), a usable value whatever it is
 				option():SetString("abc")
-				expect(R.Range() >= 20 and R.Range() <= 100).to.beTrue()
+				expect(R.Range() >= 5 and R.Range() <= 100).to.beTrue()
 			end
 		},
 		{
@@ -132,9 +139,49 @@ return {
 			end
 		},
 		{
+			name = "at 5 metres the contacts scale to the pixels (4 m ahead is 34.4 pixels, inside the glass) and the glass edge stays the limit: 6 m ahead (51.6 pixels, past the 46 ahead of the frame) is dropped",
+			func = function()
+				local R = GryMod.FlashRadar
+				local PX = 110 / 94
+				local near = R.Contacts(Vector(0, 0, 0), 0, {contactAt(4)}, 0, 5)[1]
+				local far = R.Contacts(Vector(0, 0, 0), 0, {contactAt(6)}, 0, 5)[1]
+
+				expect(near ~= nil).to.beTrue()
+				expect(math.abs((R.UNITS_CENTRE_Y - near.y) - 4 / 5 * 43 * PX) < 0.01).to.beTrue()
+				expect(near.x == near.x and near.y == near.y and near.scale == near.scale).to.beTrue()
+				expect(far).to.beNil()
+			end
+		},
+		{
+			name = "the range told to the server is 5 metres when the option is at its minimum (not the old 20)",
+			func = function()
+				local R = GryMod.FlashRadar
+				local sent = {}
+				real.Start, real.WriteBool, real.WriteUInt, real.SendToServer = net.Start, net.WriteBool, net.WriteUInt, net.SendToServer
+
+				local ok, err = pcall(function()
+					net.Start = function(name) sent[#sent + 1] = {name = name} return true end
+					net.WriteBool = function(v) sent[#sent].want = v end
+					net.WriteUInt = function(v, bits) sent[#sent].range = v end
+					net.SendToServer = function() end
+
+					R.ResetWant()
+					option():SetString("5")
+					R.TellServer(true)
+				end)
+
+				pcall(restoreNet)
+
+				if not ok then error(err, 0) end
+
+				expect(#sent).to.equal(1)
+				expect(sent[1].range).to.equal(5)
+			end
+		},
+		{
 			name = "the options panel has a slider for the range, with the recommended values in its label",
 			func = function()
-				local found
+				local found, sliderMin, sliderMax
 				local panel = vgui.Create("ControlPanel")
 				local ok, err = pcall(function()
 					GryMod.GryOptionschute(panel)
@@ -143,6 +190,7 @@ return {
 						for _, child in ipairs(p:GetChildren()) do
 							if child.ClassName == "DNumSlider" and child.Scratch and child.Scratch.m_strConVar == OPTION then
 								found = child:GetText()
+								sliderMin, sliderMax = child:GetMin(), child:GetMax()
 							end
 
 							walk(child)
@@ -159,6 +207,9 @@ return {
 				expect(found ~= nil).to.beTrue()
 				expect(string.find(found, "40", 1, true) ~= nil).to.beTrue()
 				expect(string.find(found, "75", 1, true) ~= nil).to.beTrue()
+				expect(string.find(found, "down to 5", 1, true) ~= nil).to.beTrue()
+				expect(sliderMin).to.equal(5)
+				expect(sliderMax).to.equal(100)
 			end
 		}
 	}

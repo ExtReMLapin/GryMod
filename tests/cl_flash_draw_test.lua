@@ -69,6 +69,70 @@ local function drawnTriangles(root, x, y, scale)
 	return grouped
 end
 
+-- A clip with two shapes, one at depth 1 and one at depth 5 (100 pixels to the right), to see what is drawn before and after a hook.
+local function hookMovie()
+	return {
+		w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+		chars = {
+			[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 1, dh = 1},
+			[2] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "A"}, {d = 5, c = 1, n = "B", m = {1, 0, 0, 1, 100, 0}}}}}
+		},
+		root = {{{d = 1, c = 2, n = "Holder"}}}
+	}
+end
+
+-- Draws `root` with the mesh calls replaced by recorders and returns the events in order: "A" for a triangle of the shape at depth 1, "B" for
+-- one of the shape at depth 5 (told apart by their x), and whatever `record` is asked to add: the hook calls it. The real functions are put back.
+local function drawEvents(root, x, y, scale, setup)
+	local events = {}
+	local names = {mesh = {"Begin", "Position", "TexCoord", "Color", "AdvanceVertex", "End"}, render = {"SetMaterial", "OverrideBlend"}}
+	local originals = {mesh = {}, render = {}}
+	local current
+	local last
+
+	local fakes = {
+		mesh = {
+			Begin = function() end,
+			Position = function(position) current = position.x end,
+			TexCoord = function() end,
+			Color = function() end,
+			AdvanceVertex = function()
+				local name = current >= 50 and "B" or "A"
+
+				if name ~= last then
+					events[#events + 1] = name
+					last = name
+				end
+			end,
+			End = function() end
+		},
+		render = {SetMaterial = function() end, OverrideBlend = function() end}
+	}
+
+	for library, list in pairs(names) do
+		for _, name in ipairs(list) do
+			originals[library][name] = _G[library][name]
+			_G[library][name] = fakes[library][name]
+		end
+	end
+
+	if setup then
+		setup(function(label) events[#events + 1] = label last = nil end)
+	end
+
+	local ok, err = pcall(GryMod.Flash.Draw, root, x or 0, y or 0, scale or 1)
+
+	for library, list in pairs(names) do
+		for _, name in ipairs(list) do
+			_G[library][name] = originals[library][name]
+		end
+	end
+
+	assert(ok, tostring(err))
+
+	return events
+end
+
 local function area(triangles)
 	local total = 0
 
@@ -430,6 +494,83 @@ return {
 				expect(masks).to.equal(0)
 				m.chars[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 1, dh = 1}
 				expect(F.DrawState()).to.beFalse() -- still clean for the next call
+			end
+		},
+		-- a hook on a clip: the radar draws its map between the glass of its panel and the rest (cl_hud_radar_flash.lua)
+		{
+			name = "drawBefore runs between the entries below its depth and the ones from it on, with the clip's matrix (no hook support in the drawing)",
+			func = function(state)
+				local root = GryMod.Flash.NewRoot(hookMovie())
+				local holder = root:Child("Holder")
+				local got
+				holder.drawBeforeDepth = 3
+
+				local events = drawEvents(root, 10, 20, 2, function(record)
+					holder.drawBefore = function(a, b, c, d, tx, ty)
+						got = {a, b, c, d, tx, ty}
+						record("hook")
+					end
+				end)
+
+				expect(events[1]).to.equal("A")
+				expect(events[2]).to.equal("hook")
+				expect(events[3]).to.equal("B")
+				expect(#events).to.equal(3)
+				expect(got[1]).to.equal(2)
+				expect(got[2]).to.equal(0)
+				expect(got[3]).to.equal(0)
+				expect(got[4]).to.equal(2)
+				expect(got[5]).to.equal(10)
+				expect(got[6]).to.equal(20)
+			end
+		},
+		{
+			name = "drawBefore runs once a frame and after everything when no entry is at or above its depth (the map is not lost)",
+			func = function(state)
+				local root = GryMod.Flash.NewRoot(hookMovie())
+				local holder = root:Child("Holder")
+				local calls = 0
+				holder.drawBeforeDepth = 99
+
+				local events = drawEvents(root, 0, 0, 1, function(record)
+					holder.drawBefore = function() calls = calls + 1 record("hook") end
+				end)
+
+				expect(calls).to.equal(1)
+				expect(events[#events]).to.equal("hook")
+				expect(events[1]).to.equal("A")
+			end
+		},
+		{
+			name = "a clip without drawBefore draws as before, and a hook that raises an error does not stop the picture",
+			func = function(state)
+				local root = GryMod.Flash.NewRoot(hookMovie())
+				local plain = drawEvents(root, 0, 0, 1)
+				expect(plain[1]).to.equal("A")
+				expect(plain[2]).to.equal("B")
+				expect(#plain).to.equal(2)
+
+				local holder = root:Child("Holder")
+				holder.drawBeforeDepth = 3
+				holder.drawBefore = function() error("hook failed", 0) end
+				local original = ErrorNoHalt
+				local told = {}
+				ErrorNoHalt = function(message) told[#told + 1] = message end
+				local ok, events = pcall(drawEvents, root, 0, 0, 1)
+				-- twice: the message is told once
+				local again = ok and drawEvents(root, 0, 0, 1)
+				ErrorNoHalt = original
+
+				expect(ok).to.beTrue()
+				expect(events[1]).to.equal("A")
+				expect(events[2]).to.equal("B")
+				expect(again[2]).to.equal("B")
+				expect(#told).to.equal(1)
+				expect(string.find(told[1], "hook failed", 1, true) ~= nil).to.beTrue()
+				local measuring, depth, masks = GryMod.Flash.DrawState()
+				expect(measuring).to.beFalse()
+				expect(depth).to.equal(0)
+				expect(masks).to.equal(0)
 			end
 		}
 	}

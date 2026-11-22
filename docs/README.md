@@ -8,6 +8,7 @@ GryMod is a Crysis-style nanosuit and HUD for Garry's Mod. These guides are for 
 | [entities.md](entities.md) | The tracked entities: how to make your NPCs, nextbots, vehicles, mines and projectiles show properly on the binoculars, the radar and the grenade warning, how the ally, neutral and hostile relation is extended, and the limits that exist today. |
 | [weapons.md](weapons.md) | The weapon registry: how to describe a weapon (from the SWEP or from the registry), what the HUD shows for it, the stock Half-Life 2 weapons, and what exists for third-party weapon bases. |
 | [events.md](events.md) | The HUD events: every effect of the interface (animation and sound together), how to play one, how to add your own, the effects test window and the real commands it can run. |
+| [minimap.md](minimap.md) | The minimap: the real map behind the radar, how it is made and cached, its settings, the modules, events and tests, and its limits. |
 
 ## Is GryMod there, and which version?
 

@@ -6,7 +6,9 @@ GryMod = GryMod or {}
 
 local Flash = GryMod.Flash
 
-local Radar = {}
+-- The tables are kept when this file is loaded again (a hot reload): cl_hud_radar_units.lua adds to them, and a panel or a hook built from the
+-- earlier load would find them empty otherwise.
+local Radar = GryMod.FlashRadar or {}
 GryMod.FlashRadar = Radar
 
 Radar.MOVIE = "hud_radarcompassstealth"
@@ -19,7 +21,7 @@ Radar.HEADING_ORIGIN = 0
 -- GryMod's world has north at this yaw (the old compass used the same offset).
 Radar.NORTH_YAW = -6.256798
 
-local Panel = {}
+local Panel = Radar.Panel or {}
 Panel.__index = Panel
 Radar.Panel = Panel -- cl_hud_radar_units.lua adds the contacts (SetObjects)
 
@@ -283,10 +285,14 @@ end
 -- The minimap under the contacts (GryMod.Minimap, lua/grymod/client/minimap/). Everything about it is optional: a failure here never
 -- keeps the radar from drawing.
 
--- The reach of the movie's frame in range units: its farthest corner is about 1.75 times the radius (see the minimap design).
-Radar.MAP_EXTENT = 1.75
--- The alpha of the map under the contacts.
-Radar.MAP_ALPHA = 0.6
+-- How many times the radius the tiles asked for reach from the player when the view cannot say (View.ExtentFactor does): the farthest corner of the window
+-- (Radar.FRAME) is 90 radar pixels away, 2.1 radiuses, and the part of it the map fills 84 pixels, 1.97.
+Radar.MAP_EXTENT = 2
+-- The alpha of the map (0 to 1) when the settings do not say (Settings.Opacity): the glass of the movie is behind it, so a low value dims the map.
+Radar.MAP_ALPHA = 0.9
+-- Where in the Root clip's drawing the map goes: just before the entry at this depth, after the glass (depth 1) and before the mask of the map area (3), the
+-- noise, the units and the rest. Drawn before the whole movie the map was under the glass, which dims it.
+Radar.MAP_DEPTH = 3
 -- The strength of the veil over the map while the tile under the player is missing.
 Radar.MAP_VEIL = 0.6
 
@@ -386,11 +392,27 @@ local function drawMap(self, x, y, scale)
 	end
 
 	if not Settings.Enabled() then
-		-- switched off while the map was being made: the veil goes with it
+		-- switched off while the map was being made: the veil goes with it, and the generator stops (its PostRender hook would go on emptying the queue)
 		self:_mapProgress(true)
+
+		if not self.mapCancelled then
+			self.mapCancelled = true
+
+			local Gen = M.Gen
+
+			if Gen and Gen.Cancel then
+				local ok, err = pcall(Gen.Cancel)
+
+				if not ok then
+					reportError(err)
+				end
+			end
+		end
 
 		return
 	end
+
+	self.mapCancelled = false
 
 	local ply = LocalPlayer()
 
@@ -409,13 +431,73 @@ local function drawMap(self, x, y, scale)
 	local pos = ply:GetPos()
 	local px, py = pos.x, pos.y
 	local range = Radar.Range() / GryMod.RadarShared.METRES_PER_UNIT
-	local level = M.Floors.Current(pos.z)
+	-- the level of the player: CurrentAt looks up for a ceiling (an open level outdoors), the height alone is the older rule
+	local Floors = M.Floors
+	local level
+
+	if Floors.CurrentAt then
+		level = Floors.CurrentAt(pos)
+	else
+		level = Floors.Current(pos.z)
+	end
 
 	if not level then
 		return
 	end
 
-	M.Gen.Request(level, px, py, range * Radar.MAP_EXTENT)
+	-- the floor below, seen through the voids of this one, at the opacity the player chose (Settings.Below, 0 to 1; 0 or missing: none).
+	-- Floors.Below may be missing or answer nil and a reason: then there is no floor below, which is not an error
+	local belowOpacity = Settings.Below and Settings.Below() or 0
+
+	if type(belowOpacity) ~= "number" or belowOpacity ~= belowOpacity then
+		belowOpacity = 0
+	end
+
+	local below = nil
+
+	if belowOpacity > 0 and M.Floors.Below then
+		below = M.Floors.Below(level)
+	end
+
+	if not below then
+		belowOpacity = 0
+	end
+
+	-- the outside (the open level of the map, the whole height of the world), seen faintly under everything else through the solid parts of the floors, at the
+	-- opacity the player chose (Settings.Outside, 0 to 1; 0 or missing: none). Floors.Outside may be missing, answer nil and a reason (the player is outdoors
+	-- already, the world's bounds are unknown): then there is no outside, which is not an error. An error inside it is told, and the map goes on without.
+	-- The setting is read at every draw, so a change is seen by the next request (Gen compares the id of the outside with its previous request).
+	local outsideOpacity = Settings.Outside and Settings.Outside() or 0
+
+	if type(outsideOpacity) ~= "number" or outsideOpacity ~= outsideOpacity then
+		outsideOpacity = 0
+	end
+
+	local outside = nil
+
+	if outsideOpacity > 0 and Floors.Outside then
+		local ok, found = pcall(Floors.Outside, level)
+
+		if ok then
+			outside = found
+		else
+			reportError("Floors.Outside: " .. tostring(found))
+		end
+	end
+
+	if type(outside) ~= "table" then
+		outside, outsideOpacity = nil, 0
+	end
+
+	-- the tiles the window can show, whatever way the map turns: the view knows the reach of its frame, else the constant
+	local extent = M.View.ExtentFactor and M.View.ExtentFactor() or Radar.MAP_EXTENT
+
+	-- a request the generator refuses answers nil and a reason (too many tiles, no tile size): nothing waits for it, it is told once
+	local requested, refusal = M.Gen.Request(level, px, py, range * extent, below, outside)
+
+	if not requested and refusal then
+		reportError("Gen.Request: " .. tostring(refusal))
+	end
 
 	-- the tile under the player decides the veil
 	local res = Settings.TileRes()
@@ -430,30 +512,108 @@ local function drawMap(self, x, y, scale)
 
 	tile.level, tile.tx, tile.ty, tile.res, tile.ppm = level.id, tx, ty, res, ppm
 
-	if M.Cache.Has(tile) then
+	local progress = M.Gen.Progress()
+	local active = progress and progress.active
+
+	local present = M.Cache.Has(tile)
+
+	if present then
 		self:_mapProgress(true)
 	else
-		local progress = M.Gen.Progress()
 		self:_mapProgress(false, progress and progress.percent)
 	end
 
-	-- the map turns with the player's view like the contacts (Radar.Contacts)
-	-- View.Draw leaves the map's alpha in surface's colour: Draw puts it back whether the call returned or raised
-	self.mapDrawing = true
-	M.View.Draw(xf, px, py, ply:EyeAngles().y, range, level, Radar.MAP_ALPHA)
+	-- the generation ends when the tile under the player is there and the generator is idle: the index of the cache is written then, in one go
+	if active or not present then
+		self.mapBusy = true
+	elseif present and self.mapBusy then
+		self.mapBusy = false
+
+		local Cache = M.Cache
+
+		if Cache.Flush then
+			local ok, err = pcall(Cache.Flush)
+
+			if not ok then
+				reportError(err)
+			end
+		end
+	end
+
+	local alpha = Settings.Opacity and Settings.Opacity()
+
+	if type(alpha) ~= "number" or alpha ~= alpha then
+		alpha = Radar.MAP_ALPHA
+	end
+
+	alpha = math.Clamp(alpha, 0, 1)
+
+	-- what View.Draw is given, kept for the hook that draws it in the middle of the movie (drawPendingMap). The map turns with the player's view like the
+	-- contacts (Radar.Contacts).
+	local call = self.mapCall
+
+	if not call then
+		call = {}
+		self.mapCall = call
+	end
+
+	call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha = xf, px, py, ply:EyeAngles().y, range, level, alpha, below, belowOpacity * alpha
+	call.outside, call.outsideAlpha = outside, outsideOpacity * alpha
+	self.mapPending = true
 end
 
-function Panel:Draw(x, y, scale)
-	local ok, err = pcall(drawMap, self, x, y, scale)
+-- The hook of the Root clip (drawBefore of cl_flash_draw.lua): draws the map with the call drawMap prepared. View.Draw leaves the map's alpha in surface's colour,
+-- so it is put back to opaque white after it, whether the call returned or raised. Never raises: a failure here is told once and the movie goes on.
+local function drawPendingMap(self)
+	if not self.mapPending then
+		return
+	end
+
+	self.mapPending = false
+
+	local call = self.mapCall
+	local View = GryMod.Minimap.View
+	local ok, err = pcall(View.Draw, call.xf, call.px, call.py, call.yaw, call.range, call.level, call.alpha, call.below, call.belowAlpha, call.outside, call.outsideAlpha)
+	surface.SetDrawColor(255, 255, 255, 255)
 
 	if not ok then
 		reportError(err)
 	end
 
-	if self.mapDrawing then
-		self.mapDrawing = false
-		surface.SetDrawColor(255, 255, 255, 255)
+	-- the view swallows its own errors and keeps the last one: told once per message, then given back
+	local swallowed = View.LastError
+
+	if swallowed ~= nil then
+		reportError(swallowed)
+		View.LastError = nil
+	end
+end
+
+function Panel:Draw(x, y, scale)
+	self.mapPending = false
+
+	local ok, err = pcall(drawMap, self, x, y, scale)
+
+	if not ok then
+		reportError(err)
+		self.mapPending = false
+	end
+
+	-- the map is drawn by the movie's own drawing, in the middle of the Root clip (a rebuilt clip lost the hook: it is put back)
+	local main = self.main
+
+	if self.mapPending then
+		if not self.mapHook then
+			self.mapHook = function() drawPendingMap(self) end
+		end
+
+		if main.drawBefore ~= self.mapHook or main.drawBeforeDepth ~= Radar.MAP_DEPTH then
+			main.drawBefore, main.drawBeforeDepth = self.mapHook, Radar.MAP_DEPTH
+		end
 	end
 
 	Flash.Draw(self.root, x, y, scale)
+
+	-- a movie drawing that did not reach the hook leaves no map to draw later: it would be on top
+	self.mapPending = false
 end

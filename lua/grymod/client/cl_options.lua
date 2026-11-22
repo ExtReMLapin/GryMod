@@ -107,7 +107,7 @@ function GryMod.GryHUDOptions(Panel)
 
 	-- client settings: how far the grenade warning reaches, the old warning for the player's own hand grenade, walls (the original has no range and warns through walls)
 	-- client setting: the radius of the radar's map (the original's is 75 m; a smaller one makes the icons of big things nearer their real size)
-	Panel:NumSlider("Radar range (metres; 75 is the original's, 40 to 75 are good values)", "gry_radar_range", 20, 100, 0)
+	Panel:NumSlider("Radar range (metres; 75 is the original's, 40 to 75 are good values, down to 5 zooms the map right in; raise the map definition for a sharp picture)", "gry_radar_range", 5, 100, 0)
 	Panel:NumSlider("Grenade warning range (metres)", "gry_grenade_range", 5, 200, 0)
 	Panel:CheckBox("Grenade warning also for the hand grenade you threw (only within 15 m). Off: a grenade you threw never warns; your own missiles never do", "gry_grenade_own_warn")
 	Panel:CheckBox("Grenade warning only for what you can see (off: also through walls, as in the original game)", "gry_grenade_los")
@@ -285,13 +285,17 @@ local function clearMinimapCache()
 end
 
 -- The map behind the radar: the switch, how sharp it is (pixels per metre of the tiles; the distance is the radar range above), the size of
--- one tile, how much time the generator may take in a frame, and the button that clears the cache. The
+-- one tile, how opaque the map is, how much disk the cache of a map may take, how visible the floor below is through the empty parts of the current one, how visible the outside (the whole height of the map) is behind both, how much time the generator may take in a frame, and the button that clears the cache. The
 -- settings are written when the player changes a control, never when the panel opens.
 function GryMod.MinimapOptions(Panel)
 	Panel:Help("Minimap")
 
 	Panel:CheckBox("Draw the map of the level behind the radar", "gry_minimap")
 	Panel:NumSlider("Map definition (pixels per metre of the map tiles; more is sharper and takes longer to make)", "gry_minimap_definition", 1, 16, 0)
+	Panel:NumSlider("Map opacity (%)", "gry_minimap_opacity", 0, 100, 0)
+	Panel:NumSlider("Floor below (opacity %)", "gry_minimap_below", 0, 100, 0)
+	Panel:NumSlider("Outside behind the floors (opacity %; the whole height of the map seen through the solid parts, 0 = off)", "gry_minimap_outside", 0, 100, 0)
+	Panel:NumSlider("Cache size limit (MB)", "gry_minimap_cache_mb", 16, 4096, 0)
 
 	Panel:Help("Map tile size (pixels)")
 

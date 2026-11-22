@@ -59,7 +59,7 @@ local function install(state)
 				error(state.requestError, 0)
 			end
 
-			return state.requestResult
+			return state.requestResult, state.requestReason
 		end,
 		Progress = function() return state.progress end
 	}
@@ -81,6 +81,8 @@ local function install(state)
 		Draw = function(...)
 			state.calls[#state.calls + 1] = "View.Draw"
 			state.args.draw = {...}
+			state.args.drawInFlash, state.args.drawDepth = state.inFlash, state.hookDepth
+			GryMod.Minimap.View.LastError = state.viewLastError
 
 			if state.drawError then
 				error(state.drawError, 0)
@@ -90,9 +92,23 @@ local function install(state)
 		end
 	}
 
+	-- the movie's drawing: like the real one it runs the hook of the Root clip (drawBefore, at drawBeforeDepth) in the middle of its entries; the call
+	-- is recorded when it is done, so what the hook calls comes before it
 	GryMod.Flash.Draw = function(root, x, y, scale)
-		state.calls[#state.calls + 1] = "Flash.Draw"
 		state.args.flash = {root, x, y, scale}
+		local main = type(root) == "table" and root.Child and root:Child("Root")
+
+		if main and main.drawBefore then
+			state.inFlash, state.hookDepth = true, main.drawBeforeDepth
+			local ok, err = pcall(main.drawBefore, 1, 0, 0, 1, 0, 0)
+			state.inFlash = false
+
+			if not ok then
+				error(err, 0)
+			end
+		end
+
+		state.calls[#state.calls + 1] = "Flash.Draw"
 
 		return true
 	end
@@ -196,7 +212,7 @@ return {
 			end
 		},
 		{
-			name = "Gen.Request gets the level, the player's position and 1.75 times the range in units (another extent, range in metres, or no level)",
+			name = "Gen.Request gets the level, the player's position and the map extent (MAP_EXTENT) times the range in units (another extent, range in metres, or no level)",
 			func = function(state)
 				local ply = LocalPlayer()
 				local pos = ply:GetPos()
@@ -206,12 +222,12 @@ return {
 				expect(request[1]).to.equal(state.level)
 				expect(request[2]).to.aboutEqual(pos.x, 0.01)
 				expect(request[3]).to.aboutEqual(pos.y, 0.01)
-				expect(request[4]).to.aboutEqual(range * 1.75, 0.001)
+				expect(request[4]).to.aboutEqual(range * GryMod.FlashRadar.MAP_EXTENT, 0.001)
 				expect(state.args.floorZ).to.aboutEqual(pos.z, 0.01)
 			end
 		},
 		{
-			name = "View.Draw gets the transform, the position, the yaw, the range in units, the level and the alpha 0.6",
+			name = "View.Draw gets the transform, the position, the yaw, the range in units, the level and the map alpha (MAP_ALPHA)",
 			func = function(state)
 				local ply = LocalPlayer()
 				local pos = ply:GetPos()
@@ -224,7 +240,7 @@ return {
 				expect(draw[4]).to.aboutEqual(ply:EyeAngles().y, 0.01)
 				expect(draw[5]).to.aboutEqual(range, 0.001)
 				expect(draw[6]).to.equal(state.level)
-				expect(draw[7]).to.equal(0.6)
+				expect(draw[7]).to.equal(GryMod.FlashRadar.MAP_ALPHA)
 			end
 		},
 		{
@@ -316,10 +332,63 @@ return {
 					convar:SetString("40")
 					newPanel():Draw(0, 0, 1)
 					expect(state.args.draw[5]).to.aboutEqual(40 / GryMod.RadarShared.METRES_PER_UNIT, 0.001)
-					expect(state.args.request[4]).to.aboutEqual(40 / GryMod.RadarShared.METRES_PER_UNIT * 1.75, 0.001)
+					expect(state.args.request[4]).to.aboutEqual(40 / GryMod.RadarShared.METRES_PER_UNIT * GryMod.FlashRadar.MAP_EXTENT, 0.001)
 				end)
 
 				convar:SetString(old)
+
+				if not ok then error(err, 0) end
+			end
+		},
+		{
+			name = "at 5 metres (gry_radar_range at its minimum) Gen and View get a small finite extent, the real View needs a handful of tiles, and the contact at 4 m shows while the one at 6 m does not",
+			func = function(state)
+				local convar = GetConVar("gry_radar_range")
+				local old = convar:GetString()
+
+				local ok, err = pcall(function()
+					convar:SetString("5")
+					newPanel():Draw(0, 0, 1)
+
+					local mpu = GryMod.RadarShared.METRES_PER_UNIT
+					local range = 5 / mpu
+					local extent = state.args.request[4]
+
+					expect(GryMod.FlashRadar.Range()).to.equal(5)
+					expect(state.args.draw[5]).to.aboutEqual(range, 0.001)
+					expect(extent == extent and extent > 0 and extent < math.huge).to.beTrue()
+					expect(extent).to.aboutEqual(range * GryMod.FlashRadar.MAP_EXTENT, 0.001)
+
+					-- the real View (the stand-ins replaced it for the draw only): the tiles of that extent around the player at the owner's usual definition
+					local realView = state.saved.View
+					expect(realView ~= nil and realView.VisibleTiles ~= nil).to.beTrue()
+					local pos = LocalPlayer():GetPos()
+					-- View reads GryMod.Minimap.Cache at call time (the tile size is the cache's job): the real cache is put back for the call only
+					local standIn = GryMod.Minimap.Cache
+					GryMod.Minimap.Cache = state.saved.Cache
+					local okTiles, tiles = pcall(realView.VisibleTiles, state.level, pos.x, pos.y, extent, 1024, 3)
+					GryMod.Minimap.Cache = standIn
+
+					if not okTiles then error(tiles, 0) end
+
+					expect(type(tiles)).to.equal("table")
+					expect(#tiles >= 1 and #tiles <= 9).to.beTrue()
+
+					-- the contacts: 8.6 pixels a metre, the glass is 46 pixels ahead
+					local R = GryMod.FlashRadar
+					local function at(metres)
+						return {id = 1, x = metres / mpu, y = 0, z = 0, yaw = 0, type = 1, sub = 4, marker = false, big = false}
+					end
+
+					local shown = R.Contacts(Vector(0, 0, 0), 0, {at(4)}, 0, R.Range())
+					local gone = R.Contacts(Vector(0, 0, 0), 0, {at(6)}, 0, R.Range())
+
+					expect(#shown).to.equal(1)
+					expect(shown[1].x == shown[1].x and shown[1].y == shown[1].y).to.beTrue()
+					expect(#gone).to.equal(0)
+				end)
+
+				pcall(function() convar:SetString(old) end)
 
 				if not ok then error(err, 0) end
 			end
@@ -549,6 +618,603 @@ return {
 				expect(panel.main:Child("Noise").visible).to.beFalse()
 				expect(panel.progressText).to.beNil()
 				expect(panel.zone:Child("Zone").text).to.equal("gm_bigcity")
+			end
+		},
+		-- the floor below (wave 2)
+		{
+			name = "with Settings.Below() > 0 the level below goes to Gen.Request (5th argument) and to View.Draw with the opacity times the map's alpha (nothing passed)",
+			func = function(state)
+				local lower = {id = "a0", zlo = -160, zhi = 0}
+				state.belowLevel = lower
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Floors.Below = function(level)
+					state.args.belowOf = level
+					state.belowCalls = (state.belowCalls or 0) + 1
+
+					return state.belowLevel
+				end
+
+				local range = GryMod.FlashRadar.Range() / GryMod.RadarShared.METRES_PER_UNIT
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.belowOf).to.equal(state.level)
+				expect(state.args.request[4]).to.aboutEqual(range * GryMod.FlashRadar.MAP_EXTENT, 0.001)
+				expect(state.args.request[5]).to.equal(lower)
+				local draw = state.args.draw
+				expect(draw[6]).to.equal(state.level)
+				expect(draw[7]).to.equal(GryMod.FlashRadar.MAP_ALPHA)
+				expect(draw[8]).to.equal(lower)
+				expect(draw[9]).to.aboutEqual(0.4 * GryMod.FlashRadar.MAP_ALPHA, 1e-9)
+			end
+		},
+		{
+			name = "with Settings.Below() = 0 Floors.Below is not asked and both calls are as before (nil for the new arguments)",
+			func = function(state)
+				state.belowLevel = {id = "a0", zlo = -160, zhi = 0}
+				state.belowCalls = 0
+				GryMod.Minimap.Settings.Below = function() return 0 end
+				GryMod.Minimap.Floors.Below = function() state.belowCalls = state.belowCalls + 1 return state.belowLevel end
+				newPanel():Draw(0, 0, 1)
+				expect(state.belowCalls).to.equal(0)
+				expect(state.args.request[5]).to.beNil()
+				expect(state.args.draw[8]).to.beNil()
+				expect(state.args.draw[9] or 0).to.equal(0)
+				expect(state.args.draw[7]).to.equal(GryMod.FlashRadar.MAP_ALPHA)
+			end
+		},
+		{
+			name = "without Settings.Below or without Floors.Below the calls are as before and nothing is logged",
+			func = function(state)
+				-- no Below in Settings (the stand-in has none): Floors.Below must not even be needed
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[5]).to.beNil()
+				expect(state.args.draw[8]).to.beNil()
+
+				-- Settings.Below asks for a floor, but Floors has no Below
+				GryMod.Minimap.Settings.Below = function() return 0.5 end
+				GryMod.Minimap.Floors.Below = nil
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[5]).to.beNil()
+				expect(state.args.draw[8]).to.beNil()
+				expect(state.args.draw[9] or 0).to.equal(0)
+				expect(state.args.draw[7]).to.equal(GryMod.FlashRadar.MAP_ALPHA)
+				expect(#state.logged).to.equal(0)
+			end
+		},
+		{
+			name = "Floors.Below answering nil and a reason means no floor below, not an error: the map is still drawn",
+			func = function(state)
+				GryMod.Minimap.Settings.Below = function() return 0.5 end
+				GryMod.Minimap.Floors.Below = function() return nil, "no level" end
+				newPanel():Draw(0, 0, 1)
+				expect(#state.logged).to.equal(0)
+				expect(state.args.request[5]).to.beNil()
+				expect(state.args.draw[8]).to.beNil()
+				expect(state.args.draw[9] or 0).to.equal(0)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+				expect(state.calls[2]).to.equal("View.Draw")
+			end
+		},
+		{
+			name = "the veil and the text depend on the main level only: the floor below being made, or its tile being absent, changes nothing",
+			func = function(state)
+				local lower = {id = "a0", zlo = -160, zhi = 0}
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Floors.Below = function() return lower end
+				-- the main tile is there, the lower one is being made (Progress describes the main level, belowDone/belowTotal the other)
+				state.has = true
+				state.progress = {done = 4, total = 4, percent = 100, active = true, failed = 0, belowDone = 1, belowTotal = 9}
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(panel.progressText).to.beNil()
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+
+				-- only tiles of the main level are looked up under the player
+				for _, tile in ipairs(state.tiles) do
+					expect(tile.level).to.equal("a1")
+				end
+
+				-- the main tile is absent: the text is the main level's percentage, whatever the lower floor says
+				state.has = false
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0, belowDone = 9, belowTotal = 9}
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.progressText).to.equal("25%")
+
+				for _, tile in ipairs(state.tiles) do
+					expect(tile.level).to.equal("a1")
+				end
+			end
+		},
+		-- the outside, under the floor below (the open level of the map)
+		{
+			-- breaks if: the outside is not asked of Floors, not given to Gen.Request as 6th argument or to View.Draw as 10th with the map's alpha times its opacity
+			name = "with Settings.Outside() > 0 the outside goes to Gen.Request (6th argument) and to View.Draw (10th) with the opacity times the map's alpha, whatever the floor below is",
+			func = function(state)
+				local lower = {id = "a0", zlo = -160, zhi = 0}
+				local outside = {id = "open", open = true, zlo = -500, zhi = 900}
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Settings.Outside = function() return 0.3 end
+				GryMod.Minimap.Floors.Below = function() return lower end
+				GryMod.Minimap.Floors.Outside = function(level)
+					state.args.outsideOf = level
+					state.outsideCalls = (state.outsideCalls or 0) + 1
+
+					return outside
+				end
+
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.outsideOf).to.equal(state.level)
+				expect(state.args.request[5]).to.equal(lower)
+				expect(state.args.request[6]).to.equal(outside)
+				local draw = state.args.draw
+				expect(draw[6]).to.equal(state.level)
+				expect(draw[8]).to.equal(lower)
+				expect(draw[9]).to.aboutEqual(0.4 * GryMod.FlashRadar.MAP_ALPHA, 1e-9)
+				expect(draw[10]).to.equal(outside)
+				expect(draw[11]).to.aboutEqual(0.3 * GryMod.FlashRadar.MAP_ALPHA, 1e-9)
+
+				-- without a floor below the outside is still there
+				GryMod.Minimap.Settings.Below = function() return 0 end
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[5]).to.beNil()
+				expect(state.args.request[6]).to.equal(outside)
+				expect(state.args.draw[8]).to.beNil()
+				expect(state.args.draw[10]).to.equal(outside)
+			end
+		},
+		{
+			-- breaks if: Floors.Outside is asked with the setting at 0, or the new arguments are not nil
+			name = "with Settings.Outside() = 0 Floors.Outside is not asked and both calls have no outside (nil, alpha 0)",
+			func = function(state)
+				state.outsideCalls = 0
+				GryMod.Minimap.Settings.Outside = function() return 0 end
+				GryMod.Minimap.Floors.Outside = function() state.outsideCalls = state.outsideCalls + 1 return {id = "open", open = true} end
+				newPanel():Draw(0, 0, 1)
+				expect(state.outsideCalls).to.equal(0)
+				expect(state.args.request[6]).to.beNil()
+				expect(state.args.draw[10]).to.beNil()
+				expect(state.args.draw[11] or 0).to.equal(0)
+				expect(state.args.draw[7]).to.equal(GryMod.FlashRadar.MAP_ALPHA)
+			end
+		},
+		{
+			-- breaks if: a missing Settings.Outside or Floors.Outside raises, logs, or draws an outside
+			name = "without Settings.Outside or without Floors.Outside there is no outside, and nothing is logged",
+			func = function(state)
+				-- no Outside in Settings (the stand-in has none)
+				GryMod.Minimap.Floors.Outside = function() return {id = "open", open = true} end
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[6]).to.beNil()
+				expect(state.args.draw[10]).to.beNil()
+
+				-- Settings.Outside asks for it, but Floors has no Outside
+				GryMod.Minimap.Settings.Outside = function() return 0.5 end
+				GryMod.Minimap.Floors.Outside = nil
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[6]).to.beNil()
+				expect(state.args.draw[10]).to.beNil()
+				expect(state.args.draw[11] or 0).to.equal(0)
+				expect(state.args.draw[7]).to.equal(GryMod.FlashRadar.MAP_ALPHA)
+				expect(#state.logged).to.equal(0)
+
+				-- a nonsense setting is no outside
+				GryMod.Minimap.Floors.Outside = function() return {id = "open", open = true} end
+
+				for _, bad in ipairs({0 / 0, "x", -1, false}) do
+					GryMod.Minimap.Settings.Outside = function() return bad end
+					newPanel():Draw(0, 0, 1)
+					expect(state.args.request[6]).to.beNil()
+					expect(state.args.draw[10]).to.beNil()
+				end
+
+				expect(#state.logged).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: an open level (nothing behind it) is reported as an error
+			name = "Floors.Outside answering nil and \"open\" (the player is outdoors) or nil and a reason is no outside, not an error: the map is still drawn",
+			func = function(state)
+				local open = {id = "open", open = true, zlo = -16384, zhi = 16384}
+				GryMod.Minimap.Settings.Outside = function() return 0.3 end
+				GryMod.Minimap.Floors.CurrentAt = function() return open end
+				GryMod.Minimap.Floors.Outside = function(level) state.args.outsideOf = level return nil, "open" end
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.outsideOf).to.equal(open)
+				expect(#state.logged).to.equal(0)
+				expect(state.args.request[6]).to.beNil()
+				expect(state.args.draw[10]).to.beNil()
+				expect(state.args.draw[11] or 0).to.equal(0)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+				expect(state.calls[2]).to.equal("View.Draw")
+
+				GryMod.Minimap.Floors.Outside = function() return nil, "no world bounds" end
+				newPanel():Draw(0, 0, 1)
+				expect(#state.logged).to.equal(0)
+				expect(state.args.draw[10]).to.beNil()
+			end
+		},
+		{
+			-- breaks if: an error in Floors.Outside loses the whole map
+			name = "Floors.Outside that raises is told, and the map is still drawn without the outside",
+			func = function(state)
+				GryMod.Minimap.Settings.Outside = function() return 0.3 end
+				GryMod.Minimap.Floors.Outside = function() error("outside blew up", 0) end
+				newPanel():Draw(0, 0, 1)
+				expect(#state.logged).to.equal(1)
+				expect(state.logged[1]:find("outside blew up", 1, true) ~= nil).to.beTrue()
+				expect(state.calls[2]).to.equal("View.Draw")
+				expect(state.args.draw[10]).to.beNil()
+				expect(state.args.request[6]).to.beNil()
+			end
+		},
+		{
+			-- breaks if: the veil or the text count the outside, or the tile of the outside is looked up under the player
+			name = "the veil and the text depend on the main level only: the outside being made, or its tile being absent, changes nothing",
+			func = function(state)
+				local outside = {id = "open", open = true, zlo = -500, zhi = 900}
+				GryMod.Minimap.Settings.Outside = function() return 0.3 end
+				GryMod.Minimap.Floors.Outside = function() return outside end
+				state.has = true
+				state.progress = {done = 4, total = 4, percent = 100, active = true, failed = 0, outsideDone = 1, outsideTotal = 9}
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beFalse()
+				expect(panel.progressText).to.beNil()
+				expect(alphaOf(panel.main:Child("Units"))).to.aboutEqual(1, 0.001)
+
+				state.has = false
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0, outsideDone = 9, outsideTotal = 9}
+				panel:Draw(0, 0, 1)
+				expect(panel.main:Child("Noise").visible).to.beTrue()
+				expect(panel.progressText).to.equal("25%")
+
+				for _, tile in ipairs(state.tiles) do
+					expect(tile.level).to.equal("a1")
+				end
+			end
+		},
+		{
+			-- breaks if: the outside alpha does not follow the map's opacity, or the setting is cached and not read at each request
+			name = "the outside's alpha is the map's alpha times its own opacity; a change of the setting is seen at the next draw (the next request is recomputed)",
+			func = function(state)
+				local outside = {id = "open", open = true, zlo = -500, zhi = 900}
+				local setting = 0.3
+				GryMod.Minimap.Settings.Opacity = function() return 0.7 end
+				GryMod.Minimap.Settings.Outside = function() return setting end
+				GryMod.Minimap.Floors.Outside = function() return outside end
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[11]).to.aboutEqual(0.21, 1e-9)
+				expect(state.args.request[6]).to.equal(outside)
+
+				setting = 0.5
+				panel:Draw(0, 0, 1)
+				expect(state.args.draw[11]).to.aboutEqual(0.35, 1e-9)
+
+				setting = 0
+				panel:Draw(0, 0, 1)
+				expect(state.args.request[6]).to.beNil()
+				expect(state.args.draw[10]).to.beNil()
+				expect(state.args.draw[11] or 0).to.equal(0)
+
+				setting = 0.3
+				panel:Draw(0, 0, 1)
+				expect(state.args.request[6]).to.equal(outside)
+			end
+		},
+		{
+			-- breaks if: a table is made for the call of each frame (the outside is written in the table of the panel)
+			name = "the call kept for the hook is one table per panel: the outside is written into it, no new table at each frame",
+			func = function(state)
+				local outside = {id = "open", open = true, zlo = -500, zhi = 900}
+				GryMod.Minimap.Settings.Outside = function() return 0.3 end
+				GryMod.Minimap.Floors.Outside = function() return outside end
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				local call = panel.mapCall
+				expect(type(call)).to.equal("table")
+				expect(call.outside).to.equal(outside)
+				expect(call.outsideAlpha).to.aboutEqual(0.3 * GryMod.FlashRadar.MAP_ALPHA, 1e-9)
+
+				for i = 1, 5 do
+					panel:Draw(0, 0, 1)
+				end
+
+				expect(panel.mapCall).to.equal(call)
+			end
+		},
+		-- the level of the player from Floors.CurrentAt (wave 3)
+		{
+			name = "Floors.CurrentAt gets the player's position vector and its level goes to Gen.Request, View.Draw and the tile looked up (Current(z) is still used)",
+			func = function(state)
+				local ceiling = {id = "z0h2", zlo = -56, zhi = 72}
+				state.currentAtCalls = 0
+				GryMod.Minimap.Floors.CurrentAt = function(pos)
+					state.currentAtCalls = state.currentAtCalls + 1
+					state.args.currentAt = pos
+
+					return ceiling
+				end
+
+				state.has = false
+				newPanel():Draw(0, 0, 1)
+				local pos = LocalPlayer():GetPos()
+				expect(state.currentAtCalls).to.equal(1)
+				expect(isvector(state.args.currentAt)).to.beTrue()
+				expect(state.args.currentAt.x).to.aboutEqual(pos.x, 0.01)
+				expect(state.args.currentAt.y).to.aboutEqual(pos.y, 0.01)
+				expect(state.args.currentAt.z).to.aboutEqual(pos.z, 0.01)
+				expect(state.args.floorZ).to.beNil() -- Current(z) was not asked
+				expect(state.args.request[1]).to.equal(ceiling)
+				expect(state.args.draw[6]).to.equal(ceiling)
+				expect(state.tiles[1].level).to.equal("z0h2")
+			end
+		},
+		{
+			name = "without Floors.CurrentAt the level comes from Current(z) as before",
+			func = function(state)
+				GryMod.Minimap.Floors.CurrentAt = nil
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.floorZ).to.aboutEqual(LocalPlayer():GetPos().z, 0.01)
+				expect(state.args.request[1]).to.equal(state.level)
+				expect(state.args.draw[6]).to.equal(state.level)
+				expect(#state.logged).to.equal(0)
+			end
+		},
+		{
+			name = "an open level (outdoors) has no floor below and it is not an error: Floors.Below answers nil and \"open\", nothing is logged",
+			func = function(state)
+				local open = {id = "open", open = true, zlo = -16384, zhi = 16384}
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Floors.CurrentAt = function() return open end
+				GryMod.Minimap.Floors.Below = function(level)
+					state.args.belowOf = level
+
+					return nil, "open"
+				end
+
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.belowOf).to.equal(open)
+				expect(#state.logged).to.equal(0)
+				expect(state.args.request[1]).to.equal(open)
+				expect(state.args.request[5]).to.beNil()
+				expect(state.args.draw[6]).to.equal(open)
+				expect(state.args.draw[8]).to.beNil()
+				expect(state.args.draw[9] or 0).to.equal(0)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+				expect(state.calls[2]).to.equal("View.Draw")
+			end
+		},
+		-- the map is drawn in the middle of the movie, between the glass and the rest (a map drawn before the film is dimmed by the glass)
+		{
+			name = "View.Draw runs inside the movie's drawing, from the hook of the Root clip at depth 3: after the glass (depth 1), before the mask, the units and the frame (drawn before the film)",
+			func = function(state)
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				expect(state.args.drawInFlash).to.beTrue()
+				expect(state.args.drawDepth).to.equal(3)
+				expect(panel.main.drawBeforeDepth).to.equal(3)
+				expect(type(panel.main.drawBefore)).to.equal("function")
+				-- the glass is the Root clip's first entry and the mask is at depth 3 in the movie: the hook is between them
+				local depths = {}
+
+				for _, entry in ipairs(panel.main:Entries()) do
+					depths[#depths + 1] = entry.depth
+				end
+
+				expect(depths[1] < 3).to.beTrue()
+				expect(depths[2]).to.equal(3)
+			end
+		},
+		{
+			name = "Draw puts the hook back when the Root clip lost it, and draws the map every frame",
+			func = function(state)
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel.main.drawBefore, panel.main.drawBeforeDepth = nil, nil
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				local draws = 0
+
+				for _, call in ipairs(state.calls) do
+					if call == "View.Draw" then draws = draws + 1 end
+				end
+
+				expect(draws).to.equal(3)
+				expect(state.args.drawInFlash).to.beTrue()
+			end
+		},
+		{
+			name = "the map is not drawn when the movie's drawing does not reach the hook, and never twice for one frame (View.Draw stays in the hook)",
+			func = function(state)
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				local before = #state.calls
+				-- a frame in which the movie is not drawn at all: Draw is not called, nothing may draw the map
+				expect(before).to.equal(3)
+				-- a movie drawing that ignores the hook
+				GryMod.Flash.Draw = function() state.calls[#state.calls + 1] = "Flash.Draw" return true end
+				panel:Draw(0, 0, 1)
+				local draws = 0
+
+				for _, call in ipairs(state.calls) do
+					if call == "View.Draw" then draws = draws + 1 end
+				end
+
+				expect(draws).to.equal(1)
+			end
+		},
+		{
+			name = "the map's alpha is 0.9 by default and follows Settings.Opacity when there is one; the floor below is that alpha times its own opacity",
+			func = function(state)
+				expect(GryMod.FlashRadar.MAP_ALPHA).to.equal(0.9)
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.draw[7]).to.equal(0.9)
+
+				GryMod.Minimap.Settings.Opacity = function() return 0.7 end
+				GryMod.Minimap.Settings.Below = function() return 0.4 end
+				GryMod.Minimap.Floors.Below = function() return {id = "a0", zlo = -160, zhi = 0} end
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.draw[7]).to.aboutEqual(0.7, 1e-9)
+				expect(state.args.draw[9]).to.aboutEqual(0.28, 1e-9)
+
+				-- a nonsense value is not used
+				GryMod.Minimap.Settings.Opacity = function() return 0 / 0 end
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.draw[7]).to.equal(0.9)
+			end
+		},
+		{
+			name = "the extent asked of Gen is the reach of the map frame: View.ExtentFactor() when the view has one, else MAP_EXTENT",
+			func = function(state)
+				local range = GryMod.FlashRadar.Range() / GryMod.RadarShared.METRES_PER_UNIT
+				GryMod.Minimap.View.ExtentFactor = function() return 1.97 end
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[4]).to.aboutEqual(range * 1.97, 0.001)
+				GryMod.Minimap.View.ExtentFactor = nil
+				newPanel():Draw(0, 0, 1)
+				expect(state.args.request[4]).to.aboutEqual(range * GryMod.FlashRadar.MAP_EXTENT, 0.001)
+			end
+		},
+		-- switching the map off during a generation, the errors of the view and of the generator, the index of the cache
+		{
+			name = "switching gry_minimap off cancels the generator once; switching it on re-arms it (the queue was still being emptied by the PostRender hook)",
+			func = function(state)
+				state.cancelCalls = 0
+				GryMod.Minimap.Gen.Cancel = function() state.cancelCalls = state.cancelCalls + 1 end
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(state.cancelCalls).to.equal(0)
+				state.enabled = false
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(state.cancelCalls).to.equal(1)
+				state.enabled = true
+				panel:Draw(0, 0, 1)
+				expect(state.cancelCalls).to.equal(1)
+				state.enabled = false
+				panel:Draw(0, 0, 1)
+				expect(state.cancelCalls).to.equal(2)
+			end
+		},
+		{
+			name = "a generator without Cancel, a missing one, or a Cancel that raises does not stop the radar (the error is told once)",
+			func = function(state)
+				state.enabled = false
+				newPanel():Draw(0, 0, 1)
+				expect(#state.logged).to.equal(0)
+				GryMod.Minimap.Gen.Cancel = function() error("cancel failed", 0) end
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(1)
+				expect(string.find(state.logged[1], "cancel failed", 1, true) ~= nil).to.beTrue()
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+				GryMod.Minimap.Gen = nil
+				newPanel():Draw(0, 0, 1)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+			end
+		},
+		{
+			name = "View.LastError is told once per message after View.Draw and cleared (the view keeps the last error it swallowed)",
+			func = function(state)
+				state.viewLastError = "tile 3,4 failed"
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(1)
+				expect(string.find(state.logged[1], "tile 3,4 failed", 1, true) ~= nil).to.beTrue()
+				-- the field is given back to nil after the first read: here the stand-in sets it again at each draw, the message is told once all the same
+				state.viewLastError = "another one"
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(2)
+				state.viewLastError = nil
+				panel:Draw(0, 0, 1)
+				expect(GryMod.Minimap.View.LastError).to.beNil()
+				expect(#state.logged).to.equal(2)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
+			end
+		},
+		{
+			name = "Gen.Request answering nil and a reason blocks nothing and is told once (too many tiles, no tile size); no reason, no word",
+			func = function(state)
+				state.requestResult, state.requestReason = nil, "too many tiles"
+				local panel = newPanel()
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(1)
+				expect(string.find(state.logged[1], "too many tiles", 1, true) ~= nil).to.beTrue()
+				local draws = 0
+
+				for _, call in ipairs(state.calls) do
+					if call == "View.Draw" then draws = draws + 1 end
+				end
+
+				expect(draws).to.equal(3)
+				state.requestReason = "no tile size"
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(2)
+				state.requestResult, state.requestReason = true, nil
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(2)
+			end
+		},
+		{
+			name = "when the generation ends (the tile under the player is there and the generator is idle) Cache.Flush is called once, not before and not again",
+			func = function(state)
+				state.flushCalls = 0
+				GryMod.Minimap.Cache.Flush = function() state.flushCalls = state.flushCalls + 1 end
+				local panel = newPanel()
+				-- always ready and idle: nothing to flush
+				state.progress = {done = 4, total = 4, percent = 100, active = false, failed = 0}
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(state.flushCalls).to.equal(0)
+				-- generating: the tile under the player is missing
+				state.has = false
+				state.progress = {done = 1, total = 4, percent = 25, active = true, failed = 0}
+				panel:Draw(0, 0, 1)
+				expect(state.flushCalls).to.equal(0)
+				-- the tile is there but the generator still works: not yet
+				state.has = true
+				panel:Draw(0, 0, 1)
+				expect(state.flushCalls).to.equal(0)
+				-- idle: the index is written, once
+				state.progress = {done = 4, total = 4, percent = 100, active = false, failed = 0}
+				panel:Draw(0, 0, 1)
+				panel:Draw(0, 0, 1)
+				expect(state.flushCalls).to.equal(1)
+				-- and again the next time
+				state.has, state.progress = false, {done = 0, total = 4, percent = 0, active = true, failed = 0}
+				panel:Draw(0, 0, 1)
+				state.has, state.progress = true, {done = 4, total = 4, percent = 100, active = false, failed = 0}
+				panel:Draw(0, 0, 1)
+				expect(state.flushCalls).to.equal(2)
+			end
+		},
+		{
+			name = "a cache without Flush, or a Flush that raises, does not stop the radar (told once)",
+			func = function(state)
+				local panel = newPanel()
+				state.has, state.progress = false, {done = 0, total = 4, percent = 0, active = true, failed = 0}
+				panel:Draw(0, 0, 1)
+				state.has, state.progress = true, {done = 4, total = 4, percent = 100, active = false, failed = 0}
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(0)
+				GryMod.Minimap.Cache.Flush = function() error("flush failed", 0) end
+				state.has, state.progress = false, {done = 0, total = 4, percent = 0, active = true, failed = 0}
+				panel:Draw(0, 0, 1)
+				state.has, state.progress = true, {done = 4, total = 4, percent = 100, active = false, failed = 0}
+				panel:Draw(0, 0, 1)
+				expect(#state.logged).to.equal(1)
+				expect(state.calls[#state.calls]).to.equal("Flash.Draw")
 			end
 		},
 		-- failures never stop the radar

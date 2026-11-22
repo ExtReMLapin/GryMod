@@ -127,22 +127,25 @@ return {
 			end
 		},
 		{
-			name = "the visible area is the original's polygon, not a disc",
+			name = "the visible area is the glass of the movie (Radar.FRAME), not a disc and not the original's smaller polygon",
 			func = function(state)
-				-- ahead: 42 pixels = 73.3 m
-				expect(one({contact(70, 0)})).toNot.beNil()
-				expect(one({contact(76, 0)})).to.beNil()
-				-- behind: 45 pixels = 78.5 m
-				expect(one({contact(-76, 0)})).toNot.beNil()
-				expect(one({contact(-81, 0)})).to.beNil()
-				-- left: 58 pixels = 101.3 m, right: 62 pixels = 108.2 m
-				expect(one({contact(0, -99)})).toNot.beNil()
-				expect(one({contact(0, -104)})).to.beNil()
-				expect(one({contact(0, 104)})).toNot.beNil()
-				expect(one({contact(0, 111)})).to.beNil()
-				-- the lower right corner is cut: (50 px, 40 px behind) is in, (55 px, 40 px behind) is out
-				expect(one({contact(-40 * 75 / 43, 50 * 75 / 43)})).toNot.beNil()
-				expect(one({contact(-40 * 75 / 43, 55 * 75 / 43)})).to.beNil()
+				-- at 75 m the glass is 45.95 pixels ahead = 80.1 m, 49.5 behind = 86.4 m, 77.4 to the left = 135 m, 70.8 to the right = 123.5 m
+				expect(one({contact(78, 0)})).toNot.beNil()
+				expect(one({contact(83, 0)})).to.beNil()
+				expect(one({contact(-84, 0)})).toNot.beNil()
+				expect(one({contact(-89, 0)})).to.beNil()
+				expect(one({contact(0, -132)})).toNot.beNil()
+				expect(one({contact(0, -138)})).to.beNil()
+				expect(one({contact(0, 121)})).toNot.beNil()
+				expect(one({contact(0, 126)})).to.beNil()
+				-- what the original's polygon (Radar.ORIGINAL_FRAME) dropped is still there: 76 m ahead, 81 m behind, 104 m to the left, 111 m to the right
+				expect(one({contact(76, 0)})).toNot.beNil()
+				expect(one({contact(-81, 0)})).toNot.beNil()
+				expect(one({contact(0, -104)})).toNot.beNil()
+				expect(one({contact(0, 111)})).toNot.beNil()
+				-- the lower right corner is cut: (60 px, 40 px behind) is in, (70 px, 40 px behind) is out
+				expect(one({contact(-40 * 75 / 43, 60 * 75 / 43)})).toNot.beNil()
+				expect(one({contact(-40 * 75 / 43, 70 * 75 / 43)})).to.beNil()
 			end
 		},
 		{
@@ -187,24 +190,24 @@ return {
 			end
 		},
 		{
-			name = "a shooter marker outside the polygon sits on its border, in the same direction",
+			name = "a shooter marker outside the glass sits on its border, in the same direction",
 			func = function(state)
 				local e = one({contact(300, 0, {marker = true, sub = 2})})
 				expect(e).toNot.beNil()
 				expect(e.x).to.aboutEqual(CX, 0.05)
-				expect(e.y).to.aboutEqual(CY - 42 * PX, 0.05)
+				expect(e.y).to.aboutEqual(CY - 45.95 * PX, 0.05)
 
-				-- far to the right: the right edge (62 pixels)
+				-- far to the right: the right edge (70.8 pixels)
 				e = one({contact(0, 400, {marker = true})})
-				expect(e.x).to.aboutEqual(CX + 62 * PX, 0.05)
+				expect(e.x).to.aboutEqual(CX + 70.8 * PX, 0.05)
 				expect(e.y).to.aboutEqual(CY, 0.05)
 
 				-- diagonal ahead left: on the border, still up and left
 				e = one({contact(400, -400, {marker = true})})
 				expect(e.x < CX).to.beTrue()
 				expect(e.y < CY).to.beTrue()
-				expect(e.x >= CX - 58 * PX - 0.05).to.beTrue()
-				expect(e.y >= CY - 42 * PX - 0.05).to.beTrue()
+				expect(e.x >= CX - 77.38 * PX - 0.05).to.beTrue()
+				expect(e.y >= CY - 45.95 * PX - 0.05).to.beTrue()
 			end
 		},
 		{

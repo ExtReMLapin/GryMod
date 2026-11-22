@@ -345,30 +345,31 @@ return {
 			end
 		},
 		{
-			name = "the radar's range is the player's choice, 20 to 100 metres, 75 (the original's) by default: ClampRange, and the gate and the search radius that follow it",
+			name = "the radar's range is the player's choice, 5 to 100 metres, 75 (the original's) by default: ClampRange, and the gate and the search radius that follow it",
 			func = function()
-				expect(S.MIN_RANGE).to.equal(20)
+				expect(S.MIN_RANGE).to.equal(5)
 				expect(S.MAX_RANGE).to.equal(100)
 				expect(S.ClampRange(nil)).to.equal(75)
 				expect(S.ClampRange(0)).to.equal(75)
 				expect(S.ClampRange(0 / 0)).to.equal(75)
 				expect(S.ClampRange("40")).to.equal(75)
 				expect(S.ClampRange(-5)).to.equal(75)
-				expect(S.ClampRange(10)).to.equal(20)
+				expect(S.ClampRange(3)).to.equal(5)
+				expect(S.ClampRange(10)).to.equal(10)
 				expect(S.ClampRange(500)).to.equal(100)
 				expect(S.ClampRange(40)).to.equal(40)
 				expect(S.ClampRange(40.4)).to.equal(40)
 
-				-- no argument is the original's 75 m: 15 pixels of 43 gate, 1.3 x the radius to look
+				-- no argument is the original's 75 m: 15 pixels of 43 gate, SCAN_FACTOR x the radius to look
 				local gate75 = 15 * 75 / 43 / S.METRES_PER_UNIT
 				expect(math.abs(S.GateUnits() - gate75) < 0.01).to.beTrue()
-				expect(math.abs(S.ScanUnits() - 75 * 1.3 / S.METRES_PER_UNIT) < 0.01).to.beTrue()
+				expect(math.abs(S.ScanUnits() - 75 * S.SCAN_FACTOR / S.METRES_PER_UNIT) < 0.01).to.beTrue()
 				expect(math.abs(S.GateUnits(40) - 15 * 40 / 43 / S.METRES_PER_UNIT) < 0.01).to.beTrue()
-				expect(math.abs(S.ScanUnits(40) - 40 * 1.3 / S.METRES_PER_UNIT) < 0.01).to.beTrue()
+				expect(math.abs(S.ScanUnits(40) - 40 * S.SCAN_FACTOR / S.METRES_PER_UNIT) < 0.01).to.beTrue()
 			end
 		},
 		{
-			name = "Step follows the range: a hostile alerted at 20 m is tagged with the original's 75 m (gate 26 m) and not with 40 m (gate 14 m); a tagged vehicle at 70 m is listed at 75 and not at 40 (search 52 m)",
+			name = "Step follows the range: a hostile alerted at 20 m is tagged with the original's 75 m (gate 26 m) and not with 40 m (gate 14 m); a tagged vehicle at 100 m is listed at 75 and not at 40 (search 84 m)",
 			func = function()
 				local function fresh() return {tagged = setmetatable({}, {__mode = "k"}), markers = setmetatable({}, {__mode = "k"})} end
 				local metres = 1 / S.METRES_PER_UNIT
@@ -384,7 +385,7 @@ return {
 				local key = {}
 				st.tagged[key] = true
 				local vehicle = {key = key, id = 801, class = "prop_vehicle_jeep", hostile = false, ally = false, state = NPC_STATE_NONE, enemyIsPlayer = false,
-					health = 0, maxHealth = 0, x = 70 * metres, y = 0, z = 0, yaw = 0, type = 3, radar = "scan"}
+					health = 0, maxHealth = 0, x = 100 * metres, y = 0, z = 0, yaw = 0, type = 3, radar = "scan"}
 
 				expect(#R.Step(Vector(0, 0, 0), {vehicle}, st, 0, false, 75)).to.equal(1)
 				expect(#R.Step(Vector(0, 0, 0), {vehicle}, st, 0, false, 40)).to.equal(0)
@@ -420,10 +421,10 @@ return {
 			end
 		},
 		{
-			name = "the tick uses the player's range: a scanned vehicle at 60 m is listed with 75 m and not with 40 m",
+			name = "the tick uses the player's range: a scanned vehicle at 100 m is listed with 75 m and not with 40 m",
 			func = function()
 				local p = ply()
-				local jeep = spawnJeep(60 / S.METRES_PER_UNIT)
+				local jeep = spawnJeep(100 / S.METRES_PER_UNIT)
 
 				expect(R.Scan(p, jeep)).to.beTrue()
 

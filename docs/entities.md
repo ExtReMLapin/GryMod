@@ -292,7 +292,7 @@ An entry is matched by its class, then by its base, then by its `match` function
 ### `radar`: when the contact is listed
 
 The radar's contacts are worked out on the server, five times a second, for the players who have the radar on, among the
-entities within the radar's range (the player's setting, 20 to 100 m; the search goes a third beyond). It lists NPCs, the nextbots
+entities within the radar's range (the player's setting, 5 to 100 m; the search goes 2.1 times as far, to the corners of the radar glass). It lists NPCs, the nextbots
 that an entry matches, and the vehicles and devices whose entry has a `radar` rule other than `"never"`. Players are not listed.
 
 | `radar` | The contact is listed |

@@ -45,8 +45,28 @@ return {
 				-- 15 pixels of 43 for 75 m is 26.2 m
 				expect(R().GateMetres()).to.aboutEqual(15 * 75 / 43, 0.001)
 				expect(R().GateUnits()).to.aboutEqual(15 * 75 / 43 / 0.01905, 0.5)
-				-- the entities are looked for 1.3 times further than the radar shows (no pop-in at the edge)
-				expect(R().ScanUnits()).to.aboutEqual(75 * 1.3 / 0.01905, 0.5)
+				-- the entities are looked for as far as the radar window reaches (no pop-in at the edge): its farthest corner is 90 pixels of 43 away, so at least
+				-- 2.09 radiuses (tests/minimap/radar_frame_test.lua checks it against GryMod.FlashRadar.FRAME)
+				expect(R().SCAN_FACTOR >= 90 / 43).to.beTrue()
+				expect(R().ScanUnits()).to.aboutEqual(75 * R().SCAN_FACTOR / 0.01905, 0.5)
+			end
+		},
+		{
+			name = "the radius may go down to 5 metres: ClampRange keeps 5 (not the old 20), and the gate and the search radius follow it without a floor of their own",
+			func = function(state)
+				expect(R().MIN_RANGE).to.equal(5)
+				expect(R().MAX_RANGE).to.equal(100)
+				expect(R().ClampRange(5)).to.equal(5)
+				expect(R().ClampRange(4.6)).to.equal(5)
+				expect(R().ClampRange(1)).to.equal(5)
+				expect(R().ClampRange(10)).to.equal(10)
+				expect(R().ClampRange(0)).to.equal(75) -- no usable number is still the original's
+				-- at 5 m: 15 pixels of 43 are 1.74 m, the search radius is 2.1 radiuses (10.5 m): both finite and above zero
+				expect(R().GateMetres(5)).to.aboutEqual(15 * 5 / 43, 0.001)
+				expect(R().GateUnits(5)).to.aboutEqual(15 * 5 / 43 / 0.01905, 0.01)
+				expect(R().ScanUnits(5)).to.aboutEqual(5 * R().SCAN_FACTOR / 0.01905, 0.01)
+				-- the search still reaches the farthest corner of the glass (90 pixels of 43 for 5 m is 10.47 m)
+				expect(R().ScanUnits(5) * 0.01905 >= 90 / 43 * 5).to.beTrue()
 			end
 		},
 		{
