@@ -376,6 +376,7 @@ function GryMod.MinimapOptions(Panel)
 	Panel:NumSlider("Floor below (opacity %)", "gry_minimap_below", 0, 100, 0)
 	Panel:NumSlider("Outside behind the floors (opacity %; the whole height of the map seen through the solid parts, 0 = off)", "gry_minimap_outside", 0, 100, 0)
 	Panel:CheckBox("Make the outdoor map tiles in advance (from the in/out map, at the definitions the zoom ranges need; off: only as you play)", "gry_minimap_preload")
+	Panel:CheckBox("Also in advance the places a step from each ground node of the map (fewer veils on ramps and at doors; a longer plan and more tiles)", "gry_minimap_preload_around")
 	Panel:NumSlider("Cache size limit (MB)", "gry_minimap_cache_mb", 16, 4096, 0)
 
 	Panel:Help("Map tile size (pixels)")

@@ -1460,6 +1460,38 @@ return {
 			end
 		},
 		{
+			-- The preload asks GroundAt and OpenAt thousands of times (the ring and the cells of the outdoor boxes, 2026-11-22): a parameter table, two Vectors and an answer table made at
+			-- each call are garbage the collector pays for in the frames of the plan (slow frames of 10 ms measured on gm_everpine_mall). breaks if: a call makes a new parameter table
+			-- or a new answer table (the same two tables are used each time, like the rays of CurrentAt)
+			name = "GroundAt and OpenAt reuse their parameter table and their answer table at each call (no garbage per ray)",
+			func = function(state)
+				state.ray = {Hit = true, HitSky = false, StartSolid = false, HitPos = Vector(10, 20, -273)}
+				F().GroundAt(10, 20, -200)
+				F().GroundAt(30, 40, -100)
+				expect(#state.traces).to.equal(2)
+				expect(state.traces[1] == state.traces[2]).to.beTrue()
+				expect(state.traces[2].start.x).to.equal(30)
+				expect(state.traces[2].start.z).to.equal(-100)
+				expect(state.traces[2].endpos.z).to.equal(-356)
+				expect(istable(state.traces[2].output)).to.beTrue()
+
+				state.traces = {}
+				F().OpenAt(10, 20, 30)
+				F().OpenAt(50, 60, 70)
+				expect(#state.traces).to.equal(2)
+				expect(state.traces[1] == state.traces[2]).to.beTrue()
+				expect(state.traces[2].start.x).to.equal(50)
+				expect(state.traces[2].start.z).to.equal(70)
+				expect(state.traces[2].mask).to.equal(MASK_SOLID_BRUSHONLY)
+
+				-- the two do not share it (a call of one inside the other would spoil the first's numbers)
+				state.traces = {}
+				F().GroundAt(1, 2, 3)
+				F().OpenAt(1, 2, 3)
+				expect(state.traces[1] ~= state.traces[2]).to.beTrue()
+			end
+		},
+		{
 			-- PeekAt is what the preload asks for each ground place of the node graph (the floors): the level CurrentAt would give a player standing there, with no player: no
 			-- memory of a last shot, none made. breaks if: it gives another level than CurrentAt for the same rays, it spoils the remembered shot of the player (the next
 			-- CurrentAt would shoot again, or give another level), or it holds a level as the display does
