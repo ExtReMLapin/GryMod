@@ -88,13 +88,22 @@ local function find(log, kind, name)
 	end
 end
 
--- the net messages the server starts, as a list: {name, mode (the first UInt), target}
+-- the net messages the server starts, as a list: {name, mode (the first UInt), reason (the second UInt: the id of the cause), target}
 local function recorded(fn, now)
 	local sent = {}
 
 	with({
-		{net, "Start", function(name) sent[#sent + 1] = {name = name} return true end},
-		{net, "WriteUInt", function(value) sent[#sent].mode = value end},
+		{net, "Start", function(name) sent[#sent + 1] = {name = name, writes = 0} return true end},
+		{net, "WriteUInt", function(value)
+			local message = sent[#sent]
+			message.writes = message.writes + 1
+
+			if message.writes == 1 then
+				message.mode = value
+			elseif message.writes == 2 then
+				message.reason = value
+			end
+		end},
 		{net, "Send", function(target) sent[#sent].target = target end},
 		{_G, "CurTime", function() return now end}
 	}, fn)
@@ -194,6 +203,8 @@ return {
 					expect(sent[1].name).to.equal("gry_nanosuit_mode_change")
 					expect(sent[1].mode).to.equal(mode)
 					expect(sent[1].target).to.equal(ply)
+					-- would fail if: the answer had no cause, or the cause of another path: the client reads this one as "I just arrived, this is the real mode"
+					expect(sent[1].reason).to.equal(GryMod.ModeReasonIds[GryMod.ModeReasons.SYNC])
 				end
 
 				local sent = ready(fakePlayer({}, nil), 10) -- a suit that never had a mode is in armor

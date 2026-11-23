@@ -57,13 +57,24 @@ local selectableModes = {
 
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
-	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.SPAWN)
+	-- the energy first: a handler of GryMod_ModeChanged (cause SPAWN) runs inside SetNanosuitMode and must see the full bar of the new life
 	ply:SetNW2Float("GryEnergy", 100)
+	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.SPAWN)
 	net.Start("gry_spawn")
 	net.Send(ply)
 end)
 
 local meta = FindMetaTable("Player")
+
+-- Tells the client the mode the server really keeps (a refused request leaves both sides in step), and why: `reason` is one of GryMod.ModeReasons; it
+-- crosses the network as its id (GryMod.ModeReasonIds, ModeReasonBits wide) and the client makes the string of it again for the hook
+-- GryMod_ModeChanged (cl_hud.lua). A missing or unknown cause goes as OTHER.
+local function tellMode(ply, mode, reason)
+	net.Start("gry_nanosuit_mode_change")
+	net.WriteUInt(mode, 3)
+	net.WriteUInt(GryMod.ModeReasonIds[reason] or GryMod.ModeReasonIds[GryMod.ModeReasons.OTHER], GryMod.ModeReasonBits)
+	net.Send(ply)
+end
 
 -- Applies a mode asked by a client, and tells the client the real mode when the request is refused,
 -- so both sides never stay out of sync.
@@ -73,9 +84,8 @@ function GryMod.SetModeFromClient(ply, mode)
 	end
 
 	if not selectableModes[mode] then
-		net.Start("gry_nanosuit_mode_change")
-		net.WriteUInt(ply.Nanosuit_mode or GryMod.Modes.ARMOR, 3)
-		net.Send(ply)
+		-- a refused request: the client undoes what it did at once (its change was optimistic)
+		tellMode(ply, ply.Nanosuit_mode or GryMod.Modes.ARMOR, GryMod.ModeReasons.VETOED)
 
 		return
 	end
@@ -86,13 +96,6 @@ end
 net.Receive("gry_nanosuit_mode_change", function(len, ply)
 	GryMod.SetModeFromClient(ply, net.ReadUInt(3)) -- cheeeetaaa: that is why the mode is checked
 end)
-
--- Tells the client the mode the server really keeps (a refused request leaves both sides in step).
-local function tellMode(ply, mode)
-	net.Start("gry_nanosuit_mode_change")
-	net.WriteUInt(mode, 3)
-	net.Send(ply)
-end
 
 -- A client that has finished loading says so (cl_hud.lua, at InitPostEntity, and when its files are loaded again in a running game) and is told the
 -- mode the server really keeps. The message of the spawn (above) is sent while the client may still be loading, and the engine does not deliver net
@@ -113,7 +116,7 @@ function GryMod.AnswerReady(ply)
 	end
 
 	ply.gryReadyAnswered = now
-	tellMode(ply, ply.Nanosuit_mode or GryMod.Modes.ARMOR)
+	tellMode(ply, ply.Nanosuit_mode or GryMod.Modes.ARMOR, GryMod.ModeReasons.SYNC)
 
 	return true
 end
@@ -126,7 +129,8 @@ end)
 -- out, a malfunction, the extension API (GryMod.API.SetMode). Returns true, or false and why the suit stayed as it was or
 -- went to armor instead: "dead", "malfunction", "disabled" (the suit is off: GryMod.API.SetSuitEnabled), "vetoed".
 -- The armor is the suit's safe state: it is never vetoed (a malfunction, an empty bar or a respawn must always reach it).
--- `reason` (one of GryMod.ModeReasons, OTHER when left out) is the 4th argument of GryMod_ModeChanged. When the suit cannot take the mode asked (down or
+-- `reason` (one of GryMod.ModeReasons, OTHER when left out) is the 4th argument of GryMod_ModeChanged, which runs when the mode changes and at EVERY
+-- respawn (cause SPAWN, even armor to armor); with `networked` it is also sent to the client, which runs the same hook for its own player (cl_hud.lua). When the suit cannot take the mode asked (down or
 -- off) it goes to armor and the reason is the real one (malfunction, disabled), not the asker's.
 function meta:SetNanosuitMode(mode, networked, reason)
 	if not self:Alive() then
@@ -149,7 +153,7 @@ function meta:SetNanosuitMode(mode, networked, reason)
 			reason = GryMod.ModeReasons[string.upper(refused)]
 		elseif mode ~= (self.Nanosuit_mode or GryMod.Modes.ARMOR) and hook.Run("GryMod_CanSetMode", self, mode) == false then
 			-- another addon refuses this mode (veto): nothing changes, and the client is told, as for any refused request
-			tellMode(self, self.Nanosuit_mode or GryMod.Modes.ARMOR)
+			tellMode(self, self.Nanosuit_mode or GryMod.Modes.ARMOR, GryMod.ModeReasons.VETOED)
 
 			return false, "vetoed"
 		end
@@ -197,12 +201,15 @@ function meta:SetNanosuitMode(mode, networked, reason)
 	self.Nanosuit_mode = mode
 	hook.Run("GryNanosuitMode", self, mode) -- sv_cloak_ai.lua: the NPCs forget a camouflaged player
 
-	if mode ~= oldMode then
-		hook.Run("GryMod_ModeChanged", self, mode, oldMode, reason or GryMod.ModeReasons.OTHER)
+	reason = reason or GryMod.ModeReasons.OTHER
+
+	-- a change is announced; so is a respawn, always, even from armor to armor (a respawn is a new life of the suit, not a "same mode again")
+	if mode ~= oldMode or reason == GryMod.ModeReasons.SPAWN then
+		hook.Run("GryMod_ModeChanged", self, mode, oldMode, reason)
 	end
 
 	if networked then
-		tellMode(self, mode)
+		tellMode(self, mode, reason)
 	end
 
 	return refused == nil, refused
