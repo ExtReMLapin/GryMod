@@ -97,6 +97,11 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		-- the armor never runs out
 		dmginfo:SetDamage(0)
 
+		-- a report for the addons, after the damage was changed: all of the hit went to the armor
+		if amt > 0 then
+			hook.Run("GryMod_ArmorAbsorbed", ply, amt, 0)
+		end
+
 		return
 	end
 
@@ -113,10 +118,23 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 			dmginfo:SetDamage(0)
 			ply:SetNW2Float("GryEnergy", ply:GetNW2Float("GryEnergy") - amt)
 			hook.Run("GryUseEnergy", ply)
+
+			-- the bar paid all of the hit (a hit of 0 took nothing: nothing to report)
+			if amt > 0 then
+				hook.Run("GryMod_ArmorAbsorbed", ply, amt, 0)
+			end
+
 			return
 		end
 
 		hook.Run("GryUseEnergy", ply)
+
+		-- the bar was not enough: what the armor did not take goes on to the health (the damage as it is now)
+		local passed = dmginfo:GetDamage()
+
+		if amt - passed > 0 then
+			hook.Run("GryMod_ArmorAbsorbed", ply, amt - passed, passed)
+		end
 	end
 
 

@@ -51,6 +51,24 @@ local function restoreFields(p)
 	touched = {}
 end
 
+-- the damage handler of the armor, called the way the engine calls it; returns the DamageInfo after the handler changed it
+local function takeDamage(p, amount, damageType)
+	local dmg = DamageInfo()
+	dmg:SetDamage(amount)
+	dmg:SetDamageType(damageType or DMG_BULLET)
+	hook.GetTable().EntityTakeDamage["Grymod damage handeling"](p, dmg)
+
+	return dmg
+end
+
+-- the least part of a hit the armor takes is a rule of the mechanics: the tests choose it (0 = classic, 0.3 = the original game)
+local realMinimum
+
+local function setMinimumAbsorption(value)
+	realMinimum = realMinimum or GryMod.Mech.ArmorMinimumAbsorption
+	GryMod.Mech.ArmorMinimumAbsorption = function() return value end
+end
+
 local savedJumpPower
 
 -- a player as far as GryMod.ZoomFov looks (the same fake as tests/sv_zoom_fov_test.lua): alive, the normal field of view, no zoom owner
@@ -119,6 +137,12 @@ return {
 		end
 
 		GryMod.ZoomFov.Reset()
+
+		if realMinimum then
+			GryMod.Mech.ArmorMinimumAbsorption = realMinimum
+			realMinimum = nil
+		end
+
 		GryMod.Config = table.Copy(savedConfig)
 	end,
 	cases = {
@@ -372,6 +396,133 @@ return {
 				onDeath(dead)
 				Z.Forget(dead)
 				expect(#calls).to.equal(4)
+			end
+		},
+		-- GryMod_ArmorAbsorbed(ply, absorbed, passed)
+		{
+			-- fails without: the hook.Run in the "the armor takes all of the hit" branch of the damage handler (sv_health.lua)
+			name = "GryMod_ArmorAbsorbed, whole hit: the bar pays all of it: absorbed = the hit, passed = 0, once, after the damage was changed; a returned value changes nothing",
+			func = function()
+				local p = ply()
+				local seenDamage, seenEnergy
+				local calls = {}
+				local dmg
+
+				p:SetNW2Float("GryEnergy", 100)
+
+				listen("GryMod_ArmorAbsorbed", function(who, absorbed, passed)
+					calls[#calls + 1] = {who, absorbed, passed}
+					seenDamage = dmg and dmg:GetDamage()
+					seenEnergy = who:GetNW2Float("GryEnergy")
+
+					return true -- a report: this must not change the hit
+				end)
+
+				-- (the handler reads `dmg` when the hook runs, inside takeDamage: keep the object in reach)
+				local info = DamageInfo()
+				info:SetDamage(30)
+				info:SetDamageType(DMG_BULLET)
+				dmg = info
+				hook.GetTable().EntityTakeDamage["Grymod damage handeling"](p, info)
+
+				expect(#calls).to.equal(1)
+				expect(calls[1][1]).to.equal(p)
+				expect(calls[1][2]).to.equal(30)
+				expect(calls[1][3]).to.equal(0)
+				expect(seenDamage).to.equal(0) -- already the damage that goes on to the health
+				expect(seenEnergy).to.equal(70) -- already paid
+				expect(info:GetDamage()).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(70)
+			end
+		},
+		{
+			-- fails without: the hook.Run after the partial branch of the damage handler (the bar was not enough)
+			name = "GryMod_ArmorAbsorbed, partial: the bar was not enough: absorbed = the energy + the least part the armor takes, passed = what is left, they add up to the hit",
+			func = function()
+				local p = ply()
+				local calls = record("GryMod_ArmorAbsorbed")
+
+				setMinimumAbsorption(0.3)
+				p:SetNW2Float("GryEnergy", 20)
+
+				local dmg = takeDamage(p, 50, DMG_BULLET)
+
+				-- the bar (20) leaves 30 to pass, the armor keeps at least 30 percent of the hit (15): 30 passes
+				expect(#calls).to.equal(1)
+				expect(calls[1][1]).to.equal(p)
+				expect(calls[1][3]).to.equal(dmg:GetDamage())
+				expect(calls[1][2] + calls[1][3]).to.equal(50)
+				expect(calls[1][2]).to.equal(20)
+				expect(calls[1][3]).to.equal(30)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(0)
+			end
+		},
+		{
+			-- fails without: the least absorption counts as absorbed too (the minimum branch of the same code)
+			name = "GryMod_ArmorAbsorbed, partial with an empty bar: the least part the armor takes (30 percent) is reported; with a rule of 0 there is nothing to report",
+			func = function()
+				local p = ply()
+				local calls = record("GryMod_ArmorAbsorbed")
+
+				setMinimumAbsorption(0.3)
+				p:SetNW2Float("GryEnergy", 0)
+				local dmg = takeDamage(p, 100, DMG_BULLET)
+
+				expect(#calls).to.equal(1)
+				expect(calls[1][2]).to.equal(30)
+				expect(calls[1][3]).to.equal(70)
+				expect(dmg:GetDamage()).to.equal(70)
+
+				-- the rule of the classic mechanics: an empty bar takes nothing, so nothing is absorbed
+				setMinimumAbsorption(0)
+				p:SetNW2Float("GryEnergy", 0)
+				takeDamage(p, 100, DMG_BULLET)
+
+				expect(#calls).to.equal(1)
+			end
+		},
+		{
+			-- fails without: the hook.Run in the infinite armor branch, before its `return` (sv_health.lua)
+			name = "GryMod_ArmorAbsorbed, infinite armor: all of the hit is absorbed, passed = 0, the bar is not touched",
+			func = function()
+				local p = ply()
+				local calls = record("GryMod_ArmorAbsorbed")
+
+				GryMod.Config.InfiniteArmor = true
+				p:SetNW2Float("GryEnergy", 55)
+
+				local dmg = takeDamage(p, 40, DMG_BULLET)
+
+				expect(#calls).to.equal(1)
+				expect(calls[1][2]).to.equal(40)
+				expect(calls[1][3]).to.equal(0)
+				expect(dmg:GetDamage()).to.equal(0)
+				expect(p:GetNW2Float("GryEnergy")).to.equal(55)
+			end
+		},
+		{
+			-- fails without: the `absorbed > 0` test (a hit of 0 goes through the whole-hit branch and the infinite branch)
+			name = "GryMod_ArmorAbsorbed: not fired when the armor took nothing (a hit of 0, in either branch that has the bar), nor when the suit is not an armor",
+			func = function()
+				local p = ply()
+				local calls = record("GryMod_ArmorAbsorbed")
+
+				takeDamage(p, 0, DMG_BULLET)
+				GryMod.Config.InfiniteArmor = true
+				takeDamage(p, 0, DMG_BULLET)
+				GryMod.Config.InfiniteArmor = false
+				expect(#calls).to.equal(0)
+
+				-- another mode: the armor is not there
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				takeDamage(p, 10, DMG_BULLET)
+				expect(#calls).to.equal(0)
+
+				-- the suit is off
+				p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
+				p:SetNW2Bool("GryDisabled", true)
+				takeDamage(p, 10, DMG_BULLET)
+				expect(#calls).to.equal(0)
 			end
 		}
 	}
