@@ -63,6 +63,54 @@ function S.ScanUnits(range)
 	return (range or S.RANGE) * S.SCAN_FACTOR / S.METRES_PER_UNIT
 end
 
+-- The explosion pings (the original's icon type 6, an expanding ring at the place of an explosion; READ in CryGame.dll, CHUDRadar::Update and the explosion
+-- handler). A ping lives 2 seconds; its size is held to 8 when it is made and to 4 when it is drawn, and a ring of more than 4 makes one echo; the
+-- explosion event reaches the radar when it is within 250 m of the player.
+S.PING_LIFETIME = 2
+S.PING_MIN_SIZE = 0.5
+S.PING_MAX_SIZE = 8
+S.PING_DRAW_MAX_SIZE = 4
+S.PING_ECHO_ABOVE = 4
+S.PING_RANGE = 250
+-- The names a kind of ping may have (GryMod.API.ReportRadarPing), and the size each is: about the radius of the blast in metres.
+S.PING_KINDS = {small = 2, explosion = 4, big = 8}
+
+-- The size of a ping for a kind: nothing is the explosion, a name is its size, a number is held between the smallest and the biggest. Anything else (an
+-- unknown name, NaN, a table) is not a kind: nil.
+function S.PingSize(kind)
+	if kind == nil then
+		return S.PING_KINDS.explosion
+	end
+
+	if isstring(kind) then
+		return S.PING_KINDS[kind]
+	end
+
+	if isnumber(kind) and kind == kind then
+		return math.Clamp(kind, S.PING_MIN_SIZE, S.PING_MAX_SIZE)
+	end
+
+	return nil
+end
+
+-- The size of the ping of a blast of `radius` Source units: the same in metres, held. nil when it is not a number.
+function S.PingSizeOfRadius(radius)
+	if not isnumber(radius) or radius ~= radius then
+		return nil
+	end
+
+	return math.Clamp(radius * S.METRES_PER_UNIT, S.PING_MIN_SIZE, S.PING_MAX_SIZE)
+end
+
+-- The size on the wire: half metres in 5 bits (1 to 16, never 0).
+function S.PingToWire(size)
+	return math.Clamp(math.floor(size * 2 + 0.5), 1, 16)
+end
+
+function S.PingFromWire(wire)
+	return math.Clamp(wire, 1, 16) / 2
+end
+
 local POS_LIMIT = 2 ^ (S.POS_BITS - 1)
 
 local function quantisePosition(v)

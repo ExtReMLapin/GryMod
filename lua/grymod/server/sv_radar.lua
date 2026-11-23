@@ -8,6 +8,8 @@
 --     the hostiles above (alerted or fighting within 26 m, or scanned). Neutrals (animals, NPCs that neither like nor hate the
 --     player) show only when scanned or when they hurt him;
 --   - the NPC that hurt the player is marked for 10 s, on the border of the radar if it is out of it;
+--   - in a team game (at least two teams with players, GryMod.Radar.TeamsInUse) the living players of the player's team are contacts of type 7 (the original's
+--     team mate icon), wherever they are, while gry_radar_teammates is on;
 --   - the icon type: 1 ground, 2 flying, 3 machines (the registry's `type` and `size`: the stock classes are entries too).
 --   - the vehicles (the rectangle icons, type 3) and the Combine mines (type 4, a rectangle with a disc) are contacts once the binoculars
 --     scanned them (the registry gives them radar = "scan"): a vehicle in the colour of its DRIVER (nobody or a neutral: grey, a friend:
@@ -40,6 +42,10 @@ local alliesAlways = CreateConVar("gry_radar_allies_always", "1", bit.bor(FCVAR_
 -- The vehicles and the mines (every entity that is not an NPC and that the registry gives a radar rule): on the radar once scanned.
 local objects = CreateConVar("gry_radar_objects", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
 	"The radar shows the vehicles and the Combine mines once the binoculars have scanned them; 0 leaves them off the radar")
+
+-- The players of the same team (the original's icon type 7). Only in a team game: see Radar.TeamsInUse.
+local teammatesOn = CreateConVar("gry_radar_teammates", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
+	"The living players of your team (a team game: at least two teams with players) are on your radar, on the edge of it when they are far; 0 leaves them off")
 
 local INTERVAL = 0.2
 
@@ -395,6 +401,80 @@ function Radar.Step(origin, descs, st, now, alliesAlways, range)
 	return list
 end
 
+-- The teams that say something: the engine's connecting, unassigned and spectator "teams" do not (Sandbox keeps everybody in the unassigned one).
+local function realTeam(team)
+	return team ~= nil and team ~= TEAM_CONNECTING and team ~= TEAM_UNASSIGNED and team ~= TEAM_SPECTATOR
+end
+
+-- Whether the game uses teams: at least two real teams have a player among `players`.
+function Radar.TeamsInUse(players)
+	local first
+
+	for _, p in ipairs(players) do
+		if IsValid(p) then
+			local team = p:Team()
+
+			if realTeam(team) then
+				if first == nil then
+					first = team
+				elseif team ~= first then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+-- The contacts of the team mates of `ply` among `players` (all the players when not given): the other living players of his team that are not
+-- spectating, as type 7 icons (subtype 0, the original's), wherever they are (the client holds the far ones on the circle of the range). Nothing when
+-- the switch is off or the game has no teams.
+function Radar.Mates(ply, players)
+	local mates = {}
+
+	if not teammatesOn:GetBool() then
+		return mates
+	end
+
+	players = players or player.GetAll()
+
+	local team = ply:Team()
+
+	if not realTeam(team) or not Radar.TeamsInUse(players) then
+		return mates
+	end
+
+	for _, p in ipairs(players) do
+		if p ~= ply and IsValid(p) and p:Team() == team and p:Alive() and p:GetObserverMode() == OBS_MODE_NONE then
+			local at = p:GetPos()
+
+			mates[#mates + 1] = {
+				id = p:EntIndex(), x = at.x, y = at.y, z = at.z, yaw = p:GetAngles().y, type = 7, sub = 0, marker = false, big = false
+			}
+		end
+	end
+
+	return mates
+end
+
+-- The list with the mates added: they are never the ones to give way when the list is full, the farthest hostiles are. The list is changed and returned.
+function Radar.AddMates(list, mates)
+	if #mates == 0 then
+		return list
+	end
+
+	for i = #list, S.MAX_CONTACTS - #mates + 1, -1 do
+		list[i] = nil
+	end
+
+	for i = 1, math.min(#mates, S.MAX_CONTACTS) do
+		list[#list + 1] = mates[i]
+	end
+
+	return list
+end
+
 local function send(ply, list)
 	net.Start("gry_radar")
 	S.Write(list)
@@ -430,7 +510,7 @@ function Radar.Tick(ply, now)
 			end
 		end
 
-		list = Radar.Step(origin, descs, st, now, nil, range)
+		list = Radar.AddMates(Radar.Step(origin, descs, st, now, nil, range), Radar.Mates(ply))
 	end
 
 	local last = st.sent

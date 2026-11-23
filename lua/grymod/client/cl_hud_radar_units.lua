@@ -60,6 +60,9 @@ function Radar.Range()
 	return S.ClampRange(RangeConVar:GetFloat())
 end
 
+-- The icon type of a team mate (the original's type 7).
+Radar.MATE_TYPE = 7
+
 Radar.UNITS_PIXEL = 110 / 94
 -- The script's arithmetic gives (65, 51.5), but the player is not drawn there: MEASURED on two screenshots of the game (the movie's own
 -- vertical line and the base of the view cone, against icons whose movie coordinates were known), the centre of the radar is at
@@ -176,7 +179,16 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 			local y = -(dx * cos + dy * sin) * pixels
 			local show = true
 
-			if not insideFrame(x, y) then
+			local mate = c.type == Radar.MATE_TYPE
+
+			if mate then
+				-- a team mate beyond the range sticks to the circle of the range (the original clamps it by length; the units are dropped past the frame)
+				local length = math.sqrt(x * x + y * y)
+
+				if length > S.PIXELS then
+					x, y = x * S.PIXELS / length, y * S.PIXELS / length
+				end
+			elseif not insideFrame(x, y) then
 				if c.marker then
 					x, y = borderPoint(x, y)
 				else
@@ -187,6 +199,14 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 			if show then
 				local ally = c.sub == S.SUB_ALLY
 				local entry = reuse and list[count + 1]
+				-- a mate is drawn at alpha 100 and 100 times the height factor in percent: 4 times a unit's size (the original's numbers)
+				local scale = sizeFor(dz * S.METRES_PER_UNIT, c.big)
+				local alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
+
+				if mate then
+					scale, alpha = scale * 4, 100
+				end
+
 				count = count + 1
 
 				if entry then
@@ -195,8 +215,8 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 					entry.y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL
 					entry.rotation = (yaw - c.yaw + 180) % 360
 					entry.frame = c.type * 5 + (ally and 0 or c.sub)
-					entry.scale = sizeFor(dz * S.METRES_PER_UNIT, c.big)
-					entry.alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
+					entry.scale = scale
+					entry.alpha = alpha
 					entry.tint = ally and Radar.ALLY_TINT or nil
 				else
 					list[count] = {
@@ -205,8 +225,8 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 						y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL,
 						rotation = (yaw - c.yaw + 180) % 360,
 						frame = c.type * 5 + (ally and 0 or c.sub),
-						scale = sizeFor(dz * S.METRES_PER_UNIT, c.big),
-						alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA,
+						scale = scale,
+						alpha = alpha,
 						tint = ally and Radar.ALLY_TINT or nil
 					}
 				end

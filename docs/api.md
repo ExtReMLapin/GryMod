@@ -368,6 +368,35 @@ A source runs under `pcall`: when it throws, the others are not affected; after 
 The radar zoom (`gry_radar_range`, and the automatic zoom) applies to the markers as to the contacts. The player's switch is `gry_hud_radarmarkers`
 (Radar and map menu): off, no source is asked.
 
+### Explosion rings: `GryMod.API.ReportRadarPing(pos, kind)` (server)
+
+An explosion shows on the radar as a ring that opens and fades in two seconds (the original game's icon type 6). The server tells the players that are
+within 250 m of it. Every `env_explosion` does it by itself, so the Half-Life 2 grenades, rockets, barrels and energy balls ring the radar with no
+code from you, and so does an addon's own `env_explosion`. For anything else (your own blast, a gunshot, an alarm), report it:
+
+```lua
+-- server side
+GryMod.API.ReportRadarPing(ent:GetPos())             -- an ordinary explosion
+GryMod.API.ReportRadarPing(ent:GetPos(), "big")      -- "small", "explosion" or "big"
+GryMod.API.ReportRadarPing(ent:GetPos(), 6.5)        -- or the radius of the blast in metres (0.5 to 8)
+
+hook.Add("GryMod_RadarPing", "my_addon", function(pos, size, automatic)
+	-- a ping was accepted; `automatic` is true for the ones made from an env_explosion. The return value is not read.
+end)
+```
+
+`ReportRadarPing` returns `true`, or `false` and why: the position is not a `Vector`, the kind is not one, or more than 20 pings were reported in the
+same second. A ring of more than 4 m makes one echo, as the original does. The server's `gry_radar_pings` (Radar and map menu, administrators) turns the
+automatic pings off; a report through the function always goes out. The player's `gry_hud_radarpings` hides the rings. The rings are drawn through the
+marker sources above (key `gry_pings`).
+
+### Team mates
+
+In a team game (at least two teams with players: `Player:Team()` is neither the unassigned, the spectator nor the connecting team) the living players of
+your team show on your radar with the team mate icon (type 7), anywhere on the map: far ones stick to the circle of the range. Sandbox, where everybody is
+in one team, shows none. The server's `gry_radar_teammates` (1 by default; Radar and map menu, administrators) turns it off. They are radar contacts, so
+the player's "Radar contacts" switch hides them.
+
 ## Tracked entities
 
 `GryMod.API.Has("tracked")` is true. The registry of tracked entities says what an entity is for the HUD. For an NPC or a nextbot: its
