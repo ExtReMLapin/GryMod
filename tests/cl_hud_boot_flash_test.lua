@@ -46,6 +46,8 @@ local function withDeath(options, body)
 	end})
 
 	local realLocalPlayer, realDraw = LocalPlayer, GryMod.Flash.Draw
+	-- the stand-in is a table, not an entity: the real IsSuitEnabled says "no" to it, and the paint would drop the HUD instead of showing the death
+	local realEnabled = GryMod.API.IsSuitEnabled
 	local saved = {}
 
 	for name, value in pairs(options) do
@@ -59,6 +61,7 @@ local function withDeath(options, body)
 
 		LocalPlayer = function() return state.dead and stand or real end
 		GryMod.Flash.Draw = function() end
+		GryMod.API.IsSuitEnabled = function(ply) return ply == stand or realEnabled(ply) end
 		HUD.Reset()
 		Boot.Reset()
 		body(state, HUD)
@@ -66,6 +69,7 @@ local function withDeath(options, body)
 
 	LocalPlayer = realLocalPlayer
 	GryMod.Flash.Draw = realDraw
+	GryMod.API.IsSuitEnabled = realEnabled
 
 	for name, value in pairs(saved) do
 		pcall(function() GetConVar(name):SetString(value) end)
