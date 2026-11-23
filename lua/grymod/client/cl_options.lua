@@ -143,6 +143,8 @@ local function hudBehaviour(Panel)
 	GryMod.OptionBox(form, "Quick menu: the chosen icon stays lit", "gry_menu_keep_highlight", "While the menu fades out (the original). Off: it goes plain at the release.")
 	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one
 	GryMod.OptionBox(form, "Quick menu: the ring stays green", "gry_menu_ring_film", "Going from an active mode to an inactive one (the original). Off: it turns orange.")
+	-- client setting: the quick menu greys a mode that a rule of the server refuses, and shows every icon defective while the suit is down
+	GryMod.OptionBox(form, "Quick menu: grey out refused modes", "gry_menu_show_refused", "A mode that the server refuses (an add-on's rule, the suit switched off) is greyed; every icon turns red while the suit is down. The menu asks the server each time it opens.")
 	-- client setting: the quick menu pointer runs the game's rule on a fixed clock and the arrow is eased
 	GryMod.OptionBox(form, "Quick menu: a steady arrow", "gry_menu_pointer_film", "The arrow follows the mouse on a fixed clock and does not flutter at a high frame rate. Off: on every frame, as before.")
 	-- client setting: the suit mode icon plays its reboot animation when the HUD comes back

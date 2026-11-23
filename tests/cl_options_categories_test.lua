@@ -43,6 +43,7 @@ box:gry_malfunction_empty
 box:gry_menu_keep_highlight
 box:gry_menu_pointer_film
 box:gry_menu_ring_film
+box:gry_menu_show_refused
 box:gry_screenfx
 box:gry_sound_regen
 box:gry_sounds

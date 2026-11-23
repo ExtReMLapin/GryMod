@@ -135,6 +135,19 @@ end)
 It applies to every path that changes the mode, the player's own request included. It never applies to the armor mode: the armor is
 the suit's safe state (a malfunction, an empty bar and a respawn must always reach it).
 
+**The quick menu asks your veto too.** To grey out a mode that is refused, the quick menu asks the server when it opens, and again if the mode or the
+malfunction of the player changes while it is open. The server then runs `GryMod_CanSetMode` once for each of the modes speed, cloak and strength
+(never for the mode the suit is in, never for the armor, never while the suit is down or off). So your listener can be called more often than by
+real mode changes: it must only answer, with no side effect. If your rule changes while a player has the menu open (he walks into a zone), tell
+the menu:
+
+```lua
+GryMod.API.RefreshModeStates(ply) -- true, or false and "invalid player"; the open menu greys or restores its icons at once
+```
+
+A player can turn this off with `gry_menu_show_refused 0` (his menu then never asks the server and only greys the weapon icon when he holds nothing).
+On the client, `GryMod.FlashMenu.IsRefused(mode)` says what the server last answered.
+
 ### Notes on the reporting hooks
 
 All the hooks above only report: GryMod never reads what a handler returns, and a handler cannot change the result. (`GryMod_CanSetMode` is
