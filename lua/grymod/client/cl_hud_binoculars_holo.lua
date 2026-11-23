@@ -795,7 +795,7 @@ function V.Hidden(ply, ent)
 	return tr.Hit
 end
 
-local visionFrame = nil -- the frame number in which the vision buffer was filled (nil: it holds nothing to show)
+V.visionFrame = nil -- the frame number in which the vision buffer was filled (nil: it holds nothing to show; a field so that the tests can set it)
 local aaConVar
 
 -- The entities of this frame, flat in their colour, into the vision buffer (alpha 1 where one is). Every state it changes comes back, even on an error.
@@ -826,7 +826,7 @@ end
 
 -- PostDrawTranslucentRenderables, the crysis style: fills the vision buffer.
 function V.DrawVision(depth, skybox)
-	visionFrame = nil
+	V.visionFrame = nil
 
 	if depth or skybox or not wanted() or not V.built then
 		drawnCount = 0
@@ -878,7 +878,7 @@ function V.DrawVision(depth, skybox)
 	any = result
 
 	if any then
-		visionFrame = FrameNumber()
+		V.visionFrame = FrameNumber()
 	end
 end
 
@@ -899,16 +899,26 @@ local function drawGlow()
 		error(err, 0)
 	end
 
-	render.BlurRenderTarget(V.glow, V.BLUR, V.BLUR, V.BLUR_PASSES)
+	-- (the game's blur leaves the blurred buffer as the current render target, measured: every draw after it, the final quad included, then went into the
+	-- glow's buffer and nothing showed on the screen. A push and a pop round it give the screen's target back)
+	render.PushRenderTarget(V.glow)
+
+	local blurred, why = pcall(render.BlurRenderTarget, V.glow, V.BLUR, V.BLUR, V.BLUR_PASSES)
+
+	render.PopRenderTarget()
+
+	if not blurred then
+		error(why, 0)
+	end
 end
 
 -- RenderScreenspaceEffects, the crysis style: the glow, then the final pass added to the picture (the HUD is drawn after it).
 function V.Compose()
-	if visionFrame ~= FrameNumber() then
+	if V.visionFrame ~= FrameNumber() then
 		return
 	end
 
-	visionFrame = nil
+	V.visionFrame = nil
 
 	local ok, err = pcall(function()
 		drawGlow()
@@ -1072,7 +1082,7 @@ function Holo.Detach()
 
 	attached = false
 	drawnCount = 0
-	visionFrame = nil
+	V.visionFrame = nil
 	Holo.entries = {}
 	hook.Remove("PostDrawTranslucentRenderables", "GRYBINOCULARSHOLO")
 	hook.Remove("PreDrawHalos", "GRYBINOCULARSHOLO")

@@ -527,6 +527,84 @@ return {
 				expect(V.NeedsTraceOcclusion(8)).to.beTrue()
 				expect(V.NeedsTraceOcclusion(nil)).to.beFalse()
 			end
+		},
+		{
+			-- fails without the Push / Pop round render.BlurRenderTarget in the glow pass: the engine leaves the blurred target as the current one, so the final quad (and
+			-- every draw after it) went into the glow's buffer and nothing showed on the screen (seen in the game: the same quad drew when no blur had run before it)
+			name = "the glow's blur is wrapped in a Push / Pop of the render target (also when it fails), and the final quad is drawn on the screen's target",
+			func = function()
+				local V = H().Crysis
+				local names = {"PushRenderTarget", "PopRenderTarget", "Clear", "SetMaterial", "DrawScreenQuad", "BlurRenderTarget"}
+				local saved = {}
+				local savedFields = {glow = V.glow, rawMaterial = V.rawMaterial, finalMaterial = V.finalMaterial, rawRegisters = V.rawRegisters, finalRegisters = V.finalRegisters}
+				local savedFrame = V.visionFrame
+				local realErrorNoHalt = ErrorNoHalt
+
+				for _, name in ipairs(names) do
+					saved[name] = render[name]
+				end
+
+				local ok, err = pcall(function()
+					local material = {SetFloat = function() end}
+					local depth, quads, blurDepth, finalDepth = 0, 0, nil, nil
+					local failBlur = false
+
+					V.glow, V.rawMaterial, V.finalMaterial = {}, material, material
+					V.rawRegisters, V.finalRegisters = V.Registers(0, 100, 100), V.Registers(1, 100, 100)
+
+					render.PushRenderTarget = function() depth = depth + 1 end
+					render.PopRenderTarget = function() depth = depth - 1 end
+					render.Clear = function() end
+					render.SetMaterial = function() end
+
+					render.DrawScreenQuad = function()
+						quads = quads + 1
+
+						if quads == 2 then
+							finalDepth = depth
+						end
+					end
+
+					render.BlurRenderTarget = function()
+						blurDepth = depth
+
+						if failBlur then
+							error("blur failed", 0)
+						end
+					end
+
+					local function run()
+						depth, quads, blurDepth, finalDepth = 0, 0, nil, nil
+						V.visionFrame = FrameNumber()
+						V.Compose()
+					end
+
+					run()
+					expect(blurDepth ~= nil and blurDepth >= 1).to.beTrue()
+					expect(finalDepth).to.equal(0)
+					expect(depth).to.equal(0)
+
+					-- a failing blur: the target is still given back (nothing is drawn, the error is reported)
+					failBlur = true
+					ErrorNoHalt = function() end
+					run()
+					expect(depth).to.equal(0)
+				end)
+
+				ErrorNoHalt = realErrorNoHalt
+
+				for _, name in ipairs(names) do
+					render[name] = saved[name]
+				end
+
+				V.glow, V.rawMaterial, V.finalMaterial = savedFields.glow, savedFields.rawMaterial, savedFields.finalMaterial
+				V.rawRegisters, V.finalRegisters = savedFields.rawRegisters, savedFields.finalRegisters
+				V.visionFrame = savedFrame
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }
