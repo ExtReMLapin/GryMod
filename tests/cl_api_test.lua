@@ -315,10 +315,12 @@ return {
 					return
 				end
 
-				local saved = {GetConVar("gry_hud"):GetString(), GetConVar("gry_hud_status"):GetString(), GetConVar("gry_hud_radar"):GetString()}
+				local saved = {GetConVar("gry_hud"):GetString(), GetConVar("gry_hud_status"):GetString(), GetConVar("gry_hud_radar"):GetString(), GetConVar("gry_hud_radarhex"):GetString()}
 				GetConVar("gry_hud"):SetString("1")
 				GetConVar("gry_hud_status"):SetString("1")
 				GetConVar("gry_hud_radar"):SetString("1")
+				-- the alert hexagon is a third movie drawn over the radar: this case counts the two panels
+				GetConVar("gry_hud_radarhex"):SetString("0")
 
 				local realDraw, realEnabled = Flash.Draw, A.IsSuitEnabled
 				local drawn = 0
@@ -352,6 +354,7 @@ return {
 				GetConVar("gry_hud"):SetString(saved[1])
 				GetConVar("gry_hud_status"):SetString(saved[2])
 				GetConVar("gry_hud_radar"):SetString(saved[3])
+				GetConVar("gry_hud_radarhex"):SetString(saved[4])
 				GryMod.FlashHUD.Reset()
 				assert(ok, err)
 			end
