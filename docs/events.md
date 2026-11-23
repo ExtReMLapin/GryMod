@@ -59,6 +59,88 @@ Force it from your addon, for a drone's radar or a scripted alarm. The hexagon s
 GryMod.API.HUDEvent("radar_exposure", {level = 70, seconds = 5}) -- grown and red for 5 s
 ```
 
+## Hooks of the client
+
+Besides `GryMod_HUDEvent` (above) and `GryMod_RadarExposure`, the client runs these hooks. They only say that something happened: nothing
+reads what a listener returns. The malfunction, `GryMod_InOutMapReady` and `GryMod_InOutMapState` hooks are run inside a `pcall`: a listener
+that fails is shown once in the console and stops nothing. `GryMod_HUDStatus`, `GryMod_BinocularsToggled` and `GryMod_SuitZoom` are run with a
+plain `hook.Run`: an error in your listener there reaches GryMod's own code, so keep those listeners safe.
+
+### `GryMod_HUDStatus(status)`
+
+The state of the HUD changed. `status` is a number: `0` the suit works, `1` malfunction (the server says the suit is down; with
+`gry_malfunction_empty 1` an empty energy bar counts too), `2` flicker (a light shock). It is run once at each change of that number, from the
+frame code of the HUD, so only while the HUD is drawn (see "What depends on the drawn HUD"). GryMod's own `lost` and `reboot` events, and the
+close of the binoculars' zoom, are driven by it. A HUD that is built again (a respawn, a new theme) starts at `0` and does not report it: a
+suit that is down at that moment gives `1` at once, and the end of a malfunction that came while no HUD was drawn gives nothing. It has no
+"previous" argument; keep the last value yourself. For the state of the suit itself, use `GryMod_MalfunctionStart` and `GryMod_MalfunctionEnd`.
+
+### `GryMod_MalfunctionStart(ply)`, `GryMod_MalfunctionEnd(ply)`
+
+The suit of a player went down, or came back. They have the names of the server hooks (`docs/api.md`), but the client only sees the networked
+flag change, so it gives the player and nothing else: no duration, no cause. They are run for **every player** the client knows, not only the
+local one, and they do not need the HUD. A report is made when the flag really changes from false to true (start) or from true to false (end).
+Not reported: what the client learns when a player comes into view, or when you join (a suit that is already down gives no start), and a
+suit that stays down longer. The end is also reported when the server clears the flag at a death, a respawn or a disconnect, where the server
+hook `GryMod_MalfunctionEnd` is not run. A listener that fails is shown once in the console and does not stop the game's other hooks.
+
+### `GryMod_BinocularsToggled(wanted)`
+
+The player puts the binoculars up (`wanted` is `true`) or down (`false`). "Wanted" is: the player is alive and either holds the game's zoom
+key (`IN_ZOOM`) or has GryMod's own zoom open (`GryMod_SuitZoom` below). It is run once at each change of that answer, and only looked at
+when one of those two says something (the own zoom's hook, the key press or release of `IN_ZOOM`), not at every frame. It says what the
+player asks for, not what is on the screen: it does not look at `gry_hud` or `gry_hud_binoculars`, so a player who holds the game's zoom key
+with the HUD off still gives it. A player who dies while holding the game's zoom key and lets go of it while dead leaves the last answer stale
+until the next key event or own zoom event. Nothing is reported when the file loads.
+
+### `GryMod_SuitZoom(active, reason)`
+
+The **own zoom** of the binoculars (option `gry_zoom_own`, its own key) opened or closed. It is not the game's zoom key: that one never
+runs this hook (use `GryMod_BinocularsToggled` for both). On open: `GryMod_SuitZoom(true)`, no second argument, only when a zoom really
+opens (nothing in the world prevents it). On close: `GryMod_SuitZoom(false, reason)`, once, only when a zoom was open. `reason` is one of:
+
+- soft, the binoculars close as usual in 0.2 s: `"release"` (the key let go), `"toggle"` (a second press), `"weapon"` (the weapon changed),
+  `"weaponkey"` (a weapon key was pressed), `"water"`;
+- hard, the binoculars are put away at once: `"init"`, `"death"`, `"disabled"` (the option `gry_zoom_own`, the HUD, the binoculars or the suit is off), `"quickmenu"`,
+  `"pause"`, `"console"`, `"ui"` (a cursor or a panel has the focus), `"chat"`, `"focus"` (the game lost the focus), `"malfunction"`,
+  `"vehicle"`, `"thirdperson"`, `"viewentity"`, `"observer"`, `"frozen"`, `"viewtaken"` (another addon took the view), `"shutdown"`,
+  `"spawnmenu"`, `"contextmenu"`.
+
+A reset of the module (a reload of the file) is silent: no hook.
+
+### `GryMod_InOutMapReady(boxCount)`
+
+The client received a complete file of the in/out map of the level, decoded it and indexed it without error. `boxCount` is the number of
+boxes of the map (a number). It is run each time a file is accepted, so it can come more than once for a level (the server sends the file again
+when the map is made again, and when a client asks). It is also run for a map flagged incomplete (state 5 below). Not run when the file is
+refused. It does not say that a map went away: for that, watch `GryMod_InOutMapState`. A listener that fails is shown once in the console and
+does not stop the receiver.
+
+### `GryMod_InOutMapState(state, done, total)`
+
+The server told the client the state of its work on the in/out map. `state` is a whole number: `0` off, `1` no graph, `2` waiting, `3`
+computing, `4` ready, `5` incomplete (made, but not from every point), `6` failed (the reason is in the server log). `done` and `total` count
+the points the server has sampled and the points there are (while computing; at `4` and `5` they are equal). It is run for every valid message, so also for a repeat of the same state (the server repeats it when a client asks; while computing
+it sends at most four a second). With a state under `4`, or `6`, the map the client held is dropped before the hook is run. At `4` and `5`
+the message comes first and the file after it: `GryMod_InOutMapReady` follows. A message with a state outside 0 to 6 is ignored, no hook.
+A listener that fails is shown once in the console and does not stop the receiver.
+
+## What depends on the drawn HUD
+
+GryMod's HUD is drawn by one `HUDPaint` hook (`Module.Paint` of `cl_hud_flash.lua`). `Module.Apply` removes it when `gry_hud` is 0 or when
+the HUD movie is missing; while it is there, `Module.Paint` stops at the start (and forgets the HUD) when the player is dead or when the suit
+is off (the suit flag of the server, or an event `disabled` that has not been followed by `enabled`). Several reports are made from the frame
+code that this hook runs, so in those cases they are not made:
+
+- `GryMod_HUDStatus`, and so the events `lost` and `reboot` that GryMod plays from it;
+- the event `low_health`, and the picture half of `armor_hit` (the sound half comes from a message of the server and does not need the HUD);
+- `GryMod_RadarExposure` (the meter of the hexagon is fed by the radar's frame code, `Radar.Feed`).
+
+These do **not** depend on the HUD being drawn: the events `mode`, `decloak`, `energy_critical`, `regen_start`, `regen_stop`, `dive_in`,
+`dive_out`, `drown`, `enabled` and `disabled`, the sound half of `armor_hit`, the hooks `GryMod_MalfunctionStart` and `GryMod_MalfunctionEnd`, and
+`GryMod_BinocularsToggled`. (`GryMod_SuitZoom` is another case: the own zoom only opens while the HUD and the binoculars are on, and closes with the reason `"disabled"` if they go off.) If your addon needs to know
+that the suit is down whatever the HUD does, use the malfunction hooks, not `GryMod_HUDStatus`.
+
 ## Play an event
 
 On the client:
