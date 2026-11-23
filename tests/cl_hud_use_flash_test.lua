@@ -111,29 +111,31 @@ return {
 	end,
 	cases = {
 		{
-			-- fails without Use.Describe
-			name = "Describe: a weapon or an item is TAKE with the pickup icon, a vehicle ENTER, a ladder CLIMB, the rest the plain USE; nothing for a mode that is not 1",
+			name = "Describe: a vehicle is ENTER, a ladder CLIMB, a door USE, an ammo crate TAKE AMMO, a unknown thing the plain USE; nothing for a mode that is not 1; the entry comes back as the second value",
 			func = function()
 				local player = fakePlayer()
-				local weapon = Use.Describe(fake("weapon_smg1", {weapon = true, print = "SMG"}), 1, player)
-				expect(weapon.icon).to.equal("pickup")
-				expect(weapon.text).to.equal("TAKE SMG")
 
-				local vehicle = Use.Describe(fake("prop_vehicle_jeep", {vehicle = true}), 1, player)
+				local vehicle, entry = Use.Describe(fake("prop_vehicle_jeep", {vehicle = true}), 1, player)
 				expect(vehicle.icon).to.equal("enter")
 				expect(vehicle.text).to.equal("ENTER VEHICLE")
+				expect(entry.key).to.equal("hl2_vehicles")
 
 				local ladder = Use.Describe(fake("func_useableladder"), 1, player)
 				expect(ladder.icon).to.equal("ladder")
 				expect(ladder.text).to.equal("CLIMB")
 
-				local plain = Use.Describe(fake("func_something_unknown"), 1, player)
+				local crate = Use.Describe(fake("item_ammo_crate"), 1, player)
+				expect(crate.icon).to.equal("pickup")
+				expect(crate.text).to.equal("TAKE AMMO")
+
+				local plain, plainEntry = Use.Describe(fake("func_something_unknown"), 1, player)
 				expect(plain.icon).to.equal("use")
 				expect(plain.text).to.equal("USE")
+				expect(plainEntry).to.beNil()
 
 				-- the crosshair is red for what can not be used: no prompt for it, nor for nothing
-				expect(Use.Describe(fake("weapon_smg1", {weapon = true}), 2, player)).to.beNil()
-				expect(Use.Describe(fake("weapon_smg1", {weapon = true}), 0, player)).to.beNil()
+				expect(Use.Describe(fake("func_button"), 2, player)).to.beNil()
+				expect(Use.Describe(fake("func_button"), 0, player)).to.beNil()
 				expect(Use.Describe(nil, 1, player)).to.beNil()
 				expect(Use.Describe({IsValid = function() return false end}, 1, player)).to.beNil()
 			end
@@ -159,7 +161,7 @@ return {
 					{"func_door", nil, 1}, {"prop_door_rotating", nil, 1}, {"func_tank", nil, 1}, {"npc_turret_floor", nil, 1},
 					{"npc_citizen", {npc = true, health = 40}, 1}, {"npc_citizen", {npc = true, health = 0}, 0},
 					{"npc_kleiner", {npc = true, health = 40}, 0}, {"npc_zombie", {npc = true, health = 40}, 0},
-					{"item_healthkit", nil, 1}, {"item_healthcharger", nil, 1}, {"item_ammo_crate", nil, 1},
+					{"item_healthkit", nil, 0}, {"weapon_pistol", nil, 0}, {"item_healthcharger", nil, 1}, {"item_ammo_crate", nil, 1},
 					{"item_item_crate", nil, 0}, {"combine_mine", nil, 0}, {"func_brush", nil, 0}, {"gmod_button", nil, 1}
 				}) do
 					expect(Cross.UsableFor(fake(row[1], row[2]), player)).to.equal(row[3])
@@ -170,24 +172,24 @@ return {
 			end
 		},
 		{
-			-- fails without the player's pickup limits (the Source SDK's CanPickupObject(ent, 35, 128))
-			name = "a prop is usable only when the player can lift it: 35 kg and 128 units on every side at most (the size is read, the mass when the client has it)",
+			name = "a prop is usable only when the player can lift it by size (128 units on every side at most; the mass comes from the server, see the crosshair's tests), and only with the props group on",
 			func = function()
 				local player = fakePlayer(false)
 
+				setConVar("gry_usehint_props", "1")
 				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 40)}), player)).to.equal(1)
 				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(128, 128, 128)}), player)).to.equal(1)
 				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(129, 20, 20)}), player)).to.equal(0)
 				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 200)}), player)).to.equal(0)
-				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 20), mass = 35}), player)).to.equal(1)
-				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 20), mass = 36}), player)).to.equal(0)
-				expect(Cross.UsableFor(fake("func_physbox", {size = Vector(20, 20, 20), mass = 300}), player)).to.equal(0)
-				-- no size and no mass to read: usable (the client cannot tell)
+				-- no size to read: usable
 				expect(Cross.UsableFor(fake("prop_physics"), player)).to.equal(1)
 				-- a door is not a prop: the limits are for the grab icon only
 				expect(Cross.UsableFor(fake("prop_door_rotating", {size = Vector(10, 100, 300)}), player)).to.equal(1)
 				expect(Cross.PICKUP_MASS).to.equal(35)
 				expect(Cross.PICKUP_SIZE).to.equal(128)
+
+				setConVar("gry_usehint_props", "0")
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 40)}), player)).to.equal(0)
 			end
 		},
 		{
@@ -197,9 +199,9 @@ return {
 				expect(Use.Active()).to.beFalse()
 				expect(hook.GetTable()["HUDPaint"]["GRYFLASHUSE"]).to.beNil()
 
-				listener()(fake("weapon_smg1", {weapon = true, print = "SMG"}), 1, fakePlayer())
-				expect(Use.Shown().icon).to.equal("pickup")
-				expect(Use.Shown().text).to.equal("TAKE SMG")
+				listener()(fake("func_useableladder"), 1, fakePlayer())
+				expect(Use.Shown().icon).to.equal("ladder")
+				expect(Use.Shown().text).to.equal("CLIMB")
 				expect(Use.Active()).to.beTrue()
 				expect(hook.GetTable()["HUDPaint"]["GRYFLASHUSE"]).to.exist()
 
@@ -311,6 +313,173 @@ return {
 				hook.Remove("GryMod_UsableChanged", "gry_use_test_bad")
 				hook.Remove("GryMod_UsableChanged", "gry_use_test_spy")
 				assert(ok, tostring(err))
+			end
+		},
+		{
+			-- fails without Use.OnUsePressed hiding a one-shot prompt ("a mounted gun, if I press E I use it so it changes state, so stop showing")
+			name = "a one-shot use (a mounted gun): the key takes the prompt away at once; it stays away while the same thing is aimed and comes back after the player looked away or at another thing",
+			func = function()
+				local tank, other, ply = fake("func_tank"), fake("func_tank"), fakePlayer()
+
+				listener()(tank, 1, ply)
+				expect(Use.Shown()).to.exist()
+				expect(Use.OnUsePressed(10)).to.beTrue()
+				expect(Use.Shown()).to.beNil()
+				expect(Use.Active()).to.beFalse()
+
+				-- the crosshair reports the same thing again (its mode changed): still hidden
+				listener()(tank, 1, ply)
+				expect(Use.Shown()).to.beNil()
+
+				-- another thing, or nothing: the hide is over
+				listener()(other, 1, ply)
+				expect(Use.Shown()).to.exist()
+				listener()(nil, 0, ply)
+				listener()(tank, 1, ply)
+				expect(Use.Shown()).to.exist()
+
+				-- nothing on show: the key does nothing
+				listener()(nil, 0, ply)
+				expect(Use.OnUsePressed(11)).to.beFalse()
+			end
+		},
+		{
+			-- fails without the repeatable use: the pulse (one HUD event, picture and sound together), the cooldown, the dimming
+			name = "a repeatable use (a door): the key makes ONE use_feedback event, the prompt is dimmed for the cooldown (1 s for a door) and a second key in it does nothing",
+			func = function()
+				local events = {}
+				local door, ply = fake("prop_door_rotating"), fakePlayer()
+
+				setConVar("gry_usehint_feedback", "1")
+				stub(GryMod.API, "HUDEvent", function(name) events[#events + 1] = name return true end)
+				listener()(door, 1, ply)
+
+				expect(Use.Dimmed(10)).to.beFalse()
+				expect(Use.OnUsePressed(10)).to.beTrue()
+				expect(#events).to.equal(1)
+				expect(events[1]).to.equal("use_feedback")
+				expect(Use.Shown()).to.exist() -- a door stays on show: it can be used again
+
+				expect(Use.Dimmed(10.5)).to.beTrue()
+				expect(Use.OnUsePressed(10.5)).to.beFalse()
+				expect(#events).to.equal(1)
+
+				expect(Use.Dimmed(11.01)).to.beFalse()
+				expect(Use.OnUsePressed(11.01)).to.beTrue()
+				expect(#events).to.equal(2)
+
+				-- looking at another door starts clean
+				listener()(fake("prop_door_rotating"), 1, ply)
+				expect(Use.Dimmed(11.02)).to.beFalse()
+			end
+		},
+		{
+			-- fails when an entry's own cooldown or ready function is not read
+			name = "the entry's cooldown (0.5 s for a charger, 0.5 s when it gives none) and its ready(ent) function decide when the prompt is dimmed",
+			func = function()
+				local events = {}
+				local ready = true
+				local ply = fakePlayer()
+
+				stub(GryMod.API, "HUDEvent", function(name) events[#events + 1] = name return true end)
+				setConVar("gry_usehint_feedback", "1")
+
+				listener()(fake("item_healthcharger"), 1, ply)
+				expect(Use.OnUsePressed(20)).to.beTrue()
+				expect(Use.Dimmed(20.4)).to.beTrue()
+				expect(Use.Dimmed(20.6)).to.beFalse()
+
+				-- a repeatable entry with no cooldown: the default of half a second
+				GryMod.API.RegisterUsable("test_use_repeat", {class = "test_use_thing", use = "repeat"})
+				GryMod.API.RegisterUsable("test_use_ready", {class = "test_use_ready_thing", use = "repeat", cooldown = 0, ready = function() return ready end})
+
+				local ok, err = pcall(function()
+					listener()(fake("test_use_thing"), 1, ply)
+					expect(Use.OnUsePressed(30)).to.beTrue()
+					expect(Use.Dimmed(30.4)).to.beTrue()
+					expect(Use.Dimmed(30.6)).to.beFalse()
+
+					-- ready(ent) false: dimmed, and the key does nothing, whatever the clock says
+					events = {}
+					listener()(fake("test_use_ready_thing"), 1, ply)
+					ready = false
+					expect(Use.Dimmed(40)).to.beTrue()
+					expect(Use.OnUsePressed(40)).to.beFalse()
+					expect(#events).to.equal(0)
+
+					ready = true
+					expect(Use.Dimmed(40.1)).to.beFalse()
+					expect(Use.OnUsePressed(40.1)).to.beTrue()
+					expect(#events).to.equal(1)
+				end)
+
+				GryMod.API.UnregisterUsable("test_use_repeat")
+				GryMod.API.UnregisterUsable("test_use_ready")
+				assert(ok, tostring(err))
+			end
+		},
+		{
+			-- fails without the switch gry_usehint_feedback
+			name = "with gry_usehint_feedback 0 a repeatable use makes no event and no dimming (a one-shot use still takes the prompt away)",
+			func = function()
+				local events = {}
+				local ply = fakePlayer()
+
+				stub(GryMod.API, "HUDEvent", function(name) events[#events + 1] = name return true end)
+				expect(GetConVar("gry_usehint_feedback")).toNot.beNil()
+				expect(GetConVar("gry_usehint_feedback"):GetDefault()).to.equal("1")
+				setConVar("gry_usehint_feedback", "0")
+
+				listener()(fake("prop_door_rotating"), 1, ply)
+				Use.OnUsePressed(50)
+				expect(#events).to.equal(0)
+				expect(Use.Dimmed(50.1)).to.beFalse()
+
+				listener()(fake("func_tank"), 1, ply)
+				expect(Use.OnUsePressed(51)).to.beTrue()
+				expect(Use.Shown()).to.beNil()
+			end
+		},
+		{
+			-- fails without the HUD event: the picture and the sound are ONE call (docs/events.md)
+			name = "the HUD event use_feedback is registered, plays one sound and pulses the icon for a moment",
+			func = function()
+				local played = {}
+
+				stub(GryMod, "PlaySound", function(path) played[#played + 1] = path return true end)
+				setConVar("gry_sounds", "1")
+
+				expect(GryMod.API.ListHUDEvents()).to.contain("use_feedback")
+
+				listener()(fake("prop_door_rotating"), 1, fakePlayer())
+				expect(Use.Pulse(0)).to.equal(0)
+
+				expect(GryMod.API.HUDEvent("use_feedback")).to.beTrue()
+				expect(#played).to.equal(1)
+				expect(played[1]).to.equal(Use.FEEDBACK_SOUND)
+
+				-- the pulse is on for a quarter of a second, strongest at the start
+				local now = RealTime()
+				expect(Use.Pulse(now) > 0.5).to.beTrue()
+				expect(Use.Pulse(now + 1)).to.equal(0)
+			end
+		},
+		{
+			-- fails without the listener of the bind: the key must be seen when pressed (not polled), and never swallowed
+			name = "the use key is seen through PlayerBindPress (a press of +use only, nothing returned so the game still gets it) and nothing runs in between",
+			func = function()
+				local seen = {}
+				local bind = hook.GetTable()["PlayerBindPress"] and hook.GetTable()["PlayerBindPress"]["GryUseFeedback"]
+
+				expect(bind).to.exist()
+				stub(Use, "OnUsePressed", function(now) seen[#seen + 1] = now return true end)
+
+				expect(bind(fakePlayer(), "+use", true)).to.beNil()
+				expect(#seen).to.equal(1)
+				expect(bind(fakePlayer(), "+use", false)).to.beNil() -- the release
+				expect(bind(fakePlayer(), "+attack", true)).to.beNil() -- another key
+				expect(bind(fakePlayer(), "+use; +speed", true)).to.beNil()
+				expect(#seen).to.equal(2) -- a bind that holds +use counts
 			end
 		}
 	}

@@ -401,24 +401,90 @@ return {
 			end
 		},
 		{
-			name = "usable: a weapon not owned can be taken (1), one already owned is blocked (2), items, buttons and props can be used, a wall cannot",
+			name = "usable: what needs the key (a button, a door, a ladder, a prop when the group is on) can be used; what is taken by walking over (a weapon, an item) and a wall cannot",
 			func = function(state)
 				local C = GryMod.FlashCrosshair
 				local function fake(class, weapon)
 					return {IsValid = function() return true end, GetClass = function() return class end, IsWeapon = function() return weapon or false end}
 				end
 
-				local player = {HasWeapon = function(_, class) return class == "weapon_pistol" end}
-				expect(C.UsableFor(fake("weapon_smg1", true), player)).to.equal(1)
-				expect(C.UsableFor(fake("weapon_pistol", true), player)).to.equal(2)
-				expect(C.UsableFor(fake("item_healthkit"), player)).to.equal(1)
-				expect(C.UsableFor(fake("func_button"), player)).to.equal(1)
-				expect(C.UsableFor(fake("prop_door_rotating"), player)).to.equal(1)
-				expect(C.UsableFor(fake("prop_physics"), player)).to.equal(1)
-				expect(C.UsableFor(fake("func_useableladder"), player)).to.equal(1)
-				expect(C.UsableFor(fake("func_brush"), player)).to.equal(0)
-				expect(C.UsableFor(nil, player)).to.equal(0)
-				expect(C.UsableFor({IsValid = function() return false end}, player)).to.equal(0)
+				local saved = GetConVar("gry_usehint_props"):GetString()
+				local ok, err = pcall(function()
+					GetConVar("gry_usehint_props"):SetString("1")
+
+					local player = {HasWeapon = function(_, class) return class == "weapon_pistol" end}
+
+					-- touch pickups: no key, no prompt (the weapon the player has too)
+					expect(C.UsableFor(fake("weapon_smg1", true), player)).to.equal(0)
+					expect(C.UsableFor(fake("weapon_pistol", true), player)).to.equal(0)
+					expect(C.UsableFor(fake("item_healthkit"), player)).to.equal(0)
+					expect(C.UsableFor(fake("item_battery"), player)).to.equal(0)
+
+					expect(C.UsableFor(fake("func_button"), player)).to.equal(1)
+					expect(C.UsableFor(fake("prop_door_rotating"), player)).to.equal(1)
+					expect(C.UsableFor(fake("prop_physics"), player)).to.equal(1)
+					expect(C.UsableFor(fake("func_useableladder"), player)).to.equal(1)
+					expect(C.UsableFor(fake("item_healthcharger"), player)).to.equal(1)
+					expect(C.UsableFor(fake("func_brush"), player)).to.equal(0)
+					expect(C.UsableFor(nil, player)).to.equal(0)
+					expect(C.UsableFor({IsValid = function() return false end}, player)).to.equal(0)
+				end)
+
+				GetConVar("gry_usehint_props"):SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the group switch (gry_usehint_props, off by default) in UsableFor
+			name = "the props are a group the player switches (gry_usehint_props, off by default): off, a liftable prop is not usable and the crosshair stays closed; the other groups stay on",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function fake(class)
+					return {IsValid = function() return true end, GetClass = function() return class end, IsWeapon = function() return false end}
+				end
+
+				local convar = GetConVar("gry_usehint_props")
+
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0")
+
+				local saved = convar:GetString()
+				local ok, err = pcall(function()
+					convar:SetString("0")
+					expect(C.UsableFor(fake("prop_physics"), {})).to.equal(0)
+					expect(C.UsableFor(fake("prop_ragdoll"), {})).to.equal(0)
+					expect(C.UsableFor(fake("func_physbox"), {})).to.equal(0)
+					expect(C.UsableFor(fake("func_button"), {})).to.equal(1)
+					expect(C.UsableFor(fake("npc_grenade_frag"), {})).to.equal(1)
+					expect(C.UsableFor(fake("func_useableladder"), {})).to.equal(1)
+
+					convar:SetString("1")
+					expect(C.UsableFor(fake("prop_physics"), {})).to.equal(1)
+
+					-- a group nobody made a switch for is on
+					expect(C.GroupEnabled("no_such_group_switch")).to.beTrue()
+					expect(C.GroupEnabled(nil)).to.beTrue()
+				end)
+
+				convar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the busy check in UsableFor: a ladder the player is climbing kept its CLIMB
+			name = "a thing the registry says is busy (a ladder while the player climbs it) is not usable",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local ladder = {IsValid = function() return true end, GetClass = function() return "func_useableladder" end, IsWeapon = function() return false end}
+
+				expect(C.UsableFor(ladder, {GetMoveType = function() return MOVETYPE_WALK end})).to.equal(1)
+				expect(C.UsableFor(ladder, {GetMoveType = function() return MOVETYPE_LADDER end})).to.equal(0)
 			end
 		},
 		{

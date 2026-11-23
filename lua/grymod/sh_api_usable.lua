@@ -4,6 +4,11 @@
 -- (GryMod.FlashCrosshair.UsableFor, which opens its "usable" state) asks this registry: an entity an entry names is usable, one that no entry
 -- names is not. A "grab" entry only counts while the player can lift the entity (35 kg, 128 units), an "enter" entry not while he sits in a vehicle.
 --
+-- What an entry says besides its icon and text: `group` (an optional kind of prompt the player can switch off: the client convar gry_usehint_<group>
+-- decides, see cl_hud_crosshair_flash.lua), `use` ("once", the default, for a use that changes the state of the thing: a grenade taken, a mounted gun,
+-- a vehicle; "repeat" for one that can be done again at once: a door, a button, a charger), `cooldown` (seconds a repeatable use is dimmed after the key),
+-- `ready(ent)` (false while the thing cannot be used again) and `busy(ent, ply)` (true: no prompt now, the thing is in use).
+--
 -- An entry is matched on a class (`class`, a name or a list), on a base class (`base`) or by a function (`match`), like the entries of the
 -- tracked registry; the entries are tried by priority (the higher first), then in the order of registration. The stock Half-Life 2 entries
 -- are at the bottom of this file, registered through the same call as an addon would, with a low priority: any addon's entry beats them.
@@ -70,10 +75,17 @@ local CHECK = {
 	name = function(v) if isfunction(v) or (isstring(v) and #v >= 1 and #v <= MAX_NAME) then return v end end,
 	priority = function(v) if isnumber(v) and v >= -MAX_PRIORITY and v <= MAX_PRIORITY then return v end end,
 	-- the thing is not solid (a ladder): the eye trace never hits it, so the crosshair looks for its classes along the aim ray (needs `class`)
-	nonsolid = function(v) if isbool(v) then return v end end
+	nonsolid = function(v) if isbool(v) then return v end end,
+	-- a kind of prompt the player can switch off (gry_usehint_<group>): lower case letters, digits and underscores
+	group = function(v) if isstring(v) and #v >= 1 and #v <= 24 and string.find(v, "^[a-z0-9_]+$") then return v end end,
+	-- "once": the use changes the state of the thing (the prompt goes away); "repeat": it can be done again
+	use = function(v) if v == "once" or v == "repeat" then return v end end,
+	cooldown = function(v) if isnumber(v) and v >= 0 and v <= 60 then return v end end,
+	ready = function(v) if isfunction(v) then return v end end,
+	busy = function(v) if isfunction(v) then return v end end
 }
 
-local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority", "nonsolid"}
+local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority", "nonsolid", "group", "use", "cooldown", "ready", "busy"}
 
 -- The entries by priority, then in the order of registration; they live through a reload of this file.
 local order = API._usableOrder or {}
@@ -118,8 +130,8 @@ function API.RegisterUsable(key, def)
 		return false, "the definition must be a table"
 	end
 
-	local entry = {key = key, icon = "use", text = "USE", priority = 0, matchId = "usable:" .. key .. "/match", textId = "usable:" .. key .. "/text",
-		nameId = "usable:" .. key .. "/name"}
+	local entry = {key = key, icon = "use", text = "USE", priority = 0, use = "once", matchId = "usable:" .. key .. "/match", textId = "usable:" .. key .. "/text",
+		nameId = "usable:" .. key .. "/name", readyId = "usable:" .. key .. "/ready", busyId = "usable:" .. key .. "/busy"}
 
 	for _, field in ipairs(FIELDS) do
 		local value = def[field]
@@ -150,6 +162,8 @@ function API.RegisterUsable(key, def)
 	API.SafeCallReset(entry.matchId)
 	API.SafeCallReset(entry.textId)
 	API.SafeCallReset(entry.nameId)
+	API.SafeCallReset(entry.readyId)
+	API.SafeCallReset(entry.busyId)
 
 	for i = 1, #order do
 		if order[i].key == key then
@@ -301,6 +315,29 @@ function API.UsableNonSolidClasses()
 	return nonSolidList
 end
 
+-- Whether the thing can be used now, for an entry with a `ready` function (true when it has none, or when the function fails: a broken function must not
+-- dim the prompt for ever). Runs under SafeCall.
+function API.UsableReady(ent, entry)
+	if not entry or not entry.ready then
+		return true
+	end
+
+	local ok, result = API.SafeCall(entry.readyId, entry.ready, ent)
+
+	return not ok or result ~= false
+end
+
+-- Whether the thing is in use and shows no prompt, for an entry with a `busy` function (false when it has none or the function fails).
+function API.UsableBusy(ent, ply, entry)
+	if not entry or not entry.busy then
+		return false
+	end
+
+	local ok, result = API.SafeCall(entry.busyId, entry.busy, ent, ply)
+
+	return ok and result == true
+end
+
 -- What the entity is called: the entry's name, else the name the weapon carries (its PrintName, translated when it is a "#" key), else
 -- its class without the "weapon_" or "item_" start and with spaces for the underscores. Never empty.
 function API.UsableName(ent, entry)
@@ -390,104 +427,95 @@ local function register(key, def)
 	end
 end
 
--- A weapon on the ground: CBaseCombatWeapon::ObjectCaps (FCAP_IMPULSE_USE unless the weapon refuses the player's pickup). Every weapon_*
--- of the stock maps, for example weapon_pistol and weapon_crowbar in d1_canals_01a, weapon_357 in d1_eli_01, weapon_frag and
--- weapon_physcannon in d1_town_01, weapon_shotgun / weapon_ar2 in d2_coast_01.
-register("hl2_weapons", {match = function(ent) return ask(ent, "IsWeapon") == true end, icon = "pickup", text = "TAKE %1"})
+-- (a hot reload of this file: the entries of the earlier versions are taken away)
+for _, old in ipairs({"hl2_weapons", "hl2_items", "hl2_turrets"}) do
+	API.UnregisterUsable(old)
+end
 
--- The items. CItem::ObjectCaps has FCAP_IMPULSE_USE (items.h): +use picks the item up as it would a prop. The names are the ones of the
--- level editor's list (halflife2.fgd). Maps: item_healthkit and item_battery in d1_canals_01, item_healthvial in d1_canals_02, item_ammo_pistol
--- in d1_canals_01, item_ammo_smg1 / item_ammo_357 in d1_canals_03 and d1_canals_08, item_box_buckshot in d1_town_02, item_rpg_round in
--- d2_coast_03, item_ammo_crossbow in d2_coast_05, item_ammo_ar2 in d1_town_05. Not the things the item_ prefix also names but that are no
--- CItem: the chargers and the ammo crate (below), the item crate and the dynamic resupply.
-local ITEM_NAMES = {
-	item_healthkit = "health kit", item_healthvial = "health vial", item_battery = "battery", item_suit = "HEV suit",
-	item_ammo_pistol = "pistol ammo", item_ammo_pistol_large = "large pistol ammo", item_ammo_smg1 = "SMG1 ammo",
-	item_ammo_smg1_large = "large SMG1 ammo", item_ammo_ar2 = "AR2 ammo", item_ammo_ar2_large = "large AR2 ammo",
-	item_ammo_357 = "357 ammo", item_ammo_357_large = "large 357 ammo", item_ammo_crossbow = "crossbow bolts",
-	item_box_buckshot = "buckshot", item_rpg_round = "RPG round", item_ammo_smg1_grenade = "SMG1 grenade",
-	item_ammo_ar2_altfire = "AR2 alt-fire round"
-}
+-- NOT HERE: what is taken by WALKING OVER it. A weapon on the floor and every item_* that is a plain pickup (health kit and vial, battery, HEV suit, the
+-- ammo boxes and rounds) are picked up by touch (checked in game on gm_construct: a health kit, a battery and a pistol put at the player's feet were
+-- taken without a key; the base gamemode's GM:PlayerCanPickupWeapon / PlayerCanPickupItem answer true). They have a +use action in the SDK too, but nobody
+-- needs it, so they get no prompt. An addon whose weapon or item really needs the key registers it.
 
-local NOT_ITEMS = {item_healthcharger = true, item_suitcharger = true, item_ammo_crate = true, item_item_crate = true, item_dynamic_resupply = true}
-
-register("hl2_items", {
-	match = function(ent)
-		local class = ent:GetClass()
-
-		return string.sub(class, 1, 5) == "item_" and not NOT_ITEMS[class]
-	end,
-	name = function(ent) return ITEM_NAMES[ent:GetClass()] end,
-	icon = "pickup", text = "TAKE %1"
-})
-
--- The ammo crate: CItem_AmmoCrate::ObjectCaps (item_ammo.cpp: FCAP_IMPULSE_USE, USE_IN_RADIUS), +use gives ammo. d1_canals_05, d1_canals_07,
+-- The ammo crate: CItem_AmmoCrate::ObjectCaps (item_ammo.cpp: FCAP_IMPULSE_USE, USE_IN_RADIUS), +use gives ammo, and again. d1_canals_05, d1_canals_07,
 -- d2_coast_03, d2_coast_07.
-register("hl2_ammo_crate", {class = "item_ammo_crate", icon = "pickup", text = "TAKE AMMO"})
+register("hl2_ammo_crate", {class = "item_ammo_crate", icon = "pickup", text = "TAKE AMMO", use = "repeat", cooldown = 1})
 
 -- The wall chargers: FCAP_CONTINUOUS_USE (func_recharge.cpp), held +use. item_healthcharger: d1_canals_01 (three), d1_canals_07, d2_coast_08;
 -- item_suitcharger: d1_trainstation_01, d1_trainstation_05, d1_canals_08. (func_healthcharger and func_recharge are the old brush versions.)
-register("hl2_chargers", {class = {"item_healthcharger", "item_suitcharger", "func_healthcharger", "func_recharge"}, icon = "use", text = "USE"})
+register("hl2_chargers", {class = {"item_healthcharger", "item_suitcharger", "func_healthcharger", "func_recharge"}, icon = "use", text = "USE", use = "repeat", cooldown = 0.5})
 
 -- The vehicles: CPropVehicleDriveable::ObjectCaps (vehicle_base.h), the airboat (USE_IN_RADIUS), the crane, the prisoner pod and the
 -- choreographed seats all have FCAP_IMPULSE_USE. d2_coast_01 (prop_vehicle_jeep: the buggy, and the crane), d1_canals_05 and the other canal maps
 -- (prop_vehicle_airboat), d1_canals_01a (prop_vehicle_apc), d3_breen_01 (prop_vehicle_prisoner_pod). The "jeep" class is also the scripted APC of
--- d1_trainstation_03 and 04: a driveable one only when its model is.
-register("hl2_vehicles", {match = function(ent) return ask(ent, "IsVehicle") == true end, icon = "enter", text = "ENTER VEHICLE"})
+-- d1_trainstation_03 and 04: a driveable one only when its model is. Getting in changes the state: one-shot (the crosshair also drops it while the
+-- player sits in a vehicle).
+register("hl2_vehicles", {match = function(ent) return ask(ent, "IsVehicle") == true end, icon = "enter", text = "ENTER VEHICLE", use = "once"})
 
--- The ladder: func_useableladder, +use gets on (func_ladder.h). d1_canals_01 (once), d1_canals_03 (five), gm_construct (once).
--- It is not solid: the eye trace never hits it, so the entry is marked nonsolid and the crosshair finds it with the aim ray against its box.
-register("hl2_ladders", {class = "func_useableladder", icon = "ladder", text = "CLIMB", nonsolid = true})
+-- The ladder: func_useableladder, +use gets on (func_ladder.h). d1_canals_01 (once), d1_canals_03 (five), gm_construct (once). A ladder is not
+-- solid: the eye trace never hits it, so the crosshair looks for it along the aim ray (nonsolid). While the player climbs it there is no prompt.
+register("hl2_ladders", {
+	class = "func_useableladder", icon = "ladder", text = "CLIMB", nonsolid = true, use = "once",
+	busy = function(_, ply) return ply ~= nil and isfunction(ply.GetMoveType) and ply:GetMoveType() == MOVETYPE_LADDER end
+})
 
 -- What the player lifts: CPhysicsProp::ObjectCaps (props.cpp) and CPhysBox::ObjectCaps (physobj.cpp) give FCAP_IMPULSE_USE when
 -- CBasePlayer::CanPickupObject(this, 35, 128) is true: at most 35 kg and 128 units on every side (the crosshair applies those limits to a
--- "grab" icon, see UsableFor). prop_physics in every stock map (d1_trainstation_01: 178), func_physbox in d1_canals_02 (25),
--- prop_ragdoll in d1_town_01 (36; the HL2 SDK gives ragdolls no use caps: this one is Garry's Mod's carry of a ragdoll and is to be checked in
--- game). The thrown frag grenade (npc_grenade_frag) has "Allow +USE pickup" (basegrenade_shared.h): it exists only at run time.
+-- "grab" icon, see UsableFor, and asks the server for the mass). prop_physics in every stock map (d1_trainstation_01: 178), func_physbox in d1_canals_02
+-- (25), prop_ragdoll in d1_town_01 (36; the HL2 SDK gives ragdolls no use caps: this one is Garry's Mod's carry of a ragdoll and is to be checked in
+-- game). "You can pick up almost anything": the owner is not sure the prompt is wanted on all of them, so they are the group "props", which the
+-- player switches with gry_usehint_props (off by default).
 register("hl2_props", {
-	class = {"prop_physics", "prop_physics_multiplayer", "prop_ragdoll", "func_physbox", "npc_grenade_frag"},
-	icon = "grab", text = "PICK UP"
+	class = {"prop_physics", "prop_physics_multiplayer", "prop_ragdoll", "func_physbox"},
+	icon = "grab", text = "PICK UP", group = "props", use = "once"
 })
 
--- The doors and the buttons: CBasePropDoor::ObjectCaps (props.cpp, unless "ignore +use"), CBaseDoor with the "use opens" flag (doors.h),
--- CBaseButton with "use activates" (buttons.cpp), CMomentaryRotButton (continuous use). The server's flags are not readable on the client: a
--- door or a button that ignores +use also shows the prompt. prop_door_rotating in d1_trainstation_01 (9) and d1_town_01 (4), func_door in
--- d1_trainstation_01 (7), func_door_rotating in d1_trainstation_01 (9), func_button in d1_trainstation_01 (3) and d1_eli_01 (20),
--- func_rot_button in d1_town_01 (5), momentary_rot_button (the wheels) in d1_canals_05 (4).
-register("hl2_doors", {
-	class = {"prop_door_rotating", "func_door", "func_door_rotating", "func_button", "func_rot_button", "momentary_rot_button"},
-	icon = "use", text = "USE"
-})
+-- The thrown frag grenade (npc_grenade_frag) has "Allow +USE pickup" (basegrenade_shared.h): it exists only at run time. Taking it changes the state
+-- (it is in the hand, or it goes off), so one-shot; it is not a prop of the group (a grenade that is about to explode is worth a prompt).
+register("hl2_grenade", {class = "npc_grenade_frag", icon = "grab", text = "PICK UP", use = "once"})
 
--- The turrets you man: CFuncTank::ObjectCaps (func_tank.h: FCAP_IMPULSE_USE, USE_IN_RADIUS, all func_tank* classes), and the floor turret
--- (npc_turret_floor.h: +use toggles it). func_tank in d1_canals_01a, d1_canals_07, d2_coast_01; npc_turret_floor in d2_prison_02.
-register("hl2_turrets", {
+-- The doors: CBasePropDoor::ObjectCaps (props.cpp, unless "ignore +use"), CBaseDoor with the "use opens" flag (doors.h). The server's flags are not
+-- readable on the client: a door that ignores +use also shows the prompt. prop_door_rotating in d1_trainstation_01 (9) and d1_town_01 (4), func_door in
+-- d1_trainstation_01 (7), func_door_rotating in d1_trainstation_01 (9). A door can be used again once it has moved: a cooldown of a second.
+register("hl2_doors", {class = {"prop_door_rotating", "func_door", "func_door_rotating"}, icon = "use", text = "USE", use = "repeat", cooldown = 1})
+
+-- The buttons: CBaseButton with "use activates" (buttons.cpp), CMomentaryRotButton (continuous use). func_button in d1_trainstation_01 (3) and d1_eli_01
+-- (20), func_rot_button in d1_town_01 (5), momentary_rot_button (the wheels) in d1_canals_05 (4). A button waits before it works again (its `wait`, not
+-- readable on the client): a cooldown of a second.
+register("hl2_buttons", {class = {"func_button", "func_rot_button", "momentary_rot_button"}, icon = "use", text = "USE", use = "repeat", cooldown = 1})
+
+-- The mounted guns: CFuncTank::ObjectCaps (func_tank.h: FCAP_IMPULSE_USE, USE_IN_RADIUS, all func_tank* classes). Taking the gun changes the state
+-- (the player now controls it): one-shot. func_tank in d1_canals_01a, d1_canals_07, d2_coast_01.
+register("hl2_tanks", {
 	class = {"func_tank", "func_tankairboatgun", "func_tankapcrocket", "func_tanklaser", "func_tankmortar", "func_tankphyscannister",
-		"func_tankpulselaser", "func_tankrocket", "func_tank_combine_cannon", "npc_turret_floor"},
-	icon = "use", text = "USE"
+		"func_tankpulselaser", "func_tankrocket", "func_tank_combine_cannon"},
+	icon = "use", text = "USE", use = "once"
 })
+
+-- The floor turret (npc_turret_floor.h: +use toggles it on and off): it can be done again. npc_turret_floor in d2_prison_02.
+register("hl2_floor_turret", {class = "npc_turret_floor", icon = "use", text = "USE", use = "repeat", cooldown = 1})
 
 -- The NPCs that answer +use while they live: CAI_PlayerAlly::ObjectCaps (ai_playerally.h) through UsableNPCObjectCaps, which gives
 -- FCAP_IMPULSE_USE to an NPC that is alive. The citizen, Barney, Alyx and the vortigaunt (CNPC_PlayerCompanion), Dr Mossman and the Monk
 -- (CAI_PlayerAlly). npc_citizen in d1_trainstation_01, npc_barney in d1_trainstation_01 and d1_trainstation_05, npc_alyx in d1_eli_01,
 -- npc_vortigaunt in d1_canals_01 (boxcar) and d1_eli_01, npc_monk in d1_town_01, npc_mossman in d1_eli_01. The metropolice also answers
--- +use (npc_metropolice.h, PrecriminalUse): d1_trainstation_01.
+-- +use (npc_metropolice.h, PrecriminalUse): d1_trainstation_01. Talking can be done again.
 local TALKERS = {npc_citizen = true, npc_barney = true, npc_alyx = true, npc_vortigaunt = true, npc_mossman = true, npc_monk = true}
 
 register("hl2_talkers", {
 	match = function(ent) return ask(ent, "IsNPC") == true and TALKERS[ent:GetClass()] == true and (ask(ent, "Health") or 0) > 0 end,
-	icon = "use", text = "TALK"
+	icon = "use", text = "TALK", use = "repeat", cooldown = 1
 })
 
 register("hl2_metropolice", {
 	match = function(ent) return ask(ent, "IsNPC") == true and ent:GetClass() == "npc_metropolice" and (ask(ent, "Health") or 0) > 0 end,
-	icon = "use", text = "USE"
+	icon = "use", text = "USE", use = "repeat", cooldown = 1
 })
 
 -- Garry's Mod's own: gmod_button (ENT:Use toggles it or presses it) in gamemodes/sandbox/entities/entities/gmod_button.lua, gmod_wheel
--- (ENT:Use reverses its motor), sent_ball (lua/entities/sent_ball.lua: ENT:Use eats it for 5 health). Spawned from the spawn menu / the
--- tools; none is in a stock map (gm_construct has a func_button and a func_useableladder).
-register("gmod_buttons", {class = {"gmod_button", "gmod_wheel"}, icon = "use", text = "USE"})
-register("gmod_ball", {class = "sent_ball", icon = "pickup", text = "TAKE BALL"})
+-- (ENT:Use reverses its motor), sent_ball (lua/entities/sent_ball.lua: ENT:Use eats it for 5 health, which changes the state). Spawned from the spawn menu
+-- / the tools; none is in a stock map (gm_construct has a func_button and a func_useableladder). gmod_thruster has an ENT:Use with nothing in it: no prompt.
+register("gmod_buttons", {class = {"gmod_button", "gmod_wheel"}, icon = "use", text = "USE", use = "repeat", cooldown = 0.5})
+register("gmod_ball", {class = "sent_ball", icon = "pickup", text = "TAKE BALL", use = "once"})
 
 API.AddFeature("usable")

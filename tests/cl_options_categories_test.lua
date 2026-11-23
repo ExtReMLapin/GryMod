@@ -69,6 +69,8 @@ box:gry_sound_malfunction_loop
 box:gry_sound_regen
 box:gry_sounds
 box:gry_underwater_fx
+box:gry_usehint_feedback
+box:gry_usehint_props
 box:gry_zoom_cancel_weapon
 box:gry_zoom_follow_fov
 box:gry_zoom_hide_crosshair

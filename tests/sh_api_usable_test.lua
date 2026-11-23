@@ -46,7 +46,7 @@ return {
 	cases = {
 		{
 			-- fails without the stock entries
-			name = "the stock entries say what the Half-Life 2 things are: weapon and item (TAKE), vehicle (ENTER VEHICLE), ladder (CLIMB), prop (PICK UP), door and button (USE)",
+			name = "the stock entries say what the Half-Life 2 things are: ammo crate (TAKE AMMO), vehicle (ENTER VEHICLE), ladder (CLIMB), prop (PICK UP), door and button (USE); a weapon or an item that is taken by walking over it is not one",
 			func = function()
 				local function describe(ent)
 					local entry = API.GetUsable(ent)
@@ -54,16 +54,15 @@ return {
 					return entry and entry.icon, API.UsableText(ent, nil, entry)
 				end
 
-				local icon, text = describe(fake("weapon_smg1", {weapon = true, print = "Submachine gun"}))
-				expect(icon).to.equal("pickup")
-				expect(text).to.equal("TAKE SUBMACHINE GUN")
+				-- what is taken by WALKING OVER it needs no key, so it gets no prompt (checked in game: a health kit, a battery and a pistol on the floor were taken
+				-- by touch, the base gamemode's PlayerCanPickupWeapon says yes)
+				expect(API.GetUsable(fake("weapon_smg1", {weapon = true, print = "Submachine gun"}))).to.beNil()
+				expect(API.GetUsable(fake("item_healthkit"))).to.beNil()
+				expect(API.GetUsable(fake("item_ammo_smg1"))).to.beNil()
 
-				icon, text = describe(fake("item_healthkit"))
+				local icon, text = describe(fake("item_ammo_crate"))
 				expect(icon).to.equal("pickup")
-				expect(text).to.equal("TAKE HEALTH KIT")
-
-				icon, text = describe(fake("item_ammo_smg1"))
-				expect(text).to.equal("TAKE SMG1 AMMO")
+				expect(text).to.equal("TAKE AMMO")
 
 				icon, text = describe(fake("prop_vehicle_jeep", {vehicle = true}))
 				expect(icon).to.equal("enter")
@@ -106,17 +105,6 @@ return {
 
 				local table_ = {
 					-- {class, fields, icon, text}
-					{"weapon_crowbar", {weapon = true, print = "Crowbar"}, "pickup", "TAKE CROWBAR"},
-					{"item_healthvial", nil, "pickup", "TAKE HEALTH VIAL"},
-					{"item_battery", nil, "pickup", "TAKE BATTERY"},
-					{"item_suit", nil, "pickup", "TAKE HEV SUIT"},
-					{"item_ammo_pistol", nil, "pickup", "TAKE PISTOL AMMO"},
-					{"item_ammo_357_large", nil, "pickup", "TAKE LARGE 357 AMMO"},
-					{"item_box_buckshot", nil, "pickup", "TAKE BUCKSHOT"},
-					{"item_rpg_round", nil, "pickup", "TAKE RPG ROUND"},
-					{"item_ammo_smg1_grenade", nil, "pickup", "TAKE SMG1 GRENADE"},
-					{"item_ammo_crossbow", nil, "pickup", "TAKE CROSSBOW BOLTS"},
-					{"item_some_new_thing", nil, "pickup", "TAKE SOME NEW THING"}, -- an item no list names: its class
 					{"item_ammo_crate", nil, "pickup", "TAKE AMMO"},
 					{"item_healthcharger", nil, "use", "USE"},
 					{"item_suitcharger", nil, "use", "USE"},
@@ -152,6 +140,8 @@ return {
 
 				-- no +use action: no entry
 				for _, row in ipairs({
+					{"weapon_crowbar", {weapon = true, print = "Crowbar"}}, {"weapon_pistol", {weapon = true}}, {"item_healthkit"}, {"item_healthvial"}, {"item_battery"},
+					{"item_suit"}, {"item_ammo_pistol"}, {"item_ammo_357_large"}, {"item_box_buckshot"}, {"item_rpg_round"}, {"item_ammo_smg1_grenade"}, {"item_some_new_thing"},
 					{"combine_mine"}, {"npc_kleiner", {npc = true, health = 40}}, {"npc_eli", {npc = true, health = 40}}, {"npc_breen", {npc = true, health = 40}},
 					{"npc_dog", {npc = true, health = 40}}, {"item_item_crate"}, {"item_dynamic_resupply"}, {"npc_combine_s", {npc = true, health = 40}},
 					{"npc_zombie", {npc = true, health = 40}}, {"prop_dynamic"}, {"func_brush"}
@@ -258,6 +248,68 @@ return {
 				end
 
 				expect((API.RegisterUsable("test_valid", "not a table"))).to.beFalse()
+			end
+		},
+		{
+			-- fails without the group / use / cooldown / ready / busy fields and the stock values
+			name = "an entry can say its group, whether its use repeats or changes the state (once, the default), its cooldown, a ready function and a busy function; a bad one is refused; the stock entries carry them",
+			func = function()
+				expect(register("test_fields", {class = "test_f", group = "things", use = "repeat", cooldown = 2, ready = function() return true end, busy = function() return false end})).to.beTrue()
+
+				local entry = API.GetUsable(fake("test_f"))
+
+				expect(entry.group).to.equal("things")
+				expect(entry.use).to.equal("repeat")
+				expect(entry.cooldown).to.equal(2)
+				expect(isfunction(entry.ready) and isfunction(entry.busy)).to.beTrue()
+
+				-- the defaults: no group, a one-shot use, no cooldown
+				expect(register("test_defaults", {class = "test_g"})).to.beTrue()
+
+				local plain = API.GetUsable(fake("test_g"))
+
+				expect(plain.group).to.beNil()
+				expect(plain.use).to.equal("once")
+				expect(plain.cooldown).to.beNil()
+
+				for _, bad in ipairs({
+					{class = "test_h", use = "sometimes"}, {class = "test_h", use = 5}, {class = "test_h", cooldown = -1}, {class = "test_h", cooldown = 61},
+					{class = "test_h", cooldown = "1"}, {class = "test_h", group = ""}, {class = "test_h", group = 7}, {class = "test_h", group = "Bad Group"},
+					{class = "test_h", ready = "yes"}, {class = "test_h", busy = 3}
+				}) do
+					expect((register("test_bad_field", bad))).to.beFalse()
+				end
+
+				-- the stock values: what repeats (a door, a button, a charger, the ammo crate, a talker) and what changes the state (a vehicle, a tank, a ladder, a prop)
+				local function stock(class, fields) return API.GetUsable(fake(class, fields)) end
+
+				for class, cooldown in pairs({prop_door_rotating = 1, func_door = 1, func_button = 1, func_rot_button = 1, momentary_rot_button = 1, item_healthcharger = 0.5,
+					item_suitcharger = 0.5, item_ammo_crate = 1}) do
+					expect(stock(class).use).to.equal("repeat")
+					expect(stock(class).cooldown).to.equal(cooldown)
+				end
+
+				expect(stock("npc_citizen", {npc = true, health = 40}).use).to.equal("repeat")
+
+				for _, class in ipairs({"func_tank", "func_useableladder", "npc_grenade_frag", "prop_physics"}) do
+					expect(stock(class).use).to.equal("once")
+				end
+
+				expect(stock("prop_vehicle_jeep", {vehicle = true}).use).to.equal("once")
+
+				-- the props are the optional group; the grenade, the ladder, the tank and the doors are not in it
+				for _, class in ipairs({"prop_physics", "prop_physics_multiplayer", "prop_ragdoll", "func_physbox"}) do
+					expect(stock(class).group).to.equal("props")
+				end
+
+				for _, class in ipairs({"npc_grenade_frag", "func_useableladder", "func_tank", "prop_door_rotating", "item_ammo_crate"}) do
+					expect(stock(class).group).to.beNil()
+				end
+
+				-- the ladder is busy while the player climbs it
+				expect(isfunction(stock("func_useableladder").busy)).to.beTrue()
+				expect(stock("func_useableladder").busy(nil, {GetMoveType = function() return MOVETYPE_LADDER end})).to.equal(true)
+				expect(stock("func_useableladder").busy(nil, {GetMoveType = function() return MOVETYPE_WALK end})).to.equal(false)
 			end
 		},
 		{

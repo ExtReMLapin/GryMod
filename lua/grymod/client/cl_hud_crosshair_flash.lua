@@ -235,13 +235,6 @@ function Cross.ArcRotation(yaw)
 	return (yaw + 180) % 360
 end
 
--- What can be used when the registry of usable entities (sh_api_usable.lua) is not there (a hot reload): the old list of classes.
-local USE_CLASSES = {
-	func_button = true, func_rot_button = true, momentary_rot_button = true, prop_door_rotating = true,
-	func_door_rotating = true, func_useableladder = true, prop_physics = true, prop_physics_multiplayer = true,
-	prop_ragdoll = true
-}
-
 -- The limits of what the player lifts with +use: CBasePlayer::CanPickupObject(ent, 35, 128) of the Source SDK, which is what gives a physics
 -- prop its use capability: at most 35 kg and 128 units on every side. The client reads the size of the box. It CANNOT read the mass: it has no physics
 -- object for a prop of the server (checked: GetPhysicsObject is invalid there), so the server tells it (sv_usable_mass.lua). POLICY: a prop whose mass
@@ -313,50 +306,66 @@ function Cross.Grabbable(ent, now)
 	return false
 end
 
--- setUsable's mode for what the player aims at: 1 something can be used or taken, 2 it can not (a weapon the
--- player already has), 0 nothing. WHAT can be used is the registry of usable entities (GryMod.API.RegisterUsable): anything it names counts, an
--- entity with the "grab" icon only when the player can lift it (Cross.Grabbable), a vehicle not while the player sits in one.
+-- The kinds of prompt the player can switch off: an entry of the registry with a `group` follows the client convar gry_usehint_<group> when there is one
+-- (the props: gry_usehint_props, off by default, since "you can pick up almost anything" is not what everyone wants a prompt for); a group no convar
+-- names is on.
+CreateClientConVar("gry_usehint_props", "0", true, false, "1: the use prompt (PICK UP) also shows on the props, ragdolls and physboxes you can lift; 0: only on what really needs the use key (doors, buttons, ladders, vehicles, chargers, mounted guns, people)", 0, 1)
+
+local groupVars = {}
+
+function Cross.GroupEnabled(group)
+	if not isstring(group) then
+		return true
+	end
+
+	local var = groupVars[group]
+
+	if var == nil then
+		var = GetConVar("gry_usehint_" .. group) or false
+		groupVars[group] = var
+	end
+
+	return not var or var:GetBool()
+end
+
+-- setUsable's mode for what the player aims at: 1 something can be used or taken, 0 nothing. WHAT can be used is the registry of usable entities
+-- (GryMod.API.RegisterUsable): anything it names counts, but not an entry of a group the player switched off, not one that is busy (a ladder being climbed),
+-- an entity with the "grab" icon only when the player can lift it (Cross.Grabbable), a vehicle not while the player sits in one. What is taken by
+-- walking over it (a weapon, an item) is in no entry, so it is not usable: it needs no key.
 function Cross.UsableFor(ent, ply)
 	if not ent or not IsValid(ent) then
 		return 0
 	end
 
-	local class = ent:GetClass()
-
-	if ent:IsWeapon() then
-		return ply and ply:HasWeapon(class) and 2 or 1
-	end
-
 	local API = GryMod.API
 
-	if API and API.GetUsable then
-		local entry = API.GetUsable(ent)
-
-		if not entry then
-			return 0
-		end
-
-		if entry.icon == "grab" and not Cross.Grabbable(ent) then
-			return 0
-		end
-
-		if entry.icon == "enter" and ply and isfunction(ply.InVehicle) and ply:InVehicle() then
-			return 0
-		end
-
-		return 1
+	if not (API and API.GetUsable) then
+		return 0
 	end
 
-	if string.sub(class, 1, 5) == "item_" or USE_CLASSES[class] then
-		return 1
+	local entry = API.GetUsable(ent)
+
+	if not entry then
+		return 0
 	end
 
-	-- a vehicle to get into (the original's use_vehicle); not when the player already sits in one
-	if isfunction(ent.IsVehicle) and ent:IsVehicle() then
-		return (ply and isfunction(ply.InVehicle) and ply:InVehicle()) and 0 or 1
+	if entry.group and not Cross.GroupEnabled(entry.group) then
+		return 0
 	end
 
-	return 0
+	if entry.icon == "grab" and not Cross.Grabbable(ent) then
+		return 0
+	end
+
+	if entry.icon == "enter" and ply and isfunction(ply.InVehicle) and ply:InVehicle() then
+		return 0
+	end
+
+	if entry.busy and API.UsableBusy(ent, ply, entry) then
+		return 0
+	end
+
+	return 1
 end
 
 -- The thing the eye trace cannot hit because it is not solid (a ladder), when the aim ray goes through its box: `maxDist` is how far the ray may

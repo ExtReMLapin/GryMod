@@ -247,10 +247,10 @@ in [events.md](events.md) ("Text lines"). The player can turn all lines off with
 
 ## Usable things: the use prompt
 
-`GryMod.API.Has("usable")` is true. When the player looks at something he can use or take, the HUD shows an icon and a text under the crosshair
-("TAKE SMG", "ENTER VEHICLE", "CLIMB", "PICK UP", "USE"). Whether something can be used at all is the crosshair's own test, the one that opens its
-"usable" state; the registry of usable entities says WHAT it is. An entity that no entry names shows the plain "USE". The player can turn the
-prompt off with `gry_hud_usehint`.
+`GryMod.API.Has("usable")` is true. When the player looks at something that needs the use key, the HUD shows an icon and a text under the crosshair
+("ENTER VEHICLE", "CLIMB", "TALK", "USE"). Whether something can be used at all is the crosshair's own test, the one that opens its "usable" state; the
+registry of usable entities says WHAT it is. An entity that no entry names has no prompt, and what the player takes by walking over it (a weapon on the
+floor, a health kit, a battery, ammo) has none either: it needs no key. The player can turn the prompt off with `gry_hud_usehint`.
 
 ```lua
 GryMod.API.RegisterUsable("my_addon_terminal", {
@@ -260,6 +260,11 @@ GryMod.API.RegisterUsable("my_addon_terminal", {
 	name = "terminal",                  -- optional: a string or function(ent) -> string; else the weapon's print name, else the class
 	priority = 10,                      -- optional: the higher first (the stock entries are at -100)
 	nonsolid = false,                   -- optional: true for a thing the player's aim passes through (a ladder); needs a class
+	use = "repeat",                     -- optional: "repeat" (a door, a button: it can be done again) or "once" (the default: the use changes the state)
+	cooldown = 2,                       -- optional, "repeat" only: seconds the prompt is dimmed after the key (0.5 when not given)
+	ready = function(ent) return not ent:GetNWBool("hacking") end,        -- optional: false = dimmed, the key does nothing
+	busy = function(ent, ply) return ent:GetNWEntity("user") == ply end,  -- optional: true = no prompt now (it is in use)
+	group = "terminals",                -- optional: the player switches the group with the client convar gry_usehint_terminals when there is one
 })
 
 GryMod.API.UnregisterUsable("my_addon_terminal")
@@ -268,20 +273,30 @@ GryMod.API.UsableText(ent, ply)         -- the text the prompt shows for it, or 
 ```
 
 The crosshair asks this registry what can be used: **registering an entity makes it usable** (the crosshair's "usable" state opens on it, and the
-prompt shows), and an entity no entry names is not. Two rules apply on top: an entry with the `"grab"` icon only counts while the player can lift the
+prompt shows), and an entity no entry names is not. Rules that apply on top: an entry with the `"grab"` icon only counts while the player can lift the
 entity (the Source rule: at most 35 kg and 128 units on every side; the client reads the size and asks the server for the mass, because it has no physics
-object for a prop of the server: while the answer is not there the prop is not offered, and it is asked again every 3 seconds while it stays aimed), and
-an entry with the `"enter"` icon does not count while the player sits in a vehicle. An entry with `nonsolid = true` (it needs a `class`) is for things that are
-not solid, like the ladder: the eye trace passes through them, so the crosshair also looks for the entities of those classes along the aim ray, up to the use
-range and not behind a wall (`GryMod.API.UsableNonSolidClasses()` lists them). A weapon the player already has is shown as "can not be used" by the
-crosshair and gets no prompt. To react when the usable thing changes, listen to the client hook `GryMod_UsableChanged(ent, mode, ply)` (see
-[events.md](events.md)).
+object for a prop of the server: while the answer is not there the prop is not offered, and it is asked again every 3 seconds while it stays aimed);
+an entry with the `"enter"` icon does not count while the player sits in a vehicle; an entry whose `busy` says yes does not count; an entry with a `group`
+does not count while the player switched that group off. An entry with `nonsolid = true` (it needs a `class`) is for things that are not solid, like the
+ladder: the eye trace passes through them, so the crosshair also looks for the entities of those classes along the aim ray, up to the use range and not behind
+a wall (`GryMod.API.UsableNonSolidClasses()` lists them). To react when the usable thing changes, listen to the client hook
+`GryMod_UsableChanged(ent, mode, ply)` (see [events.md](events.md)).
 
-The stock entries are registered the same way, with a low priority: yours win. They cover what has a +use action in Half-Life 2 and Garry's Mod:
-weapons and items (`TAKE`), the ammo crate, the wall chargers, vehicles (`ENTER VEHICLE`), ladders (`CLIMB`), lifted props, ragdolls and physboxes
-(`PICK UP`), doors and buttons (`USE`), the turrets you man (`USE`), the friendly NPCs that answer +use (`TALK`: citizen, Barney, Alyx, the vortigaunt,
-Dr Mossman, the Monk), the metropolice (`USE`), `gmod_button`, `gmod_wheel` and `sent_ball`. The server's flags of a door or a button ("ignore +use")
-are not readable on the client, so such a door also shows the prompt.
+**What the key does to the prompt.** `use = "once"` (the default) is for a use that changes the state of the thing, like picking up a grenade, getting into
+a vehicle or taking a mounted gun: the prompt goes away as soon as the key is pressed and stays away while the player keeps looking at that thing; it comes
+back after he looked away or at something else. `use = "repeat"` is for a door, a button, a charger: the prompt stays, the HUD event `use_feedback` plays
+(the icon pulses and a beep plays, see [events.md](events.md)), and the prompt is dimmed for the entry's `cooldown` (half a second when it gives none) or for as
+long as its `ready(ent)` says no. The client convar `gry_usehint_feedback` (1 by default) turns the pulse, the beep and the dimming off.
+
+**Groups.** The stock entries for the props, the ragdolls and the physboxes you can lift (`PICK UP`) are in the group `"props"`, which the player switches
+with the client convar `gry_usehint_props` (0, off, by default: "you can pick up almost anything"). The convar of a group is named `gry_usehint_<group>`; a
+group that has no convar is always on. A developer can make one: `CreateClientConVar("gry_usehint_terminals", "1", true, false)`.
+
+The stock entries are registered the same way, with a low priority: yours win. They cover what has a +use action in Half-Life 2 and Garry's Mod and
+is not taken by touch: the ammo crate (`TAKE AMMO`), the wall chargers, vehicles (`ENTER VEHICLE`), ladders (`CLIMB`), doors and buttons (`USE`), the
+mounted guns and the floor turret (`USE`), the thrown frag grenade and the lifted props, ragdolls and physboxes (`PICK UP`, the props in their group),
+the friendly NPCs that answer +use (`TALK`: citizen, Barney, Alyx, the vortigaunt, Dr Mossman, the Monk), the metropolice (`USE`), `gmod_button`,
+`gmod_wheel` and `sent_ball`. The server's flags of a door or a button ("ignore +use") are not readable on the client, so such a door also shows the prompt.
 
 ## Pickups
 

@@ -98,6 +98,8 @@ local function hudElements(Panel)
 	form:NumSlider("Crosshair style", "gry_hud_crosshair_style", 1, 13, 0)
 	GryMod.OptionBox(form, "Weapons choose their crosshair", "gry_hud_crosshair_weapon", "A weapon of an addon can ask for one of the 13 crosshairs. Off: always the style above.")
 	GryMod.OptionBox(form, "Energy bar at every frame", "gry_hud_energy_smooth", "The energy bar is predicted between the server's updates, so that it moves at every frame.")
+	GryMod.OptionBox(form, "Use prompt on props", "gry_usehint_props", "PICK UP also shows on the props, ragdolls and physboxes you can lift (you can pick up almost anything). Off: the prompt is only for what really needs the use key.")
+	GryMod.OptionBox(form, "Use prompt feedback", "gry_usehint_feedback", "The prompt pulses with a beep when you press the use key on a door, a button or a charger, then dims for a moment.")
 	form:Button("Switch every element back on", "gry_hud_reset")
 
 	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)

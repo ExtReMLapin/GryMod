@@ -30,6 +30,96 @@ function Use.Placement(w, h)
 	return (w - STAGE_W * scale) / 2, 0, scale
 end
 
+-- ---------------------------------------------------------------------------------------------------------
+-- What the key does to the prompt. Two kinds of use (the registry's `use` field):
+--   "once" (the default): the use changes the state of the thing (a grenade taken, a mounted gun, a vehicle): the prompt goes away AT ONCE and stays
+--     away while the same thing is aimed; it comes back after the player looked away or at another thing;
+--   "repeat": a door, a button, a charger: the prompt stays, one HUD event (use_feedback: the icon pulses and a sound plays) says the key was seen,
+--     and the prompt is dimmed for the entry's cooldown (0.5 s when it gives none), or while its ready(ent) says no.
+-- The key is seen through PlayerBindPress, which the game calls when a bind is pressed: nothing runs between two presses.
+-- ---------------------------------------------------------------------------------------------------------
+
+Use.DEFAULT_COOLDOWN = 0.5
+Use.PULSE_SECONDS = 0.25
+Use.DIM = 0.35 -- the opacity of a prompt that cannot be used yet
+Use.FEEDBACK_SOUND = "grymod/menu/preset_navigation_beep_02.wav" -- the quick menu's navigation beep
+
+local feedbackVar = CreateClientConVar("gry_usehint_feedback", "1", true, false, "1: the use prompt pulses and beeps when you press the use key on a door, a button or a charger, then dims for a moment; 0: no feedback", 0, 1)
+
+local shown -- {icon, text} on show, or nil
+local hooked = false
+local shownEnt, shownEntry -- what the prompt on show is for
+local hiddenEnt -- a one-shot use was made on this thing: no prompt for it until the player looks elsewhere
+local cooldownEnt, cooldownUntil = nil, 0
+local pulseAt = -math.huge
+
+-- Whether the prompt on show is dimmed at `now`: the key was just used on it (the cooldown), or its ready(ent) says it cannot be used yet.
+function Use.Dimmed(now)
+	if not shownEnt or not IsValid(shownEnt) then
+		return false
+	end
+
+	if cooldownEnt == shownEnt and (now or RealTime()) < cooldownUntil then
+		return true
+	end
+
+	return shownEntry ~= nil and shownEntry.ready ~= nil and not API.UsableReady(shownEnt, shownEntry)
+end
+
+-- The pulse of the icon at `now`: 1 right at the key, down to 0 after PULSE_SECONDS.
+function Use.Pulse(now)
+	local age = (now or RealTime()) - pulseAt
+
+	if age < 0 or age >= Use.PULSE_SECONDS then
+		return 0
+	end
+
+	return 1 - age / Use.PULSE_SECONDS
+end
+
+-- The use key went down (from the bind hook, or called by a test with a clock). Returns whether it did something to the prompt.
+function Use.OnUsePressed(now)
+	if not shown or not shownEnt or not IsValid(shownEnt) then
+		return false
+	end
+
+	now = now or RealTime()
+
+	if shownEntry and shownEntry.use == "repeat" then
+		if not feedbackVar:GetBool() or Use.Dimmed(now) then
+			return false
+		end
+
+		cooldownEnt, cooldownUntil = shownEnt, now + (shownEntry.cooldown or Use.DEFAULT_COOLDOWN)
+
+		if API and API.HUDEvent then
+			API.HUDEvent("use_feedback")
+		end
+
+		return true
+	end
+
+	-- a one-shot use (and a thing no entry names): the state changed, the prompt goes
+	hiddenEnt = shownEnt
+	Use.Set(nil)
+
+	return true
+end
+
+if API and API.RegisterHUDEvent then
+	-- ONE event: the pulse of the icon and its sound together (docs/events.md)
+	API.RegisterHUDEvent("use_feedback", function()
+		pulseAt = RealTime()
+
+		if GryMod.PlaySound then
+			GryMod.PlaySound(Use.FEEDBACK_SOUND)
+		end
+	end, {
+		label = "Use key feedback",
+		follows = {{"gry_usehint_feedback", "the pulse and the dimming after the key"}, {"gry_sounds", "the sound"}}
+	})
+end
+
 -- Whether the prompt is on: the HUD is on (and the suit with it) and the player did not turn the use prompt off.
 function Use.Enabled()
 	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("usehint"))
@@ -48,7 +138,7 @@ function Use.Describe(ent, mode, ply)
 		return PLAIN
 	end
 
-	return {icon = entry.icon, text = API.UsableText(ent, ply, entry) or PLAIN.text}
+	return {icon = entry.icon, text = API.UsableText(ent, ply, entry) or PLAIN.text}, entry
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -57,9 +147,6 @@ end
 
 local instance -- {root, icons}
 local failed = false
-local shown -- {icon, text} on show, or nil
-local hooked = false
-
 local HOOK = "GRYFLASHUSE"
 
 local function ensure()
@@ -129,8 +216,28 @@ function Use.Paint()
 	end
 
 	local x, y, scale = Use.Placement(ScrW(), ScrH())
+	local now = RealTime()
+	local pulse = Use.Pulse(now)
+
+	-- the pulse: the icon grows a little and comes back, around the middle of the screen (the crosshair)
+	if pulse > 0 then
+		local grown = scale * (1 + 0.18 * pulse)
+		local cx, cy = x + STAGE_W * scale / 2, STAGE_H * scale / 2
+
+		x, y, scale = cx - STAGE_W * grown / 2, cy - STAGE_H * grown / 2, grown
+	end
+
+	local dimmed = Use.Dimmed(now)
+
+	if dimmed then
+		surface.SetAlphaMultiplier(Use.DIM)
+	end
 
 	Flash.Draw(current.root, x, y, scale)
+
+	if dimmed then
+		surface.SetAlphaMultiplier(1)
+	end
 end
 
 local function stopPaint()
@@ -184,6 +291,7 @@ end
 function Use.Reset()
 	stopPaint()
 	shown = nil
+	shownEnt, shownEntry, hiddenEnt, cooldownEnt, cooldownUntil, pulseAt = nil, nil, nil, nil, 0, -math.huge
 
 	if instance then
 		Flash.ReleaseClip(instance.root)
@@ -194,9 +302,31 @@ end
 
 -- The crosshair says what it aims at (see the head of this file).
 hook.Add("GryMod_UsableChanged", "GryUsePrompt", function(ent, mode, ply)
-	if Use.Enabled() then
-		Use.Set(Use.Describe(ent, mode, ply))
-	else
+	-- another thing, or nothing: the hide of a one-shot use and the cooldown of a repeatable one end
+	if ent ~= hiddenEnt then
+		hiddenEnt = nil
+	end
+
+	if ent ~= cooldownEnt then
+		cooldownEnt = nil
+	end
+
+	if not Use.Enabled() or (ent ~= nil and ent == hiddenEnt) then
+		shownEnt, shownEntry = nil, nil
 		Use.Set(nil)
+
+		return
+	end
+
+	local info, entry = Use.Describe(ent, mode, ply)
+
+	shownEnt, shownEntry = info and ent or nil, info and entry or nil
+	Use.Set(info)
+end)
+
+-- The use key: seen when pressed, never taken away from the game (nothing is returned).
+hook.Add("PlayerBindPress", "GryUseFeedback", function(ply, bind, pressed)
+	if pressed and isstring(bind) and string.find(bind, "+use", 1, true) then
+		Use.OnUsePressed(RealTime())
 	end
 end)

@@ -34,6 +34,7 @@ option is off plays nothing for that half.
 | `enabled` | | the HUD comes back with the reboot sequence | the suit flag changes to on | `gry_hud`, `gry_hud_boot` |
 | `objective` | `kind` (`"added"`, `"completed"` or `"failed"`), `title` (the objective's title) | the top line `NEW OBJECTIVE: <title>` (or `OBJECTIVE COMPLETED:` / `OBJECTIVE FAILED:`) and its sound, together: `pda_update` for added and failed, `objective_completed` for completed | an objective is added, finished or failed (the list sent when the player joins is silent; see "Objective banner") | `gry_msg_objectives`, `gry_hud_messages`, `gry_hud`, `gry_sounds` |
 | `message` | `text` (128 characters at most), `lane` (`"top"`, `"middle"`, `"status"`, `"crosshair"` or 1 to 4; `"top"`), `sound` (a sound path), `duration` (seconds, 0.5 to 60; 5), or `line` (a key of the suit's own lines, see "Text lines") | a line of text on the HUD, in the movie's own stack, and its sound together | the suit's own lines (see "Text lines"); never by itself otherwise | `gry_hud_messages`, `gry_hud`, `gry_sounds` |
+| `use_feedback` | | the use prompt's icon pulses for a quarter of a second and a beep plays (the quick menu's navigation beep) | the use key pressed on a prompt of a repeatable use (a door, a button, a charger: `use = "repeat"` in the registry of usable entities) | `gry_usehint_feedback`, `gry_hud_usehint`, `gry_sounds` |
 | `map_open`, `map_close` | | the big map opens (its window, the first picture and the opening sound) / closes (the closing sound) | the player's key (M by default) or `GryMod.Map.Open()` / `Close()` | `gry_map_enable`, `gry_sounds` |
 
 Not events, because they run on every frame: the sprint sounds and the binoculars loop. The binoculars cues and the quick menu sounds are
@@ -109,7 +110,7 @@ console and does not break GryMod (the listeners after it are not run).
 
 What the player aims at and can use or take changed. It is the test that opens the crosshair's "usable" state, looked at ten times a second,
 and the hook is run once at each change, not at each look. `ent` is the entity (`nil` when there is none), `mode` is `1` (it can be used or
-taken), `2` (it can not: a weapon you already have) or `0` (nothing). It is run while the crosshair is drawn, so not when the crosshair is off
+taken) or `0` (nothing; `2`, "it can not", is not used any more: what is taken by walking over it is no usable thing). It is run while the crosshair is drawn, so not when the crosshair is off
 or the player is dead. The use prompt hangs on it. A listener that fails is shown in the console and does not break GryMod (the listeners after it are not run).
 
 ### `GryMod_BinocularsToggled(wanted)`
