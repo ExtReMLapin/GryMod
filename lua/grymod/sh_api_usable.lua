@@ -305,6 +305,25 @@ local function build(class, ent)
 	return list or false
 end
 
+-- The class the registry matches an entity on. It is ent:GetClass(), except for a name that is the game's NETWORK class ("class C_BaseToggle"): the
+-- client has no class of the real name for a func_button, a func_rot_button or a momentary_rot_button, and says that. For those the resolver the client
+-- installs (API.UsableClassResolver, cl_usable_class.lua: it asks the server) gives the real class, or nil while it is not known, and the generic name
+-- stays (it matches no entry). A resolver that fails is ignored.
+function API.UsableClassOf(ent)
+	local class = ent:GetClass()
+	local resolve = API.UsableClassResolver
+
+	if resolve and string.find(class, "class C_", 1, true) == 1 then
+		local ok, real = pcall(resolve, ent, class)
+
+		if ok and isstring(real) and real ~= "" then
+			return real
+		end
+	end
+
+	return class
+end
+
 -- Whether the spawnflags of the entity let the entry apply: true when the entry has no rule, or when the entity cannot say its flags (a stand-in, a
 -- client that cannot read them) or the rule's function fails: only a flag that clearly says no refuses. Pure over the flags (tests use fake entities).
 function API.UsableFlagsAllow(entry, ent)
@@ -362,7 +381,7 @@ function API.GetUsable(ent)
 		return nil
 	end
 
-	local class = ent:GetClass()
+	local class = API.UsableClassOf(ent)
 	local list = cache[class]
 
 	if list == nil then

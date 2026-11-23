@@ -457,6 +457,43 @@ return {
 			end
 		},
 		{
+			-- fails without API.UsableClassOf: on the client a func_button is "class C_BaseToggle", so no button was ever found
+			name = "the class the registry matches on is the server's: a network class name (class C_...) goes through the resolver the client installs, nothing else does",
+			func = function()
+				local savedResolver = API.UsableClassResolver
+				local asked = {}
+
+				local ok, err = pcall(function()
+					expect(isfunction(API.UsableClassOf)).to.beTrue()
+
+					-- no resolver: the class stays what the entity says
+					API.UsableClassResolver = nil
+					expect(API.UsableClassOf(fake("class C_BaseToggle"))).to.equal("class C_BaseToggle")
+					expect(API.GetUsable(fake("class C_BaseToggle", {flags = 1024}))).to.beNil()
+
+					API.UsableClassResolver = function(ent, class) asked[#asked + 1] = class return "func_button" end
+					expect(API.UsableClassOf(fake("class C_BaseToggle"))).to.equal("func_button")
+					expect(API.UsableClassOf(fake("func_door"))).to.equal("func_door")
+					expect(#asked).to.equal(1)
+
+					expect(API.GetUsable(fake("class C_BaseToggle", {flags = 1025})).key).to.equal("hl2_buttons")
+					expect(API.GetUsable(fake("class C_BaseToggle", {flags = 513}))).to.beNil()
+
+					-- a resolver that answers nothing, or fails: the generic class, no entry, no error
+					API.UsableClassResolver = function() return nil end
+					expect(API.GetUsable(fake("class C_BaseToggle", {flags = 1024}))).to.beNil()
+					API.UsableClassResolver = function() error("broken") end
+					expect(API.UsableClassOf(fake("class C_BaseToggle"))).to.equal("class C_BaseToggle")
+				end)
+
+				API.UsableClassResolver = savedResolver
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails without the `spawnflags` field (a table need / forbid, or a function) and its validation
 			name = "an entry can carry a spawnflags rule: all the bits of `need`, none of `forbid`, or a function of the flags and the entity; a bad one is refused",
 			func = function()
