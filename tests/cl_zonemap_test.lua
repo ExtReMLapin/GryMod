@@ -1381,6 +1381,39 @@ return {
 			end
 		},
 		{
+			-- breaks if: the debug hook draws while a minimap tile capture runs (the boxes would be baked into the cached tiles), or stops drawing for the player
+			name = "the debug boxes are not drawn during a minimap tile capture, and are drawn the rest of the time",
+			func = function()
+				local Z = GryMod.ZoneMapClient
+				local convar = GetConVar(DEBUG)
+				local Capture = GryMod.Minimap.Capture
+				local wasDraw, wasCapturing, wasValue = Z.Draw, Capture.IsCapturing, convar:GetString()
+				local calls = 0
+
+				local ok, err = pcall(function()
+					convar:SetString("1")
+					Z.SyncDebugHook()
+					Z.Draw = function() calls = calls + 1 end
+
+					Capture.IsCapturing = function() return true end
+					hookFunction()(nil, false, false)
+					expect(calls).to.equal(0)
+
+					Capture.IsCapturing = function() return false end
+					hookFunction()(nil, false, false)
+					expect(calls).to.equal(1)
+				end)
+
+				Z.Draw, Capture.IsCapturing = wasDraw, wasCapturing
+				convar:SetString(wasValue)
+				Z.SyncDebugHook()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "SyncDebugHook (what runs at load) puts the hook in line with the convar's current value",
 			func = function(state)
 				local Z = GryMod.ZoneMapClient

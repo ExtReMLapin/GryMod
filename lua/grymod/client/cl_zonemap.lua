@@ -911,6 +911,14 @@ local function drawHook(_, drawingSkybox, drawing3DSkybox)
 		return
 	end
 
+	-- The minimap's tile capture renders the world through this same hook: the debug boxes must not end up in the picture that goes
+	-- into the cache. Only the capture skips them, the player's own view keeps them.
+	local capture = GryMod.Minimap and GryMod.Minimap.Capture
+
+	if capture and capture.IsCapturing and capture.IsCapturing() then
+		return
+	end
+
 	local ply = LocalPlayer()
 
 	if IsValid(ply) then
