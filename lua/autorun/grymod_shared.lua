@@ -13,7 +13,7 @@ GryMod.Modes = {
 	DROP = 4
 }
 
--- Why the suit changed mode: the 4th argument of the GryMod_ModeChanged hook (server). Plain strings, so a log or a print is readable.
+-- Why the suit changed mode: the 4th argument of the GryMod_ModeChanged hook (server and client). Plain strings, so a log or a print is readable.
 GryMod.ModeReasons = {
 	SPAWN = "spawn", -- the player respawned: the suit always starts again in armor
 	PLAYER = "player", -- the player asked for it (quick menu, key)
