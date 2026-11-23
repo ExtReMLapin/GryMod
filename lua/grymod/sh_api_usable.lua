@@ -359,3 +359,5 @@ register("hl2_doors", {
 	class = {"func_button", "func_rot_button", "momentary_rot_button", "prop_door_rotating", "func_door_rotating"},
 	icon = "use", text = "USE"
 })
+
+API.AddFeature("usable")

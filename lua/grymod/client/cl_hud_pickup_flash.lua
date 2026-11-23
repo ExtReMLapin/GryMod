@@ -89,6 +89,10 @@ local function stock(kind, name, icon)
 	API.RegisterPickupIcon(kind, name, icon)
 end
 
+if API.AddFeature then
+	API.AddFeature("pickups")
+end
+
 stock("ammo", "Pistol", "socom")
 stock("ammo", "SMG1", "FY71")
 stock("ammo", "AR2", "Riffle")

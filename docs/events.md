@@ -32,6 +32,7 @@ option is off plays nothing for that half.
 | `reset` | | the interface starts again from its start state (rebuilt, the energy bar on the real value, the damage effects forgotten, a hidden HUD brought back) | never by itself | |
 | `disabled` | | the HUD plays the shutdown (2.5 s) with its sound, then stays hidden | the suit flag of the server changes to off (`GryMod.API.SetSuitEnabled(ply, false)`) | `gry_hud`, `gry_hud_boot`, `gry_sounds` |
 | `enabled` | | the HUD comes back with the reboot sequence | the suit flag changes to on | `gry_hud`, `gry_hud_boot` |
+| `message` | `text` (128 characters at most), `lane` (`"top"`, `"middle"`, `"status"`, `"crosshair"` or 1 to 4; `"top"`), `sound` (a sound path), `duration` (seconds, 0.5 to 60; 5), or `line` (a key of the suit's own lines, see "Text lines") | a line of text on the HUD, in the movie's own stack, and its sound together | the suit's own lines (see "Text lines"); never by itself otherwise | `gry_hud_messages`, `gry_hud`, `gry_sounds` |
 
 Not events, because they run on every frame: the sprint sounds and the binoculars loop. The binoculars cues and the quick menu sounds are
 not events yet.
@@ -84,6 +85,21 @@ Not reported: what the client learns when a player comes into view, or when you 
 suit that stays down longer. The end is also reported when the server clears the flag at a death, a respawn or a disconnect, where the server
 hook `GryMod_MalfunctionEnd` is not run. A listener that fails is shown once in the console and does not stop the game's other hooks.
 
+### `GryMod_MessageShown(text, opts)`
+
+A text line was put on the HUD (the event `message`, below). `text` is the cleaned text; `opts` is a new table `{lane, sound, duration, line}`
+(`lane` is always a name, the others are `nil` when not given; `line` is the key of the suit's own line, if it was one). It is run once for
+each line that is really shown, after it is on the HUD and its sound has started: a line that is not shown, because the player turned the text
+lines off (`gry_hud_messages`), the HUD is off or the movie is missing, is not reported and plays no sound. A listener that fails is shown once in
+the console and stops nothing.
+
+### `GryMod_UsableChanged(ent, mode, ply)`
+
+What the player aims at and can use or take changed. It is the test that opens the crosshair's "usable" state, looked at ten times a second,
+and the hook is run once at each change, not at each look. `ent` is the entity (`nil` when there is none), `mode` is `1` (it can be used or
+taken), `2` (it can not: a weapon you already have) or `0` (nothing). It is run while the crosshair is drawn, so not when the crosshair is off
+or the player is dead. The use prompt hangs on it. A listener that fails is shown once in the console and stops nothing.
+
 ### `GryMod_BinocularsToggled(wanted)`
 
 The player puts the binoculars up (`wanted` is `true`) or down (`false`). "Wanted" is: the player is alive and either holds the game's zoom
@@ -135,6 +151,7 @@ code that this hook runs, so in those cases they are not made:
 - `GryMod_HUDStatus`, and so the events `lost` and `reboot` that GryMod plays from it;
 - the event `low_health`, and the picture half of `armor_hit` (the sound half comes from a message of the server and does not need the HUD);
 - `GryMod_RadarExposure` (the meter of the hexagon is fed by the radar's frame code, `Radar.Feed`).
+- the event `message` and `GryMod_MessageShown`: a line is shown only while the HUD is on (and the suit with it); the event still runs, it shows nothing and plays no sound.
 
 These do **not** depend on the HUD being drawn: the events `mode`, `decloak`, `energy_critical`, `regen_start`, `regen_stop`, `dive_in`,
 `dive_out`, `drown`, `enabled` and `disabled`, the sound half of `armor_hit`, the hooks `GryMod_MalfunctionStart` and `GryMod_MalfunctionEnd`, and
@@ -170,6 +187,42 @@ hook.Add("GryMod_HUDEvent", "my_addon", function(name, data)
 	end
 end)
 ```
+
+## Text lines
+
+The event `message` writes a line of text on the HUD, in the stack of lines of the original game: a new line enters at the bottom and pushes the
+older ones along, seven at most in a lane, each stays five seconds and fades out. It is one event: the text and its sound come together, and
+the players' settings cut both.
+
+On the client:
+
+```lua
+GryMod.API.ShowMessage("OBJECTIVE ACTIVATED")                                  -- the top lane
+GryMod.API.ShowMessage("Door unlocked", {lane = "status", duration = 3, sound = "buttons/button17.wav"})
+```
+
+From the server, to one player or a list of players (the same call with the players in front; it returns what `GryMod.API.HUDEvent` returns):
+
+```lua
+GryMod.API.ShowMessage(ply, "Reinforcements are coming", {lane = "middle"})
+GryMod.API.ShowMessage(player.GetAll(), "Round over")
+```
+
+The options are `lane`, `sound` (a sound path, played with the line through GryMod's mix) and `duration` (the whole life of the line, in
+seconds). The lanes are the four of the movie, with the number the original gives each: `"top"` (1, the banner of the objectives), `"middle"`
+(2, the upper middle), `"status"` (3, just under the centre, where the suit's own lines go) and `"crosshair"` (4, above the crosshair). The top
+lane and the status lane stack up to seven lines; the other two show one line at a time. The text is 128 characters at most (a longer one is
+refused, not cut), one line, no control characters. A call that breaks these limits returns `false` and a reason and shows nothing.
+
+The suit's own lines are shown by the same event, `{line = key}`, each with a setting of the player that turns it off:
+
+| `line` | Text | Shown when | Setting |
+| --- | --- | --- | --- |
+| `cloak_disabled` | `Temperature Camo: Disabled!` | the camouflage ran out of energy and the suit went back to armor | `gry_msg_cloak_disabled` |
+| `cloak_health` | `Temperature Camo: Health too low!` | the camouflage was refused because the health is too low: the server setting `gry_cloak_min_health` (the original game's rule uses 24; it is `0`, no rule, by default) | `gry_msg_cloak_health` |
+| `killed_friend` | `YOU KILLED A FRIENDLY!` | the player killed an ally (`GryMod.API.Relation` says so: a player of his team, an NPC that likes him). Nothing is punished | `gry_msg_killed_friend` |
+
+Listen to what is shown with `GryMod_MessageShown(text, opts)` (above). `GryMod.API.Has("messages")` is true when this exists.
 
 ## Add your own event
 

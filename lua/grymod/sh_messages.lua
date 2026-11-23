@@ -212,3 +212,7 @@ function Messages.Shift(items, entry)
 
 	return result
 end
+
+if GryMod.API and GryMod.API.AddFeature then
+	GryMod.API.AddFeature("messages")
+end
