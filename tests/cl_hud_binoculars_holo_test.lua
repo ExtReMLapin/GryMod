@@ -267,7 +267,8 @@ return {
 		},
 		{
 			-- fails without Holo.Sync and the listener of GryMod_BinocularsToggled: the three hooks would be there all the time, or never
-			name = "the hooks (fill, outline, marker) exist only while the binoculars are up with the hologram on; a toggle report adds and removes them",
+			-- (the fourth hook, RenderScreenspaceEffects, is the compose of the Crysis style: it fails without it)
+			name = "the hooks (fill, outline, marker, compose) exist only while the binoculars are up with the hologram on; a toggle report adds and removes them",
 			func = function()
 				local Holo = H()
 				local up = false
@@ -280,7 +281,8 @@ return {
 
 					return t.PostDrawTranslucentRenderables and t.PostDrawTranslucentRenderables["GRYBINOCULARSHOLO"] ~= nil,
 						t.PreDrawHalos and t.PreDrawHalos["GRYBINOCULARSHOLO"] ~= nil,
-						t.HUDPaint and t.HUDPaint["GRYBINOCULARSHOLO"] ~= nil
+						t.HUDPaint and t.HUDPaint["GRYBINOCULARSHOLO"] ~= nil,
+						t.RenderScreenspaceEffects and t.RenderScreenspaceEffects["GRYBINOCULARSHOLO"] ~= nil
 				end
 
 				withConVar("gry_binoculars_hologram", "1", function()
@@ -289,26 +291,26 @@ return {
 						expect(listener).to.beA("function")
 
 						Holo.Sync()
-						local a, b, c = hooked()
-						expect(a or b or c).to.beFalse()
+						local a, b, c, d = hooked()
+						expect(a or b or c or d).to.beFalse()
 
 						up = true
 						listener(true)
-						a, b, c = hooked()
-						expect(a and b and c).to.beTrue()
+						a, b, c, d = hooked()
+						expect(a and b and c and d).to.beTrue()
 
 						up = false
 						listener(false)
-						a, b, c = hooked()
-						expect(a or b or c).to.beFalse()
+						a, b, c, d = hooked()
+						expect(a or b or c or d).to.beFalse()
 					end)
 
 					-- the hologram off: nothing is added even with the binoculars up
 					withConVar("gry_binoculars_hologram", "0", function()
 						up = true
 						Holo.Sync()
-						local a, b, c = hooked()
-						expect(a or b or c).to.beFalse()
+						local a, b, c, d = hooked()
+						expect(a or b or c or d).to.beFalse()
 					end)
 				end)
 
@@ -389,6 +391,140 @@ return {
 				expect(Bino.IsTagged(nil)).to.beFalse()
 				expect(Bino.IsTagged({})).to.beFalse()
 				expect(Bino.IsItem(nil)).to.beFalse()
+			end
+		},
+		{
+			-- fails without Holo.StyleName and Holo.ModeFor
+			name = "the style: crysis unless the player wrote simple; crysis needs the shader (pending until the probe ran, simple when the game cannot run it)",
+			func = function()
+				local Holo = H()
+
+				expect(Holo.StyleName("simple")).to.equal("simple")
+				expect(Holo.StyleName(" Simple ")).to.equal("simple")
+				expect(Holo.StyleName("crysis")).to.equal("crysis")
+				expect(Holo.StyleName("CRYSIS")).to.equal("crysis")
+				expect(Holo.StyleName("nonsense")).to.equal("crysis")
+				expect(Holo.StyleName("")).to.equal("crysis")
+				expect(Holo.StyleName(nil)).to.equal("crysis")
+
+				expect(Holo.ModeFor("crysis", true)).to.equal("crysis")
+				expect(Holo.ModeFor("crysis", false)).to.equal("simple")
+				expect(Holo.ModeFor("crysis", nil)).to.equal("pending")
+				expect(Holo.ModeFor("simple", true)).to.equal("simple")
+				expect(Holo.ModeFor("simple", nil)).to.equal("simple")
+				expect(Holo.ModeFor("simple", false)).to.equal("simple")
+			end
+		},
+		{
+			-- fails without the gry_binoculars_holo_style convar
+			name = "the style switch is a saved client convar, crysis by default, with a choice in the Binoculars options",
+			func = function()
+				local cvar = GetConVar("gry_binoculars_holo_style")
+
+				expect(cvar ~= nil).to.beTrue()
+				expect(cvar:GetDefault()).to.equal("crysis")
+				expect(cvar:GetFlags()).to.equal(GetConVar("gry_binoculars_sway"):GetFlags())
+			end
+		},
+		{
+			-- fails without Holo.DrawScene: the hook would always draw one style
+			name = "the scene hook draws the style that is chosen: the older fill for simple, the vision buffer for crysis, nothing while the probe is pending",
+			func = function()
+				local Holo, V = H(), H().Crysis
+				local realFill, realVision, realWorks = Holo.DrawFill, V.DrawVision, V.works
+				local called = {}
+
+				Holo.DrawFill = function() called[#called + 1] = "fill" end
+				V.DrawVision = function() called[#called + 1] = "vision" end
+
+				local ok, err = pcall(function()
+					withConVar("gry_binoculars_holo_style", "simple", function()
+						V.works = true
+						Holo.DrawScene(false, false)
+					end)
+
+					withConVar("gry_binoculars_holo_style", "crysis", function()
+						V.works = true
+						Holo.DrawScene(false, false)
+						V.works = false
+						Holo.DrawScene(false, false)
+						V.works = nil
+						Holo.DrawScene(false, false)
+					end)
+				end)
+
+				Holo.DrawFill, V.DrawVision, V.works = realFill, realVision, realWorks
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(table.concat(called, ",")).to.equal("fill,vision,fill")
+			end
+		},
+		{
+			-- fails without V.Registers and V.TapPixels: the shader would get wrong numbers
+			name = "the shader's registers: the strength, boost, fill and tap distance, one pixel, the mode, the glow gain, the screen height and the scan lines",
+			func = function()
+				local V = H().Crysis
+				local r = V.Registers(1, 1920, 1080)
+
+				expect(r[1][1]).to.equal(V.STRENGTH)
+				expect(r[1][2]).to.equal(V.BOOST)
+				expect(r[1][3]).to.equal(V.FILL)
+				expect(r[1][4]).to.equal(V.TapPixels(1080))
+				expect(math.abs(r[2][1] - 1 / 1920) < 1e-9).to.beTrue()
+				expect(math.abs(r[2][2] - 1 / 1080) < 1e-9).to.beTrue()
+				expect(r[2][3]).to.equal(1)
+				expect(r[2][4]).to.equal(V.GLOW_GAIN)
+				expect(r[3][1]).to.equal(1080)
+				expect(r[3][2]).to.equal(V.SCAN_PERIOD)
+				expect(r[3][3]).to.equal(V.SCAN_HI)
+				expect(r[3][4]).to.equal(V.SCAN_LO)
+				expect(r[4][1]).to.equal(V.VIGNETTE)
+
+				-- the glow's own draw (mode 0): same numbers, only the mode differs; the table given is filled again, not replaced
+				local again = V.Registers(0, 1920, 1080, r)
+				expect(again == r).to.beTrue()
+				expect(r[2][3]).to.equal(0)
+
+				-- the original's scan lines: one bright row and one dim row, 1.2 and 0.8, counted in screen pixels
+				expect(V.SCAN_PERIOD).to.equal(2)
+				expect(V.SCAN_HI).to.equal(1.2)
+				expect(V.SCAN_LO).to.equal(0.8)
+			end
+		},
+		{
+			-- fails without V.TapPixels / V.GlowSize
+			name = "the outline's width follows the screen's height (never under one pixel), and the glow buffer is a fraction of the screen",
+			func = function()
+				local V = H().Crysis
+
+				expect(V.TapPixels(1080)).to.equal(V.TAP_1080)
+				expect(V.TapPixels(2160)).to.equal(V.TAP_1080 * 2)
+				expect(V.TapPixels(100)).to.equal(1)
+				expect(V.TapPixels(0)).to.equal(1)
+				expect(V.TapPixels(nil)).to.equal(1)
+
+				local w, h = V.GlowSize(1920, 1080)
+				expect(w).to.equal(math.floor(1920 / V.GLOW_DIV))
+				expect(h).to.equal(math.floor(1080 / V.GLOW_DIV))
+
+				w, h = V.GlowSize(2, 2)
+				expect(w >= 1 and h >= 1).to.beTrue()
+			end
+		},
+		{
+			-- fails without V.NeedsTraceOcclusion: with antialiasing the vision buffer has no scene depth, a soldier behind a wall would be drawn
+			name = "with antialiasing the render target has no scene depth, so a wall is looked for by a trace instead",
+			func = function()
+				local V = H().Crysis
+
+				expect(V.NeedsTraceOcclusion(0)).to.beFalse()
+				expect(V.NeedsTraceOcclusion(1)).to.beFalse()
+				expect(V.NeedsTraceOcclusion(2)).to.beTrue()
+				expect(V.NeedsTraceOcclusion(8)).to.beTrue()
+				expect(V.NeedsTraceOcclusion(nil)).to.beFalse()
 			end
 		}
 	}

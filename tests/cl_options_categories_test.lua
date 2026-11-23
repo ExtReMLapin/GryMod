@@ -84,6 +84,7 @@ button:Switch every element back on
 combo:?
 combo:?
 combo:?
+combo:gry_binoculars_holo_style
 combo:gry_objectives_marker_mode
 mixer
 mixer

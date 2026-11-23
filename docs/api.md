@@ -211,6 +211,13 @@ While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD fo
   green. An **ally** (or a neutral NPC) is not drawn; when it is scanned it pulses once from white to blue, and while the player aims at it a marker with its name
   and its distance stays. A weapon on the ground is drawn white while the player aims at it, and blue while an ally holds it. At most 16 things are drawn, the nearest
   ones; the colours come from the relation chain (`GryMod.API.Relation`), asked in one batch of questions (three a second at most).
+- **The hologram's style** (`gry_binoculars_holo_style`, `crysis` by default). `crysis` draws it the way the original does, with a pixel shader: the things are drawn
+  flat, in their colour, into a buffer the size of the screen (only where they are not behind a wall); a full-screen pass finds the boundary of the shapes, fills
+  every body with a share of its colour, brightens the boundary, puts a bright and a dim pixel row on all of it (the scan lines) and a vignette, and adds a blurred
+  glow. `simple` is the older drawing (an additive scan-line material and the game's halo). The game falls back to `simple` by itself when it cannot run the shader.
+  The levels are the fields of `GryMod.BinocularsHolo.Crysis` (`FILL`, `BOOST`, `STRENGTH`, `TAP_1080` for the width of the boundary, `GLOW_GAIN`, `SCAN_HI`,
+  `SCAN_LO`, `VIGNETTE`), read at every frame: change them from the console to tune the look. With antialiasing on (`mat_antialias` above 1) the buffer cannot share the
+  scene's depth, so a wall is looked for with a trace for each thing instead.
 - **The radar.** A hostile is on the radar once the binoculars spotted it, or when it is alerted or fighting within 26 m. It is **yellow** while it is alerted
   (`NPC_STATE_ALERT`: it heard something, it is searching) and **red** when it is fighting (`NPC_STATE_COMBAT`). The hook `GryMod_TargetSpotted(ply, ent, relation)`
   (server, in the table of the hooks above) tells your addon when a target is spotted.
