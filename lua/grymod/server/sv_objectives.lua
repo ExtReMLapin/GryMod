@@ -80,6 +80,21 @@ local function currentPos(o)
 	return o.pos
 end
 
+-- A copy of the waypoints (nil when there are none): nothing in a snapshot is the registry's own.
+local function copyVia(via)
+	if not via then
+		return nil
+	end
+
+	local out = {}
+
+	for i, v in ipairs(via) do
+		out[i] = Vector(v)
+	end
+
+	return out
+end
+
 -- The copy that goes to the listeners of the hooks and to the readers of the API: nothing in it is the registry's own.
 local function snapshot(o)
 	return {
@@ -93,7 +108,8 @@ local function snapshot(o)
 		ent = liveEnt(o),
 		radar = o.radar,
 		marker = o.marker,
-		onRemove = o.onRemove
+		onRemove = o.onRemove,
+		via = copyVia(o.via)
 	}
 end
 
@@ -111,7 +127,8 @@ local function record(o)
 		radar = o.radar,
 		marker = o.marker,
 		pos = currentPos(o),
-		entIndex = e and e:EntIndex() or 0
+		entIndex = e and e:EntIndex() or 0,
+		via = o.via
 	}
 end
 
@@ -531,7 +548,7 @@ function API.RegisterObjective(id, def)
 
 	local o = {
 		id = id, title = clean.title, description = clean.description, primary = clean.primary, state = clean.state, onRemove = clean.onRemove,
-		radar = clean.radar, marker = clean.marker, filter = clean.filter, filterId = filterId, ent = ent, entFn = clean.entFn, entId = entId,
+		radar = clean.radar, marker = clean.marker, via = clean.via, filter = clean.filter, filterId = filterId, ent = ent, entFn = clean.entFn, entId = entId,
 		pos = ent and ent:GetPos() or clean.pos
 	}
 

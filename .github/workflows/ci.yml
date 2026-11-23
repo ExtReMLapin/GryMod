@@ -39,6 +39,8 @@ jobs:
         run: python -m unittest tools.test_prepare_release tools.test_check_lua_syntax tools.test_shipped_resources tools.test_sound_files
       - name: Tests of the shader tools
         run: python -m unittest discover -s dev_resources/shaders
+      - name: Tests of the campaign data tools, and the shipped campaign data against the addon's own check
+        run: python -m unittest discover -s dev_resources/campaign
       - name: The zip can be built (the plain package)
         run: python tools/prepare_release.py --version 0.0-ci --out dist/zip
       - name: The Workshop package can be built

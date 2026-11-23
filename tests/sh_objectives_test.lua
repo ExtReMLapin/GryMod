@@ -349,6 +349,78 @@ return {
 				hook.Remove(name, "bad")
 				expect(#lines).to.equal(5)
 			end
+		},
+		{
+			-- breaks if: CheckDefinition refuses or drops `via`, keeps the developer's Vectors, accepts more than 16, or accepts a waypoint that is not a finite Vector
+			name = "via: a list of up to 16 waypoints is checked and copied; more, or a bad one, is refused with a reason that names the field",
+			func = function()
+				local v1 = Vector(1, 2, 3)
+				local clean = Obj.CheckDefinition("k", {title = "T", pos = Vector(0, 0, 0), via = {v1, Vector(4, 5, 6)}})
+
+				expect(#clean.via).to.equal(2)
+				expect(clean.via[2] == Vector(4, 5, 6)).to.beTrue()
+				v1.x = 99
+				expect(clean.via[1].x).to.equal(1)
+
+				expect(Obj.CheckDefinition("k", {title = "T", pos = Vector(0, 0, 0)}).via).to.beNil()
+				expect(Obj.CheckDefinition("k", {title = "T", pos = Vector(0, 0, 0), via = {}}).via).to.beNil()
+
+				local many = {}
+
+				for i = 1, 16 do
+					many[i] = Vector(i, 0, 0)
+				end
+
+				expect(Obj.CheckDefinition("k", {title = "T", pos = Vector(0, 0, 0), via = many}) ~= false).to.beTrue()
+				many[17] = Vector(17, 0, 0)
+
+				for _, bad in ipairs({many, 5, {5}, {Vector(math.huge, 0, 0)}}) do
+					local result, why = Obj.CheckDefinition("k", {title = "T", pos = Vector(0, 0, 0), via = bad})
+
+					expect(result).to.beFalse()
+					expect(string.find(why, "via", 1, true) ~= nil).to.beTrue()
+				end
+			end
+		},
+		{
+			-- breaks if: the writer does not send the waypoints, the reader does not read them in the same order, or trusts a count above the limit
+			name = "the waypoints go through the record: written and read back in order; none gives nil; a count above 16 drops the record",
+			func = function()
+				withNet(function(log, rewind)
+					local rec = {id = "k", title = "T", description = "", primary = true, state = "active", main = false, radar = true, marker = true,
+						pos = Vector(0, 0, 0), entIndex = 0, via = {Vector(1, 2, 3), Vector(4, 5, 6), Vector(7, 8, 9)}}
+
+					Obj.WriteRecord(rec)
+					rewind()
+
+					local read = Obj.ReadRecord()
+
+					expect(#read.via).to.equal(3)
+					expect(read.via[1] == Vector(1, 2, 3)).to.beTrue()
+					expect(read.via[3] == Vector(7, 8, 9)).to.beTrue()
+				end)
+
+				withNet(function(log, rewind)
+					Obj.WriteRecord({id = "k", title = "T", description = "", primary = true, state = "active", main = false, radar = true, marker = true,
+						pos = Vector(0, 0, 0), entIndex = 0})
+					rewind()
+					expect(Obj.ReadRecord().via).to.beNil()
+				end)
+
+				withNet(function(log, rewind)
+					Obj.WriteRecord({id = "k", title = "T", description = "", primary = true, state = "active", main = false, radar = true, marker = true,
+						pos = Vector(0, 0, 0), entIndex = 0, via = {Vector(1, 1, 1)}})
+
+					for _, item in ipairs(log) do
+						if item[1] == "uint" and item[3] == Obj.ViaBits then
+							item[2] = 17
+						end
+					end
+
+					rewind()
+					expect(Obj.ReadRecord()).to.beNil()
+				end)
+			end
 		}
 	}
 }

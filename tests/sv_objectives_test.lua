@@ -958,6 +958,46 @@ return {
 				API.RegisterObjective("one", {title = "One", pos = pos()})
 				expect(#received(a)).to.equal(0)
 			end)
+		},
+		{
+			-- breaks if: RegisterObjective drops `via`, GetObjective shares the registry's table, or the record that is sent has no waypoints
+			name = "via: RegisterObjective keeps the waypoints, GetObjective gives a copy, and the record sent to a ready client carries them",
+			func = scene(function()
+				local ply = fakePly("a")
+
+				S.Sync(ply)
+				sent = {}
+
+				local ok = API.RegisterObjective("routed", {title = "Routed", pos = pos(0, 0, 0), via = {pos(1, 2, 3), pos(4, 5, 6)}})
+
+				expect(ok).to.beTrue()
+
+				local o = API.GetObjective("routed")
+
+				expect(#o.via).to.equal(2)
+				o.via[1].x = 99
+				expect(API.GetObjective("routed").via[1].x).to.equal(1)
+				expect(API.GetObjective("routed").via[2] == pos(4, 5, 6)).to.beTrue()
+
+				-- the SET message ends with the count of waypoints and the waypoints
+				local msg
+				for _, m in ipairs(sent) do
+					if m.name == "gry_objectives" then
+						msg = m
+					end
+				end
+
+				local it = msg.items
+				expect(it[12][1]).to.equal("uint")
+				expect(it[12][2]).to.equal(2)
+				expect(it[13][2] == pos(1, 2, 3)).to.beTrue()
+				expect(it[14][2] == pos(4, 5, 6)).to.beTrue()
+
+				expect(API.RegisterObjective("bad", {title = "Bad", pos = pos(), via = {5}})).to.beFalse()
+				expect(API.GetObjective("plain")).to.beNil()
+				API.RegisterObjective("plain", {title = "Plain", pos = pos()})
+				expect(API.GetObjective("plain").via).to.beNil()
+			end)
 		}
 	}
 }

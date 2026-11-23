@@ -7,7 +7,7 @@
 -- players are not needed to check who is allowed, and the real convars are put back after each case.
 
 local WHITELIST = {
-	"gry_cloak_ai", "gry_drown_rules", "gry_energy_net", "gry_grenade_armed_only", "gry_health_regen", "gry_infinite_armor", "gry_malfunction",
+	"gry_campaign_objectives", "gry_campaign_secrets", "gry_cloak_ai", "gry_drown_rules", "gry_energy_net", "gry_grenade_armed_only", "gry_health_regen", "gry_infinite_armor", "gry_malfunction",
 	"gry_mechanics", "gry_movement", "gry_objectives", "gry_radar_allies_always", "gry_radar_detect", "gry_radar_objects", "gry_radar_pings", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh"
 }
 

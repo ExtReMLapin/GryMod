@@ -48,10 +48,11 @@ Obj.ReasonBits = 2
 -- What happens to an objective that follows an entity when the entity is removed.
 Obj.OnRemoveValues = {remove = true, complete = true, fail = true}
 
-Obj.Limits = {id = 64, title = 128, description = 512, count = 256}
+Obj.Limits = {id = 64, title = 128, description = 512, count = 256, via = 16}
 Obj.MoveDistance = 32 -- units: the server tells a new position of an entity only when it moved more than this
 Obj.EntBits = 14 -- an entity index on the network (0 = none)
 Obj.CountBits = 9 -- how many positions one POS message holds (256 objectives at most)
+Obj.ViaBits = 5 -- how many waypoints (`via`) a record holds (16 at most)
 
 local LIMITS = Obj.Limits
 
@@ -170,6 +171,27 @@ function Obj.CheckDefinition(id, def)
 		return false, "give a pos (a Vector) or an ent (an entity, or a function that returns one)"
 	end
 
+	-- waypoints: the places the player should pass on the way, in order (a map is not a straight line). Only a copy of the Vectors is kept.
+	if def.via ~= nil then
+		if not istable(def.via) or #def.via > LIMITS.via then
+			return false, "invalid via: a list of " .. LIMITS.via .. " Vectors at most"
+		end
+
+		clean.via = {}
+
+		for i, v in ipairs(def.via) do
+			if not validVector(v) then
+				return false, "invalid via: every waypoint is a Vector with finite numbers"
+			end
+
+			clean.via[i] = Vector(v.x, v.y, v.z)
+		end
+
+		if #clean.via == 0 then
+			clean.via = nil
+		end
+	end
+
 	return clean
 end
 
@@ -178,7 +200,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 
 -- Writes the record (the caller has started the message). Fields: id, title, description (strings), primary (bool), state (the name), main, radar, marker
--- (bools), pos (a Vector: where the objective is now), entIndex (the index of the entity it follows, 0 for none).
+-- (bools), pos (a Vector: where the objective is now), entIndex (the index of the entity it follows, 0 for none), via (an array of Vectors, or nil).
 function Obj.WriteRecord(rec)
 	net.WriteString(rec.id)
 	net.WriteString(rec.title)
@@ -190,6 +212,15 @@ function Obj.WriteRecord(rec)
 	net.WriteBool(rec.marker)
 	net.WriteVector(rec.pos)
 	net.WriteUInt(rec.entIndex or 0, Obj.EntBits)
+
+	local via = rec.via
+	local count = via and math.min(#via, LIMITS.via) or 0
+
+	net.WriteUInt(count, Obj.ViaBits)
+
+	for i = 1, count do
+		net.WriteVector(via[i])
+	end
 end
 
 -- Reads the record: the table, or nil when it breaks the bounds (it is dropped, never trusted).
@@ -209,6 +240,24 @@ function Obj.ReadRecord()
 	rec.marker = net.ReadBool()
 	rec.pos = net.ReadVector()
 	rec.entIndex = net.ReadUInt(Obj.EntBits)
+
+	local count = net.ReadUInt(Obj.ViaBits)
+
+	if count > LIMITS.via then
+		return nil
+	end
+
+	if count > 0 then
+		rec.via = {}
+
+		for i = 1, count do
+			rec.via[i] = net.ReadVector()
+
+			if not validVector(rec.via[i]) then
+				return nil
+			end
+		end
+	end
 
 	if not validId(rec.id) or #rec.title < 1 or #rec.title > LIMITS.title or #rec.description > LIMITS.description or not rec.state or not validVector(rec.pos) then
 		return nil

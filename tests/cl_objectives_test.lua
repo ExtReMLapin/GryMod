@@ -509,6 +509,31 @@ return {
 					receive(function() net.WriteUInt(7, Obj.OpBits) end)
 				end).to.succeed()
 			end
+		},
+		{
+			-- breaks if: the mirror does not keep the waypoints of the record, or the list gives none for an objective that has none, or the hook's copy shares the mirror's table
+			name = "via: the waypoints of a record are in List() and Get() as an array of Vectors, nil when there are none; the hook's copy is its own",
+			func = function()
+				local added = listen("GryMod_ObjectiveAdded")
+
+				Obj.ApplySet(rec("with", {via = {Vector(1, 2, 3), Vector(4, 5, 6)}}))
+				Obj.ApplySet(rec("without"))
+
+				local list = Obj.List()
+
+				expect(#list[1].via).to.equal(2)
+				expect(list[1].via[2] == Vector(4, 5, 6)).to.beTrue()
+				expect(list[2].via).to.beNil()
+				expect(#Obj.Get("with").via).to.equal(2)
+
+				-- the copy given to the hooks can be changed without changing the mirror
+				added[1][2].via[1].x = 99
+				expect(Obj.Get("with").via[1].x).to.equal(1)
+
+				-- a new SET without waypoints takes them away
+				Obj.ApplySet(rec("with"))
+				expect(Obj.Get("with").via).to.beNil()
+			end
 		}
 	}
 }
