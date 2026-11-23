@@ -701,7 +701,7 @@ and its distance while it is armed, within the player's range and 20 m. Nothing 
 
 Garry's Mod has no objectives, so GryMod brings a small system for addons and maps: a title, a description, a state, and a place in the
 world. GryMod only keeps them and tells everyone who is interested: the server holds the truth, each client gets a mirror, and both realms
-run the same three hooks. (The markers, the radar blips and the maps that show them are a separate step: this part is what they read.)
+run the same three hooks. What the HUD does with them is in "What the HUD does with them", below.
 
 An objective has:
 
@@ -714,7 +714,7 @@ An objective has:
 | `state` | `"active"` (default), `"done"` or `"failed"` |
 | `pos` **or** `ent` | where it is: a `Vector`, or an entity (or a function that returns one, asked now and again when the entity may have changed). Give one of them, not both |
 | `onRemove` | what happens when the entity it follows is removed: `"remove"` (default: the objective goes away), `"complete"` (it stays at the last place of the entity, `"done"`) or `"fail"` (same, `"failed"`) |
-| `radar`, `marker` | `true` (default): the displays may show it on the radar and on the screen. Stored and told; a display that is not there yet ignores them |
+| `radar`, `marker` | `true` (default): the HUD may show it on the radar and the minimap (`radar`) and on the screen (`marker`). Turn one off for an objective that should stay in the list only |
 | `filter` | `function(ply) return true end`: asked **on the server** for each player; only the players for whom it answers true receive the objective. An error in it, or no answer, hides the objective |
 
 The main objective is a separate choice (`SetMainObjective`): at most one, the one the displays stress.
@@ -773,6 +773,9 @@ GryMod.Objectives.Get("my_addon.find_key")   -- one of them, or nil
 GryMod.Objectives.Main()                     -- the main objective, or nil
 ```
 
+`GryMod.Objectives.Syncing()` is true while a full list is arriving (the list the player gets when he joins, or when `RefreshObjectives` sends it again): the
+hooks run during it too, so a display that tells the player about "a new objective" can stay silent for these.
+
 `pos` is resolved when you ask. When the client has the entity the objective follows (it is in view), `pos` is the entity's position
 now and `ent` is the entity. Otherwise `pos` is the last position the server sent (it refreshes it twice a second while the entity
 moves more than 32 units) and `ent` is `nil`. The tables are reused at every call, so asking every frame costs no garbage: read them, do not
@@ -813,6 +816,26 @@ hook.Add("GryMod_ObjectiveChanged", "my_addon listener", function(id, obj, oldSt
 	end
 end)
 ```
+
+### What the HUD does with them
+
+The HUD shows the objectives with no code on your side, and each part has its own setting of the player:
+
+- **On the screen** (`gry_hud_objectives`, in the HUD elements): a marker, the diamond of the original game's HUD, at the place of each **active**
+  objective whose `marker` is on, with its distance in metres; it shrinks from 1.4 times its size at 10 metres to 0.7 at 500 metres. When the
+  objective is off the screen or behind the player, an arrow of the original's eight sits on the border of the screen and points the way. The marker
+  nearest to the middle of the screen opens a small box with the objective's title. A primary and a secondary objective look the same here, as in the
+  original. A finished or failed objective has no marker. Nothing changes while the player looks through the binoculars.
+- **On the radar and the minimap** (`gry_hud_radarobjectives`, in the Radar and map menu): a green glow for a primary objective and a yellow one for a
+  secondary one, for each active objective whose `radar` is on, and an arrow on the border of the radar when the objective is farther than its range.
+  The minimap is the radar's own window, so it shows the same markers. This uses the marker sources of the radar (see "Radar markers (client)").
+- **A line and a sound** (`gry_msg_objectives`): when an objective is added, finished or failed, the top line of the HUD says
+  `NEW OBJECTIVE: <title>`, `OBJECTIVE COMPLETED: <title>` or `OBJECTIVE FAILED: <title>` with the sound of the original game. It is the HUD event
+  `objective` (docs/events.md). The list the player gets when he joins is silent.
+
+To see all of it without writing Lua, an administrator (or the host of a listen server) types `gry_objectives_demo` in the console, or presses
+**Objectives demo (on / off)** in the effects test window: a primary objective 50 metres in front of him, a secondary one 200 metres in front of
+him, and one that follows the nearest NPC and is finished when the NPC dies (`onRemove = "complete"`). The same command takes them away.
 
 ### A map entity: `gry_objective`
 
