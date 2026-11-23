@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`. New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"usable"`, `"pickups"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -179,7 +179,7 @@ provider. A provider is never asked about an invalid player or entity.
 
 A HUD event is a named effect the HUD plays, picture and sound together; GryMod's own triggers call the same events. The full list
 (`boot`, `lost`, `reboot`, `malfunction`, `armor_hit`, `decloak`, `low_health`, `jam`, `mode`, `energy_critical`, `regen_start`,
-`regen_stop`, `dive_in`, `dive_out`, `drown`, `reset`, `disabled`, `enabled`), their data, what each plays and the options they follow are
+`regen_stop`, `dive_in`, `dive_out`, `drown`, `reset`, `disabled`, `enabled`, `message`), their data, what each plays and the options they follow are
 in [events.md](events.md), with examples and the effects test window.
 
 From the server, to one player or a list of players:
@@ -208,6 +208,73 @@ GryMod.API.GetHUDEventInfo("my_flash")           -- a copy of {label, variants, 
 
 hook.Add("GryMod_HUDEvent", "my_addon", function(name, data) end)   -- after a handler ran without error
 ```
+
+## Text lines
+
+`GryMod.API.Has("messages")` is true. A line of text on the HUD (the stack of lines of the original game) is the HUD event `message`:
+
+```lua
+GryMod.API.ShowMessage("OBJECTIVE ACTIVATED")                                -- client: on this screen, the top lane
+GryMod.API.ShowMessage(ply, "Door unlocked", {lane = "status", duration = 3}) -- server: on the screen of ply (or a list of players)
+hook.Add("GryMod_MessageShown", "my_addon", function(text, opts) end)         -- client: a line was shown
+```
+
+Options: `lane` (`"top"` by default, `"middle"`, `"status"`, `"crosshair"`, or 1 to 4), `sound` (a sound path, played with the line) and `duration`
+(seconds, 0.5 to 60; 5 by default). The text is 128 characters at most. The lanes, the suit's own lines and the settings that turn them off are
+in [events.md](events.md) ("Text lines"). The player can turn all lines off with `gry_hud_messages`.
+
+## Usable things: the use prompt
+
+`GryMod.API.Has("usable")` is true. When the player looks at something he can use or take, the HUD shows an icon and a text under the crosshair
+("TAKE SMG", "ENTER VEHICLE", "CLIMB", "PICK UP", "USE"). Whether something can be used at all is the crosshair's own test, the one that opens its
+"usable" state; the registry of usable entities says WHAT it is. An entity that no entry names shows the plain "USE". The player can turn the
+prompt off with `gry_hud_usehint`.
+
+```lua
+GryMod.API.RegisterUsable("my_addon_terminal", {
+	class = "my_addon_terminal",        -- or base = "my_base", or match = function(ent) return ... end
+	icon = "use",                       -- "use", "enter", "pickup", "grab" or "ladder" (the five of the movie)
+	text = "HACK %1",                   -- %1 is the name; a function(ent, ply) -> string works too. The text is shown in capitals
+	name = "terminal",                  -- optional: a string or function(ent) -> string; else the weapon's print name, else the class
+	priority = 10,                      -- optional: the higher first (the stock entries are at -100)
+})
+
+GryMod.API.UnregisterUsable("my_addon_terminal")
+GryMod.API.GetUsable(ent)               -- the entry that matches the entity, or nil
+GryMod.API.UsableText(ent, ply)         -- the text the prompt shows for it, or nil
+```
+
+The crosshair asks this registry what can be used: **registering an entity makes it usable** (the crosshair's "usable" state opens on it, and the
+prompt shows), and an entity no entry names is not. Two rules apply on top: an entry with the `"grab"` icon only counts while the player can lift the
+entity (the Source rule: at most 35 kg and 128 units on every side; the client reads the size, and the mass when it has a physics object for it), and
+an entry with the `"enter"` icon does not count while the player sits in a vehicle. A weapon the player already has is shown as "can not be used" by the
+crosshair and gets no prompt. To react when the usable thing changes, listen to the client hook `GryMod_UsableChanged(ent, mode, ply)` (see
+[events.md](events.md)).
+
+The stock entries are registered the same way, with a low priority: yours win. They cover what has a +use action in Half-Life 2 and Garry's Mod:
+weapons and items (`TAKE`), the ammo crate, the wall chargers, vehicles (`ENTER VEHICLE`), ladders (`CLIMB`), lifted props, ragdolls and physboxes
+(`PICK UP`), doors and buttons (`USE`), the turrets you man (`USE`), the friendly NPCs that answer +use (`TALK`: citizen, Barney, Alyx, the vortigaunt,
+Dr Mossman, the Monk), the metropolice (`USE`), `gmod_button`, `gmod_wheel` and `sent_ball`. The server's flags of a door or a button ("ignore +use")
+are not readable on the client, so such a door also shows the prompt.
+
+## Pickups
+
+`GryMod.API.Has("pickups")` is true on the client. When the player takes ammo, a weapon or an item (the game's own hooks `HUDAmmoPickedUp`,
+`HUDWeaponPickedUp`, `HUDItemPickedUp`), a small popup shows the count, an icon and the name, and the Half-Life 2 pickup list is hidden while
+the popup is on. The same pickup taken again while the popup is still on adds the counts. The player can turn it off with `gry_hud_pickups`.
+The icons of the movie are ammo icons; the registry says which one a pickup gets (a pickup that no entry names has no picture, only its count and
+name):
+
+```lua
+-- client
+GryMod.API.RegisterPickupIcon("ammo", "MyAmmo", "rocket")        -- kind: "ammo" (the ammo type), "weapon" (the class) or "item" (the class)
+GryMod.API.RegisterPickupIcon("weapon", "my_addon_gun", "DSG1")
+GryMod.API.GetPickupIcon("ammo", "MyAmmo")                       -- "rocket", or "New" (no picture)
+GryMod.API.UnregisterPickupIcon("ammo", "MyAmmo")
+```
+
+The icons are `Riffle`, `socom`, `shootgun`, `missle`, `rocket`, `FY71`, `Hurricane`, `LAW`, `TACGun`, `GaussRifle`, `DSG1`, `MOAR`, `MOAC`,
+`Flashbang`, `SmokeGrenade`, `Sleep` and `AVMine`.
 
 ## Weapons
 

@@ -223,14 +223,40 @@ function Cross.ArcRotation(yaw)
 	return (yaw + 180) % 360
 end
 
+-- What can be used when the registry of usable entities (sh_api_usable.lua) is not there (a hot reload): the old list of classes.
 local USE_CLASSES = {
 	func_button = true, func_rot_button = true, momentary_rot_button = true, prop_door_rotating = true,
 	func_door_rotating = true, func_useableladder = true, prop_physics = true, prop_physics_multiplayer = true,
 	prop_ragdoll = true
 }
 
+-- The limits of what the player lifts with +use: CBasePlayer::CanPickupObject(ent, 35, 128) of the Source SDK, which is what gives a physics
+-- prop its use capability: at most 35 kg and 128 units on every side. The client reads the size of the box, and the mass when it has a
+-- physics object for the entity (it often has none for a prop of the server: then only the size counts).
+Cross.PICKUP_MASS = 35
+Cross.PICKUP_SIZE = 128
+
+function Cross.Grabbable(ent)
+	if isfunction(ent.OBBMins) and isfunction(ent.OBBMaxs) then
+		local size = ent:OBBMaxs() - ent:OBBMins()
+
+		if size.x > Cross.PICKUP_SIZE or size.y > Cross.PICKUP_SIZE or size.z > Cross.PICKUP_SIZE then
+			return false
+		end
+	end
+
+	local physics = isfunction(ent.GetPhysicsObject) and ent:GetPhysicsObject()
+
+	if physics and IsValid(physics) and physics:GetMass() > Cross.PICKUP_MASS then
+		return false
+	end
+
+	return true
+end
+
 -- setUsable's mode for what the player aims at: 1 something can be used or taken, 2 it can not (a weapon the
--- player already has), 0 nothing.
+-- player already has), 0 nothing. WHAT can be used is the registry of usable entities (GryMod.API.RegisterUsable): anything it names counts, an
+-- entity with the "grab" icon only when the player can lift it (Cross.Grabbable), a vehicle not while the player sits in one.
 function Cross.UsableFor(ent, ply)
 	if not ent or not IsValid(ent) then
 		return 0
@@ -242,8 +268,33 @@ function Cross.UsableFor(ent, ply)
 		return ply and ply:HasWeapon(class) and 2 or 1
 	end
 
+	local API = GryMod.API
+
+	if API and API.GetUsable then
+		local entry = API.GetUsable(ent)
+
+		if not entry then
+			return 0
+		end
+
+		if entry.icon == "grab" and not Cross.Grabbable(ent) then
+			return 0
+		end
+
+		if entry.icon == "enter" and ply and isfunction(ply.InVehicle) and ply:InVehicle() then
+			return 0
+		end
+
+		return 1
+	end
+
 	if string.sub(class, 1, 5) == "item_" or USE_CLASSES[class] then
 		return 1
+	end
+
+	-- a vehicle to get into (the original's use_vehicle); not when the player already sits in one
+	if isfunction(ent.IsVehicle) and ent:IsVehicle() then
+		return (ply and isfunction(ply.InVehicle) and ply:InVehicle()) and 0 or 1
 	end
 
 	return 0
@@ -512,6 +563,7 @@ local instance, friendly
 local lastTime
 local spread, kick, lastNextFire = 0, 0, 0
 local usableMode, friendlyShown = 0, false
+local usableEnt -- the entity that can be used and was last reported (nil: none)
 local nextScan = 0
 local failed = false -- the movie could not make a crosshair: not tried again until Reset
 
@@ -563,6 +615,10 @@ local function hidden(ply)
 		or ply:InVehicle()
 end
 
+-- Whether the crosshair is hidden for this player (the Lost animation, the quick menu, a vehicle): what hangs on it, such as the use
+-- prompt (cl_hud_use_flash.lua), goes with it.
+Cross.IsHidden = hidden
+
 -- Whether the player is zooming with the binoculars on (with them off the zoom is the plain game's).
 function Cross.Zooming(ply)
 	-- (the binoculars know both zooms, the game's key and the own zoom)
@@ -591,6 +647,18 @@ function Cross.VanillaHiddenFor(weapon)
 	return not (weapon and IsValid(weapon) and weapon.DoDrawCrosshair ~= nil)
 end
 
+-- The thing the player aims at that can be used changed (`ent` is nil and `mode` 0 when there is none; `mode` is setUsable's: 1 can be used or
+-- taken, 2 can not). The hook GryMod_UsableChanged(ent, mode, ply) tells the other parts and the addons; nothing reads what it returns. The use
+-- prompt (cl_hud_use_flash.lua) hangs on it. A field so that a test can replace it.
+function Cross.ReportUsable(ent, mode, ply)
+	-- a listener that fails must not break the crosshair's frame: its error is printed, the crosshair goes on
+	local ok, err = pcall(hook.Run, "GryMod_UsableChanged", ent, mode, ply)
+
+	if not ok then
+		ErrorNoHalt("[GryMod] A listener of GryMod_UsableChanged failed: " .. tostring(err) .. "\n")
+	end
+end
+
 -- What the player aims at, looked for ten times a second: the mode of setUsable and the friendly cross.
 local function scan(ply)
 	local now = RealTime()
@@ -607,10 +675,18 @@ local function scan(ply)
 		filter = ply
 	})
 	local mode = trace.Entity and Cross.UsableFor(trace.Entity, ply) or 0
+	local usable = mode ~= 0 and trace.Entity or nil
+	local changed = mode ~= usableMode or usable ~= usableEnt
 
 	if mode ~= usableMode then
 		usableMode = mode
 		instance:SetUsable(mode)
+	end
+
+	-- the same test says WHAT can be used: the report is made once at each change of the entity or of the mode, not at each look
+	if changed then
+		usableEnt = usable
+		Cross.ReportUsable(usable, mode, ply)
 	end
 
 	local far = util.TraceLine({

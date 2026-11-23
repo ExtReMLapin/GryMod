@@ -203,6 +203,13 @@ function GryMod.SuitOptions(Panel)
 	GryMod.OptionBox(form, "Right click that fires ends it", "gry_cloak_altfire", "Shotgun double barrel, SMG grenade, AR2 ball, frag lob; the crossbow zoom does not.")
 	GryMod.OptionBox(form, "Selector click keeps the camouflage", "gry_cloak_selector_guard", "A click just after the weapon selector closed by itself (1.2 s after the wheel) confirms the selection instead of firing and ending the camouflage.")
 	GryMod.OptionBox(form, "Glitch when firing out of it", "gry_decloak_glitch", "Flash, HUD jump and shake, at any energy and not only above 20 %.")
+
+	-- the suit's own text lines (the HUD element "Text lines" must be on too)
+	for _, key in ipairs(GryMod.Messages.LineKeys()) do
+		local line = GryMod.Messages.Lines[key]
+
+		GryMod.OptionBox(form, line.label, line.convar, line.help .. ". Shown as \"" .. line.text .. "\".")
+	end
 end
 
 -- The suit's sounds (the binoculars' own are in the Binoculars category).
