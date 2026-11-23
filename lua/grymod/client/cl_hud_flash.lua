@@ -1175,7 +1175,7 @@ end
 function Module.ResetAll()
 	Module.Reset()
 
-	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashMessages, GryMod.FlashUse}) do
+	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashMessages, GryMod.FlashUse, GryMod.FlashPickup}) do
 		-- a piece that has a state to keep (the boot sequences) rebuilds its pictures instead of starting over
 		local rebuild = module and (module.Rebuild or module.Reset)
 

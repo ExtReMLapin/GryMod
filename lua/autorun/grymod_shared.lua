@@ -128,6 +128,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_hud_messages_flash.lua")
 	AddCSLuaFile("grymod/sh_api_usable.lua")
 	AddCSLuaFile("grymod/client/cl_hud_use_flash.lua")
+	AddCSLuaFile("grymod/client/cl_hud_pickup_flash.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -399,4 +400,5 @@ if CLIENT then
 	include("grymod/client/cl_hud_messages_flash.lua")
 	include("grymod/sh_api_usable.lua")
 	include("grymod/client/cl_hud_use_flash.lua")
+	include("grymod/client/cl_hud_pickup_flash.lua")
 end
