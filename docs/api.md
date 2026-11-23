@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"usable"`, `"pickups"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -383,6 +383,96 @@ in the order the adapters were added; `RemoveWeaponAdapter(id)` removes it. Ther
 weapons: later (the HUD already reads their fire mode, for the icon only, through its own resolvers, `GryMod.FlashHUD.AddFireModeResolver`,
 which is not part of the versioned API). An adapter is asked for a weapon **entity** only: the camouflage rule `AltFireShoots`
 asks by class name, so an adapter cannot answer `alt` or `altShoots`.
+
+## Radar markers (client)
+
+`GryMod.API.Has("radarmarkers")` is true. Anything can put icons on the radar of the HUD by giving it a **source**: a function that returns the markers of
+the moment. The radar asks every source once per frame it draws, places each marker with the same range, zoom and frame as its own contacts, and draws it
+with the icon of the original game. No `Think` is added: the sources are asked from the radar's own drawing code, and when there is no source nothing runs.
+
+```lua
+-- client side
+local function myMarkers()
+	return {
+		{pos = Vector(0, 0, 64), type = 5, subtype = 0, id = "treasure"},    -- an objective: an arrow on the border when it is far
+		{pos = LocalPlayer():GetPos() + Vector(300, 0, 0), type = 6, scale = 150, alpha = 0.5}, -- a ring
+	}
+end
+
+GryMod.Radar.AddSource("my_addon", myMarkers)       -- returns true, or false and a reason
+-- ... later:
+GryMod.Radar.RemoveSource("my_addon")               -- returns whether there was a source
+```
+
+| Function | What it does |
+| --- | --- |
+| `GryMod.Radar.AddSource(key, fn)` | adds a source (a second call with the same key replaces it and keeps its place). `fn()` takes no argument and returns an array of markers, or nothing |
+| `GryMod.Radar.RemoveSource(key)` | takes a source away |
+| `GryMod.Radar.HasSource(key)` | whether the key is a source |
+| `GryMod.Radar.Sources()` | the keys of the sources, in order |
+
+A **marker** is a table. Only `pos` and `type` are required:
+
+| Field | Meaning |
+| --- | --- |
+| `pos` | `Vector`, a point of the world |
+| `type` | the icon: `1` to `4` the unit icons of the contacts, `5` an objective arrow, `6` an explosion ring, `7` a team mate |
+| `subtype` | `0` to `4`, default `0`. For the units it is their state (`0` calm, `3` alerted, `4` fighting). For type 5 it is `0` primary (green) or `2` secondary (yellow); the radar picks the arrow itself when the marker is beyond the radar |
+| `alpha` | `0` to `1`. Default: the original's (`0.85` units, `0.75` objective arrow, `1` ring and team mate) |
+| `scale` | percent of the icon, `100` being the size of the movie's picture. Default: the original's (the units' by height, `75` objective arrow, `100` ring, a team mate `100` times the height factor) |
+| `yaw` | degrees, optional: the way a unit icon (types 1 to 4) faces in the world. Without it the icon points up |
+| `id` | anything, only given back to the radar's code |
+
+**What the radar does with a marker beyond its reach** depends on the type, as in the original game:
+
+- type `5` (objective arrow) **sticks to the border** of the radar, in the edge picture (an arrow pointing away from the player). Inside the
+  radar it is a glow.
+- type `7` (team mate) sticks to the **circle of the range**.
+- every other type is not drawn when it leaves the radar's frame.
+
+A marker more than 500 m above or below the player is not drawn, and a radar can show 64 markers at most. A marker that is not valid is skipped.
+A source runs under `pcall`: when it throws, the others are not affected; after three errors in a row it is **removed** with one message in the console.
+The radar zoom (`gry_radar_range`, and the automatic zoom) applies to the markers as to the contacts. The player's switch is `gry_hud_radarmarkers`
+(Radar and map menu): off, no source is asked.
+
+### Explosion rings: `GryMod.API.ReportRadarPing(pos, kind)` (server)
+
+An explosion shows on the radar as a ring that opens and fades in two seconds (the original game's icon type 6). The server tells the players that are
+within 250 m of it. Every `env_explosion` does it by itself, so the Half-Life 2 grenades, rockets, barrels and energy balls ring the radar with no
+code from you, and so does an addon's own `env_explosion`. For anything else (your own blast, a gunshot, an alarm), report it:
+
+```lua
+-- server side
+GryMod.API.ReportRadarPing(ent:GetPos())             -- an ordinary explosion
+GryMod.API.ReportRadarPing(ent:GetPos(), "big")      -- "small", "explosion" or "big"
+GryMod.API.ReportRadarPing(ent:GetPos(), 6.5)        -- or the radius of the blast in metres (0.5 to 8)
+
+hook.Add("GryMod_RadarPing", "my_addon", function(pos, size, automatic)
+	-- a ping was accepted; `automatic` is true for the ones made from an env_explosion. The return value is not read.
+end)
+```
+
+`ReportRadarPing` returns `true`, or `false` and why: the position is not a `Vector`, the kind is not one, or more than 20 pings were reported in the
+same second. A ring of more than 4 m makes one echo, as the original does. The server's `gry_radar_pings` (Radar and map menu, administrators) turns the
+automatic pings off; a report through the function always goes out. The player's `gry_hud_radarpings` hides the rings. The rings are drawn through the
+marker sources above (key `gry_pings`).
+
+### Team mates
+
+In a team game (at least two teams with players: `Player:Team()` is neither the unassigned, the spectator nor the connecting team) the living players of
+your team show on your radar with the team mate icon (type 7), anywhere on the map: far ones stick to the circle of the range. Sandbox, where everybody is
+in one team, shows none. The server's `gry_radar_teammates` (1 by default; Radar and map menu, administrators) turns it off. They are radar contacts, so
+the player's "Radar contacts" switch hides them.
+
+### Danger bar and hexagon: seen or heard
+
+The danger bar and the hexagon at the bottom left of the radar show how much the hostile NPCs have noticed the player: the bar for the soldiers, the
+hexagon for the machines (flying units, vehicles, turrets). The radar's contacts feed them (an alerted or fighting hostile within 26 m). On top of that,
+the server counts the hostile NPCs that are **not** contacts, wherever they are in the radar's search sphere (2.1 times the radar range): one that has
+the player as enemy or sees him (`COND.SEE_PLAYER`) counts as fighting, one that hears him (`COND.HEAR_PLAYER`) or has lost him and looks for him counts as
+alerted. A hostile that fights someone else does not count. The two highest numbers travel in a 4-bit message (`gry_radar_detect`), only when they change.
+The server's `gry_radar_detect` (1 by default; Radar and map menu, administrators) turns it off and brings the old behaviour back. A friend never counts.
+It costs two engine calls (`HasCondition`) per NPC in the sphere at each tick of the radar (5 a second), no new search and no new timer.
 
 ## Tracked entities
 

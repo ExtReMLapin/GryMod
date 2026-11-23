@@ -40,6 +40,10 @@ local function radarHUDSwitches(Panel)
 			end
 		end
 	end
+
+	-- the markers that the objectives and other addons put on the radar (cl_hud_radar_sources.lua): one switch for all of them
+	GryMod.OptionBox(form, "Markers from objectives and addons", "gry_hud_radarmarkers", "Arrows and dots that other parts of the game put on the radar (an objective, a team mate).")
+	GryMod.OptionBox(form, "Explosion rings", "gry_hud_radarpings", "A ring on the radar at each explosion near you (a grenade, a rocket, a barrel).")
 end
 
 -- The settings of the server about the radar and the in/out map, for the administrators only: four check boxes (a request to the server each) and the
@@ -51,6 +55,9 @@ local function serverOptions(Panel)
 
 	GryMod.AdminOption(Panel, "Allies in blue from the start", "gry_radar_allies_always", "bool", {into = form, help = "NPCs that like you. Off: they show only when alerted, fighting or scanned."})
 	GryMod.AdminOption(Panel, "Vehicles and mines once scanned", "gry_radar_objects", "bool", {into = form, help = "Vehicles and Combine mines show on the radar once the binoculars have scanned them."})
+	GryMod.AdminOption(Panel, "Explosion rings on the radar", "gry_radar_pings", "bool", {into = form, help = "Each explosion rings the radar of the players within 250 m. Off: only the ones an addon reports."})
+	GryMod.AdminOption(Panel, "Danger bar: hostiles that see or hear you", "gry_radar_detect", "bool", {into = form, help = "The danger bar and the hexagon also react to hostiles that have noticed you from far away, not only to the alerted ones that are on the radar."})
+	GryMod.AdminOption(Panel, "Team mates on the radar", "gry_radar_teammates", "bool", {into = form, help = "In a team game, the living players of your team show on your radar."})
 	GryMod.AdminOption(Panel, "The server makes the in/out map", "gry_zonemap", "bool", {into = form, help = "The automatic zoom and other features use it."})
 	GryMod.AdminOption(Panel, "In/out map from the navigation mesh", "gry_zonemap_navmesh", "bool", {into = form, help = "Off: it is made from the AI node graph."})
 

@@ -60,6 +60,9 @@ function Radar.Range()
 	return S.ClampRange(RangeConVar:GetFloat())
 end
 
+-- The icon type of a team mate (the original's type 7).
+Radar.MATE_TYPE = 7
+
 Radar.UNITS_PIXEL = 110 / 94
 -- The script's arithmetic gives (65, 51.5), but the player is not drawn there: MEASURED on two screenshots of the game (the movie's own
 -- vertical line and the base of the view cone, against icons whose movie coordinates were known), the centre of the radar is at
@@ -134,6 +137,12 @@ local function sizeFor(dz, big)
 	return big and size * 2 or size
 end
 
+-- The same helpers for the marker sources (cl_hud_radar_sources.lua), which place their icons with the rules of the contacts.
+Radar.InsideFrame, Radar.BorderPoint, Radar.SizeFor = insideFrame, borderPoint, sizeFor
+
+-- No more marker icons than this on the radar at once (the sources' markers come after the contacts, whose limit is S.MAX_CONTACTS).
+Radar.MAX_MARKERS = 64
+
 -- The entries for the movie, from the player's position and yaw (degrees) and the contacts {id, x, y, z, yaw, type, sub,
 -- marker, big}: {id, x, y, rotation, frame, scale, alpha, tint}, in the movie's coordinates (tint: the colour multipliers of an
 -- ally, nil for the movie's own colours). A unit outside the frame or more
@@ -170,7 +179,16 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 			local y = -(dx * cos + dy * sin) * pixels
 			local show = true
 
-			if not insideFrame(x, y) then
+			local mate = c.type == Radar.MATE_TYPE
+
+			if mate then
+				-- a team mate beyond the range sticks to the circle of the range (the original clamps it by length; the units are dropped past the frame)
+				local length = math.sqrt(x * x + y * y)
+
+				if length > S.PIXELS then
+					x, y = x * S.PIXELS / length, y * S.PIXELS / length
+				end
+			elseif not insideFrame(x, y) then
 				if c.marker then
 					x, y = borderPoint(x, y)
 				else
@@ -181,6 +199,14 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 			if show then
 				local ally = c.sub == S.SUB_ALLY
 				local entry = reuse and list[count + 1]
+				-- a mate is drawn at alpha 100 and 100 times the height factor in percent: 4 times a unit's size (the original's numbers)
+				local scale = sizeFor(dz * S.METRES_PER_UNIT, c.big)
+				local alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
+
+				if mate then
+					scale, alpha = scale * 4, 100
+				end
+
 				count = count + 1
 
 				if entry then
@@ -189,8 +215,8 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 					entry.y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL
 					entry.rotation = (yaw - c.yaw + 180) % 360
 					entry.frame = c.type * 5 + (ally and 0 or c.sub)
-					entry.scale = sizeFor(dz * S.METRES_PER_UNIT, c.big)
-					entry.alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
+					entry.scale = scale
+					entry.alpha = alpha
 					entry.tint = ally and Radar.ALLY_TINT or nil
 				else
 					list[count] = {
@@ -199,8 +225,8 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 						y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL,
 						rotation = (yaw - c.yaw + 180) % 360,
 						frame = c.type * 5 + (ally and 0 or c.sub),
-						scale = sizeFor(dz * S.METRES_PER_UNIT, c.big),
-						alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA,
+						scale = scale,
+						alpha = alpha,
 						tint = ally and Radar.ALLY_TINT or nil
 					}
 				end
@@ -284,9 +310,9 @@ local function setTint(icon, tint)
 	end
 end
 
--- setObjectArray: gives the icons of the Units clip the entries of Radar.Contacts. The icons are made when they are first
+-- setObjectArray: gives the icons of the Units clip the entries of Radar.Contacts (and, as a second list, the ones of Radar.MarkerEntries). The icons are made when they are first
 -- needed (named "ObjectIcon_" .. n at depth n + 99 + 1, like the script's) and kept; the ones past the list are hidden.
-function Panel:SetObjects(list)
+function Panel:SetObjects(list, extra)
 	local units = self.main:Child("Units")
 
 	if not units then
@@ -300,10 +326,12 @@ function Panel:SetObjects(list)
 	end
 
 	local icons = self.icons
-	local count = math.min(#list, S.MAX_CONTACTS)
+	-- the contacts first, then the markers of the sources (the second list, optional): the same icons and the same rules for both
+	local first = math.min(#list, S.MAX_CONTACTS)
+	local count = first + (extra and math.min(#extra, Radar.MAX_MARKERS) or 0)
 
 	for i = 1, count do
-		local e = list[i]
+		local e = i <= first and list[i] or extra[i - first]
 		local icon = icons[i]
 
 		if not icon then
@@ -525,6 +553,33 @@ function Radar.StealthStep(level, target, dt)
 	return math.max(level - Radar.STEALTH_FALL * dt, target)
 end
 
+-- What the server says the hostiles that are NOT contacts see and hear (sv_radar.lua, Radar.Detect): 0 to 2 for the soldiers, 0 to 2 for the machines.
+-- It is what lets the bar and the hexagon rise for a hostile that has noticed the player from beyond the 26 m of the contacts.
+Radar.Detected = Radar.Detected or {puppet = 0, vehicle = 0}
+
+function Radar.ReadDetect()
+	Radar.Detected.puppet = net.ReadUInt(2)
+	Radar.Detected.vehicle = net.ReadUInt(2)
+end
+
+net.Receive("gry_radar_detect", Radar.ReadDetect)
+
+function Radar.ResetDetect()
+	Radar.Detected.puppet, Radar.Detected.vehicle = 0, 0
+end
+
+-- The targets (0 to 1) of the bar and of the hexagon for the server's two numbers.
+function Radar.DetectTargets(puppet, vehicle)
+	local targets = S.DETECT_TARGETS
+
+	return targets[math.Clamp(math.floor(tonumber(puppet) or 0), 0, 2)], targets[math.Clamp(math.floor(tonumber(vehicle) or 0), 0, 2)]
+end
+
+-- The higher, for each of the two, of the targets the contacts give and the ones the server's numbers give.
+function Radar.CombineTargets(bar, hexagon, detectBar, detectHexagon)
+	return math.max(bar, detectBar), math.max(hexagon, detectHexagon)
+end
+
 -- The level the bar shows now.
 Radar.Stealth = 0
 
@@ -559,12 +614,16 @@ function Radar.Feed(panel, ply, dt)
 
 	local options = GryMod.HUDOptions
 
+	-- the markers of the sources (cl_hud_radar_sources.lua: objectives, explosion rings, any addon's): a list of icon entries, empty when there is no source;
+	-- they have their own switch and do not depend on the contacts'
+	local markers = Radar.FeedMarkers and Radar.FeedMarkers(ply, Radar.Range()) or nil
+
 	-- the alert hexagon (cl_hud_radar_exposure.lua) follows the vehicles and machines, and then the bar the others only; with the hexagon switched
 	-- off the bar follows every hostile, as it did before it
 	local Hex = Radar.Hex
 
 	if options and not options.Enabled("radarunits") or not wanted then
-		panel:SetObjects({})
+		panel:SetObjects({}, markers)
 		-- no contacts, no news of the hostiles: the bar goes down; the hexagon's meter is forgotten (its memory of the vehicles that were there
 		-- would hold the icon up for a minute with nothing left to tell it)
 		Radar.Stealth = Radar.StealthStep(Radar.Stealth, 0, dt)
@@ -578,14 +637,18 @@ function Radar.Feed(panel, ply, dt)
 		return
 	end
 
-	panel:SetObjects(Radar.Contacts(ply:GetPos(), Flash.ViewYaw(ply), Radar.Live(), phase, Radar.Range(), placed))
+	panel:SetObjects(Radar.Contacts(ply:GetPos(), Flash.ViewYaw(ply), Radar.Live(), phase, Radar.Range(), placed), markers)
 
 	local bar, hexagon = 0, 0
 
+	local detectBar, detectHexagon = Radar.DetectTargets(Radar.Detected.puppet, Radar.Detected.vehicle)
+
 	if Hex and Hex.Enabled() then
-		bar, hexagon = Radar.SplitTargets(Radar.Snapshot)
+		local contactsBar, contactsHexagon = Radar.SplitTargets(Radar.Snapshot)
+		bar, hexagon = Radar.CombineTargets(contactsBar, contactsHexagon, detectBar, detectHexagon)
 	else
-		bar = Radar.StealthTarget(Radar.Snapshot)
+		-- no hexagon: the bar follows every hostile, the machines' number too
+		bar = math.max(Radar.StealthTarget(Radar.Snapshot), detectBar, detectHexagon)
 	end
 
 	Radar.Stealth = Radar.StealthStep(Radar.Stealth, bar, dt)

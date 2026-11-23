@@ -131,6 +131,8 @@ if SERVER then
 	AddCSLuaFile("grymod/sh_api_usable.lua")
 	AddCSLuaFile("grymod/client/cl_hud_use_flash.lua")
 	AddCSLuaFile("grymod/client/cl_hud_pickup_flash.lua")
+	AddCSLuaFile("grymod/client/cl_hud_radar_sources.lua")
+	AddCSLuaFile("grymod/client/cl_hud_radar_pings.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -164,6 +166,7 @@ if SERVER then
 	include("grymod/sh_messages.lua")
 	include("grymod/server/sv_messages.lua")
 	include("grymod/sh_api_usable.lua")
+	include("grymod/server/sv_radar_pings.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.vmt")
@@ -407,4 +410,6 @@ if CLIENT then
 	include("grymod/sh_api_usable.lua")
 	include("grymod/client/cl_hud_use_flash.lua")
 	include("grymod/client/cl_hud_pickup_flash.lua")
+	include("grymod/client/cl_hud_radar_sources.lua")
+	include("grymod/client/cl_hud_radar_pings.lua")
 end
