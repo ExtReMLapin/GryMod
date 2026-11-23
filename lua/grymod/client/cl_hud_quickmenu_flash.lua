@@ -494,7 +494,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 
 -- Switch: the menu shows a mode that cannot be chosen as inactive (a veto of GryMod_CanSetMode, or the suit switched off) and every mode as defective
--- while the suit is down. It asks the server when it opens (see Menu.Ask). Off: only the weapon icon can be inactive, as before.
+-- while the suit is down. The server tells the client what it refuses (gry_modes_refused). Off: only the weapon icon can be inactive, as before.
 local ShowRefused = CreateClientConVar("gry_menu_show_refused", "1", true, false, "The quick menu shows a mode that a rule of the server refuses as inactive, and every mode as defective while the suit is down (0: only the weapon icon can be inactive)")
 
 -- The modes a veto can refuse, with the movie's names (the movie's icon frame 3, "inactive").
@@ -538,26 +538,11 @@ function Menu.IsRefused(mode)
 	return refusedNow[mode] == true
 end
 
+-- The server tells it by itself (sv_mode_states.lua): when the client is ready, at every spawn, and whenever the answer changes. The menu never asks;
+-- it opens with the last mask received.
 net.Receive("gry_modes_refused", function()
 	Menu.SetRefused(net.ReadUInt(GryMod.ModeStates.Bits))
 end)
-
--- Asks the server which modes its vetoes refuse (it answers with gry_modes_refused). The listeners of GryMod_CanSetMode are asked for it, once per
--- mode: this runs when the menu opens and when the mode or the malfunction changes while it is open, never on a timer. Returns whether it asked.
-function Menu.Ask()
-	if not ShowRefused:GetBool() then
-		return false
-	end
-
-	-- the message is registered by the server's file; without it (a server of an older version) nothing is asked
-	if not pcall(net.Start, "gry_modes_ask") then
-		return false
-	end
-
-	net.SendToServer()
-
-	return true
-end
 
 -- The two flags the server networks for the suit: down (a malfunction, sv_malfunction.lua) and off (GryMod.API.SetSuitEnabled). A function of the
 -- module so that a test can stand in for the server.
@@ -607,7 +592,6 @@ function Menu.Begin()
 
 	pointer = Menu.NewPointer(Menu.NameFromMode(ply.NanosuitMode))
 	locked = ply:EyeAngles()
-	Menu.Ask()
 	feedStates(ply)
 	menu:Open()
 	menu:Select(pointer:Selection())
@@ -688,17 +672,6 @@ function Menu.Cancel()
 
 	play(snd_close)
 end
-
--- The mode or the malfunction of the local player changed while the menu is open: a veto may answer differently now.
-local function askAgain(ply)
-	if opened and ply == LocalPlayer() then
-		Menu.Ask()
-	end
-end
-
-hook.Add("GryMod_ModeChanged", "GRYQUICKMENUREFUSED", askAgain)
-hook.Add("GryMod_MalfunctionStart", "GRYQUICKMENUREFUSED", askAgain)
-hook.Add("GryMod_MalfunctionEnd", "GRYQUICKMENUREFUSED", askAgain)
 
 -- one table, filled each frame the menu is open
 local reasons = {}
@@ -786,7 +759,6 @@ function Menu.Reset()
 	end
 
 	menu, pointer, locked, opened = nil, nil, nil, false
-	GryMod.ModeStates.Unpack(0, refusedNow)
 end
 
 -- The menu of the moment (nil before its first opening); for the tests.

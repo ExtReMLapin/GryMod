@@ -118,6 +118,12 @@ function GryMod.AnswerReady(ply)
 	ply.gryReadyAnswered = now
 	tellMode(ply, ply.Nanosuit_mode or GryMod.Modes.ARMOR, GryMod.ModeReasons.SYNC)
 
+	-- the modes a veto refuses (sv_mode_states.lua): the client is ready and knows nothing yet, so it is always told
+	if GryMod.ModeStates and GryMod.ModeStates.Push then
+		GryMod.ModeStates.Push(ply)
+		GryMod.ModeStates.Sync()
+	end
+
 	return true
 end
 

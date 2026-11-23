@@ -131,7 +131,7 @@ end
 -- a mouse at 400 counts per second towards the bottom right, 35 degrees under the horizontal
 local DIAGONAL = {{time = 3, vx = 400 * math.cos(math.rad(35)), vy = 400 * math.sin(math.rad(35))}}
 
--- The question the menu puts to the server when it opens (gry_modes_ask) is NOT sent by the cases that look at it: net.Start and net.SendToServer are
+-- The menu must send NOTHING when it opens (the server pushes the mask by itself): net.Start and net.SendToServer are
 -- replaced for the length of fn and put back after it, whatever happens inside (afterEach puts them back too). `asked` holds the names started.
 local realNet
 local asked
@@ -168,6 +168,7 @@ return {
 		GetConVar("gry_menu_ring_film"):SetString("1")
 		state.savedFilm = GetConVar("gry_menu_pointer_film"):GetString()
 		GetConVar("gry_menu_pointer_film"):SetString("1")
+		GryMod.FlashMenu.SetRefused(0) -- (the mask the server sent is kept by the menu, even through Reset: no case may inherit one)
 		state.savedShow = GetConVar("gry_menu_show_refused"):GetString()
 		GetConVar("gry_menu_show_refused"):SetString("1")
 		state.realEmit = GryMod.SoundMix.Emit
@@ -175,6 +176,7 @@ return {
 	end,
 	afterEach = function(state)
 		unspyAsk()
+		GryMod.FlashMenu.SetRefused(0)
 		GetConVar("gry_menu_show_refused"):SetString(state.savedShow)
 		GetConVar("gry_menu_pointer_film"):SetString(state.savedFilm)
 		GryMod.SoundMix.Emit = state.realEmit
@@ -1010,8 +1012,8 @@ return {
 			end
 		},
 		{
-			-- fails without Menu.SetRefused / IsRefused, or if Reset keeps the answer of a former life
-			name = "what the server says is kept as a table keyed by mode, and Reset forgets it",
+			-- fails without Menu.SetRefused / IsRefused, or if Reset forgets the mask (the server sends it again only when it changes)
+			name = "what the server says is kept as a table keyed by mode, and Reset (a new theme, a respawn) keeps it",
 			func = function(state)
 				local M = GryMod.FlashMenu
 				local Modes = GryMod.Modes
@@ -1019,6 +1021,8 @@ return {
 				expect(M.IsRefused(Modes.CLOAK)).to.beTrue()
 				expect(M.IsRefused(Modes.SPEED)).to.beFalse()
 				M.Reset()
+				expect(M.IsRefused(Modes.CLOAK)).to.beTrue()
+				M.SetRefused(0)
 				expect(M.IsRefused(Modes.CLOAK)).to.beFalse()
 			end
 		},
@@ -1095,80 +1099,52 @@ return {
 			end
 		},
 		{
-			-- fails without Menu.Ask in Menu.Begin, or if the switch does not stop it
-			name = "opening the menu asks the server once (gry_modes_ask); with gry_menu_show_refused 0 it asks nothing",
+			-- fails if the menu sends anything to the server again (a question on opening slows the menu and fills the network)
+			name = "the menu never asks the server: opening it, with or without gry_menu_show_refused, and the hooks of a mode change or a malfunction send nothing",
 			func = function(state)
 				local M = GryMod.FlashMenu
+				local ply = LocalPlayer()
+				expect(M.Ask).to.beNil()
 
 				spyAsk(function()
 					M.Reset()
 					expect(M.Begin()).to.beTrue()
-					expect(#asked).to.equal(1)
-					expect(asked[1]).to.equal("gry_modes_ask")
+					expect(#asked).to.equal(0)
 					M.Cancel()
 
 					GetConVar("gry_menu_show_refused"):SetString("0")
-					asked = {}
 					M.Reset()
 					expect(M.Begin()).to.beTrue()
 					expect(#asked).to.equal(0)
-					expect(M.Ask()).to.beFalse()
 					M.Cancel()
 					M.Reset()
+
+					-- (the listeners that asked again are gone)
+					for _, event in ipairs({"GryMod_ModeChanged", "GryMod_MalfunctionStart", "GryMod_MalfunctionEnd"}) do
+						expect(hook.GetTable()[event] and hook.GetTable()[event]["GRYQUICKMENUREFUSED"]).to.beNil()
+					end
+
+					expect(#asked).to.equal(0)
 				end)
 			end
 		},
 		{
-			-- fails if Ask does not survive a message that the server never registered (an older server)
-			name = "asking an old server (the message is not registered) is skipped without an error",
+			-- fails if the menu opens without the mask it already holds (it would be empty until an answer came)
+			name = "a menu opened with a mask received before shows it at once, with nothing sent",
 			func = function(state)
 				local M = GryMod.FlashMenu
-				local realStart, realSend = net.Start, net.SendToServer
-				local sends = 0
-				net.Start = function() error("Calling net.Start with unpooled message name!") end
-				net.SendToServer = function() sends = sends + 1 end
-
-				local ok, result = pcall(M.Ask)
-				net.Start, net.SendToServer = realStart, realSend
-				expect(ok).to.beTrue()
-				expect(result).to.beFalse()
-				expect(sends).to.equal(0)
-			end
-		},
-		{
-			-- fails without the three listeners of GRYQUICKMENUREFUSED, or if they ask while the menu is closed
-			name = "a mode change or a malfunction of the local player asks again while the menu is open, and only then",
-			func = function(state)
-				local M = GryMod.FlashMenu
-				local ply = LocalPlayer()
+				local Modes = GryMod.Modes
 
 				spyAsk(function()
 					M.Reset()
-					local mode = hook.GetTable().GryMod_ModeChanged and hook.GetTable().GryMod_ModeChanged["GRYQUICKMENUREFUSED"]
-					local start = hook.GetTable().GryMod_MalfunctionStart and hook.GetTable().GryMod_MalfunctionStart["GRYQUICKMENUREFUSED"]
-					local finish = hook.GetTable().GryMod_MalfunctionEnd and hook.GetTable().GryMod_MalfunctionEnd["GRYQUICKMENUREFUSED"]
-					expect(mode).to.beA("function")
-					expect(start).to.beA("function")
-					expect(finish).to.beA("function")
-
-					-- closed: nothing
-					mode(ply, GryMod.Modes.SPEED, GryMod.Modes.ARMOR, "player")
-					start(ply)
-					finish(ply)
+					M.SetRefused(GryMod.ModeStates.Pack({[Modes.STRENGTH] = true}))
+					expect(M.Begin()).to.beTrue()
+					expect(M.GetMenu().active.Strength).to.beFalse()
 					expect(#asked).to.equal(0)
 
-					expect(M.Begin()).to.beTrue()
-					asked = {}
-					mode(ply, GryMod.Modes.SPEED, GryMod.Modes.ARMOR, "api")
-					expect(#asked).to.equal(1)
-					start(ply)
-					expect(#asked).to.equal(2)
-					finish(ply)
-					expect(#asked).to.equal(3)
-
-					-- another player's change is not the local suit's
-					mode({}, GryMod.Modes.SPEED, GryMod.Modes.ARMOR, "api")
-					expect(#asked).to.equal(3)
+					-- a new mask received while it is open is read on the next frame
+					M.SetRefused(0)
+					expect(M.IsRefused(Modes.STRENGTH)).to.beFalse()
 					M.Cancel()
 					M.Reset()
 				end)
