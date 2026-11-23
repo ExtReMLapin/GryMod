@@ -49,5 +49,9 @@ return {
 	["ui_sw"] = "SW",
 	["ui_w"] = "W",
 	["ui_nw"] = "NW",
-	["ui_menu_crysystems"] = "CRYNET SYSTEMS"
+	["ui_menu_crysystems"] = "CRYNET SYSTEMS",
+	-- the objective banner (cl_objectives_banner.lua): the original shows the objective's name and "activated" / "completed" / "failed"; GryMod puts a prefix first
+	["ui_objective_added"] = "NEW OBJECTIVE",
+	["ui_objective_completed"] = "OBJECTIVE COMPLETED",
+	["ui_objective_failed"] = "OBJECTIVE FAILED"
 }

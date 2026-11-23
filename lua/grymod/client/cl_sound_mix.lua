@@ -57,6 +57,9 @@ Mix.Original = {
 	["grymod/hud/hud_activate_01.wav"] = -18,
 	["grymod/hud/hud_reboot.wav"] = -11,
 	["grymod/hud/hud_malfunction_hit.wav"] = -13.74,
+	-- the objective banner: the events hud/pda_update (-18) and hud/objective_completed (-17; the file was scaled down 0.11 dB, see extract_sounds.py)
+	["grymod/hud/pda_updated.wav"] = -18,
+	["grymod/hud/hud_mission_accomplished.wav"] = -16.89,
 	-- the loop played while the suit is cloaked (the game's event hud/cloak_feedback, -12 dB, 8.73 s)
 	["grymod/hud/hud_cloak_feedback.wav"] = -12,
 	["grymod/menu/modification_menu_appear.wav"] = -16,

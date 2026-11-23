@@ -43,6 +43,7 @@ local function radarHUDSwitches(Panel)
 
 	-- the markers that the objectives and other addons put on the radar (cl_hud_radar_sources.lua): one switch for all of them
 	GryMod.OptionBox(form, "Markers from objectives and addons", "gry_hud_radarmarkers", "Arrows and dots that other parts of the game put on the radar (an objective, a team mate).")
+	GryMod.OptionBox(form, "Objectives on the radar", "gry_hud_radarobjectives", "The active objectives on the radar and the minimap: a glow, and an arrow on the border when the objective is beyond the radar (green for a primary one, yellow for a secondary one).")
 	GryMod.OptionBox(form, "Explosion rings", "gry_hud_radarpings", "A ring on the radar at each explosion near you (a grenade, a rocket, a barrel).")
 end
 

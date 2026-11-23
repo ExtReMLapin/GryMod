@@ -32,6 +32,7 @@ option is off plays nothing for that half.
 | `reset` | | the interface starts again from its start state (rebuilt, the energy bar on the real value, the damage effects forgotten, a hidden HUD brought back) | never by itself | |
 | `disabled` | | the HUD plays the shutdown (2.5 s) with its sound, then stays hidden | the suit flag of the server changes to off (`GryMod.API.SetSuitEnabled(ply, false)`) | `gry_hud`, `gry_hud_boot`, `gry_sounds` |
 | `enabled` | | the HUD comes back with the reboot sequence | the suit flag changes to on | `gry_hud`, `gry_hud_boot` |
+| `objective` | `kind` (`"added"`, `"completed"` or `"failed"`), `title` (the objective's title) | the top line `NEW OBJECTIVE: <title>` (or `OBJECTIVE COMPLETED:` / `OBJECTIVE FAILED:`) and its sound, together: `pda_update` for added and failed, `objective_completed` for completed | an objective is added, finished or failed (the list sent when the player joins is silent; see "Objective banner") | `gry_msg_objectives`, `gry_hud_messages`, `gry_hud`, `gry_sounds` |
 | `message` | `text` (128 characters at most), `lane` (`"top"`, `"middle"`, `"status"`, `"crosshair"` or 1 to 4; `"top"`), `sound` (a sound path), `duration` (seconds, 0.5 to 60; 5), or `line` (a key of the suit's own lines, see "Text lines") | a line of text on the HUD, in the movie's own stack, and its sound together | the suit's own lines (see "Text lines"); never by itself otherwise | `gry_hud_messages`, `gry_hud`, `gry_sounds` |
 
 Not events, because they run on every frame: the sprint sounds and the binoculars loop. The binoculars cues and the quick menu sounds are
@@ -244,6 +245,18 @@ The suit's own lines are shown by the same event, `{line = key}`, each with a se
 | `killed_friend` | `YOU KILLED A FRIENDLY!` | the player killed an ally (`GryMod.API.Relation` says so: a player of his team, an NPC that likes him). Nothing is punished | `gry_msg_killed_friend` |
 
 Listen to what is shown with `GryMod_MessageShown(text, opts)` (above). `GryMod.API.Has("messages")` is true when this exists.
+
+## Objective banner
+
+The event `objective` is how the HUD tells the player that an objective (docs/api.md, "Objectives") arrived, was finished or failed. GryMod plays it
+by itself from `GryMod_ObjectiveAdded` and `GryMod_ObjectiveChanged`, once for each real change of the state (a new title, the main flag or a new
+position say nothing), and never for the list the player gets when he joins (`GryMod.Objectives.Syncing()` is true then). It builds the line
+`<NEW OBJECTIVE | OBJECTIVE COMPLETED | OBJECTIVE FAILED>: <title>` (a long title is cut with `...` so that the line stays at 128 characters), shows it
+on the top lane of the text lines above, and plays its sound with it. The player's setting `gry_msg_objectives` cuts both. You can play it yourself:
+
+```lua
+GryMod.API.HUDEvent("objective", {kind = "completed", title = "Find the key"})
+```
 
 ## Add your own event
 

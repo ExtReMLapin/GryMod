@@ -9,6 +9,7 @@ local Obj
 local madeHooks = {}
 local lines
 local realMsgN
+local bannerSetting, bannerBefore
 
 -- the calls an event got
 local function listen(event)
@@ -97,6 +98,14 @@ return {
 		MsgN = function(...)
 			lines[#lines + 1] = table.concat({...}, "")
 		end
+		-- the objective banner (cl_objectives_banner.lua) listens to the same hooks: it must not show a line and play a sound for every test objective
+		bannerSetting = GetConVar("gry_msg_objectives")
+		bannerBefore = bannerSetting and bannerSetting:GetString()
+
+		if bannerSetting then
+			bannerSetting:SetString("0")
+		end
+
 		Obj.Reset()
 	end,
 	afterEach = function()
@@ -109,6 +118,11 @@ return {
 		end)
 
 		MsgN = realMsgN
+		pcall(function()
+			if bannerSetting and bannerBefore then
+				bannerSetting:SetString(bannerBefore)
+			end
+		end)
 	end,
 	cases = {
 		{
@@ -457,6 +471,34 @@ return {
 
 				expect(#Obj.List()).to.equal(0)
 				expect(#added).to.equal(0)
+			end
+		},
+		{
+			-- breaks if: Obj.Syncing is missing or does not follow BEGIN / END: the objective banner needs it to stay silent for the list sent when the player joins
+			name = "Syncing: true from BEGIN to END (a full list is arriving), false otherwise, and the hooks run while it is true",
+			func = function()
+				local seen = {}
+
+				hook.Add("GryMod_ObjectiveAdded", "gry_cl_objectives_test_syncing", function(id)
+					seen[#seen + 1] = {id, Obj.Syncing()}
+				end)
+				madeHooks[#madeHooks + 1] = {"GryMod_ObjectiveAdded", "gry_cl_objectives_test_syncing"}
+
+				expect(Obj.Syncing()).to.beFalse()
+				Obj.ApplySet(rec("live"))
+				Obj.ApplyBegin()
+				expect(Obj.Syncing()).to.beTrue()
+				Obj.ApplySet(rec("listed"))
+				Obj.ApplyEnd()
+				expect(Obj.Syncing()).to.beFalse()
+				Obj.ApplySet(rec("live2"))
+
+				expect(seen[1][1]).to.equal("live")
+				expect(seen[1][2]).to.beFalse()
+				expect(seen[2][1]).to.equal("listed")
+				expect(seen[2][2]).to.beTrue()
+				expect(seen[3][1]).to.equal("live2")
+				expect(seen[3][2]).to.beFalse()
 			end
 		},
 		{
