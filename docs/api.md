@@ -265,11 +265,20 @@ GryMod.API.RegisterUsable("my_addon_terminal", {
 	ready = function(ent) return not ent:GetNWBool("hacking") end,        -- optional: false = dimmed, the key does nothing
 	busy = function(ent, ply) return ent:GetNWEntity("user") == ply end,  -- optional: true = no prompt now (it is in use)
 	group = "terminals",                -- optional: the player switches the group with the client convar gry_usehint_terminals when there is one
-})
+	spawnflags = {need = 256, forbid = 32768},  -- optional: the entry applies only if all the `need` bits are set and none of the `forbid` bits (or a function(flags, ent) -> bool)
+	active = function() return true end,        -- optional: false = the entry does not apply now at all (a setting of the server, not of the entity)
+	range = 80,                         -- optional: how far the key reaches for it, in units (80 by default, the engine's)
+	hold = false,                       -- optional: true when the key must be kept down (a charger): one pulse at the press, not one per repeat
+	nolimits = false,                   -- optional: true for a "grab" that has no size or mass limit
+	netclass = "class C_BaseToggle",    -- optional, with nonsolid: the name the CLIENT gives these entities when the game has no client class of their name
+	})
 
 GryMod.API.UnregisterUsable("my_addon_terminal")
 GryMod.API.GetUsable(ent)               -- the entry that matches the entity, or nil
 GryMod.API.UsableText(ent, ply)         -- the text the prompt shows for it, or nil
+GryMod.API.UsableFlagsAllow(entry, ent) -- whether the entity's spawnflags let the entry apply (true when it has no rule or the flags cannot be read)
+GryMod.API.UsableRange(entry)           -- the key's reach for the entry in units (80, GryMod.API.USE_REACH, when it gives none)
+GryMod.API.UsableMaxRange()             -- the greatest range of all the entries: how far the crosshair looks
 ```
 
 The crosshair asks this registry what can be used: **registering an entity makes it usable** (the crosshair's "usable" state opens on it, and the
@@ -278,25 +287,46 @@ entity (the Source rule: at most 35 kg and 128 units on every side; the client r
 object for a prop of the server: while the answer is not there the prop is not offered, and it is asked again every 3 seconds while it stays aimed);
 an entry with the `"enter"` icon does not count while the player sits in a vehicle; an entry whose `busy` says yes does not count; an entry with a `group`
 does not count while the player switched that group off. An entry with `nonsolid = true` (it needs a `class`) is for things that are not solid, like the
-ladder: the eye trace passes through them, so the crosshair also looks for the entities of those classes along the aim ray, up to the use range and not behind
-a wall (`GryMod.API.UsableNonSolidClasses()` lists them). To react when the usable thing changes, listen to the client hook
+ladder: the eye trace passes through them, so the crosshair also looks for the entities of those classes (and the `netclass` names) along the aim ray, up to the
+entry's range and not behind a wall (`GryMod.API.UsableNonSolidClasses()` lists them). To react when the usable thing changes, listen to the client hook
 `GryMod_UsableChanged(ent, mode, ply)` (see [events.md](events.md)).
+
+**Spawnflags: what really answers the key.** Many things have a use capability in the engine and do nothing with it, or do not have it at all, depending on
+their spawnflags, and the client can read them (`ent:GetSpawnFlags()`). An entry with `spawnflags` only matches an entity whose flags pass: the stock
+rules are `prop_door_rotating`: not 32768 ("Ignore player +USE": 36 doors of the campaign), `func_door` and `func_door_rotating`: 256 ("Use opens": 367 of the
+492 stock `func_door` have neither it nor 1024 "Touch opens", a button or a trigger opens them), `func_button`, `func_rot_button` and `momentary_rot_button`: 1024
+("Use activates": touch and damage buttons get no prompt), the mounted guns `func_tank*`: 32 ("Controllable"), `prop_physics`: not 512 ("Prevent pickup"),
+`func_physbox`: not 8192. A door or a button that "starts locked" (2048) still gets the prompt: the use plays the lock sound, and whether it is locked now cannot
+be read on the client. An entity that cannot say its flags is not refused for them. The entities with no entry never get a prompt: that is the deny list
+(`func_brush`, `cycler`, `func_pushable`, the Monk, Dr Mossman, G-Man and the metropolice, whose use does nothing or only annoys, and ragdolls, which the use
+key does not lift).
+
+**Class names on the client.** For a `func_button`, a `func_rot_button` and a `momentary_rot_button` the client's `ent:GetClass()` is the name of the network class
+(`class C_BaseToggle`), not the class the map gave. The registry matches on `GryMod.API.UsableClassOf(ent)`, which asks the server (once per entity, answer kept
+for 20 seconds, 10 questions a second at most per player) for a name like that, so an entry with `class = "func_button"` works on the client. The answer takes a
+tenth of a second: until it is there the entity has no prompt.
+
+**Reach.** The use key reaches 80 units from the eye (`GryMod.API.USE_REACH`); the prompt shows only inside that distance, or the entry's own `range` (the stock
+ladder: 64). The ladder has a prompt (`CLIMB`) only while the server variable `sv_ladder_useonly` is 1: with the default 0 the player climbs a ladder by walking
+into it, so no key is needed.
 
 **What the key does to the prompt.** `use = "once"` (the default) is for a use that changes the state of the thing, like picking up a grenade, getting into
 a vehicle or taking a mounted gun: the prompt goes away as soon as the key is pressed and stays away while the player keeps looking at that thing; it comes
 back after he looked away or at something else. `use = "repeat"` is for a door, a button, a charger: the prompt stays, the HUD event `use_feedback` plays
 (the icon pulses and a beep plays, see [events.md](events.md)), and the prompt is dimmed for the entry's `cooldown` (half a second when it gives none) or for as
-long as its `ready(ent)` says no. The client convar `gry_usehint_feedback` (1 by default) turns the pulse, the beep and the dimming off.
+long as its `ready(ent)` says no. With `hold = true` (the chargers and the wheels, whose text is `USE (HOLD)`) the key is kept down while they work: the event
+comes once, at the press, however often the bind repeats, and there is no dimming. The client convar `gry_usehint_feedback` (1 by default) turns the pulse, the
+beep and the dimming off.
 
-**Groups.** The stock entries for the props, the ragdolls and the physboxes you can lift (`PICK UP`) are in the group `"props"`, which the player switches
+**Groups.** The stock entries for the props, the physboxes and the floor turret you can lift (`PICK UP`) are in the group `"props"`, which the player switches
 with the client convar `gry_usehint_props` (0, off, by default: "you can pick up almost anything"). The convar of a group is named `gry_usehint_<group>`; a
 group that has no convar is always on. A developer can make one: `CreateClientConVar("gry_usehint_terminals", "1", true, false)`.
 
 The stock entries are registered the same way, with a low priority: yours win. They cover what has a +use action in Half-Life 2 and Garry's Mod and
-is not taken by touch: the ammo crate (`TAKE AMMO`), the wall chargers, vehicles (`ENTER VEHICLE`), ladders (`CLIMB`), doors and buttons (`USE`), the
-mounted guns and the floor turret (`USE`), the thrown frag grenade and the lifted props, ragdolls and physboxes (`PICK UP`, the props in their group),
-the friendly NPCs that answer +use (`TALK`: citizen, Barney, Alyx, the vortigaunt, Dr Mossman, the Monk), the metropolice (`USE`), `gmod_button`,
-`gmod_wheel` and `sent_ball`. The server's flags of a door or a button ("ignore +use") are not readable on the client, so such a door also shows the prompt.
+is not taken by touch: the ammo crate (`TAKE AMMO`), the wall chargers and the wheels (`USE (HOLD)`), vehicles (`ENTER VEHICLE`), ladders (`CLIMB`, only with
+`sv_ladder_useonly 1`), doors and buttons (`USE`, by their spawnflags), the mounted guns (`USE`, the controllable ones), the thrown frag grenade (`PICK UP`), the
+lifted props and physboxes and the floor turret (`PICK UP`, in the props group), the friendly NPCs that answer +use (`TALK`: citizen, Barney, Alyx, the
+vortigaunt), `gmod_button`, `gmod_wheel` and `sent_ball`.
 
 ## Pickups
 
