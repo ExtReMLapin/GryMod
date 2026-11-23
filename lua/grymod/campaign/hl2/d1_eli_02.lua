@@ -6,7 +6,7 @@ return {
 		-- fired by trigger_once "trigger_Get_physgun" OnTrigger -> FireEvent
 		{
 			id = "hl2c.d1_eli_02.hl2_get_gravitygun", title = "Get the gravity gun", description = "Receive the new tool in the lab.", primary = true,
-			pos = Vector(-393.516, 872, -2570.41),
+			pos = Vector(-445, 838.5, -2657.5),
 			complete = {kind = "input", entity = "achievement_get_gravgun", input = "FireEvent"},
 		},
 		-- [hl2/d1_eli_02 #1049] classname=trigger_changelevel map=d1_town_01 landmark=d1_eli-d1_town hammerid=2413077

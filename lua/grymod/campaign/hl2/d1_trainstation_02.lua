@@ -7,7 +7,7 @@ return {
 		-- fired by trigger_once "trashcan_trigger" OnTrigger -> FireEvent
 		{
 			id = "hl2c.d1_trainstation_02.hl2_put_canintrash", title = "Put the can in the bin", description = "The cop wants the can in the trash can.", primary = true,
-			pos = Vector(-3597.04, -936, 96),
+			pos = Vector(-3717, -806, 78),
 			complete = {kind = "input", entity = "achievement_can_intrash", input = "FireEvent"},
 		},
 		-- [hl2/d1_trainstation_02 #733] classname=trigger_changelevel map=d1_trainstation_03 landmark=landmark_trainstation_02-03 spawnflags=0 hammerid=863459

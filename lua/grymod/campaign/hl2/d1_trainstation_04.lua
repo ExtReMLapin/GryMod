@@ -6,7 +6,7 @@ return {
 		-- fired by trigger_once "" OnTrigger -> FireEvent
 		{
 			id = "hl2c.d1_trainstation_04.hl2_escape_apartmentraid", title = "Escape the raid", description = "Get away from the police.", primary = true,
-			pos = Vector(-7017.18, -4111.54, 528),
+			pos = Vector(-6974, -4250, 584),
 			complete = {kind = "input", entity = "achivement_escape_raid", input = "FireEvent"},
 		},
 		-- [hl2/d1_trainstation_04 #284] classname=trigger_changelevel map=d1_trainstation_05 landmark=landmark_trainstation_04-05 spawnflags=0 hammerid=481943

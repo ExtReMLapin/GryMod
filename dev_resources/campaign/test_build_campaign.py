@@ -204,6 +204,31 @@ class ExitAfterTheStory(unittest.TestCase):
         self.assertNotIn('after =', texts[('hl2', 'm1')])
 
 
+class AchievementPosition(unittest.TestCase):
+    def test_a_milestone_points_at_the_trigger_that_fires_it_not_at_the_relay(self):
+        # fails if: the position stays the logic_achievement origin, a spot the mapper left in a corner of the room (the owner saw the "put the can in the bin" marker there
+        # instead of on the bin): the centre of the trigger_once that fires it is where the thing happens; with no trigger, the relay's own origin stays
+        import baseline
+        models = [((0, 0, 0), (0, 0, 0)), ((100, 200, 0), (140, 240, 40))]
+        ach = ent('logic_achievement', 'achievement_can_intrash', origin='5000 5000 96', AchievementEvent='ACHIEVEMENT_EVENT_HL2_PUT_CANINTRASH')
+        trig = ent('trigger_once', 'trashcan_trigger', model='*1', outs=[('OnTrigger', 'achievement_can_intrash', 'FireEvent', '')])
+        objs, _, _ = baseline.derive('hl2', 'm1', [ach, trig], models)
+        mile = [o for o in objs if o['rule'] == 'R4_milestone'][0]
+        self.assertEqual(mile['pos'], [120.0, 220.0, 20.0])
+        self.assertEqual(mile['pos_quality'], 'trigger_brush')
+
+        # a trigger with an origin of its own: its bounds are relative to it
+        moved = ent('trigger_once', 'trashcan_trigger', origin='1000 2000 50', model='*1', outs=[('OnTrigger', 'achievement_can_intrash', 'FireEvent', '')])
+        objs, _, _ = baseline.derive('hl2', 'm1', [ach, moved], models)
+        mile = [o for o in objs if o['rule'] == 'R4_milestone'][0]
+        self.assertEqual(mile['pos'], [1120.0, 2220.0, 70.0])
+
+        objs, _, _ = baseline.derive('hl2', 'm1', [ach], models)
+        mile = [o for o in objs if o['rule'] == 'R4_milestone'][0]
+        self.assertEqual(mile['pos'], [5000.0, 5000.0, 96.0])
+        self.assertEqual(mile['pos_quality'], 'approx_logic_origin')
+
+
 class ShippedData(unittest.TestCase):
     """The files in lua/grymod/campaign are checked by the REAL validator of the addon (sv_campaign_core.lua), run in LuaJIT."""
 

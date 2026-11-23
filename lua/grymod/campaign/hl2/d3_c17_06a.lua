@@ -6,7 +6,7 @@ return {
 		-- fired by trigger_once "" OnTrigger -> FireEvent
 		{
 			id = "hl2c.d3_c17_06a.hl2_beat_toxictunnel", title = "Get through the toxic tunnel", description = "Cross the poisoned tunnel.", primary = true,
-			pos = Vector(2505, 4420.03, -91.892),
+			pos = Vector(2560, 4904, -168),
 			complete = {kind = "input", entity = "achievement", input = "FireEvent"},
 		},
 		-- [hl2/d3_c17_06a #170] classname=trigger_changelevel map=d3_c17_06b landmark=d3_c17_06a-06b hammerid=332453

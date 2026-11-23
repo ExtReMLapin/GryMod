@@ -140,7 +140,18 @@ def derive(game, name, ents, models):
             evid = [fmt_ent(game, name, idx, x)] + ['    fired by %s "%s" %s -> FireEvent' % (f[0], f[1], f[2]) for f in fr[:3]]
             if ev in MILESTONE:
                 t, d, p = MILESTONE[ev]
-                add({'id': 'hl2c.%s.%s' % (name, ev.replace('ACHIEVEMENT_EVENT_', '').lower()), 'rule': 'R4_milestone', 'primary': p, 'title': t, 'description': d, 'pos': centre(models, kv), 'pos_quality': 'approx_logic_origin', 'complete': comp, 'evidence': evid})
+                # the relay's own origin is a spot the mapper left anywhere (a corner of the room): where it happens is the trigger that fires it, when there is one
+                at, quality = centre(models, kv), 'approx_logic_origin'
+                for y in ents:
+                    ky = y['kv']
+                    if tn and ky.get('classname', '').startswith('trigger_') and ky.get('model', '').startswith('*') and any(o[1] == tn and o[2] == 'FireEvent' for o in y['outs']):
+                        # a brush with an `origin` has its bounds relative to it
+                        local = centre(models, {'model': ky['model']})
+                        if local:
+                            base = [float(v) for v in ky['origin'].split()] if 'origin' in ky else [0.0, 0.0, 0.0]
+                            at, quality = [round(a + b, 1) for a, b in zip(base, local)], 'trigger_brush'
+                            break
+                add({'id': 'hl2c.%s.%s' % (name, ev.replace('ACHIEVEMENT_EVENT_', '').lower()), 'rule': 'R4_milestone', 'primary': p, 'title': t, 'description': d, 'pos': at, 'pos_quality': quality, 'complete': comp, 'evidence': evid})
             elif is_secret(ev):
                 secrets.append({'id': 'hl2c.%s.secret.%s' % (name, ev.replace('ACHIEVEMENT_EVENT_', '').lower()), 'title': 'Hidden item' if 'CACHE' in ev else 'Sighting', 'pos': centre(models, kv), 'complete': comp, 'event': ev, 'evidence': evid})
         # R5 failure events: env_message GAMEOVER_*

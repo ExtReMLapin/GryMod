@@ -6,7 +6,7 @@ return {
 		-- fired by trigger_once "" OnTrigger -> FireEvent
 		{
 			id = "hl2c.d1_town_02a.hl2_beat_cemetery", title = "Fight through the cemetery", description = "Reach the far end of the graveyard alive.", primary = true,
-			pos = Vector(-7500.36, -328.111, -3271),
+			pos = Vector(-7504, -358, -3344),
 			complete = {kind = "input", entity = "achievement", input = "FireEvent"},
 		},
 		-- [hl2/d1_town_02a #482] classname=trigger_changelevel map=d1_town_04 landmark=d1_town_02a_04 hammerid=2644991
