@@ -475,6 +475,65 @@ return {
 			end
 		},
 		{
+			-- fails without the mass the server tells: the client has no physics object for a prop, so a 90 kg drum was offered "PICK UP"
+			name = "a prop is offered for lifting only when the server says its mass is 35 kg or less: unknown means no prompt (and one question), heavy means none",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local savedAsk = C.AskMass
+				local asked = {}
+				local function prop(index, size)
+					return {
+						IsValid = function() return true end, EntIndex = function() return index end,
+						OBBMins = function() return Vector(0, 0, 0) end, OBBMaxs = function() return size or Vector(30, 30, 45) end,
+						GetPhysicsObject = function() return NULL end
+					}
+				end
+
+				local ok, err = pcall(function()
+					C.AskMass = function(index) asked[#asked + 1] = index end
+					C.ForgetMasses()
+
+					expect(isfunction(C.OnMassAnswer)).to.beTrue()
+
+					-- unknown: refused, the server is asked, and not again at once
+					expect(C.Grabbable(prop(701), 10)).to.beFalse()
+					expect(C.Grabbable(prop(701), 10.1)).to.beFalse()
+					expect(#asked).to.equal(1)
+					expect(asked[1]).to.equal(701)
+
+					-- the server says 30 kg: a light prop
+					C.OnMassAnswer(701, 30, 10.2)
+					expect(C.Grabbable(prop(701), 10.3)).to.beTrue()
+
+					-- the server says 90 kg: too heavy, whatever the size
+					C.OnMassAnswer(702, 90, 10.2)
+					expect(C.Grabbable(prop(702), 10.3)).to.beFalse()
+
+					-- exactly 35 is still liftable (the game's rule is "more than 35 refuses")
+					C.OnMassAnswer(703, 35, 10.2)
+					expect(C.Grabbable(prop(703), 10.3)).to.beTrue()
+
+					-- too big whatever the mass
+					C.OnMassAnswer(704, 5, 10.2)
+					expect(C.Grabbable(prop(704, Vector(200, 20, 20)), 10.3)).to.beFalse()
+
+					-- an answer is asked again after a few seconds, and is trusted meanwhile
+					asked = {}
+					expect(C.Grabbable(prop(701), 11)).to.beTrue()
+					expect(#asked).to.equal(0)
+					expect(C.Grabbable(prop(701), 14)).to.beTrue() -- the old answer still counts while the new one is on its way
+					expect(#asked).to.equal(1)
+				end)
+
+				C.AskMass = savedAsk
+				C.ForgetMasses()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "friendly: a player of the same team (when there are teams), an NPC only when the server confirmed it likes the player (never by its class), never the player itself",
 			func = function(state)
 				local C = GryMod.FlashCrosshair

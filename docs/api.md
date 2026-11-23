@@ -269,7 +269,8 @@ GryMod.API.UsableText(ent, ply)         -- the text the prompt shows for it, or 
 
 The crosshair asks this registry what can be used: **registering an entity makes it usable** (the crosshair's "usable" state opens on it, and the
 prompt shows), and an entity no entry names is not. Two rules apply on top: an entry with the `"grab"` icon only counts while the player can lift the
-entity (the Source rule: at most 35 kg and 128 units on every side; the client reads the size, and the mass when it has a physics object for it), and
+entity (the Source rule: at most 35 kg and 128 units on every side; the client reads the size and asks the server for the mass, because it has no physics
+object for a prop of the server: while the answer is not there the prop is not offered, and it is asked again every 3 seconds while it stays aimed), and
 an entry with the `"enter"` icon does not count while the player sits in a vehicle. An entry with `nonsolid = true` (it needs a `class`) is for things that are
 not solid, like the ladder: the eye trace passes through them, so the crosshair also looks for the entities of those classes along the aim ray, up to the use
 range and not behind a wall (`GryMod.API.UsableNonSolidClasses()` lists them). A weapon the player already has is shown as "can not be used" by the

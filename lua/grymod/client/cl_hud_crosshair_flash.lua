@@ -243,12 +243,44 @@ local USE_CLASSES = {
 }
 
 -- The limits of what the player lifts with +use: CBasePlayer::CanPickupObject(ent, 35, 128) of the Source SDK, which is what gives a physics
--- prop its use capability: at most 35 kg and 128 units on every side. The client reads the size of the box, and the mass when it has a
--- physics object for the entity (it often has none for a prop of the server: then only the size counts).
+-- prop its use capability: at most 35 kg and 128 units on every side. The client reads the size of the box. It CANNOT read the mass: it has no physics
+-- object for a prop of the server (checked: GetPhysicsObject is invalid there), so the server tells it (sv_usable_mass.lua). POLICY: a prop whose mass
+-- is not known yet is NOT offered (the question goes out at once, the answer is back before the next scan, a tenth of a second later), and a prop the
+-- server says is heavier than 35 kg is never offered.
 Cross.PICKUP_MASS = 35
 Cross.PICKUP_SIZE = 128
 
-function Cross.Grabbable(ent)
+local MASS_ASK_EVERY = 3 -- a prop that is still aimed at is asked again after this many seconds (a tool can change its mass)
+local MASS_TRUST_FOR = 10 -- an answer older than this is dropped
+
+local masses = {} -- [entity index] = {mass = kg, answered = time, asked = time}
+
+-- Asks the server for the mass of the prop of this index (replaceable by the tests).
+function Cross.AskMass(index)
+	net.Start("gry_mass_ask")
+	net.WriteUInt(index, 13)
+	net.SendToServer()
+end
+
+-- The server's answer.
+function Cross.OnMassAnswer(index, mass, now)
+	local entry = masses[index] or {asked = now}
+
+	entry.mass, entry.answered = mass, now
+	masses[index] = entry
+end
+
+function Cross.ForgetMasses()
+	masses = {}
+end
+
+net.Receive("gry_mass", function()
+	local index = net.ReadUInt(13)
+
+	Cross.OnMassAnswer(index, net.ReadFloat(), RealTime())
+end)
+
+function Cross.Grabbable(ent, now)
 	if isfunction(ent.OBBMins) and isfunction(ent.OBBMaxs) then
 		local size = ent:OBBMaxs() - ent:OBBMins()
 
@@ -257,13 +289,28 @@ function Cross.Grabbable(ent)
 		end
 	end
 
-	local physics = isfunction(ent.GetPhysicsObject) and ent:GetPhysicsObject()
-
-	if physics and IsValid(physics) and physics:GetMass() > Cross.PICKUP_MASS then
-		return false
+	-- a stand-in that is no entity has no index to ask for
+	if not isfunction(ent.EntIndex) then
+		return true
 	end
 
-	return true
+	now = now or RealTime()
+
+	local index = ent:EntIndex()
+	local entry = masses[index]
+
+	if not entry or now - entry.asked >= MASS_ASK_EVERY then
+		entry = entry or {}
+		entry.asked = now
+		masses[index] = entry
+		Cross.AskMass(index)
+	end
+
+	if entry.answered and now - entry.answered <= MASS_TRUST_FOR then
+		return entry.mass <= Cross.PICKUP_MASS
+	end
+
+	return false
 end
 
 -- setUsable's mode for what the player aims at: 1 something can be used or taken, 2 it can not (a weapon the
