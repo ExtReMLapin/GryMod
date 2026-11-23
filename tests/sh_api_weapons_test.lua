@@ -230,6 +230,42 @@ return {
 			end
 		},
 		{
+			-- Fails without the `grenade` field in sh_api_weapons.lua (the field is dropped as unknown: nothing is stored)
+			name = "grenade: the kind of hand grenade of the weapon (one of the four kinds of the movie); an unknown kind is refused and keeps the previous entry",
+			func = function()
+				for _, kind in ipairs({"explosivegrenade", "flashbang", "smokegrenade", "empgrenade"}) do
+					expect(API.GrenadeKinds[kind]).to.beTrue()
+					expect((API.RegisterWeapon("t_wep_a", {grenade = kind}))).to.beTrue()
+					expect(API.GetWeapon("t_wep_a").grenade).to.equal(kind)
+					expect(API.WeaponValue("t_wep_a", "grenade", true)).to.equal(kind)
+					expect(API.ResolveWeapon(weapon("t_wep_a")).grenade).to.equal(kind)
+				end
+
+				local ok, reason = API.RegisterWeapon("t_wep_a", {grenade = "napalm"})
+				expect(ok).to.beFalse()
+				expect(string.find(reason, "grenade", 1, true) ~= nil).to.beTrue()
+				expect(API.GetWeapon("t_wep_a").grenade).to.equal("empgrenade")
+				expect((API.RegisterWeapon("t_wep_a", {grenade = 3}))).to.beFalse()
+
+				-- declared nowhere: nothing (the HUD takes the explosive grenade)
+				API.RegisterWeapon("t_wep_b", {fire = "auto"})
+				expect(API.WeaponValue("t_wep_b", "grenade", true)).to.beNil()
+			end
+		},
+		{
+			name = "grenade is read from SWEP.GryHUD and from the base class; the stock frag grenade is data: an explosive grenade",
+			func = function()
+				stored.t_wep_a = {GryHUD = {grenade = "smokegrenade"}}
+				expect(API.WeaponValue("t_wep_a", "grenade", true)).to.equal("smokegrenade")
+				stored.t_wep_b = {GryHUD = {grenade = "napalm"}}
+				expect(API.WeaponValue("t_wep_b", "grenade", true)).to.beNil()
+				API.RegisterWeapon("t_wep_base", {grenade = "flashbang"})
+				stored.t_wep_child = {Base = "t_wep_base"}
+				expect(API.WeaponValue("t_wep_child", "grenade", true)).to.equal("flashbang")
+				expect(API.WeaponValue("weapon_frag", "grenade", true)).to.equal("explosivegrenade")
+			end
+		},
+		{
 			name = "the functions are accepted for fire and counter",
 			func = function()
 				local ok = API.RegisterWeapon("t_wep_a", {fire = function() return "auto" end, counter = function() return "12" end})

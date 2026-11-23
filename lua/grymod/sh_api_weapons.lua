@@ -43,6 +43,11 @@ API.WeaponIcons = set({"Single", "Burst", "Auto", "Grenade", "Incendiary", "Tran
 
 local ICONS = API.WeaponIcons
 
+-- The kinds of hand grenade of the HUD movie (the labels of its grenade icon). The hand grenades of Half-Life 2 are the first one.
+API.GrenadeKinds = set({"explosivegrenade", "flashbang", "smokegrenade", "empgrenade"})
+
+local GRENADES = API.GrenadeKinds
+
 local MAX_NAME, MAX_LABEL = 64, 24
 
 -- The valid value of the field `name` (what the field says, or a function for fire and counter), or nil when it is not valid.
@@ -58,10 +63,11 @@ local CHECK = {
 	altIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	icon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	slotIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
-	crosshair = function(v) if isbool(v) then return v end end
+	crosshair = function(v) if isbool(v) then return v end end,
+	grenade = function(v) if isstring(v) and GRENADES[v] then return v end end
 }
 
-local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair"}
+local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -397,7 +403,7 @@ resolveField = function(field, class, wep, source, entity, explicit)
 end
 
 -- The final description of a weapon, the one the HUD uses: a table with the fields of a definition (fire, burst, ammo, counter,
--- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
+-- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
 -- wep is the weapon entity, or its class name (then only what is declared or read from the stored SWEP counts). nil for an invalid
 -- weapon. explicit = true: only what is declared (registry, GryHUD, adapters), no defaults, no alt/altShoots/counter fallbacks.
 function API.ResolveWeapon(wep, explicit)

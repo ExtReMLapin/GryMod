@@ -73,6 +73,7 @@ In the examples that follow, the guard (`if GRYMOD_INSTALLED and ...`) stands fo
 | `altShoots` | the camouflage ends on a right click that really shoots (the player's option `gry_cloak_altfire`) |
 | `alt` (any value) | with `altShoots`, how the HUD knows if the right click shoots now (below) |
 | `alt` = `"zoom"` | the right click zooms and the weapon owns that zoom: when the binoculars open while it is zoomed, the zoom is ended (so that it does not come back, as a jump, when they close; the player's option `gry_zoom_cancel_weapon`). The server sends one right click to the weapon to toggle it off, so use it only for a weapon that zooms on its right click |
+| `grenade` | the kind of hand grenade of the grenade slot: `explosivegrenade` (default), `flashbang`, `smokegrenade`, `empgrenade`. The slot shows that icon and counts the weapon's own primary ammo; the icon blinks when you switch to a weapon of another kind |
 | `crosshair` = `false` | the HUD draws no crosshair while the weapon is in hand (the fists and the RPG). `true` or no field: the crosshair is shown |
 | `altLabel` | handed to the HUD (`GryMod.FlashHUD.LauncherLookFor(wep)`), **not drawn**: the movie has no text field for it |
 | `ammo`, `counter`, `burst` | resolved and returned by `ResolveWeapon`, **not read by the HUD**: the counter shows the weapon's engine ammo (`Clip1`, `GetMaxClip1`, the reserve of its primary ammo type) |
@@ -161,6 +162,23 @@ end
 ```
 
 With `alt = "zoom"` the HUD also ends the weapon's zoom when the binoculars of the suit open (see the table above).
+
+### A grenade of another kind
+
+The grenade slot has four icons: the explosive grenade (Half-Life 2's), the flash grenade, the smoke grenade and the EMP grenade.
+A weapon that throws one of the last three says so with `grenade`. While it is in hand the slot shows that icon and counts the
+weapon's own ammo; the icon blinks when the player switches from one kind to another.
+
+```lua
+-- shared
+if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
+	GryMod.API.RegisterWeapon("weapon_my_addon_flashbang", {
+		ammo = "MyAddonFlashbang",
+		slotIcon = "HandGrenade",
+		grenade = "flashbang",
+	})
+end
+```
 
 ### A weapon that draws its own crosshair, or none
 

@@ -498,6 +498,53 @@ return {
 			end
 		},
 		{
+			-- Fails without the 6th result of Module.AmmoFor and without the `grenade` field: the feed always sent "explosivegrenade",
+			-- so the other icons and the grenade blink were unreachable.
+			name = "the weapon registry chooses the hand grenade kind of the grenade slot, and a grenade weapon counts its own ammo there",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local ply = {
+					GetAmmoCount = function(_, type) return type == 7 and 5 or type == "Grenade" and 3 or 0 end
+				}
+				local function gun(class, extra)
+					local weapon = {
+						GetClass = function() return class end,
+						Clip1 = function() return -1 end,
+						GetMaxClip1 = function() return -1 end,
+						GetPrimaryAmmoType = function() return 7 end
+					}
+
+					for key, value in pairs(extra or {}) do weapon[key] = value end
+
+					return weapon
+				end
+
+				-- no `grenade` declared: the explosive grenade and the count of the hand grenades
+				local _, _, _, grenades, _, kind = M.AmmoFor(ply, gun("t_firemode"))
+				expect(grenades).to.equal(3)
+				expect(kind).to.equal("explosivegrenade")
+
+				-- a flash grenade weapon: its icon, and its own ammo (the 5 it holds) instead of the frags
+				GryMod.API.RegisterWeapon("t_firemode", {grenade = "flashbang", slotIcon = "HandGrenade"})
+				_, _, _, grenades, _, kind = M.AmmoFor(ply, gun("t_firemode"))
+				expect(kind).to.equal("flashbang")
+				expect(grenades).to.equal(5)
+
+				-- the weapon with no primary ammo of its own keeps the hand grenades count
+				_, _, _, grenades, _, kind = M.AmmoFor(ply, gun("t_firemode", {GetPrimaryAmmoType = function() return -1 end}))
+				expect(kind).to.equal("flashbang")
+				expect(grenades).to.equal(3)
+
+				-- nothing in hand: the explosive grenades
+				_, _, _, grenades, _, kind = M.AmmoFor(ply, nil)
+				expect(kind).to.equal("explosivegrenade")
+
+				-- the stock frag grenade says it in the registry
+				_, _, _, _, _, kind = M.AmmoFor(ply, gun("weapon_frag"))
+				expect(kind).to.equal("explosivegrenade")
+			end
+		},
+		{
 			name = "the stock Half-Life 2 and Garry's Mod weapons have their own fire mode icon",
 			func = function(state)
 				local M = GryMod.FlashHUD

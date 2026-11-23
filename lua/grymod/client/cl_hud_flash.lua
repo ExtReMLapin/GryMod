@@ -792,28 +792,43 @@ function Module.LauncherLookFor(weapon)
 	return weaponValue(weapon, "altIcon") or "Grenade", weaponValue(weapon, "altLabel")
 end
 
--- magazine, reserve, magazine size, grenades and fire mode icon of what the player holds. -1 = no ammo system.
+-- The kind of hand grenade the grenade slot shows while this weapon is in hand: what the weapon registry declares (`grenade`), else the
+-- explosive grenade, the one of Half-Life 2.
+function Module.GrenadeKindFor(weapon)
+	weapon = validWeapon(weapon)
+
+	return weapon and weaponValue(weapon, "grenade", true) or "explosivegrenade"
+end
+
+-- magazine, reserve, magazine size, grenades, fire mode icon and the kind of hand grenade of what the player holds. -1 = no ammo system.
+-- A weapon that declares its own kind of grenade (a flash grenade, a smoke grenade...) counts its own primary ammo in the grenade slot
+-- (the hand grenades of the player are the explosive ones).
 function Module.AmmoFor(ply, weapon)
 	weapon = validWeapon(weapon)
 
 	local grenades = ply:GetAmmoCount("Grenade")
 	local fireMode = Module.FireModeFor(weapon)
+	local kind = Module.GrenadeKindFor(weapon)
 
 	if not weapon or weapon:GetPrimaryAmmoType() < 0 then
-		return -1, 0, -1, grenades, fireMode
+		return -1, 0, -1, grenades, fireMode, kind
 	end
 
 	local type = weapon:GetPrimaryAmmoType()
 	local clip = weapon:Clip1()
 
+	if kind ~= "explosivegrenade" then
+		grenades = ply:GetAmmoCount(type)
+	end
+
 	if clip < 0 then
 		-- no magazine: the reserve is what is shown
 		local count = ply:GetAmmoCount(type)
 
-		return count, 0, count, grenades, fireMode
+		return count, 0, count, grenades, fireMode, kind
 	end
 
-	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode
+	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode, kind
 end
 
 -- The energy (0 to 100) at which the suit stops under GryMod's old rule (gry_malfunction_empty): the HUD malfunctions
@@ -989,7 +1004,7 @@ local function feed(ply)
 	end
 
 	local weapon = ply:GetActiveWeapon()
-	local mag, reserve, size, grenades, fireMode = Module.AmmoFor(ply, weapon)
+	local mag, reserve, size, grenades, fireMode, grenadeKind = Module.AmmoFor(ply, weapon)
 	local launcher = Module.LauncherFor(ply, weapon)
 	local launcherIcon, launcherLabel
 
@@ -1001,10 +1016,10 @@ local function feed(ply)
 	fed.weapon = weapon
 
 	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher
-		or fed.launcherIcon ~= launcherIcon or fed.launcherLabel ~= launcherLabel then
+		or fed.launcherIcon ~= launcherIcon or fed.launcherLabel ~= launcherLabel or fed.grenadeKind ~= grenadeKind then
 		fed.mag, fed.reserve, fed.size, fed.grenades, fed.fireMode, fed.launcher = mag, reserve, size, grenades, fireMode, launcher
-		fed.launcherIcon, fed.launcherLabel = launcherIcon, launcherLabel
-		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher, weaponChanged, launcherIcon, launcherLabel)
+		fed.launcherIcon, fed.launcherLabel, fed.grenadeKind = launcherIcon, launcherLabel, grenadeKind
+		hud:SetAmmo(mag, reserve, size, grenades, grenadeKind, fireMode, launcher, weaponChanged, launcherIcon, launcherLabel)
 	end
 end
 
