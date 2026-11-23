@@ -119,11 +119,12 @@ local function ready(ply, now)
 		receiver(0, ply)
 	end, now)
 
-	-- (the answer also carries the modes a veto refuses, gry_modes_refused, sv_mode_states.lua: its own test file looks at that message)
+	-- (the answer also carries the modes a veto refuses, gry_modes_refused, sv_mode_states.lua, and the objectives that exist, gry_objectives,
+	-- sv_objectives.lua: their own test files look at those messages)
 	local sent = {}
 
 	for _, message in ipairs(all) do
-		if message.name ~= "gry_modes_refused" then
+		if message.name ~= "gry_modes_refused" and message.name ~= "gry_objectives" then
 			sent[#sent + 1] = message
 		end
 	end
