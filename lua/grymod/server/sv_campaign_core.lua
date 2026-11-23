@@ -4,7 +4,7 @@
 --
 -- A map's list is an array of objectives (docs/api.md, "Campaign objectives"). One objective:
 --   id, title, description, primary, secret   the same words as the objectives API; `secret = true` is a hidden item (counted, never listed one by one)
---   pos (a Vector) or follow (an entity's name)   where it is
+--   pos (a Vector) or place (an entity's name: its position when the objective is listed)   where it is
 --   after   the id (or ids) of the steps that must be done before this one is listed
 --   exit    true for the way out of the map (listed from the start whatever `after` says); a `changelevel` completion is an exit by default
 --   complete, fail   what finishes it, what fails it (a "completion", below)
@@ -244,16 +244,16 @@ function C.CheckObjective(def)
 		out.pos = Vector(def.pos.x, def.pos.y, def.pos.z)
 	end
 
-	if def.follow ~= nil then
-		if not validText(def.follow, LIMITS.name) then
-			return false, "invalid follow: the name of an entity (1 to " .. LIMITS.name .. " characters)"
+	if def.place ~= nil then
+		if not validText(def.place, LIMITS.name) then
+			return false, "invalid place: the name of an entity (1 to " .. LIMITS.name .. " characters)"
 		end
 
-		out.follow = def.follow
+		out.place = def.place
 	end
 
-	if not out.pos and not out.follow then
-		return false, "give a pos (a Vector) or a follow (the name of an entity to follow)"
+	if not out.pos and not out.place then
+		return false, "give a pos (a Vector) or a place (the name of an entity: its position is used)"
 	end
 
 	out.after = {}

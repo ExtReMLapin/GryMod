@@ -215,7 +215,7 @@ return {
 					{{id = "a", title = "T", complete = complete}, "pos"},
 					{{id = "a", title = "T", pos = 5, complete = complete}, "pos"},
 					{{id = "a", title = "T", pos = Vector(math.huge, 0, 0), complete = complete}, "pos"},
-					{{id = "a", title = "T", follow = 5, complete = complete}, "follow"},
+					{{id = "a", title = "T", place = 5, complete = complete}, "place"},
 					{{id = "a", title = "T", pos = Vector()}, "complete"},
 					{{id = "a", title = "T", pos = Vector(), complete = {kind = "nope"}}, "complete"},
 					{{id = "a", title = "T", pos = Vector(), complete = complete, after = 5}, "after"},
@@ -234,8 +234,8 @@ return {
 					expect(string.find(why, row[2], 1, true) ~= nil).to.beTrue()
 				end
 
-				-- a position OR the name of an entity to follow
-				expect(C.CheckObjective({id = "a", title = "T", follow = "the_door", complete = complete}) ~= false).to.beTrue()
+				-- a position OR the name of an entity whose position is used
+				expect(C.CheckObjective({id = "a", title = "T", place = "the_door", complete = complete}) ~= false).to.beTrue()
 			end
 		},
 		{

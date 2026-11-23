@@ -196,6 +196,8 @@ if SERVER then
 	include("grymod/server/sv_objectives_demo.lua")
 	include("grymod/server/sv_usable_mass.lua")
 	include("grymod/server/sv_usable_class.lua")
+	include("grymod/server/sv_campaign_core.lua")
+	include("grymod/server/sv_campaign.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.vmt")
