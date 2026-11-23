@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -323,6 +323,7 @@ A weapon is described by a **definition**, a table of optional fields. A field y
 | `slotIcon` | an icon key | the stock icon of the weapon slot, when `icon` is not given |
 | `crosshair` | boolean, or a number 1 to 13 | `false`: the HUD draws no crosshair while the weapon is in hand (the stock fists and RPG). `true` or no field: the player's crosshair style. A number: the weapon shows that one of the 13 crosshairs of the HUD movie (11, 12 and 13 are the ones the original game forces by weapon), unless the player turned off `gry_hud_crosshair_weapon` |
 | `heat` | `function(wep)` returning a number, 0 (cold) to 1 (overheated) | how hot the weapon is: the HUD shows the heat bar above the weapon icon, only for a weapon that declares this. Asked at each frame while the weapon is in hand, under `SafeCall`. The player can turn the bar off (`gry_hud_overheat`) |
+| `listIcon` | a silhouette of the weapon list (`GryMod.API.WeaponListIcons`: `SOCOM`, `SMG`, `Shotgun`, `SCAR`, `FY71`, `Hurricane`, `LAW`, `TACGun`, `GaussRifle`, `DSG1`, `Grenade_Explosive`, `Grenade_Flashbang`, `Grenade_Smoke`, `C4`, `LockpickKit`, `RadarKit`, `RepairKit`, `AVMine`, `Claymore`, `MOARAttach`, `AlienMount`, `Grenade_EMP`, `NightVision`, `Binoculars`, `Fists`) | the picture of the weapon in the weapon list that shows when the player changes weapon. Without it the list uses the kind of the weapon's `grenade`, and else writes the weapon's name |
 | `grenade` | `"explosivegrenade"`, `"flashbang"`, `"smokegrenade"`, `"empgrenade"` (`GryMod.API.GrenadeKinds`) | the kind of hand grenade the grenade slot shows while the weapon is in hand. A weapon that declares it counts **its own primary ammo** there (the player's hand grenades are the explosive ones). Default: `"explosivegrenade"` and the hand grenades' count |
 
 The icon keys are the ones of the HUD movie: `Single`, `Burst`, `Auto`, `Grenade`, `Shotgun`, `Mine`, `Repairkit`, `Missle`, `NoGun`,
@@ -389,6 +390,7 @@ entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
 | `crosshair` | client | the HUD's crosshair is hidden while the weapon is in hand, or the weapon's own style is shown |
 | `heat` | client | the heat bar above the weapon icon; also reported to the hook `GryMod_WeaponHeat(ply, wep, percent)` (client, each time the bar moves, 0 when it is hidden) |
 | `grenade` | client | the icon of the grenade slot, and its blink when the kind changes (a weapon change from one kind to another) |
+| `listIcon` | client | the silhouette of the weapon in the weapon list shown at each weapon change; reported to the hook `GryMod_WeaponListShown(ply, wep)` (client) |
 
 ### Where a field comes from
 

@@ -155,6 +155,12 @@ a `pcall`: a listener that fails is shown on the console (five times at most per
 Client. Runs each time the weapon heat bar moves: `percent` is 0 to 100, and 0 when the bar is hidden (a weapon that declares no `heat`
 in the weapon registry, another weapon in hand, or the player turned the bar off). Run inside a `pcall`.
 
+### `GryMod_WeaponListShown(ply, wep)`
+
+Client. Runs each time the weapon list is shown: the player changed the weapon in hand (`wep`) and the list of the player's weapons (at the
+bottom right, up to five rows, the weapon in hand on a plate) appears for three seconds. It is not run when the list is off (`gry_hud_weaponlist`,
+the HUD, the suit) or when the HUD was just made (nothing changed). Run inside a `pcall`; the return value is ignored.
+
 ## What depends on the drawn HUD
 
 GryMod's HUD is drawn by one `HUDPaint` hook (`Module.Paint` of `cl_hud_flash.lua`). `Module.Apply` removes it when `gry_hud` is 0 or when
@@ -166,6 +172,7 @@ code that this hook runs, so in those cases they are not made:
 - the event `low_health`, and the picture half of `armor_hit` (the sound half comes from a message of the server and does not need the HUD);
 - `GryMod_RadarExposure` (the meter of the hexagon is fed by the radar's frame code, `Radar.Feed`).
 - the event `message` and `GryMod_MessageShown`: a line is shown only while the HUD is on (and the suit with it); the event still runs, it shows nothing and plays no sound.
+- `GryMod_WeaponListShown` (the list is drawn by the HUD's own frame code).
 
 These do **not** depend on the HUD being drawn: the events `mode`, `decloak`, `energy_critical`, `regen_start`, `regen_stop`, `dive_in`,
 `dive_out`, `drown`, `enabled` and `disabled`, the sound half of `armor_hit`, the hooks `GryMod_MalfunctionStart` and `GryMod_MalfunctionEnd`, and
