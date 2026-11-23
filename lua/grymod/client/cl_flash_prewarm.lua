@@ -95,6 +95,9 @@ Prewarm.Pieces = {
 		local movies = movieOf("FlashBoot", "MOVIES")
 
 		return movieNames(movies and movies.lost, movies and movies.reboot)
+	end},
+	{name = "messages", tier = 2, hud = true, option = "messages", films = function()
+		return movieNames(movieOf("FlashMessages", "MOVIE"))
 	end}
 }
 

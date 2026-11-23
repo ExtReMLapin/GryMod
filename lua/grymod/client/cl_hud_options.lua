@@ -21,7 +21,10 @@ Options.List = {
 	{name = "binoculars", label = "Binoculars", help = "The binoculars screen while you zoom"},
 	{name = "quickmenu", label = "Quick menu", help = "The suit mode wheel (hold its key, point, release)"},
 	{name = "boot", label = "Start-up and reboot sequences", help = "The log at the first spawn, the shutdown animation and the reboot after a malfunction"},
-	{name = "damagefx", label = "HUD jump on a heavy armor hit", help = "The panels shake for a moment when the armor takes a hit of a fifth of the bar or more, as in the original"}
+	{name = "damagefx", label = "HUD jump on a heavy armor hit", help = "The panels shake for a moment when the armor takes a hit of a fifth of the bar or more, as in the original"},
+	{name = "messages", label = "Text lines", help = "The lines of text of the HUD: the suit's own messages and the ones other addons show (the objective banner, for one)"},
+	{name = "usehint", label = "Use prompt", help = "The icon and the text under the crosshair when you can use or take what you look at (TAKE, ENTER VEHICLE, CLIMB, USE)"},
+	{name = "pickups", label = "Pickup popups", help = "The small popup when you take ammo, a weapon or an item (the Half-Life 2 pickup list is hidden when it is on)"}
 }
 
 local byName = {}
