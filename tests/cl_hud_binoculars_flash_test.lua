@@ -916,7 +916,7 @@ return {
 				expect(convar:GetDefault()).to.equal("1")
 				expect(isfunction(GryMod.FlashBinoculars.MoodEnabled)).to.beTrue()
 
-				local found = {}
+				local found, helps = {}, {}
 				local panel = vgui.Create("ControlPanel")
 				local ok, err = pcall(function()
 					GryMod.GryOptionschute(panel)
@@ -2304,7 +2304,7 @@ return {
 				expect(convar:GetDefault()).to.equal("0")
 				expect(isfunction(M.VisionEnabled)).to.beTrue()
 
-				local found = {}
+				local found, helps = {}, {}
 				local panel = vgui.Create("ControlPanel")
 				local ok, err = pcall(function()
 					GryMod.GryOptionschute(panel)
@@ -2313,6 +2313,9 @@ return {
 						for _, child in ipairs(p:GetChildren()) do
 							if child.ClassName == "DCheckBoxLabel" and child.Button then
 								found[child.Button.m_strConVar or "?"] = child:GetText()
+							elseif child.GetText and child.ClassName == "DLabel" then
+								-- the explanation is a help line under the box (GryMod.OptionBox), not the label of the box
+								helps[#helps + 1] = child:GetText()
 							end
 
 							walk(child)
@@ -2330,9 +2333,10 @@ return {
 
 				local text = found["gry_binoculars_vision"]
 				expect(text).toNot.beNil()
-				-- honest: the original has it on High quality only, and it doubles the film's vignette
-				expect(string.find(text, "High", 1, true)).toNot.beNil()
-				expect(string.find(text, "vignette", 1, true)).toNot.beNil()
+				-- honest: the original has it on High quality only, and it doubles the film's vignette (said in the help line under the box)
+				local all = text .. " " .. table.concat(helps, " ")
+				expect(string.find(all, "High", 1, true)).toNot.beNil()
+				expect(string.find(all, "vignette", 1, true)).toNot.beNil()
 			end
 		},
 		{
