@@ -385,6 +385,28 @@ return {
 
 				expect(seen.test_ghost_a).to.beNil()
 
+				-- the wheels are not solid (flag 1) and the client names them "class C_BaseToggle": both names are looked for along the aim ray
+				local names = {}
+
+				for _, class in ipairs(API.UsableNonSolidClasses()) do
+					names[class] = true
+				end
+
+				expect(names["momentary_rot_button"]).to.equal(true)
+				expect(names["class C_BaseToggle"]).to.equal(true)
+
+				-- an entry can name the network class its entities have on the client (`netclass`): a list of names like `class`, listed with the nonsolid classes
+				expect(register("test_netclass", {class = "test_net", netclass = "class C_Test", nonsolid = true})).to.beTrue()
+
+				names = {}
+
+				for _, class in ipairs(API.UsableNonSolidClasses()) do
+					names[class] = true
+				end
+
+				expect(names["test_net"] and names["class C_Test"]).to.equal(true)
+				expect((register("test_netclass_bad", {class = "test_net2", netclass = 5, nonsolid = true}))).to.beFalse()
+
 				-- nonsolid needs a class, and must be a boolean
 				local ok, why = register("test_nonsolid_match", {match = function() return true end, nonsolid = true})
 

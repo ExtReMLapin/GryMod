@@ -405,17 +405,19 @@ function Cross.NonSolidAimed(ply, maxDist)
 		for j = 1, #list do
 			local ent = list[j]
 
+			-- the ray first (cheap, and the registry's question for a toggle goes to the server: it is asked only for what the player aims at), then
+			-- only what the registry says is usable now: a class name shared by other things (the client calls a wheel and a lot of toggles
+			-- "class C_BaseToggle") must not stop the search at one that is not
 			if IsValid(ent) then
-				-- the key's reach for this very thing (a ladder: 64 units), never more than the caller allows
-				local reach = maxDist
-				local entry = API.GetUsable(ent)
+				local mins, maxs = ent:OBBMins() - pad, ent:OBBMaxs() + pad
 
-				if entry then
-					reach = math.min(reach, API.UsableRange(entry))
-				end
+				if util.IntersectRayWithOBB(eye, aim * maxDist, ent:GetPos(), ent:GetAngles(), mins, maxs) then
+					local entry = API.GetUsable(ent)
 
-				if util.IntersectRayWithOBB(eye, aim * reach, ent:GetPos(), ent:GetAngles(), ent:OBBMins() - pad, ent:OBBMaxs() + pad) then
-					return ent
+					-- the key's reach for this very thing (a ladder: 64 units)
+					if entry and (API.UsableRange(entry) >= maxDist or util.IntersectRayWithOBB(eye, aim * API.UsableRange(entry), ent:GetPos(), ent:GetAngles(), mins, maxs)) then
+						return ent
+					end
 				end
 			end
 		end

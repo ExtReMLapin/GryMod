@@ -130,6 +130,8 @@ local CHECK = {
 	spawnflags = flagsRule,
 	-- false: the entry does not apply now (a rule of the server's settings, not of the entity)
 	active = function(v) if isfunction(v) then return v end end,
+	-- the name(s) the CLIENT gives these entities when the game has no client class of their name ("class C_BaseToggle"): what the nonsolid scan looks for
+	netclass = names,
 	-- how far the key reaches for this entry, in units (API.USE_REACH when missing)
 	range = function(v) if isnumber(v) and v >= 1 and v <= MAX_RANGE then return v end end,
 	-- the key must be kept down (a charger, a wheel): the feedback comes once, at the press
@@ -139,7 +141,7 @@ local CHECK = {
 	}
 
 	local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority", "nonsolid", "group", "use", "cooldown", "ready", "busy", "spawnflags", "active", "range", "hold",
-	"nolimits"}
+	"nolimits", "netclass"}
 
 -- The entries by priority, then in the order of registration; they live through a reload of this file.
 local order = API._usableOrder or {}
@@ -441,6 +443,14 @@ function API.UsableNonSolidClasses()
 						list[#list + 1] = class
 					end
 				end
+
+				-- the name the client gives them when the game has no client class of their name
+				for _, class in ipairs(entry.netclass or {}) do
+					if not seen[class] then
+						seen[class] = true
+						list[#list + 1] = class
+					end
+				end
 			end
 		end
 	end
@@ -667,7 +677,12 @@ register("hl2_func_doors", {class = {"func_door", "func_door_rotating"}, icon = 
 -- d1_trainstation_01 (soda_machine_1) and d1_eli_01 (20), func_rot_button in d1_town_01 (5). The wheels (momentary_rot_button, d1_canals_05: four) turn
 -- while the key is held (FCAP_CONTINUOUS_USE), with the same flag 1024.
 register("hl2_buttons", {class = {"func_button", "func_rot_button"}, icon = "use", text = "USE", use = "repeat", cooldown = 1, spawnflags = {need = 1024}})
-register("hl2_wheels", {class = "momentary_rot_button", icon = "use", text = "USE (HOLD)", use = "repeat", cooldown = 1, hold = true, spawnflags = {need = 1024}})
+-- Most wheels are "not solid" (flag 1): the eye trace goes through them and the key finds them by the radius search (USE_IN_RADIUS), so they are looked for
+-- along the aim ray like the ladder (nonsolid), under the name the client gives them.
+register("hl2_wheels", {
+	class = "momentary_rot_button", netclass = "class C_BaseToggle", nonsolid = true, icon = "use", text = "USE (HOLD)", use = "repeat", cooldown = 1, hold = true,
+	spawnflags = {need = 1024}
+})
 
 -- The mounted guns: CFuncTank::ObjectCaps (func_tank.h: FCAP_IMPULSE_USE, USE_IN_RADIUS, all func_tank* classes), but its Use does nothing unless 32
 -- "Controllable" is set (13 maps have such a gun that is not). The control volume the player must stand in is a server trigger: not readable, the prompt

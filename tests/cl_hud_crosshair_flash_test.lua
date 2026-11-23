@@ -557,6 +557,47 @@ return {
 					expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 30)).to.beNil()
 					-- a class the registry does not mark nonsolid is never looked for
 					expect(GryMod.API.UsableNonSolidClasses()[1] ~= "func_brush").to.beTrue()
+					-- a wheel (momentary_rot_button) is not solid either and the client calls it "class C_BaseToggle": found through the real class the server gave, and
+					-- only when its flags say the key turns it (1024); a toggle that is no usable thing (a func_movelinear) is skipped, never returned
+					local function toggle(class, flags)
+						return {
+							IsValid = function() return true end, GetClass = function() return "class C_BaseToggle" end, GetSpawnFlags = function() return flags end,
+							GetPos = function() return Vector(0, 0, 0) end, GetAngles = function() return Angle(0, 0, 0) end,
+							OBBMins = function() return Vector(-16, -40, 0) end, OBBMaxs = function() return Vector(16, -8, 160) end,
+							EntIndex = function() return 9000 end, realClass = class
+						}
+					end
+
+					local wheel, mover = toggle("momentary_rot_button", 1153), toggle("func_movelinear", 1153)
+					local listed, ladders = {wheel}, {}
+					local savedResolver = GryMod.API.UsableClassResolver
+
+					GryMod.API.UsableClassResolver = function(ent) return ent.realClass end
+					ents.FindByClass = function(class)
+						if class == "class C_BaseToggle" then return listed end
+						if class == "func_useableladder" then return ladders end
+
+						return {}
+						end
+
+						local pok, perr = pcall(function()
+						expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 110) == wheel).to.beTrue()
+						-- the flags say the key does not turn it
+						wheel.GetSpawnFlags = function() return 65 end
+						expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 110)).to.beNil()
+						-- a toggle that is not a usable thing is never returned, and does not hide the ladder behind it in the list
+						listed, ladders = {mover}, {ladder}
+						expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 110) == ladder).to.beTrue()
+						end)
+
+						listed, ladders = {}, {ladder}
+
+					GryMod.API.UsableClassResolver = savedResolver
+
+					if not pok then
+						error(perr, 0)
+					end
+
 					-- the ladder's own range is 64 units, not the 110 the scan may look: 82 units from its box is out of the key's reach
 					expect(C.NonSolidAimed(player(Vector(0, 84, 80), Vector(0, -1, 0)), 110)).to.beNil()
 					expect(C.NonSolidAimed(player(Vector(0, 60, 80), Vector(0, -1, 0)), 110) == ladder).to.beTrue()
