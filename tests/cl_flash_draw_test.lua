@@ -657,7 +657,7 @@ return {
 			end
 		},
 		{
-			-- needs: shapeContours returning false for an outline that cannot be cut, and drawMorphLayer skipping then
+			-- guard (green before and after, nothing was drawn before): shapeContours returning false for an outline that cannot be cut, and drawMorphLayer skipping then
 			name = "a layer whose outline is a bow tie draws nothing and does not fail",
 			func = function(state)
 				local F = GryMod.Flash
