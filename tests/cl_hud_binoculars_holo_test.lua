@@ -589,6 +589,20 @@ return {
 			end
 		},
 		{
+			-- fails without V.DepthModeFor: with antialiasing the engine gives a buffer that shares the scene's depth an EMPTY one, so the depth test drops every entity
+			-- and nothing is drawn (seen at 4K with mat_antialias 8: the hologram never showed); the buffer must have its own depth then
+			name = "with antialiasing the vision buffer has its own depth buffer, without it shares the scene's",
+			func = function()
+				local V = H().Crysis
+
+				expect(V.DepthModeFor(0)).to.equal("shared")
+				expect(V.DepthModeFor(1)).to.equal("shared")
+				expect(V.DepthModeFor(nil)).to.equal("shared")
+				expect(V.DepthModeFor(2)).to.equal("separate")
+				expect(V.DepthModeFor(8)).to.equal("separate")
+			end
+		},
+		{
 			-- fails without the Push / Pop round render.BlurRenderTarget in the glow pass: the engine leaves the blurred target as the current one, so the final quad (and
 			-- every draw after it) went into the glow's buffer and nothing showed on the screen (seen in the game: the same quad drew when no blur had run before it)
 			name = "the glow's blur is wrapped in a Push / Pop of the render target (also when it fails), and the final quad is drawn on the screen's target",

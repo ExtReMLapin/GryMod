@@ -659,6 +659,18 @@ function V.NeedsTraceOcclusion(antialias)
 	return type(antialias) == "number" and antialias > 1
 end
 
+local aaConVar
+
+-- The depth buffer of the vision buffer: shared with the scene's unless antialiasing is on (the engine then gives it an empty one, the depth test would drop
+-- every entity: the walls are looked for by a trace instead and the buffer gets its own depth, cleared at each frame).
+function V.DepthModeFor(antialias)
+	if V.NeedsTraceOcclusion(antialias) then
+		return "separate"
+	end
+
+	return "shared"
+end
+
 -- The four constant registers the shader reads for a draw of `mode` (0: the shape alone into the glow's buffer, 1: the final pass) on a screen of w x h;
 -- `into` (optional) is a table of an earlier call, filled again. Row 1: strength, boost, fill, neighbours' distance. Row 2: one pixel (x, y) of the vision
 -- buffer, the mode, the glow gain. Row 3: the screen's height, pixels to a period of the lines, bright level, dim level. Row 4: the vignette's strength.
@@ -796,16 +808,21 @@ function V.Build()
 		return false
 	end
 
-	if V.built and V.builtW == w and V.builtH == h then
+	aaConVar = aaConVar or GetConVar("mat_antialias")
+
+	local depthMode = V.DepthModeFor(aaConVar and aaConVar:GetInt() or 0)
+
+	if V.built and V.builtW == w and V.builtH == h and V.builtDepth == depthMode then
 		return true
 	end
 
 	local ok, err = pcall(function()
-		local suffix = "_" .. w .. "x" .. h
+		-- (the name carries the depth mode: the game keeps the parameters of the first call of a name)
+		local suffix = "_" .. w .. "x" .. h .. "_" .. depthMode
 		local gw, gh = V.GlowSize(w, h)
 
 		-- (point sampling and clamping: texture flags 1, 4 and 8)
-		V.vision = GetRenderTargetEx("GryBinoVision" .. suffix, w, h, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SHARED, 1 + 4 + 8, 0, IMAGE_FORMAT_RGBA8888)
+		V.vision = GetRenderTargetEx("GryBinoVision" .. suffix, w, h, RT_SIZE_LITERAL, depthMode == "separate" and MATERIAL_RT_DEPTH_SEPARATE or MATERIAL_RT_DEPTH_SHARED, 1 + 4 + 8, 0, IMAGE_FORMAT_RGBA8888)
 		-- (not point sampled: the blur of the game glitches on such a target)
 		V.glow = GetRenderTargetEx("GryBinoGlow" .. suffix, gw, gh, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, IMAGE_FORMAT_RGBA8888)
 
@@ -821,7 +838,7 @@ function V.Build()
 	end)
 
 	V.built = ok
-	V.builtW, V.builtH = w, h
+	V.builtW, V.builtH, V.builtDepth = w, h, depthMode
 
 	if not ok then
 		ErrorNoHalt("GryMod binoculars hologram: the crysis style's buffers could not be made: " .. tostring(err) .. "\n")
@@ -839,12 +856,12 @@ function V.Hidden(ply, ent)
 end
 
 V.visionFrame = nil -- the frame number in which the vision buffer was filled (nil: it holds nothing to show; a field so that the tests can set it)
-local aaConVar
 
 -- The entities of this frame, flat in their colour, into the vision buffer (alpha 1 where one is). Every state it changes comes back, even on an error.
 local function drawEntities(ply, count, traceWalls)
 	render.OverrideAlphaWriteEnable(true, true)
-	render.Clear(0, 0, 0, 0, false, false)
+	-- (its own depth buffer, with antialiasing: cleared with the colour; shared with the scene's otherwise: left alone)
+	render.Clear(0, 0, 0, 0, V.builtDepth == "separate", false)
 	render.MaterialOverride(V.flat)
 	render.SetBlend(1)
 
