@@ -15,6 +15,12 @@
 --   5. whatever happened (an error included): puts the depth-to-alpha write back to true, pops the target if it was pushed, removes the hooks,
 --      shows again ONLY the entities this call hid and that are still valid.
 -- The picture: top = world +X, right = world -Y (measured), `2 * half` units across.
+--
+-- RenderTo(tile, level, dest) is the same render for the big map (map/tiles.lua): instead of reading the bytes it copies the picture into a render target of
+-- the caller (render.CopyRenderTargetToTexture, before the target is popped), so the big map needs no compression and no file. It shares everything else
+-- with Render (the entities hidden, the temporary hooks, the view, the clean-up): there is ONE place that renders a tile.
+-- MayCapture(owner) is the arbitration of the frame: a capture costs a few ms and the game must not make two in one frame, whoever asks (the minimap's
+-- generator or the big map's). Render and RenderTo record the frame they ran in; SetPriority(owner) gives an owner the even frames.
 
 GryMod = GryMod or {}
 GryMod.Minimap = GryMod.Minimap or {}
@@ -444,8 +450,9 @@ function Capture.ResetRTCache()
 	targets = {}
 end
 
--- The body of a capture, under pcall in Render. The state it needs to be undone is in `state`.
-local function run(tile, level)
+-- The body of a capture, under pcall in Render and RenderTo. The state it needs to be undone is in `state`. `dest` (RenderTo): a render target to copy the
+-- picture into; nil (Render): the bytes of the picture are read and returned.
+local function run(tile, level, dest)
 	local res = tile.res
 	local rt, why = Capture.GetRT(res)
 
@@ -492,6 +499,15 @@ local function run(tile, level)
 	state.depthAlphaOff = false
 	render.SetWriteDepthToDestAlpha(true)
 
+	if dest ~= nil then
+		-- the picture goes to the caller's target BEFORE the shared one is popped
+		render.CopyRenderTargetToTexture(dest)
+		state.pushed = false
+		render.PopRenderTarget()
+
+		return true
+	end
+
 	-- the bytes are read BEFORE the target is popped: render.Capture reads the current one (and the alpha comes back as drawn)
 	local bytes = render.Capture({format = "bgra", x = 0, y = 0, w = res, h = res})
 
@@ -527,9 +543,46 @@ local function cleanup()
 	state.hidden = nil
 end
 
--- One render of the tile (see the header). -> the BGRA bytes | nil, reason. Never raises.
--- A nil with "capture unavailable" is not a failure: the menu is open, the caller tries again at the next frame.
-function Capture.Render(tile, level)
+-- The frame of the last capture, and the owner that has the even frames (see MayCapture).
+local lastFrame = nil
+local priorityOwner = nil
+
+local function currentFrame()
+	if type(FrameNumber) == "function" then
+		return FrameNumber()
+	end
+
+	return 0
+end
+
+-- Whether `owner` (any name: "gen" for the minimap's generator, "map" for the big map) may capture in `frame` (the engine's frame number by default): not
+-- when a capture already ran in that frame, and not on an even frame when another owner has the priority (SetPriority). Pure but for the frame number.
+function Capture.MayCapture(owner, frame)
+	frame = frame or currentFrame()
+
+	if lastFrame == frame then
+		return false
+	end
+
+	if priorityOwner ~= nil and priorityOwner ~= owner and frame % 2 == 0 then
+		return false
+	end
+
+	return true
+end
+
+-- The owner that has the even frames while it works (the big map, while it is open), or nil for nobody.
+function Capture.SetPriority(owner)
+	priorityOwner = owner
+end
+
+-- Forgets the frame of the last capture (the tests).
+function Capture.ResetFrame()
+	lastFrame = nil
+end
+
+-- One render of the tile, for Render and RenderTo. -> the result of `run` | nil, reason. Never raises.
+local function execute(tile, level, dest)
 	local valid, why = validate(tile, level)
 
 	if not valid then
@@ -541,18 +594,35 @@ function Capture.Render(tile, level)
 	end
 
 	capturing = true
+	lastFrame = currentFrame()
 	state.hidden = {}
 	state.pushed = false
 	state.depthAlphaOff = false
 
-	local ok, bytes, reason = pcall(run, tile, level)
+	local ok, result, reason = pcall(run, tile, level, dest)
 
 	pcall(cleanup)
 	capturing = false
 
 	if not ok then
-		return nil, tostring(bytes)
+		return nil, tostring(result)
 	end
 
-	return bytes, reason
+	return result, reason
+end
+
+-- One render of the tile (see the header). -> the BGRA bytes | nil, reason. Never raises.
+-- A nil with "capture unavailable" is not a failure: the menu is open, the caller tries again at the next frame.
+function Capture.Render(tile, level)
+	return execute(tile, level, nil)
+end
+
+-- The same render, copied into `dest` (a render target of the caller, of the same size as the tile and the same format, see GetRT) instead of being read.
+-- -> true | nil, reason. Never raises.
+function Capture.RenderTo(tile, level, dest)
+	if dest == nil then
+		return nil, "no destination"
+	end
+
+	return execute(tile, level, dest)
 end

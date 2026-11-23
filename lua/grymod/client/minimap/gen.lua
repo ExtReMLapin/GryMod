@@ -700,6 +700,14 @@ function Gen.Step(now)
 		budget = math.min(budget, Gen.PRELOAD_BUDGET_MS / 1000)
 	end
 
+	-- the big map makes tiles too: one capture per frame between the two of us (Capture.MayCapture), asked once per call
+	local Capture = GryMod.Minimap.Capture
+	local mayCapture = true
+
+	if type(Capture) == "table" and type(Capture.MayCapture) == "function" then
+		mayCapture = Capture.MayCapture("gen") ~= false
+	end
+
 	while true do
 		local cur = S.current or nextTile()
 
@@ -707,8 +715,8 @@ function Gen.Step(now)
 			break
 		end
 
-		if cur.phase == PHASE_CAPTURE and captured then
-			break -- one capture per call
+		if cur.phase == PHASE_CAPTURE and (captured or not mayCapture) then
+			break -- one capture per call, and none in a frame where the big map has made one
 		end
 
 		local r = work(cur)

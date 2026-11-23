@@ -3175,6 +3175,59 @@ return {
 				G.Step(state.t)
 				expect(#state.renders >= 2).to.beTrue()
 			end
+		},
+		-- fails if the generator ignores the arbitration of the frame (a second capture in a frame where the big map already made one)
+		{
+			name = "when the capture arbitration says no (the big map captured in this frame) a Step makes no capture, keeps the tile for later, and asks as \"gen\"",
+			func = function(state)
+				local G = gen()
+				local asked = {}
+				local allow = false
+
+				GryMod.Minimap.Capture.MayCapture = function(owner)
+					asked[#asked + 1] = owner
+
+					return allow
+				end
+
+				request9(state)
+				G.Step(state.t)
+
+				expect(#state.renders).to.equal(0)
+				expect(asked[1]).to.equal("gen")
+				expect(G.Pending() > 0).to.beTrue()
+
+				-- the next frame it may: the same tile is made, nothing was lost
+				allow = true
+				G.Step(state.t)
+
+				expect(#state.renders).to.equal(1)
+				expect(tkey(state.renders[1])).to.equal("0,0")
+			end
+		},
+		-- fails if the arbitration is asked more than once per Step (the big map would see a capture that did not happen)
+		{
+			name = "the arbitration is asked once per Step, and a Capture without it (an older module) never blocks",
+			func = function(state)
+				local G = gen()
+				local calls = 0
+
+				request9(state)
+				G.Step(state.t)
+				expect(#state.renders).to.equal(1) -- no MayCapture at all: made as before
+
+				GryMod.Minimap.Capture.MayCapture = function()
+					calls = calls + 1
+
+					return true
+				end
+
+				state.budget = 1000
+				state.dt = 0
+				G.Step(state.t)
+
+				expect(calls).to.equal(1)
+			end
 		}
 	}
 }
