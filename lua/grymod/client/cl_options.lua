@@ -221,6 +221,8 @@ function GryMod.SuitOptions(Panel)
 
 		GryMod.OptionBox(form, line.label, line.convar, line.help .. ". Shown as \"" .. line.text .. "\".")
 	end
+
+	GryMod.OptionBox(form, "Message: objectives", "gry_msg_objectives", "A line and a sound when an objective is added, finished or failed (the list you get when you join is silent).")
 end
 
 -- The suit's sounds (the binoculars' own are in the Binoculars category).

@@ -248,6 +248,12 @@ function Obj.ApplyBegin()
 	mentioned = {}
 end
 
+-- Whether a full list is arriving (between BEGIN and END): the objectives it brings are not news (the list sent when the player joins, or sent again), so a
+-- display that tells the player about a new objective stays silent for them. The hooks run while it is true.
+function Obj.Syncing()
+	return mentioned ~= nil
+end
+
 function Obj.ApplyEnd()
 	if not mentioned then
 		return

@@ -139,6 +139,7 @@ if SERVER then
 	AddCSLuaFile("grymod/sh_mode_states.lua")
 	AddCSLuaFile("grymod/flash/hud_missionobjective_icon.lua")
 	AddCSLuaFile("grymod/client/cl_hud_objectives_flash.lua")
+	AddCSLuaFile("grymod/client/cl_objectives_banner.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -357,6 +358,8 @@ if SERVER then
 	resource.AddFile("materials/grymod/flash/hud_ammopickup_3_w.vmt")
 	resource.AddFile("materials/grymod/flash/hud_ammopickup_3_w.vtf")
 	resource.AddFile( "sound/grymod/hud/hud_cloak_feedback.wav" )
+	resource.AddFile( "sound/grymod/hud/pda_updated.wav" )
+	resource.AddFile( "sound/grymod/hud/hud_mission_accomplished.wav" )
 	resource.AddFile("materials/grymod/flash/hud_missionobjective_icon_1.vmt")
 	resource.AddFile("materials/grymod/flash/hud_missionobjective_icon_1.vtf")
 	resource.AddFile("materials/grymod/flash/hud_missionobjective_icon_1_w.vmt")
@@ -444,4 +447,5 @@ if CLIENT then
 	include("grymod/client/cl_hud_corners_flash.lua")
 	include("grymod/sh_mode_states.lua")
 	include("grymod/client/cl_hud_objectives_flash.lua")
+	include("grymod/client/cl_objectives_banner.lua")
 end

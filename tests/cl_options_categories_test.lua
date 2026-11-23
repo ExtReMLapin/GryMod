@@ -59,6 +59,7 @@ box:gry_menu_ring_film
 box:gry_msg_cloak_disabled
 box:gry_msg_cloak_health
 box:gry_msg_killed_friend
+box:gry_msg_objectives
 box:gry_menu_show_refused
 box:gry_screenfx
 box:gry_sound_cloak_loop

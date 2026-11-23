@@ -172,6 +172,9 @@ HUD = [
     ("hud_activate_01", "interface_bank00", "hud_activate_01.wav"),
     ("hud_malfunction_hit", "interface_bank00", "hud_malfunction_hit.wav"),
     ("hud_cloak_feedback", "interface_bank00", "hud_cloak_feedback.wav"),
+    # the objective banner: the events hud/pda_update (-18 dB) and hud/objective_completed (-17 dB)
+    ("pda_updated", "interface_bank00", "pda_updated.wav"),
+    ("hud_mission_accomplished", "interface_bank00", "hud_mission_accomplished.wav"),
 ]
 MENU = [
     ("modification_menu_appear", "interface_suit", "modification_menu_appear.WAV"),
