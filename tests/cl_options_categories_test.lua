@@ -7,7 +7,9 @@
 local CONFIG = [[binder
 binder
 box:gry_binoculars_aim
+box:gry_binoculars_baseline
 box:gry_binoculars_hold_zoom
+box:gry_binoculars_hologram
 box:gry_binoculars_horizon
 box:gry_binoculars_malfunction
 box:gry_binoculars_mood

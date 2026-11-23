@@ -1093,6 +1093,12 @@ Bino.ZoomState = zoom
 -- the entities this player has tagged (the server keeps them until their death, or the player's)
 local tagged = setmetatable({}, {__mode = "k"})
 
+-- Whether this player's binoculars spotted the entity (its scan ended on it, and the server was told): what the hologram (cl_hud_binoculars_holo.lua) turns from
+-- white back to the colour of its side.
+function Bino.IsTagged(entity)
+	return entity ~= nil and tagged[entity] == true
+end
+
 -- The HUD is on and so are the binoculars (gry_hud_binoculars).
 function Bino.Enabled()
 	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("binoculars"))
@@ -1202,6 +1208,9 @@ function Bino.IsMissing()
 	return missing
 end
 
+-- (the entity the player aims at, for the hologram: set at each frame of the film, forgotten when the binoculars go)
+Bino.Aimed = nil
+
 -- A vehicle or a mine (what is neither an NPC nor a nextbot and that the registry of tracked entities gives a radar rule) that the radar may
 -- list, so that the binoculars may scan it: the server decides in the end (Radar.Scan), this only spares the sound of a lock it would
 -- refuse. Not the vehicle the player sits in; nothing with the switch gry_radar_objects off.
@@ -1234,8 +1243,13 @@ end
 
 -- An entity whose own position reads as a distance: the living (NPCs, players), vehicles and the mines. A prop's origin can be
 -- anywhere in it and a brush entity's far off the surface that was hit: they read as the point hit.
+-- A weapon lying on the ground (nobody holds it): the binoculars show it in the hologram and give its distance.
+function Bino.IsItem(entity)
+	return IsValid(entity) and entity:IsWeapon() and not IsValid(entity:GetOwner())
+end
+
 local function aimable(entity)
-	return IsValid(entity) and not entity:IsWorld() and (entity:IsNPC() or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle() or Bino.IsObject(entity))
+	return IsValid(entity) and not entity:IsWorld() and (entity:IsNPC() or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle() or Bino.IsObject(entity) or Bino.IsItem(entity))
 end
 
 Bino.Aimable = aimable
@@ -1343,6 +1357,8 @@ local function feed(ply, dt)
 
 	local units, entity = aim(ply)
 	local metres, hundredths = Bino.MetresFrom(units)
+
+	Bino.Aimed = entity
 
 	if fed.metres ~= metres or fed.hundredths ~= hundredths then
 		fed.metres, fed.hundredths = metres, hundredths
@@ -1485,7 +1501,18 @@ function Bino.DrawSilhouette()
 	end
 end
 
+-- (with the hologram on, the default, the hologram draws the outlines and this old pale blue halo stays quiet)
 hook.Add("PreDrawHalos", "GRYBINOCULARSSILHOUETTE", function()
+	local holo = GryMod.BinocularsHolo
+
+	if holo and holo.Enabled() then
+		if #Bino.Silhouettes > 0 then
+			Bino.SilhouetteClear(Bino.Silhouettes)
+		end
+
+		return
+	end
+
 	Bino.DrawSilhouette()
 end)
 
@@ -2070,6 +2097,11 @@ function Bino.Drop()
 	Bino.ZoomReset(zoom)
 	Bino.SwayReset(Bino.SwayState)
 	Bino.VisionStep(false)
+	Bino.Aimed = nil
+
+	if GryMod.BinocularsHolo then
+		GryMod.BinocularsHolo.Detach()
+	end
 end
 
 function Bino.Reset()
@@ -2087,4 +2119,9 @@ function Bino.Reset()
 	Bino.ZoomReset(zoom)
 	Bino.SwayReset(Bino.SwayState)
 	Bino.VisionStep(false)
+	Bino.Aimed = nil
+
+	if GryMod.BinocularsHolo then
+		GryMod.BinocularsHolo.Detach()
+	end
 end
