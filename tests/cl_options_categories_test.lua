@@ -84,12 +84,14 @@ button:Switch every element back on
 combo:?
 combo:?
 combo:?
+combo:gry_objectives_marker_mode
 mixer
 mixer
 mixer
 slider:gry_grenade_range
 slider:gry_hud_crosshair_style
 slider:gry_sound_volume
+slider:gry_usehint_delay
 slider:gry_xadd
 slider:gry_xdist
 slider:gry_zoom_tap_ms]]

@@ -100,6 +100,20 @@ local function hudElements(Panel)
 	GryMod.OptionBox(form, "Energy bar at every frame", "gry_hud_energy_smooth", "The energy bar is predicted between the server's updates, so that it moves at every frame.")
 	GryMod.OptionBox(form, "Use prompt on props", "gry_usehint_props", "PICK UP also shows on the props, ragdolls and physboxes you can lift (you can pick up almost anything). Off: the prompt is only for what really needs the use key.")
 	GryMod.OptionBox(form, "Use prompt feedback", "gry_usehint_feedback", "The prompt pulses with a beep when you press the use key on a door, a button or a charger, then dims for a moment.")
+	GryMod.OptionSlider(form, "Use prompt delay (s)", "gry_usehint_delay", 0, 1, 2, "The prompt shows after the crosshair stayed this long on the same thing (0.2 s is the original's; 0: at once).")
+	form:Help("Objective markers on the screen")
+
+	local markerBox = vgui.Create("DComboBox")
+	markerBox.GryConVar = "gry_objectives_marker_mode"
+	markerBox:SetSortItems(false)
+	markerBox:AddChoice("Only through the binoculars (the original)", "binoculars")
+	markerBox:AddChoice("Always", "always")
+	markerBox:SetValue((markerBox:GetOptionText(GetConVar("gry_objectives_marker_mode"):GetString() == "always" and 2 or 1)))
+	markerBox.OnSelect = function(_, _, _, data)
+		RunConsoleCommand("gry_objectives_marker_mode", tostring(data))
+	end
+	form:AddItem(markerBox)
+	form:ControlHelp("The radar, the minimap and the map show the objectives in both cases.")
 	form:Button("Switch every element back on", "gry_hud_reset")
 
 	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)

@@ -92,6 +92,8 @@ return {
 		stub(GryMod.FlashHUD, "Enabled", function() return true end)
 		stub(Flash, "Draw", function() drawn = drawn + 1 return true end)
 		setConVar("gry_hud_objectives", "1")
+		-- (the mode of the binoculars is the default; these cases are about the markers themselves: "always", the binoculars' own cases set it)
+		setConVar("gry_objectives_marker_mode", "always")
 	end,
 	afterEach = function()
 		pcall(Marks.Reset)
@@ -290,6 +292,72 @@ return {
 				setConVar("gry_hud_objectives", "0")
 				Marks.Refresh()
 				expect(Marks.Active()).to.beFalse()
+			end
+		},
+		{
+			-- fails without Marks.ModeAllows
+			name = "ModeAllows: always shows; binoculars shows only with them up, unless the binoculars' screen is off (the markers would never show)",
+			func = function()
+				expect(Marks.ModeAllows("always", true, false)).to.beTrue()
+				expect(Marks.ModeAllows("always", false, false)).to.beTrue()
+				expect(Marks.ModeAllows("binoculars", true, true)).to.beTrue()
+				expect(Marks.ModeAllows("binoculars", true, false)).to.beFalse()
+				expect(Marks.ModeAllows("binoculars", false, false)).to.beTrue()
+			end
+		},
+		{
+			-- fails without Marks.Mode and the convar: the default "binoculars" is the original's
+			name = "the mode is the saved convar gry_objectives_marker_mode, binoculars by default, and anything but always is binoculars",
+			func = function()
+				expect(GetConVar("gry_objectives_marker_mode"):GetDefault()).to.equal("binoculars")
+				expect(bit.band(GetConVar("gry_objectives_marker_mode"):GetFlags(), FCVAR_ARCHIVE)).to.equal(FCVAR_ARCHIVE)
+
+				setConVar("gry_objectives_marker_mode", "always")
+				expect(Marks.Mode()).to.equal("always")
+				setConVar("gry_objectives_marker_mode", "binoculars")
+				expect(Marks.Mode()).to.equal("binoculars")
+				setConVar("gry_objectives_marker_mode", "nonsense")
+				expect(Marks.Mode()).to.equal("binoculars")
+			end
+		},
+		{
+			-- fails without the mode in Marks.Refresh / Marks.Paint, or without the listener of GryMod_BinocularsToggled: the markers would show without the binoculars
+			name = "binoculars mode: no paint hook and nothing drawn while the binoculars are down; up, the hook comes with the report of the toggle and the marker is drawn; down again, it goes",
+			func = function()
+				local up = false
+				local bino = GryMod.FlashBinoculars
+
+				stub(bino, "Enabled", function() return true end)
+				stub(bino, "Wanted", function() return up end)
+				stub(_G, "LocalPlayer", function() return {IsValid = function() return true end, Alive = function() return true end} end)
+				setConVar("gry_objectives_marker_mode", "binoculars")
+				listOf(objective("a"))
+				projectAt(300, 200, true, 0, 0, 64)
+
+				Marks.Refresh()
+				expect(Marks.Active()).to.beFalse()
+				Marks.Paint()
+				expect(drawn).to.equal(0)
+
+				local listener = hook.GetTable()["GryMod_BinocularsToggled"]["GryObjectiveMarks"]
+				expect(listener).to.beA("function")
+
+				up = true
+				listener(true)
+				expect(Marks.Active()).to.beTrue()
+				Marks.Paint()
+				expect(drawn).to.equal(1)
+
+				up = false
+				listener(false)
+				expect(Marks.Active()).to.beFalse()
+				Marks.Paint()
+				expect(drawn).to.equal(1)
+
+				-- the mode changed to always while they are down: the markers come at once
+				setConVar("gry_objectives_marker_mode", "always")
+				Marks.Refresh()
+				expect(Marks.Active()).to.beTrue()
 			end
 		},
 		{

@@ -8,7 +8,11 @@
 --     objective in it. The others close theirs.
 -- What the original does not do and this file does not either: a primary and a secondary objective look the same on the screen (the original's single player
 -- call has no secondary flag; they differ on the radar and in the list); a finished or failed objective has no marker (the original takes it out of the map;
--- the movie has no grey frame for it); the binoculars change nothing (the markers stay while the player zooms). The colours are the HUD theme's.
+-- the movie has no grey frame for it). The colours are the HUD theme's.
+-- THE BINOCULARS (gry_objectives_marker_mode, "binoculars" by default, as in the original): without the binoculars up nothing of an objective is drawn on the
+-- screen; with them up the markers are there, through the walls (they are drawn on the HUD, not in the world), with the arrow on the border for what is off the
+-- screen and the box with the name and the distance for the one aimed at. "always" keeps them on the screen all the time. The radar's icons, the minimap and the
+-- big map are not touched by it. The paint hook follows the binoculars through GryMod_BinocularsToggled.
 -- The movie's own script (updateMissionObjectives, setNearCenter, UpdateText) is ported by hand: the engine runs only the stop / play / goto actions.
 --
 -- Cost: nothing at all when there is nothing to show. The paint hook exists only while an eligible objective exists (it is added and removed by the three
@@ -46,6 +50,9 @@ Marks.CENTRE_LIMIT = 0.05
 -- The arrows of the movie by the way they point, from "right" turning clockwise (the screen's y goes down), in steps of 45 degrees.
 local ARROWS = {17, 18, 19, 20, 13, 14, 15, 16}
 
+-- Where the markers show: "binoculars" (only while the binoculars are up, the original's) or "always".
+local ModeConVar = CreateClientConVar("gry_objectives_marker_mode", "binoculars", true, false, "Where the objective markers show on the screen: binoculars (only while the binoculars are up, as in the original; the radar and the map still show them) or always")
+
 local METRES_PER_UNIT = GryMod.RadarShared and GryMod.RadarShared.METRES_PER_UNIT or 0.01905
 
 local OPEN_LABEL, CLOSE_FRAME = "open", 22
@@ -82,6 +89,21 @@ end
 -- Whether an objective has a marker: it is active and its marker is on. Primary and secondary alike.
 function Marks.Eligible(o)
 	return o.marker == true and o.state == "active"
+end
+
+-- The mode of the markers: "always", or "binoculars" for anything else (the default).
+function Marks.Mode()
+	return ModeConVar:GetString() == "always" and "always" or "binoculars"
+end
+
+-- Whether the markers may show for a mode: always in "always"; in "binoculars" only with the binoculars up. Without the binoculars' screen at all (their HUD element
+-- is off) the markers would never show, so they show.
+function Marks.ModeAllows(mode, binocularsShown, binocularsUp)
+	if mode == "always" or not binocularsShown then
+		return true
+	end
+
+	return binocularsUp == true
 end
 
 -- The picture of the stage on a screen of w x h pixels: as high as the screen, centred across its width. Returns the x of its left side, the y (0) and the
@@ -384,6 +406,14 @@ function Marks.Apply(current, list, count)
 	nearCentre(current, count, Marks.NearCentreId(list, count))
 end
 
+-- Whether the mode lets the markers show now (a field so that a test can replace the binoculars' answer).
+function Marks.ModeOpen()
+	local bino = GryMod.FlashBinoculars
+	local shown = bino ~= nil and bino.Enabled()
+
+	return Marks.ModeAllows(Marks.Mode(), shown, shown and bino.Wanted(LocalPlayer()))
+end
+
 -- Whether the markers are on: the HUD is on (and the suit with it) and the player did not turn them off.
 function Marks.Enabled()
 	return GryMod.FlashHUD ~= nil and GryMod.FlashHUD.Enabled() and (not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("objectives"))
@@ -392,7 +422,7 @@ end
 function Marks.Paint()
 	local ply = LocalPlayer()
 
-	if not IsValid(ply) or not ply:Alive() or not Marks.Enabled() then
+	if not IsValid(ply) or not ply:Alive() or not Marks.Enabled() or not Marks.ModeOpen() then
 		lastTime = nil
 
 		return
@@ -432,6 +462,11 @@ end
 -- Whether something is to be shown: the option is on and an objective is eligible.
 local function wanted()
 	if GryMod.HUDOptions and not GryMod.HUDOptions.Enabled("objectives") then
+		return false
+	end
+
+	-- the binoculars mode: no hook while they are down (told by GryMod_BinocularsToggled)
+	if not Marks.ModeOpen() then
 		return false
 	end
 
@@ -500,6 +535,15 @@ end)
 cvars.AddChangeCallback("gry_hud_objectives", function()
 	Marks.Refresh()
 end, "GryObjectiveMarks")
+
+cvars.AddChangeCallback("gry_objectives_marker_mode", function()
+	Marks.Refresh()
+end, "GryObjectiveMarks")
+
+-- the binoculars go up or down: the markers come or go (no Think: the report is the event)
+hook.Add("GryMod_BinocularsToggled", "GryObjectiveMarks", function()
+	Marks.Refresh()
+end)
 
 -- objectives that exist already (a reload of this file, or the file loaded after the first list)
 Marks.Refresh()
