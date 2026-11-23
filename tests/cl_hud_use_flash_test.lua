@@ -53,6 +53,21 @@ local function fake(class, fields)
 	function ent:GetClass() return self.class end
 	function ent:IsWeapon() return self.weapon == true end
 	function ent:IsVehicle() return self.vehicle == true end
+	function ent:IsNPC() return self.npc == true end
+	function ent:Health() return self.health or 0 end
+
+	if fields and fields.size then
+		function ent:OBBMins() return Vector(0, 0, 0) end
+		function ent:OBBMaxs() return self.size end
+	end
+
+	if fields and fields.mass then
+		function ent:GetPhysicsObject()
+			local mass = self.mass
+
+			return {IsValid = function() return true end, GetMass = function() return mass end}
+		end
+	end
 
 	if fields and fields.print then
 		function ent:GetPrintName() return self.print end
@@ -132,6 +147,47 @@ return {
 				expect(Cross.UsableFor(jeep, fakePlayer(false))).to.equal(1)
 				expect(Cross.UsableFor(jeep, fakePlayer(true))).to.equal(0)
 				expect(Cross.UsableFor(fake("func_brush"), fakePlayer(false))).to.equal(0)
+			end
+		},
+		{
+			-- fails if the crosshair kept its own list of classes instead of asking the registry
+			name = "the crosshair's test follows the registry: doors, talking NPCs, turrets are usable; a crate, a dead NPC, a mine are not; a vehicle not from inside one",
+			func = function()
+				local player = fakePlayer(false)
+
+				for _, row in ipairs({
+					{"func_door", nil, 1}, {"prop_door_rotating", nil, 1}, {"func_tank", nil, 1}, {"npc_turret_floor", nil, 1},
+					{"npc_citizen", {npc = true, health = 40}, 1}, {"npc_citizen", {npc = true, health = 0}, 0},
+					{"npc_kleiner", {npc = true, health = 40}, 0}, {"npc_zombie", {npc = true, health = 40}, 0},
+					{"item_healthkit", nil, 1}, {"item_healthcharger", nil, 1}, {"item_ammo_crate", nil, 1},
+					{"item_item_crate", nil, 0}, {"combine_mine", nil, 0}, {"func_brush", nil, 0}, {"gmod_button", nil, 1}
+				}) do
+					expect(Cross.UsableFor(fake(row[1], row[2]), player)).to.equal(row[3])
+				end
+
+				-- the same vehicle is not usable from inside one
+				expect(Cross.UsableFor(fake("prop_vehicle_jeep", {vehicle = true}), fakePlayer(true))).to.equal(0)
+			end
+		},
+		{
+			-- fails without the player's pickup limits (the Source SDK's CanPickupObject(ent, 35, 128))
+			name = "a prop is usable only when the player can lift it: 35 kg and 128 units on every side at most (the size is read, the mass when the client has it)",
+			func = function()
+				local player = fakePlayer(false)
+
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 40)}), player)).to.equal(1)
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(128, 128, 128)}), player)).to.equal(1)
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(129, 20, 20)}), player)).to.equal(0)
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 200)}), player)).to.equal(0)
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 20), mass = 35}), player)).to.equal(1)
+				expect(Cross.UsableFor(fake("prop_physics", {size = Vector(20, 20, 20), mass = 36}), player)).to.equal(0)
+				expect(Cross.UsableFor(fake("func_physbox", {size = Vector(20, 20, 20), mass = 300}), player)).to.equal(0)
+				-- no size and no mass to read: usable (the client cannot tell)
+				expect(Cross.UsableFor(fake("prop_physics"), player)).to.equal(1)
+				-- a door is not a prop: the limits are for the grab icon only
+				expect(Cross.UsableFor(fake("prop_door_rotating", {size = Vector(10, 100, 300)}), player)).to.equal(1)
+				expect(Cross.PICKUP_MASS).to.equal(35)
+				expect(Cross.PICKUP_SIZE).to.equal(128)
 			end
 		},
 		{
@@ -228,25 +284,28 @@ return {
 			end
 		},
 		{
-			-- fails if the crosshair's report were not made through the hook, or a failing listener broke it
-			name = "the crosshair reports through the hook GryMod_UsableChanged, and a listener that fails does not stop the others",
+			-- fails if the crosshair's report were not made through the hook, or a failing listener broke the crosshair's frame
+			name = "the crosshair reports through the hook GryMod_UsableChanged, and a listener that fails does not break the crosshair (its error is printed)",
 			func = function()
 				local told = {}
 				local errors = {}
 
 				stub(_G, "ErrorNoHalt", function(text) errors[#errors + 1] = text end)
-				hook.Add("GryMod_UsableChanged", "gry_use_test_bad", function() error("boom") end)
 				hook.Add("GryMod_UsableChanged", "gry_use_test_spy", function(ent, mode, ply) told[#told + 1] = {ent, mode, ply} end)
 
+				local ent, ply = fake("func_button"), fakePlayer()
 				local ok, err = pcall(function()
-					local ent, ply = fake("func_button"), fakePlayer()
-
 					Cross.ReportUsable(ent, 1, ply)
-					expect(#errors).to.equal(1)
+					expect(#errors).to.equal(0)
 					expect(#told).to.equal(1)
 					expect(told[1][1]).to.equal(ent)
 					expect(told[1][2]).to.equal(1)
 					expect(told[1][3]).to.equal(ply)
+
+					-- a listener that fails: no error reaches the caller, one line is printed (hook.Run does not protect the listeners from each other)
+					hook.Add("GryMod_UsableChanged", "gry_use_test_bad", function() error("boom") end)
+					Cross.ReportUsable(ent, 1, ply)
+					expect(#errors).to.equal(1)
 				end)
 
 				hook.Remove("GryMod_UsableChanged", "gry_use_test_bad")

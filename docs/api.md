@@ -244,9 +244,18 @@ GryMod.API.GetUsable(ent)               -- the entry that matches the entity, or
 GryMod.API.UsableText(ent, ply)         -- the text the prompt shows for it, or nil
 ```
 
-An entity the crosshair does not count as usable (its own list: buttons, doors, ladders, physics props, items, weapons, vehicles) shows no prompt
-whatever the registry says. To react when the usable thing changes, listen to the client hook `GryMod_UsableChanged(ent, mode, ply)` (see
-[events.md](events.md)). The stock Half-Life 2 entries are registered the same way, with a low priority: yours win.
+The crosshair asks this registry what can be used: **registering an entity makes it usable** (the crosshair's "usable" state opens on it, and the
+prompt shows), and an entity no entry names is not. Two rules apply on top: an entry with the `"grab"` icon only counts while the player can lift the
+entity (the Source rule: at most 35 kg and 128 units on every side; the client reads the size, and the mass when it has a physics object for it), and
+an entry with the `"enter"` icon does not count while the player sits in a vehicle. A weapon the player already has is shown as "can not be used" by the
+crosshair and gets no prompt. To react when the usable thing changes, listen to the client hook `GryMod_UsableChanged(ent, mode, ply)` (see
+[events.md](events.md)).
+
+The stock entries are registered the same way, with a low priority: yours win. They cover what has a +use action in Half-Life 2 and Garry's Mod:
+weapons and items (`TAKE`), the ammo crate, the wall chargers, vehicles (`ENTER VEHICLE`), ladders (`CLIMB`), lifted props, ragdolls and physboxes
+(`PICK UP`), doors and buttons (`USE`), the turrets you man (`USE`), the friendly NPCs that answer +use (`TALK`: citizen, Barney, Alyx, the vortigaunt,
+Dr Mossman, the Monk), the metropolice (`USE`), `gmod_button`, `gmod_wheel` and `sent_ball`. The server's flags of a door or a button ("ignore +use")
+are not readable on the client, so such a door also shows the prompt.
 
 ## Pickups
 

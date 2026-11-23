@@ -223,14 +223,40 @@ function Cross.ArcRotation(yaw)
 	return (yaw + 180) % 360
 end
 
+-- What can be used when the registry of usable entities (sh_api_usable.lua) is not there (a hot reload): the old list of classes.
 local USE_CLASSES = {
 	func_button = true, func_rot_button = true, momentary_rot_button = true, prop_door_rotating = true,
 	func_door_rotating = true, func_useableladder = true, prop_physics = true, prop_physics_multiplayer = true,
 	prop_ragdoll = true
 }
 
+-- The limits of what the player lifts with +use: CBasePlayer::CanPickupObject(ent, 35, 128) of the Source SDK, which is what gives a physics
+-- prop its use capability: at most 35 kg and 128 units on every side. The client reads the size of the box, and the mass when it has a
+-- physics object for the entity (it often has none for a prop of the server: then only the size counts).
+Cross.PICKUP_MASS = 35
+Cross.PICKUP_SIZE = 128
+
+function Cross.Grabbable(ent)
+	if isfunction(ent.OBBMins) and isfunction(ent.OBBMaxs) then
+		local size = ent:OBBMaxs() - ent:OBBMins()
+
+		if size.x > Cross.PICKUP_SIZE or size.y > Cross.PICKUP_SIZE or size.z > Cross.PICKUP_SIZE then
+			return false
+		end
+	end
+
+	local physics = isfunction(ent.GetPhysicsObject) and ent:GetPhysicsObject()
+
+	if physics and IsValid(physics) and physics:GetMass() > Cross.PICKUP_MASS then
+		return false
+	end
+
+	return true
+end
+
 -- setUsable's mode for what the player aims at: 1 something can be used or taken, 2 it can not (a weapon the
--- player already has), 0 nothing.
+-- player already has), 0 nothing. WHAT can be used is the registry of usable entities (GryMod.API.RegisterUsable): anything it names counts, an
+-- entity with the "grab" icon only when the player can lift it (Cross.Grabbable), a vehicle not while the player sits in one.
 function Cross.UsableFor(ent, ply)
 	if not ent or not IsValid(ent) then
 		return 0
@@ -240,6 +266,26 @@ function Cross.UsableFor(ent, ply)
 
 	if ent:IsWeapon() then
 		return ply and ply:HasWeapon(class) and 2 or 1
+	end
+
+	local API = GryMod.API
+
+	if API and API.GetUsable then
+		local entry = API.GetUsable(ent)
+
+		if not entry then
+			return 0
+		end
+
+		if entry.icon == "grab" and not Cross.Grabbable(ent) then
+			return 0
+		end
+
+		if entry.icon == "enter" and ply and isfunction(ply.InVehicle) and ply:InVehicle() then
+			return 0
+		end
+
+		return 1
 	end
 
 	if string.sub(class, 1, 5) == "item_" or USE_CLASSES[class] then

@@ -18,6 +18,8 @@ local function fake(class, fields)
 	function ent:GetClass() return self.class end
 	function ent:IsWeapon() return self.weapon == true end
 	function ent:IsVehicle() return self.vehicle == true end
+	function ent:IsNPC() return self.npc == true end
+	function ent:Health() return self.health or 0 end
 
 	if fields and fields.print then
 		function ent:GetPrintName() return self.print end
@@ -58,10 +60,10 @@ return {
 
 				icon, text = describe(fake("item_healthkit"))
 				expect(icon).to.equal("pickup")
-				expect(text).to.equal("TAKE HEALTHKIT")
+				expect(text).to.equal("TAKE HEALTH KIT")
 
 				icon, text = describe(fake("item_ammo_smg1"))
-				expect(text).to.equal("TAKE AMMO SMG1")
+				expect(text).to.equal("TAKE SMG1 AMMO")
 
 				icon, text = describe(fake("prop_vehicle_jeep", {vehicle = true}))
 				expect(icon).to.equal("enter")
@@ -88,6 +90,84 @@ return {
 				expect(API.UsableText(fake("func_brush"), nil)).to.beNil()
 				expect(API.GetUsable(nil)).to.beNil()
 				expect(API.GetUsable({})).to.beNil()
+			end
+		},
+		{
+			-- fails when a class that the Source SDK or the Lua of Garry's Mod gives a +use action is missing, when one that has none is named, or when a text or an
+			-- icon is not the one of the original game
+			name = "every class that has a +use action is registered with its text and icon, and the ones that have none are not",
+			func = function()
+				local function describe(class, fields)
+					local ent = fake(class, fields)
+					local entry = API.GetUsable(ent)
+
+					return entry and entry.icon, API.UsableText(ent, nil, entry)
+				end
+
+				local table_ = {
+					-- {class, fields, icon, text}
+					{"weapon_crowbar", {weapon = true, print = "Crowbar"}, "pickup", "TAKE CROWBAR"},
+					{"item_healthvial", nil, "pickup", "TAKE HEALTH VIAL"},
+					{"item_battery", nil, "pickup", "TAKE BATTERY"},
+					{"item_suit", nil, "pickup", "TAKE HEV SUIT"},
+					{"item_ammo_pistol", nil, "pickup", "TAKE PISTOL AMMO"},
+					{"item_ammo_357_large", nil, "pickup", "TAKE LARGE 357 AMMO"},
+					{"item_box_buckshot", nil, "pickup", "TAKE BUCKSHOT"},
+					{"item_rpg_round", nil, "pickup", "TAKE RPG ROUND"},
+					{"item_ammo_smg1_grenade", nil, "pickup", "TAKE SMG1 GRENADE"},
+					{"item_ammo_crossbow", nil, "pickup", "TAKE CROSSBOW BOLTS"},
+					{"item_some_new_thing", nil, "pickup", "TAKE SOME NEW THING"}, -- an item no list names: its class
+					{"item_ammo_crate", nil, "pickup", "TAKE AMMO"},
+					{"item_healthcharger", nil, "use", "USE"},
+					{"item_suitcharger", nil, "use", "USE"},
+					{"func_healthcharger", nil, "use", "USE"},
+					{"func_recharge", nil, "use", "USE"},
+					{"prop_vehicle_airboat", {vehicle = true}, "enter", "ENTER VEHICLE"},
+					{"prop_vehicle_prisoner_pod", {vehicle = true}, "enter", "ENTER VEHICLE"},
+					{"func_physbox", nil, "grab", "PICK UP"},
+					{"npc_grenade_frag", nil, "grab", "PICK UP"},
+					{"func_door", nil, "use", "USE"},
+					{"func_rot_button", nil, "use", "USE"},
+					{"momentary_rot_button", nil, "use", "USE"},
+					{"func_tank", nil, "use", "USE"},
+					{"func_tankrocket", nil, "use", "USE"},
+					{"npc_turret_floor", nil, "use", "USE"},
+					{"npc_citizen", {npc = true, health = 40}, "use", "TALK"},
+					{"npc_barney", {npc = true, health = 40}, "use", "TALK"},
+					{"npc_alyx", {npc = true, health = 40}, "use", "TALK"},
+					{"npc_vortigaunt", {npc = true, health = 40}, "use", "TALK"},
+					{"npc_mossman", {npc = true, health = 40}, "use", "TALK"},
+					{"npc_monk", {npc = true, health = 40}, "use", "TALK"},
+					{"npc_metropolice", {npc = true, health = 40}, "use", "USE"},
+					{"gmod_button", nil, "use", "USE"},
+					{"gmod_wheel", nil, "use", "USE"},
+					{"sent_ball", nil, "pickup", "TAKE BALL"}
+				}
+
+				for _, row in ipairs(table_) do
+					local icon, text = describe(row[1], row[2])
+					expect(icon).to.equal(row[3])
+					expect(text).to.equal(row[4])
+				end
+
+				-- no +use action: no entry
+				for _, row in ipairs({
+					{"combine_mine"}, {"npc_kleiner", {npc = true, health = 40}}, {"npc_eli", {npc = true, health = 40}}, {"npc_breen", {npc = true, health = 40}},
+					{"npc_dog", {npc = true, health = 40}}, {"item_item_crate"}, {"item_dynamic_resupply"}, {"npc_combine_s", {npc = true, health = 40}},
+					{"npc_zombie", {npc = true, health = 40}}, {"prop_dynamic"}, {"func_brush"}
+				}) do
+					expect(API.GetUsable(fake(row[1], row[2]))).to.beNil()
+				end
+
+				-- an NPC that is dead answers no +use
+				expect(API.GetUsable(fake("npc_citizen", {npc = true, health = 0}))).to.beNil()
+				expect(API.GetUsable(fake("npc_metropolice", {npc = true, health = 0}))).to.beNil()
+				-- a stand-in without the methods is no error and no entry (five errors in a row would switch a matcher off)
+				for _ = 1, 8 do
+					expect(API.GetUsable({IsValid = function() return true end, GetClass = function() return "mystery" end})).to.beNil()
+				end
+
+				expect(API.GetUsable(fake("npc_citizen", {npc = true, health = 40}))).to.exist()
 			end
 		},
 		{

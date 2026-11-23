@@ -90,15 +90,15 @@ hook `GryMod_MalfunctionEnd` is not run. A listener that fails is shown once in 
 A text line was put on the HUD (the event `message`, below). `text` is the cleaned text; `opts` is a new table `{lane, sound, duration, line}`
 (`lane` is always a name, the others are `nil` when not given; `line` is the key of the suit's own line, if it was one). It is run once for
 each line that is really shown, after it is on the HUD and its sound has started: a line that is not shown, because the player turned the text
-lines off (`gry_hud_messages`), the HUD is off or the movie is missing, is not reported and plays no sound. A listener that fails is shown once in
-the console and stops nothing.
+lines off (`gry_hud_messages`), the HUD is off or the movie is missing, is not reported and plays no sound. A listener that fails is shown in the
+console and does not break GryMod (the listeners after it are not run).
 
 ### `GryMod_UsableChanged(ent, mode, ply)`
 
 What the player aims at and can use or take changed. It is the test that opens the crosshair's "usable" state, looked at ten times a second,
 and the hook is run once at each change, not at each look. `ent` is the entity (`nil` when there is none), `mode` is `1` (it can be used or
 taken), `2` (it can not: a weapon you already have) or `0` (nothing). It is run while the crosshair is drawn, so not when the crosshair is off
-or the player is dead. The use prompt hangs on it. A listener that fails is shown once in the console and stops nothing.
+or the player is dead. The use prompt hangs on it. A listener that fails is shown in the console and does not break GryMod (the listeners after it are not run).
 
 ### `GryMod_BinocularsToggled(wanted)`
 
