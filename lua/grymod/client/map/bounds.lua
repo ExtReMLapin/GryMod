@@ -1,10 +1,12 @@
 -- The big map: its bounds (GryMod.Map.Bounds). The picture of the map stops at these limits, so they are the hard limit of the pan. The original
 -- game writes them in the level's file; GMod has no such file, so they come from what the addon already knows of the map, in this order of trust:
---   1. the ground nodes of the AI node graph (maps/graphs/<map>.ain, GryMod.AIN), when there are at least MIN_NODES of them;
---   2. the boxes of the in/out map (GryMod.ZoneMapClient.Boxes()), joined with the nodes when both exist;
+--   1. the ground nodes of the AI node graph (maps/graphs/<map>.ain, GryMod.AIN), when there are at least MIN_NODES of them. They alone decide when
+--      they exist: the boxes of the in/out map reach 400 to 1300 units past the ground that is drawn (measured on gm_construct: under the map and into
+--      volumes), so joining them left a wide black margin at zoom 1;
+--   2. the boxes of the in/out map (GryMod.ZoneMapClient.Boxes()), when there is no graph;
 --   3. the box of the world (game.GetWorld():GetModelBounds(), x and y), which is often far larger than the playable area;
 --   4. a square of FALLBACK_HALF units around the player; and a square around the origin when even that is unknown.
--- The result is padded (5 percent, at least 1024 units), cut at the world's box when that leaves a usable map, widened to MIN_SIDE units, and always
+-- The result is padded (3 percent, at least 512 units: the walls and the terrain reach a little past the nodes), cut at the world's box when that leaves a usable map, widened to MIN_SIDE units, and always
 -- holds the player. Pure: everything is given as plain tables, nothing is read from the engine here.
 
 GryMod = GryMod or {}
@@ -16,8 +18,8 @@ local Bounds = GryMod.Map.Bounds
 Bounds.GROUND = 2 -- the type of a ground node
 Bounds.MIN_NODES = 8
 Bounds.CELL = 128 -- the size of a cell of the in/out map, in units
-Bounds.PAD_MIN = 1024
-Bounds.PAD_FRACTION = 0.05
+Bounds.PAD_MIN = 512
+Bounds.PAD_FRACTION = 0.03
 Bounds.MIN_SIDE = 5249 -- about 100 m
 Bounds.FALLBACK_HALF = 13123 -- about 250 m each side of the player
 Bounds.PLAYER_MARGIN = 512
@@ -133,12 +135,11 @@ function Bounds.Compute(input)
 	if nodes or zones then
 		box = newBox()
 
-		for _, part in ipairs({nodes or false, zones or false}) do
-			if part then
-				extendPoint(box, part.x0, part.y0)
-				extendPoint(box, part.x1, part.y1)
-			end
-		end
+		-- the nodes alone when there are some, else the boxes
+		local part = nodes or zones
+
+		extendPoint(box, part.x0, part.y0)
+		extendPoint(box, part.x1, part.y1)
 
 		source = nodes and "nodes" or "zones"
 	elseif world then
@@ -154,7 +155,7 @@ function Bounds.Compute(input)
 	end
 
 	if source == "nodes" or source == "zones" then
-		-- the margin: 5 percent of the long side, at least PAD_MIN
+		-- the margin: 3 percent of the long side, at least PAD_MIN
 		local pad = math.max(Bounds.PAD_MIN, Bounds.PAD_FRACTION * math.max(box.x1 - box.x0, box.y1 - box.y0))
 
 		box.x0, box.x1, box.y0, box.y1 = box.x0 - pad, box.x1 + pad, box.y0 - pad, box.y1 + pad

@@ -331,8 +331,8 @@ made by the same render, from straight above, outside view: terrain, rocks and r
 ### The bounds
 
 The original game writes them in the level's file. Garry's Mod has none, so the map takes what the addon already knows, in this order: the ground nodes of the
-AI node graph (at least 8 of them), joined with the boxes of the in/out map when it has arrived; else the boxes alone; else the box of the world (often much
-larger than the playable area); else a square of 250 m around the player. The result gets a margin (5 percent, at least 1024 units), is cut at the world's box
+AI node graph (at least 8 of them), alone (the boxes of the in/out map reach past the ground that is drawn); else the boxes of the in/out map; else the box of
+the world (often much larger than the playable area); else a square of 250 m around the player. The result gets a margin (3 percent, at least 512 units), is cut at the world's box
 when that leaves a usable map, is never smaller than 100 m a side and always holds the player. The node file is read once per map, at the first opening.
 
 ### The tiles: a pyramid, made while you look

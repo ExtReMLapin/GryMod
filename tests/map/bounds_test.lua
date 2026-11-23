@@ -27,24 +27,30 @@ return {
 	cases = {
 		-- fails without Bounds.Compute
 		{
-			name = "the bounds of a map with a node graph are the box of its ground nodes plus a margin of 5 percent (at least 1024 units)",
+			name = "the bounds of a map with a node graph are the box of its ground nodes plus a margin of 3 percent (at least 512 units)",
 			func = function()
 				local b = B().Compute({nodes = nodes(10, 0, 20000, -5000, 5000)})
 
 				expect(b.source).to.equal("nodes")
-				-- 5 percent of 20000 is 1000, under the minimum of 1024
-				expect(b.x0).to.aboutEqual(-1024, 1e-6)
-				expect(b.x1).to.aboutEqual(21024, 1e-6)
-				expect(b.y0).to.aboutEqual(-6024, 1e-6)
-				expect(b.y1).to.aboutEqual(6024, 1e-6)
+				-- 3 percent of 20000 is 600, over the minimum of 512
+				expect(b.x0).to.aboutEqual(-600, 1e-6)
+				expect(b.x1).to.aboutEqual(20600, 1e-6)
+				expect(b.y0).to.aboutEqual(-5600, 1e-6)
+				expect(b.y1).to.aboutEqual(5600, 1e-6)
 
-				-- a big map: 5 percent of the long side, 2000
+				-- a small map: 3 percent of 10000 is 300, the minimum of 512 is used
+				local small = B().Compute({nodes = nodes(10, 0, 10000, 0, 8000)})
+
+				expect(small.x0).to.aboutEqual(-512, 1e-6)
+				expect(small.x1).to.aboutEqual(10512, 1e-6)
+
+				-- a big map: 3 percent of the long side, 1200
 				local big = B().Compute({nodes = nodes(10, 0, 40000, 0, 20000)})
 
-				expect(big.x0).to.aboutEqual(-2000, 1e-6)
-				expect(big.x1).to.aboutEqual(42000, 1e-6)
-				expect(big.y0).to.aboutEqual(-2000, 1e-6)
-				expect(big.y1).to.aboutEqual(22000, 1e-6)
+				expect(big.x0).to.aboutEqual(-1200, 1e-6)
+				expect(big.x1).to.aboutEqual(41200, 1e-6)
+				expect(big.y0).to.aboutEqual(-1200, 1e-6)
+				expect(big.y1).to.aboutEqual(21200, 1e-6)
 			end
 		},
 		-- fails when other node types or too few nodes count
@@ -72,22 +78,24 @@ return {
 				local b = B().Compute({boxes = {{0, -2, 1, 3, 4, 1, 0}, {layer = 1, x1 = 10, y1 = 10, x2 = 70, y2 = 70, state = 1, ceil = 0}}})
 
 				expect(b.source).to.equal("zones")
-				-- x from -256 to (70 + 1) * 128 = 9088, y from 128 to 9088, plus the minimum margin of 1024
-				expect(b.x0).to.aboutEqual(-256 - 1024, 1e-6)
-				expect(b.x1).to.aboutEqual(9088 + 1024, 1e-6)
-				expect(b.y0).to.aboutEqual(128 - 1024, 1e-6)
-				expect(b.y1).to.aboutEqual(9088 + 1024, 1e-6)
+				-- x from -256 to (70 + 1) * 128 = 9088, y from 128 to 9088, plus the minimum margin of 512
+				expect(b.x0).to.aboutEqual(-256 - 512, 1e-6)
+				expect(b.x1).to.aboutEqual(9088 + 512, 1e-6)
+				expect(b.y0).to.aboutEqual(128 - 512, 1e-6)
+				expect(b.y1).to.aboutEqual(9088 + 512, 1e-6)
 			end
 		},
-		-- fails when the two sources are not joined
+		-- fails when the boxes of the in/out map widen the bounds of a map that has a graph (measured on gm_construct: they reach 400 to 1300 units past the
+		-- ground that is drawn, so at zoom 1 the picture was a small rectangle in a big black field)
 		{
-			name = "the nodes and the boxes are joined: the bounds hold both",
+			name = "with a node graph the boxes of the in/out map do not widen the bounds; without one they are the source",
 			func = function()
 				local b = B().Compute({nodes = nodes(10, 0, 10000, 0, 10000), boxes = {{0, 100, 100, 120, 120}}})
 
-				-- the boxes reach x = 121 * 128 = 15488 past the nodes' 10000
-				expect(b.x1 >= 15488).to.beTrue()
-				expect(b.x0 <= 0).to.beTrue()
+				-- the boxes would reach x = 121 * 128 = 15488 past the nodes' 10000: the nodes alone decide
+				expect(b.source).to.equal("nodes")
+				expect(b.x1).to.aboutEqual(10512, 1e-6)
+				expect(b.y1).to.aboutEqual(10512, 1e-6)
 			end
 		},
 		-- fails when the bounds can leave the world
