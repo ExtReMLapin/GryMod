@@ -90,6 +90,82 @@ return {
 				expect(Rel.Allowed(p, 10.1)).to.beFalse()
 				expect(Rel.Allowed(p, 10.4)).to.beTrue()
 			end
+		},
+		{
+			-- fails without Radar.AlertLevelOf: the hologram would not know how alerted a hostile is (the original colours it by this level)
+			name = "the alert level of an NPC for a player: combat 2, alerted 1, idle 0, and the player as its enemy is 2 (but a lost player in ALERT stays 1), the same rule as the radar's colours",
+			func = function()
+				local Radar = GryMod.Radar
+				local p = player.GetAll()[1]
+
+				local function npc(state, enemy)
+					return {
+						IsValid = function() return true end,
+						GetNPCState = function() return state end,
+						GetEnemy = function() return enemy end
+					}
+				end
+
+				expect(Radar.AlertLevelOf(npc(NPC_STATE_IDLE, nil), p)).to.equal(0)
+				expect(Radar.AlertLevelOf(npc(NPC_STATE_ALERT, nil), p)).to.equal(1)
+				expect(Radar.AlertLevelOf(npc(NPC_STATE_COMBAT, nil), p)).to.equal(2)
+				expect(Radar.AlertLevelOf(npc(NPC_STATE_IDLE, p), p)).to.equal(2)
+				expect(Radar.AlertLevelOf(npc(NPC_STATE_ALERT, p), p)).to.equal(1)
+				expect(Radar.AlertLevelOf(npc(NPC_STATE_DEAD, p), p)).to.equal(0)
+
+				-- no state function (a nextbot): level 0, or 2 when the player is its enemy
+				expect(Radar.AlertLevelOf({IsValid = function() return true end}, p)).to.equal(0)
+				expect(Radar.AlertLevelOf(nil, p)).to.equal(0)
+			end
+		},
+		{
+			-- fails without the level in Rel.Answer and in the wire: the client would colour every hostile as idle
+			name = "the answer carries the alert level of each entity, and it goes through the wire with the relation (2 bits) and comes back",
+			func = function()
+				local Rel = GryMod.RelationsServer
+				local R = GryMod.Relations
+				local p = player.GetAll()[1]
+				local npc = ents.Create("npc_citizen")
+				npc:Spawn()
+				spawned[#spawned + 1] = npc
+
+				local realLevel = GryMod.Radar.AlertLevelOf
+				GryMod.Radar.AlertLevelOf = function(ent) return ent == npc and 2 or 0 end
+
+				local realWrite, realRead = net.WriteUInt, net.ReadUInt
+				local queue = {}
+
+				net.WriteUInt = function(value, bits) queue[#queue + 1] = {value, bits} end
+
+				local first = 1
+				net.ReadUInt = function(bits)
+					local item = queue[first]
+					first = first + 1
+					expect(item[2]).to.equal(bits)
+
+					return item[1]
+				end
+
+				local ok, err = pcall(function()
+					local list = Rel.Answer(p, {npc:EntIndex()})
+					expect(list[1].level).to.equal(2)
+
+					R.WriteAnswer(list)
+
+					local back = R.ReadAnswer()
+					expect(#back).to.equal(1)
+					expect(back[1].index).to.equal(npc:EntIndex())
+					expect(back[1].level).to.equal(2)
+					expect(back[1].relation).to.equal(list[1].relation)
+				end)
+
+				net.WriteUInt, net.ReadUInt = realWrite, realRead
+				GryMod.Radar.AlertLevelOf = realLevel
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }

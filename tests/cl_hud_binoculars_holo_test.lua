@@ -50,6 +50,17 @@ return {
 				expect(S("hostile", "white", true)).to.equal("white")
 				expect(S("hostile", "spotted", false)).to.equal("green")
 
+				-- the alert level of the hostile (the Remaster's own): 0 idle green, 1 alerted amber, 2 in combat dark red; the white scan wins over it
+				expect(S("hostile", "none", true, 0)).to.equal("green")
+				expect(S("hostile", "none", true, 1)).to.equal("amber")
+				expect(S("hostile", "none", true, 2)).to.equal("red")
+				expect(S("hostile", "spotted", false, 2)).to.equal("red")
+				expect(S("hostile", "none", true, nil)).to.equal("green")
+				expect(S("hostile", "none", true, 7)).to.equal("red")
+				expect(S("hostile", "white", true, 2)).to.equal("white")
+				expect(S("hostile", "none", false, 2)).to.beNil()
+				expect(S("ally", "white", true, 2)).to.equal("pulse")
+
 				for _, side in ipairs({"ally", "neutral"}) do
 					expect(S(side, "none", true)).to.beNil()
 					expect(S(side, "white", true)).to.equal("pulse")
@@ -165,6 +176,19 @@ return {
 
 				local rg, gg, bg = Holo.Rgb("green")
 				expect(gg > rg and gg > bg).to.beTrue()
+
+				-- the Remaster's colours of a hostile by alert level (read in its program): #44633E, (220,178,121), (127,49,45)
+				local function same(name, r, g, b)
+					local rr, gg2, bb = Holo.Rgb(name)
+
+					expect(rr).to.equal(r)
+					expect(gg2).to.equal(g)
+					expect(bb).to.equal(b)
+				end
+
+				same("green", 68, 99, 62)
+				same("amber", 220, 178, 121)
+				same("red", 127, 49, 45)
 				local rb, gb, bb = Holo.Rgb("blue")
 				expect(bb > rb and bb > gb).to.beTrue()
 			end
@@ -193,21 +217,23 @@ return {
 		},
 		{
 			-- fails without Holo.Pending
-			name = "the questions to the server: what is unknown, what is older than 5 s, an unanswered one after a second; each index once, at most 16",
+			name = "the questions to the server: what is unknown, what is older than 1 s (the alert level changes fast), an unanswered one after a second; each index once, at most 16",
 			func = function()
 				local Holo = H()
 				local cache = {
 					[1] = {relation = "ally", answered = 100, asked = 99},
 					[2] = {relation = "hostile", answered = 90, asked = 89},
 					[3] = {asked = 99.5},
-					[4] = {asked = 98}
+					[4] = {asked = 98},
+					[6] = {relation = "hostile", answered = 98.5, asked = 98}
 				}
 
-				local out = Holo.Pending({1, 2, 3, 4, 5, 5, 1}, cache, 100.2, 16)
+				local out = Holo.Pending({1, 2, 3, 4, 5, 5, 1, 6}, cache, 100.2, 16)
 				expect(out[1]).to.equal(2)
 				expect(out[2]).to.equal(4)
 				expect(out[3]).to.equal(5)
-				expect(#out).to.equal(3)
+				expect(out[4]).to.equal(6)
+				expect(#out).to.equal(4)
 
 				local many = {}
 
@@ -233,7 +259,10 @@ return {
 				expect(Holo.Ask({13}, 10.2)).to.beFalse()
 				expect(#sent).to.equal(1)
 
-				Holo.OnAnswer({{index = 11, relation = "ally"}, {index = 12, relation = "hostile"}}, 10.3)
+				Holo.OnAnswer({{index = 11, relation = "ally", level = 0}, {index = 12, relation = "hostile", level = 2}}, 10.3)
+				expect(Holo.LevelOfIndex(12)).to.equal(2)
+				expect(Holo.LevelOfIndex(11)).to.equal(0)
+				expect(Holo.LevelOfIndex(13)).to.equal(0)
 				expect(Holo.RelationOfIndex(11)).to.equal("ally")
 				expect(Holo.RelationOfIndex(12)).to.equal("hostile")
 				expect(Holo.RelationOfIndex(13)).to.beNil()

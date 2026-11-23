@@ -31,7 +31,7 @@ function Rel.Allowed(ply, now)
 	return true
 end
 
--- What the entities of these indices are to the player: a list of {index, relation}, the ones that do not exist left out.
+-- What the entities of these indices are to the player: a list of {index, relation, level} (level: how alerted it is, 0 to 2), the ones that do not exist left out.
 function Rel.Answer(ply, indices)
 	local list = {}
 
@@ -39,7 +39,7 @@ function Rel.Answer(ply, indices)
 		local ent = Entity(indices[i])
 
 		if IsValid(ent) then
-			list[#list + 1] = {index = indices[i], relation = GryMod.Friendly.Relation(ply, ent)}
+			list[#list + 1] = {index = indices[i], relation = GryMod.Friendly.Relation(ply, ent), level = GryMod.Radar.AlertLevelOf(ent, ply)}
 		end
 	end
 

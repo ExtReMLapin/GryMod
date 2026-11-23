@@ -45,7 +45,8 @@ function R.ReadQuery()
 	return indices
 end
 
--- The answer: a list of {index, relation}, the count (5 bits), then each index (13 bits) and its code (2 bits).
+-- The answer: a list of {index, relation, level}, the count (5 bits), then each index (13 bits), its code (2 bits) and its alert level (2 bits: 0 idle, 1 alerted,
+-- 2 in combat, the radar's own levels).
 function R.WriteAnswer(list)
 	local count = math.min(#list, R.MAX)
 
@@ -54,6 +55,7 @@ function R.WriteAnswer(list)
 	for i = 1, count do
 		net.WriteUInt(list[i].index, 13)
 		net.WriteUInt(R.Code(list[i].relation), 2)
+		net.WriteUInt(math.Clamp(list[i].level or 0, 0, 3), 2)
 	end
 end
 
@@ -64,7 +66,9 @@ function R.ReadAnswer()
 	for i = 1, count do
 		local index = net.ReadUInt(13)
 
-		list[i] = {index = index, relation = R.Name(net.ReadUInt(2))}
+		local relation = R.Name(net.ReadUInt(2))
+
+		list[i] = {index = index, relation = relation, level = net.ReadUInt(2)}
 	end
 
 	return list

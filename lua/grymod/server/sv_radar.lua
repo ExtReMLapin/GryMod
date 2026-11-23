@@ -165,6 +165,18 @@ local function npcState(npc)
 	return NPC_STATE_NONE
 end
 
+-- The alert level (0, 1, 2) of an NPC for a player, the radar's rule (Radar.Level) from the NPC's own state and enemy: the binoculars' hologram colours a hostile by it
+-- (idle, alerted, in combat), as the original does. Anything that is not a living NPC is 0.
+function Radar.AlertLevelOf(npc, ply)
+	if not IsValid(npc) then
+		return 0
+	end
+
+	local enemy = isfunction(npc.GetEnemy) and npc:GetEnemy() or nil
+
+	return Radar.Level(npcState(npc), enemy ~= nil and enemy == ply)
+end
+
 -- What the rules need to know about an NPC (or a registered nextbot), for one player. The fields type, big, radar and noScan are
 -- there only when the registry has an entry for it: type (the icon, 1 to 4) and big replace the ones of its class, radar says when
 -- it is listed (see Step), noScan that the binoculars may not tag it. The relation comes through the relation chain, which asks the

@@ -59,13 +59,17 @@ Holo.LINES_SIZE = 4
 Holo.LINES_LIT_ROWS = 2
 Holo.LINES_DIM_LEVEL = 70
 Holo.LINES_REPEAT = 24
--- What the server's answer is worth: asked again after this long, and an unanswered question again after RETRY seconds; two questions are this far apart.
-Holo.RELATION_TTL = 5
+-- What the server's answer is worth (it carries the alert level too, which changes fast): asked again after this long, and an unanswered question again after RETRY seconds; two questions are this far apart.
+Holo.RELATION_TTL = 1
 Holo.RELATION_RETRY = 1
 Holo.ASK_GAP = 0.4
 
+-- green, amber and red are the Remaster's own colours of a hostile by alert level (read in its program: the line colour #44633E when idle, (220,178,121) alerted,
+-- (127,49,45) in combat); the boundary and the glow of the shader make them brighter than these flat values.
 Holo.Colours = {
-	green = {110, 255, 140},
+	green = {68, 99, 62},
+	amber = {220, 178, 121},
+	red = {127, 49, 45},
 	white = {255, 255, 255},
 	blue = {50, 90, 255}
 }
@@ -135,19 +139,28 @@ function Holo.PhaseOf(entity, whiteEntity, tagged)
 	return "none"
 end
 
--- The colour of an NPC: "white", "green", "pulse" (white to blue, once) or nil (not drawn). relation is what the server said ("hostile", "ally",
--- "neutral") or nil while it did not answer yet.
---   hostile: white while scanned, green once spotted, green before that only with the baseline;
+-- The colour name of a hostile's alert level (0 idle, 1 alerted, 2 and more in combat): "green", "amber" or "red".
+function Holo.LevelStyle(level)
+	if type(level) ~= "number" or level ~= level or level < 1 then
+		return "green"
+	end
+
+	return level >= 2 and "red" or "amber"
+end
+
+-- The colour of an NPC: "white", "green", "amber", "red", "pulse" (white to blue, once) or nil (not drawn). relation is what the server said ("hostile", "ally",
+-- "neutral") or nil while it did not answer yet; level is its alert level (0 when unknown).
+--   hostile: white while scanned, else by its alert level (green idle, amber alerted, red in combat) once spotted, and before that only with the baseline;
 --   ally and neutral: only the pulse while scanned (nothing stays);
 --   unknown: white while scanned (the answer comes in a moment), nothing else.
-function Holo.NpcStyle(relation, phase, baseline)
+function Holo.NpcStyle(relation, phase, baseline, level)
 	if relation == "hostile" then
 		if phase == "white" then
 			return "white"
 		end
 
 		if phase == "spotted" or baseline then
-			return "green"
+			return Holo.LevelStyle(level)
 		end
 
 		return nil
@@ -272,6 +285,13 @@ function Holo.RelationOfIndex(index)
 	return e and e.relation or nil
 end
 
+-- The alert level (0 to 2) the server last said for an entity index; 0 when it did not say.
+function Holo.LevelOfIndex(index)
+	local e = relations[index]
+
+	return e and e.level or 0
+end
+
 function Holo.RelationOf(entity)
 	if not IsValid(entity) then
 		return nil
@@ -315,7 +335,7 @@ end
 function Holo.OnAnswer(list, now)
 	for i = 1, #list do
 		local e = relations[list[i].index] or {asked = now}
-		e.relation, e.answered = list[i].relation, now
+		e.relation, e.answered, e.level = list[i].relation, now, list[i].level or 0
 		relations[list[i].index] = e
 	end
 end
@@ -396,7 +416,7 @@ function Holo.StyleOf(entry, whiteEntity, aimed, baseline)
 		return Holo.ItemStyle(entry.owner and Holo.RelationOf(entry.owner) or nil, ent == aimed)
 	end
 
-	return Holo.NpcStyle(Holo.RelationOf(ent), Holo.PhaseOf(ent, whiteEntity, Bino.IsTagged(ent)), baseline)
+	return Holo.NpcStyle(Holo.RelationOf(ent), Holo.PhaseOf(ent, whiteEntity, Bino.IsTagged(ent)), baseline, Holo.LevelOfIndex(ent:EntIndex()))
 end
 
 -- ---------------------------------------------------------------------------------------------------------
