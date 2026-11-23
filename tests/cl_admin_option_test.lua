@@ -513,7 +513,7 @@ return {
 							end
 						end)
 
-						expect(admins).to.equal(9) -- 9 settings, no button: the two toggles are check boxes
+						expect(admins).to.equal(10) -- 10 settings, no button: the two toggles are check boxes (the objectives switch is one of them)
 						expect(others > 20).to.beTrue()
 					end)
 				end)
@@ -537,7 +537,7 @@ return {
 							end
 						end)
 
-						expect(admins).to.equal(9)
+						expect(admins).to.equal(10)
 					end)
 				end)
 				panel:Remove()
