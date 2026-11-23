@@ -1014,7 +1014,7 @@ return {
 | `pos` **or** `place` | a `Vector`; or the name of a map entity whose position is used when the objective is listed (`pos` is the fallback) |
 | `via` | optional waypoints, an array of up to 16 `Vector`s, as for `RegisterObjective` |
 | `after` | the id of the step that must be done first, or an array of ids (all of them). The step is not listed, and not listened for, until then |
-| `exit` | `true` for the way out of the map: it is listed from the start whatever `after` says. A `changelevel` completion is an exit by default |
+| `exit` | `true` for the way out of the map: it is listed from the start when it has no `after`, and waits for its `after` steps like any other step otherwise. A `changelevel` completion is an exit by default |
 | `secret` | `true`: a hidden item. Counted in `Secrets n/m` (see the setting), never listed |
 | `complete` | what finishes it (below) |
 | `fail` | optional, what fails it: a completion of the kind `input`, `killed` or `removed` |

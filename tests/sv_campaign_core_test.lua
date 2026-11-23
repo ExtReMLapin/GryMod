@@ -357,8 +357,9 @@ return {
 			end
 		},
 		{
-			-- breaks if: Revealed shows a step whose predecessor is not done, hides the exit until the last step, or lists a finished step
-			name = "Revealed: a step is listed when all its predecessors are done; the exit is always listed; a finished step is not",
+			-- breaks if: Revealed shows a step whose predecessor is not done, lists an exit that has a predecessor before it is done (the owner saw the far exit arrow stuck in the
+			-- radar's corner from the first second, next to the current step), hides an exit that has none, or lists a finished step
+			name = "Revealed: a step is listed when all its predecessors are done; an exit follows its predecessors like any step and is listed from the start only when it has none; a finished step is not",
 			func = function()
 				local list = {
 					obj("a"), obj("b", {after = "a"}), obj("c", {after = "b"}),
@@ -366,11 +367,16 @@ return {
 					obj("side", {primary = false}), obj("hidden", {secret = true})
 				}
 
-				expect(sorted(C.Revealed(list, set()))).to.equal("a,exit,side")
-				expect(sorted(C.Revealed(list, set("a")))).to.equal("b,exit,side")
-				expect(sorted(C.Revealed(list, set("a", "b")))).to.equal("c,exit,side")
+				expect(sorted(C.Revealed(list, set()))).to.equal("a,side")
+				expect(sorted(C.Revealed(list, set("a")))).to.equal("b,side")
+				expect(sorted(C.Revealed(list, set("a", "b")))).to.equal("c,side")
 				expect(sorted(C.Revealed(list, set("a", "b", "c", "side")))).to.equal("exit")
 				expect(sorted(C.Revealed(list, set("a", "b", "c", "side", "exit")))).to.equal("")
+
+				-- an exit with no predecessor is listed from the start
+				local free = {obj("a"), obj("way", {complete = {kind = "changelevel", target = "next"}})}
+
+				expect(sorted(C.Revealed(free, set()))).to.equal("a,way")
 
 				-- two predecessors: both must be done
 				local two = {obj("p"), obj("q"), obj("r", {after = {"p", "q"}})}

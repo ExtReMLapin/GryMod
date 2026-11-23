@@ -7,7 +7,7 @@
 --   via     optional: an array of Vectors, the places to pass on the way (16 at most); the route guidance uses them
 --   pos (a Vector) or place (an entity's name: its position when the objective is listed)   where it is
 --   after   the id (or ids) of the steps that must be done before this one is listed
---   exit    true for the way out of the map (listed from the start whatever `after` says); a `changelevel` completion is an exit by default
+--   exit    true for the way out of the map (listed from the start when it has no `after`, else after its predecessors like any step); a `changelevel` completion is an exit by default
 --   complete, fail   what finishes it, what fails it (a "completion", below)
 --   tr      {fr = {title = "...", description = "..."}}: the same texts in another language (the English ones are the default)
 -- A completion is {kind = ..., ...}; the kinds are in C.Kinds and each one names the fields it needs.
@@ -605,14 +605,14 @@ local function byIdOf(list)
 	return by
 end
 
--- The ids that are listed now, as a set: the steps that are not done and whose predecessors all are, and the exit (always, unless it is done). Secrets are
--- not steps and are not in it.
+-- The ids that are listed now, as a set: the steps that are not done and whose predecessors all are (the exit too: when it has a predecessor it waits for it,
+-- when it has none it is listed from the start). Secrets are not steps and are not in it.
 function C.Revealed(list, done)
 	local out = {}
 
 	for _, d in ipairs(list) do
 		if not d.secret and not done[d.id] then
-			local ready = d.exit
+			local ready = d.exit and #d.after == 0
 
 			if not ready then
 				ready = true
