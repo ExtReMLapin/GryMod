@@ -61,11 +61,13 @@ function Radar.AlliesAlways()
 	return alliesAlways:GetBool()
 end
 
--- The state of the AI as the original's alert level: 2 when the NPC is fighting the player, 1 when it is alerted (it heard
--- something, is looking for him, or fights someone else), 0 otherwise. Having the player as enemy is level 2 whatever the
--- state says: the machines have no useful one (MEASURED on gm_construct: a floor turret that shoots the player stays in
--- NPC_STATE_IDLE with the player as its enemy; a ceiling turret and a camera stay in NPC_STATE_NONE); only a lost player
--- (ALERT, which can keep the last enemy) stays level 1, and a dead NPC is nothing.
+-- The state of the AI as the original's alert level, which gives the colour of the unit on the radar: 2 (red) when the NPC is in combat
+-- (NPC_STATE_COMBAT: it fights, whoever its enemy is) or has the player as enemy while its state says nothing useful; 1 (yellow) when it
+-- is alerted (NPC_STATE_ALERT: it heard something, is searching, lost the player) and has not fought; 0 otherwise. An NPC that is only
+-- suspicious or searching is never red. Having the player as enemy is level 2 whatever the state says, except ALERT: the machines have no
+-- useful state (MEASURED on gm_construct: a floor turret that shoots the player stays in NPC_STATE_IDLE with the player as its enemy; a
+-- ceiling turret and a camera stay in NPC_STATE_NONE); only a lost player (ALERT, which can keep the last enemy) stays level 1, and a
+-- dead NPC is nothing.
 function Radar.Level(state, enemyIsPlayer)
 	if state == NPC_STATE_DEAD then
 		return 0
@@ -80,7 +82,7 @@ function Radar.Level(state, enemyIsPlayer)
 	end
 
 	if state == NPC_STATE_COMBAT then
-		return 1
+		return 2
 	end
 
 	return 0
@@ -263,6 +265,17 @@ function Radar.Mark(st, key, now)
 	st.markers[key] = now + S.MARKER_SECONDS
 end
 
+-- The hook GryMod_TargetSpotted(ply, ent, relation): the player's binoculars spotted `ent` (the scan ended on it and the radar shows it from now on).
+-- relation is what the entity is to the player ("ally", "neutral", "hostile"). A field so that a test can replace it. A listener that fails
+-- is shown in the console and does not stop the tag.
+function Radar.ReportSpotted(ply, ent)
+	local ok, err = pcall(hook.Run, "GryMod_TargetSpotted", ply, ent, GryMod.Friendly.Relation(ply, ent))
+
+	if not ok then
+		ErrorNoHalt("[GryMod] A listener of GryMod_TargetSpotted failed: " .. tostring(err) .. "\n")
+	end
+end
+
 -- The binoculars' scan ended on an NPC (the client counted the 0.55 s of the original's scanner): it is tagged for this
 -- player, as if it had been noticed within 26 m, and stays on the radar until it dies. The ray of the binoculars is 300 m
 -- long; a tenth more is allowed for the lag between the client's aim and the server's positions. Returns whether it was tagged.
@@ -298,8 +311,15 @@ function Radar.Scan(ply, npc)
 	end
 
 	local st = Radar.State(ply)
+	local first = not st.tagged[npc]
+
 	st.tagged[npc] = true
 	st.markers[npc] = nil
+
+	-- once, when the binoculars spot it for the first time: a report for the addons (nothing is read from it)
+	if first then
+		Radar.ReportSpotted(ply, npc)
+	end
 
 	return true
 end

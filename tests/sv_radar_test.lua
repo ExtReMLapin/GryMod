@@ -133,10 +133,11 @@ return {
 			end
 		},
 		{
-			name = "the alert level: combat with the player as enemy is 2, any other alert is 1, calm is 0",
+			-- fails without the COMBAT rule in Radar.Level: a fighting NPC whose enemy is not the player would stay yellow
+			name = "the alert level: combat is 2 (red) whoever the enemy is, alert (investigating, searching) is 1 (yellow) even with the player as enemy, calm is 0",
 			func = function(state)
 				expect(R.Level(NPC_STATE_COMBAT, true)).to.equal(2)
-				expect(R.Level(NPC_STATE_COMBAT, false)).to.equal(1)
+				expect(R.Level(NPC_STATE_COMBAT, false)).to.equal(2)
 				expect(R.Level(NPC_STATE_ALERT, false)).to.equal(1)
 				expect(R.Level(NPC_STATE_ALERT, true)).to.equal(1)
 				expect(R.Level(NPC_STATE_IDLE, false)).to.equal(0)
