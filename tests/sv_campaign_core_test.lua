@@ -196,6 +196,15 @@ return {
 				expect(obj("s2", {exit = true}).exit).to.beTrue()
 				expect(obj("s3", {secret = true}).secret).to.beTrue()
 				expect(obj("s4", {after = {"x", "y"}}).after[2]).to.equal("y")
+
+				-- the waypoints: copied, in order, nil when there are none
+				local via1 = Vector(7, 8, 9)
+				local routed = obj("s5", {via = {via1, Vector(1, 1, 1)}})
+
+				via1.x = 0
+				expect(#routed.via).to.equal(2)
+				expect(routed.via[1].x).to.equal(7)
+				expect(obj("s6").via).to.beNil()
 			end
 		},
 		{
@@ -223,7 +232,10 @@ return {
 					{{id = "a", title = "T", pos = Vector(), complete = complete, fail = {kind = "pickup", class = "weapon_rpg"}}, "fail"},
 					{{id = "a", title = "T", pos = Vector(), complete = complete, tr = 5}, "tr"},
 					{{id = "a", title = "T", pos = Vector(), complete = complete, tr = {fr = {title = 5}}}, "tr"},
-					{{id = "a", title = "T", pos = Vector(), complete = complete, secret = "no"}, "secret"}
+					{{id = "a", title = "T", pos = Vector(), complete = complete, secret = "no"}, "secret"},
+					{{id = "a", title = "T", pos = Vector(), complete = complete, via = 5}, "via"},
+					{{id = "a", title = "T", pos = Vector(), complete = complete, via = {5}}, "via"},
+					{{id = "a", title = "T", pos = Vector(), complete = complete, via = {Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), Vector()}}, "via"}
 				}
 
 				for i, row in ipairs(rows) do

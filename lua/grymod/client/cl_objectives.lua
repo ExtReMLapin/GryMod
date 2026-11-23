@@ -1,7 +1,7 @@
 -- The objectives, CLIENT side: the mirror of what the server sends (server/sv_objectives.lua) and the read API the displays use (the on-screen markers, the
 -- radar, the maps: they come later and only READ here). Nothing is drawn by this file and nothing runs by itself: it works when a message arrives.
 --
---   GryMod.Objectives.List()   the objectives, in the order they were registered: {id, title, description, primary, main, state, pos, ent, radar, marker}
+--   GryMod.Objectives.List()   the objectives, in the order they were registered: {id, title, description, primary, main, state, pos, ent, radar, marker, via}
 --   GryMod.Objectives.Get(id)  one of them, or nil
 --   GryMod.Objectives.Main()   the main objective, or nil
 -- `pos` is resolved when you ask: the entity's position when this client has the entity (it is "awake": in view), the position the server sent when it does not
@@ -52,6 +52,21 @@ local function resolve(o)
 	return o
 end
 
+-- A copy of the waypoints (nil when there are none).
+local function copyVia(via)
+	if not via then
+		return nil
+	end
+
+	local out = {}
+
+	for i, v in ipairs(via) do
+		out[i] = Vector(v)
+	end
+
+	return out
+end
+
 -- The copy the hooks get: the public fields, with a Vector of its own.
 local function snapshot(o)
 	resolve(o)
@@ -66,7 +81,8 @@ local function snapshot(o)
 		pos = Vector(o.pos),
 		ent = o.ent,
 		radar = o.radar,
-		marker = o.marker
+		marker = o.marker,
+		via = copyVia(o.via)
 	}
 end
 
@@ -119,6 +135,7 @@ function Obj.ApplySet(rec)
 	o.title, o.description, o.primary, o.state = rec.title, rec.description, rec.primary, rec.state
 	o.radar, o.marker = rec.radar, rec.marker
 	o.entIndex, o.serverPos = rec.entIndex, rec.pos
+	o.via = rec.via
 
 	-- one main objective: the one that had the flag loses it
 	local lost

@@ -303,7 +303,8 @@ local function register(R, d)
 		title = C.Text(d, "title", R.lang),
 		description = C.Text(d, "description", R.lang),
 		primary = d.primary,
-		pos = pos
+		pos = pos,
+		via = d.via
 	})
 
 	if ok then

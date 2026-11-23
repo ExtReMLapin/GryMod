@@ -4,6 +4,7 @@
 --
 -- A map's list is an array of objectives (docs/api.md, "Campaign objectives"). One objective:
 --   id, title, description, primary, secret   the same words as the objectives API; `secret = true` is a hidden item (counted, never listed one by one)
+--   via     optional: an array of Vectors, the places to pass on the way (16 at most); the route guidance uses them
 --   pos (a Vector) or place (an entity's name: its position when the objective is listed)   where it is
 --   after   the id (or ids) of the steps that must be done before this one is listed
 --   exit    true for the way out of the map (listed from the start whatever `after` says); a `changelevel` completion is an exit by default
@@ -31,7 +32,7 @@ C.Kinds = {input = true, pickup = true, enter_vehicle = true, use = true, change
 -- What may fail an objective (a map's own "game over" message, the death of an ally, the loss of the vehicle).
 C.FailKinds = {input = true, removed = true, killed = true}
 
-C.Limits = {id = 64, title = 128, description = 512, name = 64, count = 200, after = 8, lang = 8}
+C.Limits = {id = 64, title = 128, description = 512, name = 64, count = 200, after = 8, lang = 8, via = 16}
 
 C.AtRadius = 8 -- units: how near the place of an entity without a name must be (a `use` completion with `at`)
 C.SecretsId = "campaign.secrets" -- the id of the one objective that counts the secrets
@@ -254,6 +255,27 @@ function C.CheckObjective(def)
 
 	if not out.pos and not out.place then
 		return false, "give a pos (a Vector) or a place (the name of an entity: its position is used)"
+	end
+
+	-- the places to pass on the way, in order (the same field as the objectives API: a straight line from the start crosses walls)
+	if def.via ~= nil then
+		if not istable(def.via) or #def.via > C.Limits.via then
+			return false, "invalid via: a list of " .. C.Limits.via .. " Vectors at most"
+		end
+
+		out.via = {}
+
+		for i, v in ipairs(def.via) do
+			if not validVector(v) then
+				return false, "invalid via: every waypoint is a Vector with finite numbers"
+			end
+
+			out.via[i] = Vector(v.x, v.y, v.z)
+		end
+
+		if #out.via == 0 then
+			out.via = nil
+		end
 	end
 
 	out.after = {}

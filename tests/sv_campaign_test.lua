@@ -281,6 +281,17 @@ return {
 			end)
 		},
 		{
+			-- breaks if: the waypoints of a campaign objective are not handed to RegisterObjective (the route guidance would have nothing to follow)
+			name = "the waypoints (via) of an objective are given to the objectives API",
+			func = scene(function()
+				give({def("a", {via = {Vector(10, 0, 0), Vector(20, 0, 0)}}), def("b")})
+				start()
+				expect(#API.GetObjective("a").via).to.equal(2)
+				expect(API.GetObjective("a").via[2] == Vector(20, 0, 0)).to.beTrue()
+				expect(API.GetObjective("b").via).to.beNil()
+			end)
+		},
+		{
 			-- breaks if: the language of the server is not asked for the texts
 			name = "the texts come in the server's language when the data has them",
 			func = scene(function()

@@ -765,6 +765,7 @@ An objective has:
 | `state` | `"active"` (default), `"done"` or `"failed"` |
 | `pos` **or** `ent` | where it is: a `Vector`, or an entity (or a function that returns one, asked now and again when the entity may have changed). Give one of them, not both |
 | `onRemove` | what happens when the entity it follows is removed: `"remove"` (default: the objective goes away), `"complete"` (it stays at the last place of the entity, `"done"`) or `"fail"` (same, `"failed"`) |
+| `via` | optional: an array of up to 16 `Vector`s, the places the player should pass on the way to the objective, in order (a straight line from the player crosses walls; a map's author knows the way). GryMod keeps them and sends them to the clients; a display or a guidance addon reads them as `obj.via` |
 | `radar`, `marker` | `true` (default): the HUD may show it on the radar and the minimap (`radar`) and on the screen (`marker`). Turn one off for an objective that should stay in the list only |
 | `filter` | `function(ply) return true end`: asked **on the server** for each player; only the players for whom it answers true receive the objective. An error in it, or no answer, hides the objective |
 
@@ -780,7 +781,7 @@ GryMod.API.SetObjectiveState(id, state)  -- "active" | "done" | "failed"
 GryMod.API.RemoveObjective(id)
 GryMod.API.SetMainObjective(id)          -- nil: no main objective
 GryMod.API.ClearObjectives()             -- returns how many were removed
-GryMod.API.GetObjective(id)              -- a copy: {id, title, description, primary, main, state, pos, ent, radar, marker, onRemove}, or nil
+GryMod.API.GetObjective(id)              -- a copy: {id, title, description, primary, main, state, pos, ent, radar, marker, onRemove, via}, or nil
 GryMod.API.GetObjectives()               -- copies of all of them, in the order they were registered
 GryMod.API.RefreshObjectives([ply])      -- asks the filters again and sends the list again (to one ready player, or to all)
 ```
@@ -797,7 +798,7 @@ hook.Add("GryMod_ObjectiveRemoved", "my_addon", function(id, obj, reason) end)
 ```
 
 They only report (nothing a handler returns is read) and they are run protected: a handler that throws is shown on the console, five times at most
-per hook, and stops nothing. `obj` is a copy with the fields of `GetObjective`.
+per hook, and stops nothing. `obj` is a copy with the fields of `GetObjective`. `via` is an array of Vectors, or `nil` when the objective has none.
 
 - `GryMod_ObjectiveAdded`: a new objective. On a client: it arrived (when the player joined, or when it was given).
 - `GryMod_ObjectiveChanged`: the `state`, the `title`, the `description`, the `primary` flag or the main objective changed. `oldState` is the state
@@ -818,7 +819,7 @@ On the server the hooks are not told while the switch `gry_objectives` is off (b
 ```lua
 local list = GryMod.Objectives.List()   -- in the order they were registered
 for i = 1, #list do
-	local o = list[i]                   -- {id, title, description, primary, main, state, pos, ent, radar, marker}
+	local o = list[i]                   -- {id, title, description, primary, main, state, pos, ent, radar, marker, via}
 end
 GryMod.Objectives.Get("my_addon.find_key")   -- one of them, or nil
 GryMod.Objectives.Main()                     -- the main objective, or nil
