@@ -104,10 +104,17 @@ function Holo.ModeFor(style, works)
 	return works and "crysis" or "simple"
 end
 
--- (kept up to date by the convar's callback: the draw hooks do not read a convar's text at every frame)
-local style = Holo.StyleName(StyleConVar:GetString())
+-- The style in force. One read of the convar at every call (the draw hooks), the text is only worked out again when it changed.
+local styleText = StyleConVar:GetString()
+local style = Holo.StyleName(styleText)
 
 function Holo.Style()
+	local text = StyleConVar:GetString()
+
+	if text ~= styleText then
+		styleText, style = text, Holo.StyleName(text)
+	end
+
 	return style
 end
 
@@ -541,7 +548,7 @@ local outlineSet = {}
 
 -- The outline: the game's halo, one call for each entity (its colour differs; at most 16), a tiny blur so that it is a thin line.
 function Holo.DrawOutline()
-	if drawnCount == 0 or not wanted() or Holo.ModeFor(style, Holo.Crysis.works) ~= "simple" then
+	if drawnCount == 0 or not wanted() or Holo.ModeFor(Holo.Style(), Holo.Crysis.works) ~= "simple" then
 		return
 	end
 
@@ -917,7 +924,7 @@ end
 
 -- The hook of the 3D scene: one style or the other (nothing for the one frame the probe has not told yet).
 function Holo.DrawScene(depth, skybox)
-	local mode = Holo.ModeFor(style, V.works)
+	local mode = Holo.ModeFor(Holo.Style(), V.works)
 
 	if mode == "simple" then
 		Holo.DrawFill(depth, skybox)
@@ -996,7 +1003,7 @@ function Holo.PaintMarker()
 
 	Holo.Build()
 
-	if style == "crysis" then
+	if Holo.Style() == "crysis" then
 		V.Build()
 	end
 
@@ -1089,10 +1096,6 @@ end
 hook.Add("GryMod_BinocularsToggled", "GRYBINOCULARSHOLO", function()
 	Holo.Sync()
 end)
-
-cvars.AddChangeCallback("gry_binoculars_holo_style", function(_, _, value)
-	style = Holo.StyleName(value)
-end, "GryBinocularsHoloStyle")
 
 for _, name in ipairs({"gry_binoculars_hologram", "gry_binoculars_silhouette"}) do
 	cvars.AddChangeCallback(name, function()
