@@ -73,17 +73,42 @@ return {
 			end
 		},
 		{
-			-- fails without Holo.ItemStyle
-			name = "a weapon's colour: white while aimed, blue when an ally holds it, nothing otherwise (a weapon on the ground is only drawn aimed)",
+			-- fails without the new Holo.ItemStyle(aimed, baseline): the blue weapons of the captures are weapons lying on the ground (owner's correction), white when aimed
+			name = "a weapon on the ground is blue at baseline, white while aimed (aimed wins), nothing when the baseline is off and it is not aimed",
 			func = function()
 				local S = H().ItemStyle
 
-				expect(S(nil, true)).to.equal("white")
-				expect(S("ally", true)).to.equal("white")
-				expect(S("ally", false)).to.equal("blue")
-				expect(S("hostile", false)).to.beNil()
-				expect(S("neutral", false)).to.beNil()
-				expect(S(nil, false)).to.beNil()
+				expect(S(false, true)).to.equal("blue")
+				expect(S(true, true)).to.equal("white")
+				expect(S(true, false)).to.equal("white")
+				expect(S(false, false)).to.beNil()
+			end
+		},
+		{
+			-- fails without Holo.IsGroundItem: a weapon in a hand (an NPC's, a player's) was highlighted on its own (the owner saw an ally's weapon lit while he was not)
+			name = "only an unowned weapon, not attached to a character, is an item: a carried weapon follows its holder",
+			func = function()
+				local G = H().IsGroundItem
+
+				expect(G(false, false)).to.beTrue()
+				expect(G(true, false)).to.beFalse()
+				expect(G(false, true)).to.beFalse()
+				expect(G(true, true)).to.beFalse()
+			end
+		},
+		{
+			-- fails without Holo.CarriedWeapon: the weapon of a highlighted hostile would not be part of its silhouette
+			name = "the weapon a highlighted NPC holds is drawn with it (its silhouette), only while it exists and is a weapon",
+			func = function()
+				local W = H().CarriedWeapon
+				local wep = {IsValid = function() return true end}
+				local npc = {GetActiveWeapon = function() return wep end}
+
+				expect(W(npc)).to.equal(wep)
+				expect(W({GetActiveWeapon = function() return nil end})).to.beNil()
+				expect(W({GetActiveWeapon = function() return {IsValid = function() return false end} end})).to.beNil()
+				expect(W({})).to.beNil()
+				expect(W(nil)).to.beNil()
 			end
 		},
 		{

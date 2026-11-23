@@ -6,7 +6,7 @@
 --     when the scan ends it is SPOTTED (the server is told, the radar shows it) and goes back to green;
 --   * an ally (or a neutral NPC) is not drawn at the start; when it is scanned it pulses from white to blue once, and nothing stays; while the
 --     player aims at it a marker with its NAME and its DISTANCE stays (yellow corner brackets);
---   * a weapon on the ground is drawn white while the player aims at it; a weapon held by an ally is blue (white when aimed).
+--   * a weapon lying on the ground (nobody holds it) within 10 m is blue at baseline and white while the player aims at it; a carried weapon is never lit on its own: it is part of its holder's silhouette (a lit hostile) or nothing (an ally);
 -- What the server says about the side of an NPC (ally, neutral, hostile) comes in a batch (sh_relations.lua), at most three questions a second.
 --
 -- How, and why: the fill is the model drawn with render.MaterialOverride (an UnlitGeneric, additive, its texture a small render target painted with
@@ -49,7 +49,7 @@ Holo.REFRESH = 0.2
 Holo.WHITE_SECONDS = Bino.SILHOUETTE_SECONDS
 -- How far a hostile NPC is looked for (the binoculars' own range) and a weapon on the ground, in metres.
 Holo.NPC_RANGE_METRES = 300
-Holo.ITEM_RANGE_METRES = 40
+Holo.ITEM_RANGE_METRES = 10 -- the Remaster's i_maxPickupHighlightDist
 -- The opacity of the fill (it is added to the picture), and the outline: the blur and the passes of the halo.
 Holo.FILL_ALPHA = 0.35
 Holo.OUTLINE_BLUR = 1
@@ -173,14 +173,36 @@ function Holo.NpcStyle(relation, phase, baseline, level)
 	return nil
 end
 
--- The colour of a weapon: white while the player aims at it, blue when an ally holds it, else nothing (a weapon on the ground is only drawn aimed).
-function Holo.ItemStyle(ownerRelation, aimed)
+-- The colour of a weapon lying on the ground (the Remaster's captures: the blue ones are on the ground): white while the player aims at it, else blue
+-- at baseline (within range, as the enemies are lit before they are spotted), else nothing.
+function Holo.ItemStyle(aimed, baseline)
 	if aimed then
 		return "white"
 	end
 
-	if ownerRelation == "ally" then
+	if baseline then
 		return "blue"
+	end
+
+	return nil
+end
+
+-- Whether a weapon is an item of its own: nobody holds it (no owner) and it is not attached to a character (a bone-merged weapon has the character as its parent).
+-- A carried weapon is never lit on its own: it follows its holder (see Holo.CarriedWeapon).
+function Holo.IsGroundItem(hasOwner, parentIsCharacter)
+	return not hasOwner and not parentIsCharacter
+end
+
+-- The weapon an NPC holds, to be drawn with it as part of its silhouette; nil when it holds none.
+function Holo.CarriedWeapon(npc)
+	if npc == nil or not isfunction(npc.GetActiveWeapon) then
+		return nil
+	end
+
+	local weapon = npc:GetActiveWeapon()
+
+	if IsValid(weapon) then
+		return weapon
 	end
 
 	return nil
@@ -353,7 +375,7 @@ end
 -- The entities in view
 -- ---------------------------------------------------------------------------------------------------------
 
--- The entries {ent, kind ("npc" or "item"), dist (units), owner (an item's holder, or nil)} found at the last look, nearest first.
+-- The entries {ent, kind ("npc" or "item"), dist (units)} found at the last look, nearest first.
 Holo.entries = {}
 local nextRefresh = 0
 
@@ -362,7 +384,7 @@ local function liveNpc(ent)
 end
 
 -- Looks for the entities in view: hostile-looking NPCs within the range, weapons within theirs, always the entity aimed at and the one scanned.
--- Asks the server about the NPCs and the holders of the weapons. Returns the list (also Holo.entries).
+-- Asks the server about the NPCs. Returns the list (also Holo.entries).
 function Holo.Look(ply, now)
 	local eye, forward = ply:EyePos(), ply:EyeAngles():Forward()
 	local found = ents.FindInCone(eye, forward, Bino.RANGE, Holo.ConeCos(ply:GetFOV()))
@@ -382,13 +404,11 @@ function Holo.Look(ply, now)
 			list[#list + 1] = {ent = ent, kind = "npc", dist = math.sqrt(dist2)}
 			asks[#asks + 1] = ent:EntIndex()
 		elseif ent:IsWeapon() then
-			local owner = ent:GetOwner()
-			local held = IsValid(owner)
+			local parent = ent:GetParent()
+			local carried = not Holo.IsGroundItem(IsValid(ent:GetOwner()), IsValid(parent) and (parent:IsNPC() or parent:IsPlayer()))
 
-			if held and owner:IsNPC() then
-				list[#list + 1] = {ent = ent, kind = "item", dist = math.sqrt(dist2), owner = owner}
-				asks[#asks + 1] = owner:EntIndex()
-			elseif not held and dist2 <= itemRange2 then
+			-- (a carried weapon is not an item: it follows its holder; the weapon the player aims at is drawn from any distance)
+			if not carried and (dist2 <= itemRange2 or ent == Bino.Aimed) then
 				list[#list + 1] = {ent = ent, kind = "item", dist = math.sqrt(dist2)}
 			end
 		end
@@ -413,7 +433,7 @@ function Holo.StyleOf(entry, whiteEntity, aimed, baseline)
 	local ent = entry.ent
 
 	if entry.kind == "item" then
-		return Holo.ItemStyle(entry.owner and Holo.RelationOf(entry.owner) or nil, ent == aimed)
+		return Holo.ItemStyle(ent == aimed, baseline)
 	end
 
 	return Holo.NpcStyle(Holo.RelationOf(ent), Holo.PhaseOf(ent, whiteEntity, Bino.IsTagged(ent)), baseline, Holo.LevelOfIndex(ent:EntIndex()))
@@ -509,6 +529,8 @@ function Holo.Resolve(ply, now)
 				end
 
 				d.ent, d.style = entry.ent, style
+				-- (what an NPC holds is part of its silhouette: the weapon is a separate entity, drawn in the same colour)
+				d.weapon = entry.kind == "npc" and Holo.CarriedWeapon(entry.ent) or nil
 				d.r, d.g, d.b = Holo.Rgb(style, progress)
 			end
 		end
@@ -551,6 +573,10 @@ function Holo.DrawFill(depth, skybox)
 
 			render.SetColorModulation(d.r / 255, d.g / 255, d.b / 255)
 			d.ent:DrawModel()
+
+			if IsValid(d.weapon) then
+				d.weapon:DrawModel()
+			end
 		end
 	end)
 
@@ -837,6 +863,11 @@ local function drawEntities(ply, count, traceWalls)
 		if IsValid(d.ent) and not (traceWalls and V.Hidden(ply, d.ent)) then
 			render.SetColorModulation(d.r / 255, d.g / 255, d.b / 255)
 			d.ent:DrawModel()
+
+			if IsValid(d.weapon) then
+				d.weapon:DrawModel()
+			end
+
 			any = true
 		end
 	end
