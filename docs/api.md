@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -765,7 +765,7 @@ An objective has:
 | `state` | `"active"` (default), `"done"` or `"failed"` |
 | `pos` **or** `ent` | where it is: a `Vector`, or an entity (or a function that returns one, asked now and again when the entity may have changed). Give one of them, not both |
 | `onRemove` | what happens when the entity it follows is removed: `"remove"` (default: the objective goes away), `"complete"` (it stays at the last place of the entity, `"done"`) or `"fail"` (same, `"failed"`) |
-| `via` | optional: an array of up to 16 `Vector`s, the places the player should pass on the way to the objective, in order (a straight line from the player crosses walls; a map's author knows the way). GryMod keeps them and sends them to the clients; a display or a guidance addon reads them as `obj.via` |
+| `via` | optional: an array of up to 16 `Vector`s, the places the player should pass on the way to the objective, in order (a straight line from the player crosses walls; the map's author knows the way). GryMod keeps them and sends them to the clients as `obj.via`; the displays point at the first waypoint the player has not passed yet (within 150 units counts as passed), then at the next one, then at the objective. Give few, certain places rather than many |
 | `radar`, `marker` | `true` (default): the HUD may show it on the radar and the minimap (`radar`) and on the screen (`marker`). Turn one off for an objective that should stay in the list only |
 | `filter` | `function(ply) return true end`: asked **on the server** for each player; only the players for whom it answers true receive the objective. An error in it, or no answer, hides the objective |
 
@@ -915,3 +915,131 @@ Inputs: `Activate` (register it, active; also puts it back to active), `Complete
 - A map cleanup (`game.CleanUpMap`) is not the death of every entity: during it, `onRemove` does not run. After it every objective is gone
   (reason `"map_changed"`) and the `gry_objective` entities of the map register themselves again if they start active.
 - `filter` is asked when something is sent, not all the time. If what a player may see changes, call `RefreshObjectives`.
+
+## Campaign objectives
+
+The maps of Half-Life 2 and of its two episodes give GryMod objectives by themselves: the way out of each map, the key weapons and vehicles, the steps of the
+story that the game marks, and for some maps a hand-written chain of steps. No code is needed on your side. A third party can add objectives to any map, or
+replace the ones GryMod ships. Everything goes through the objectives above, so the HUD, the radar, the map and the hooks (`GryMod_ObjectiveAdded`,
+`GryMod_ObjectiveChanged`, `GryMod_ObjectiveRemoved`) work the same way.
+
+### How it works
+
+- The data of a map is a file, `lua/grymod/campaign/<game>/<map>.lua` (`hl2`, `ep1`, `ep2`). It is read **only for the map being played**, the first time
+  it is needed. A map with no file does nothing.
+- When the map starts, the first step of each chain, the independent steps and the way out are listed. Only the **current** step of a chain is listed: the
+  next one appears when the previous one is done (`after`). A step that is done is shown as done for a few seconds, then it leaves the list.
+- What finishes a step is listened for **only while a step of that kind waits**. The map's own scripts send inputs to named entities (a door `Open`, a
+  relay `Trigger`...): GryMod watches `GM:AcceptInput`, looked up by input name first. The other kinds use `WeaponEquip`, `PlayerCanPickupItem`,
+  `PlayerEnteredVehicle`, `PlayerUse`, `OnNPCKilled`, `EntityRemoved` and `ShutDown`. When nothing waits for a kind its hook is removed. Nothing runs on
+  `Think`.
+- The main objective (`SetMainObjective`) is the first primary step that is listed; the way out when nothing else is left. The objectives are the same for
+  every player (the `filter` of the objectives API is still yours to use on a copy).
+- The map's own "game over" messages (a dead ally, a lost vehicle) set the primary steps to `"failed"`. A failure is not saved: the game goes back to its
+  last save.
+
+### The settings
+
+| setting | default | meaning |
+|---|---|---|
+| `gry_campaign_objectives` | `1` | Administrators. `0`: nothing runs and no data is read; the objectives of the campaign are taken away at once |
+| `gry_campaign_secrets` | `0` | Administrators. `1`: the hidden items of a map (the game's own "lambda caches" and similar) are counted in ONE objective, `Secrets 3/7`, that is not shown on the radar or the screen. Never listed one by one |
+| `gry_campaign_reset` | | Console command (administrators). Forgets what is saved for the running map, `gry_campaign_reset all` for every map |
+
+### What is saved, and its limit
+
+A quickload restarts the Lua of the map, so the steps that are done are saved on the server (its sql database, one row for each map) when they change. When
+the map starts, GryMod reads them, asks the world what it already proves (a weapon a player has, a vehicle he is in; this only ever adds a step to the done
+ones), and also counts as done every step before a done step.
+
+The limit: the record belongs to the **map**, not to a save game. A quickload of an earlier moment of the same map leaves later steps marked done, and a new
+game starts with what the last game did. Type `gry_campaign_reset` then.
+
+### The data of a map
+
+```lua
+-- lua/grymod/campaign/hl2/my_map.lua (what GryMod ships has this shape)
+return {
+	objectives = {
+		{
+			id = "hl2c.my_map.door", title = "Get out of the back room", description = "Wait until the door opens.", primary = true,
+			pos = Vector(-3497, -460, 22),
+			via = {Vector(-3800, -470, 22)},
+			after = "hl2c.my_map.checkpoint",
+			complete = {kind = "input", entity = "barney_door_2", input = "Open"},
+			fail = {kind = "input", entity = "alarm_message", input = "ShowMessage"},
+			tr = {fr = {title = "Sortir de l'arriere-salle", description = "Attendez que la porte s'ouvre."}},
+		},
+	},
+	fail_events = {{entity = "killed_critical_npc", input = "ShowMessage"}},
+}
+```
+
+| field | meaning |
+|---|---|
+| `id`, `title`, `description`, `primary` | as for `RegisterObjective` (`primary` is `true` by default). The ids of the data GryMod ships start with `hl2c.<map>.` |
+| `pos` **or** `place` | a `Vector`; or the name of a map entity whose position is used when the objective is listed (`pos` is the fallback) |
+| `via` | optional waypoints, an array of up to 16 `Vector`s, as for `RegisterObjective` |
+| `after` | the id of the step that must be done first, or an array of ids (all of them). The step is not listed, and not listened for, until then |
+| `exit` | `true` for the way out of the map: it is listed from the start whatever `after` says. A `changelevel` completion is an exit by default |
+| `secret` | `true`: a hidden item. Counted in `Secrets n/m` (see the setting), never listed |
+| `complete` | what finishes it (below) |
+| `fail` | optional, what fails it: a completion of the kind `input`, `killed` or `removed` |
+| `tr` | optional translations, `{fr = {title = "...", description = "..."}}`. The English texts are the default; the server's language (`gmod_language`) picks one, and an addon adds a language by giving `tr` |
+| `fail_events` (of the map) | `{entity, input}` pairs: the map's own "game over" message; it fails every primary step that waits |
+
+The kinds of completion:
+
+| `kind` | finishes when | fields |
+|---|---|---|
+| `input` | a named map entity receives an input (a map script sends it) | `entity`, `input` |
+| `pickup` | a player takes a weapon (`class = "weapon_..."`) or an item (`class = "item_..."`) | `class` (the class decides; `entity` and `mapid` only help to know where the item lies) |
+| `enter_vehicle` | a player gets into a vehicle | `class` (decides) or `entity` |
+| `use` | a player presses the use key on an entity | `entity`, or `mapid`, or `class` with `at` (a place; `radius` 8 units by default) |
+| `changelevel` | the level ends and a living player stands in the exit trigger that leads to `target` | `target`, optional `entity` (the trigger's name) |
+| `removed` | an entity goes (not during a map cleanup or the end of the level) | `entity`, `class` or `mapid` |
+| `killed` | an NPC dies | `entity`, `class` or `mapid` |
+
+Any completion can carry `also = {...}` (one alternative, same fields): either one finishes it. An entity made by a `point_template` is renamed by the
+engine (`name&0003`); GryMod knows that form and matches it. Names of the map are not case sensitive. `mapid` is `Entity:MapCreationID()`.
+
+### Add or replace objectives (server)
+
+```lua
+-- lua/autorun/server/my_addon_campaign.lua
+hook.Add("Initialize", "my_addon campaign", function()
+	if not (GRYMOD_INSTALLED and GryMod.API.Has("campaign")) then return end
+
+	-- objectives for your own map: the list is yours (replace = true), nothing of GryMod's is read for it
+	local ok, why = GryMod.API.RegisterCampaignMap("my_map", {
+		{id = "my_addon.start", title = "Find the generator", pos = Vector(100, 0, 0), complete = {kind = "use", entity = "generator_button"}},
+		{id = "my_addon.exit", title = "Leave", pos = Vector(900, 0, 0), after = "my_addon.start", complete = {kind = "changelevel", target = "my_next_map"}},
+	}, {replace = true, fail_events = {{entity = "alarm_message", input = "ShowMessage"}}})
+
+	-- change ONE objective of a map GryMod ships (the same id replaces it, a new id is added), or take one away with false
+	GryMod.API.OverrideCampaignObjective("d1_trainstation_01", "hl2c.d1_trainstation_01.soda", false)
+end)
+```
+
+- `GryMod.API.RegisterCampaignMap(map, list, opts)`: without `replace`, the list is added to what GryMod ships and an objective of the same id replaces the shipped
+  one. Several calls pile up in the order they are made. Returns `true`, or `false` and why (the number and the id of the objective that is wrong); nothing is kept
+  when anything is wrong.
+- `GryMod.API.OverrideCampaignObjective(map, id, def | false)`: one objective by id. `false` takes it away, and the steps that came after it follow what it
+  came after, so the chain goes on.
+- `GryMod.API.ResetCampaignProgress([map])`: what `gry_campaign_reset` does.
+- Call them before the map starts (an autorun file is fine). Called later for the running map, they start its objectives again.
+
+### What ships
+
+The data of the maps is generated from the entity lists of the game's own maps (names, positions and what a map script sends, which are facts about the
+game) with texts written for GryMod. Every map has its way out, its key weapons and vehicles and the story steps the game marks itself; its hidden items are
+counted. For the maps whose story is made of doors, scenes and relays, a hand-written chain exists (`d1_trainstation_01`, `d1_canals_01`, `d2_coast_03`,
+`ep2_outland_01`); the others are the generated baseline, which finds about half of what a hand-written chain does and none of the steps that only the
+player's own action tells apart. A hand-written file says in comments what map fact each step rests on.
+
+The waypoints (`via`) of the way out are the places of the map that its own logic uses to move the story: a trigger that, directly or through a few relays,
+starts a story step, and the key weapons. They are few on purpose. Their **order** is not read from the map: it is the shortest way (straight lines) from where the
+player arrives through all of them to the exit, and it can be wrong.
+
+The technique of listening to the map's inputs with `GM:AcceptInput` is the one the Lambda gamemode (MIT licence, copyright 2017 Zeh Matt) uses; no code was taken
+from it.
