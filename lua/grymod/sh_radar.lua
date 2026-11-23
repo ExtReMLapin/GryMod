@@ -111,6 +111,18 @@ function S.PingFromWire(wire)
 	return math.Clamp(wire, 1, 16) / 2
 end
 
+-- The detection the server adds for the danger bar and the hexagon (server/sv_radar.lua, Radar.Detect): two numbers from 0 to 2, for the hostiles that are soldiers
+-- and for the ones that are machines, written in 2 bits each: 0 nothing, 1 a hostile hears the player (or looks for him), 2 one sees him or has him as enemy.
+-- The client turns them into the targets of the bar and the hexagon (0, 0.5, 1: the same scale as its contacts).
+S.DETECT_TARGETS = {[0] = 0, [1] = 0.5, [2] = 1}
+-- The icon types that are machines for the AI (the hexagon's): 2 flying, 3 machines and vehicles. The client's Hex.VEHICLE_TYPES says the same.
+S.VEHICLE_TYPES = {[2] = true, [3] = true}
+
+function S.WriteDetect(puppet, vehicle)
+	net.WriteUInt(math.Clamp(puppet, 0, 2), 2)
+	net.WriteUInt(math.Clamp(vehicle, 0, 2), 2)
+end
+
 local POS_LIMIT = 2 ^ (S.POS_BITS - 1)
 
 local function quantisePosition(v)

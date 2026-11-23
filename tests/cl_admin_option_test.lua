@@ -44,7 +44,7 @@ end
 local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DNumSlider = true, DBinder = true, DColorMixer = true}
 
 -- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
-local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_radar_pings = true, gry_radar_teammates = true, gry_zonemap = true, gry_zonemap_navmesh = true}
+local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_radar_pings = true, gry_radar_detect = true, gry_radar_teammates = true, gry_zonemap = true, gry_zonemap_navmesh = true}
 
 return {
 	groupName = "GryMod administrators' settings (options panel)",
@@ -571,7 +571,7 @@ return {
 					end
 
 					table.sort(names)
-					expect(table.concat(names, ",")).to.equal("action:gry_zonemap_reset,gry_radar_allies_always,gry_radar_objects,gry_radar_pings,gry_radar_teammates,gry_zonemap,gry_zonemap_navmesh")
+					expect(table.concat(names, ",")).to.equal("action:gry_zonemap_reset,gry_radar_allies_always,gry_radar_detect,gry_radar_objects,gry_radar_pings,gry_radar_teammates,gry_zonemap,gry_zonemap_navmesh")
 				end)
 				config:Remove()
 				radar:Remove()

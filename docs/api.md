@@ -397,6 +397,16 @@ your team show on your radar with the team mate icon (type 7), anywhere on the m
 in one team, shows none. The server's `gry_radar_teammates` (1 by default; Radar and map menu, administrators) turns it off. They are radar contacts, so
 the player's "Radar contacts" switch hides them.
 
+### Danger bar and hexagon: seen or heard
+
+The danger bar and the hexagon at the bottom left of the radar show how much the hostile NPCs have noticed the player: the bar for the soldiers, the
+hexagon for the machines (flying units, vehicles, turrets). The radar's contacts feed them (an alerted or fighting hostile within 26 m). On top of that,
+the server counts the hostile NPCs that are **not** contacts, wherever they are in the radar's search sphere (2.1 times the radar range): one that has
+the player as enemy or sees him (`COND.SEE_PLAYER`) counts as fighting, one that hears him (`COND.HEAR_PLAYER`) or has lost him and looks for him counts as
+alerted. A hostile that fights someone else does not count. The two highest numbers travel in a 4-bit message (`gry_radar_detect`), only when they change.
+The server's `gry_radar_detect` (1 by default; Radar and map menu, administrators) turns it off and brings the old behaviour back. A friend never counts.
+It costs two engine calls (`HasCondition`) per NPC in the sphere at each tick of the radar (5 a second), no new search and no new timer.
+
 ## Tracked entities
 
 `GryMod.API.Has("tracked")` is true. The registry of tracked entities says what an entity is for the HUD. For an NPC or a nextbot: its

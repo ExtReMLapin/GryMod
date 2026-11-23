@@ -553,6 +553,33 @@ function Radar.StealthStep(level, target, dt)
 	return math.max(level - Radar.STEALTH_FALL * dt, target)
 end
 
+-- What the server says the hostiles that are NOT contacts see and hear (sv_radar.lua, Radar.Detect): 0 to 2 for the soldiers, 0 to 2 for the machines.
+-- It is what lets the bar and the hexagon rise for a hostile that has noticed the player from beyond the 26 m of the contacts.
+Radar.Detected = Radar.Detected or {puppet = 0, vehicle = 0}
+
+function Radar.ReadDetect()
+	Radar.Detected.puppet = net.ReadUInt(2)
+	Radar.Detected.vehicle = net.ReadUInt(2)
+end
+
+net.Receive("gry_radar_detect", Radar.ReadDetect)
+
+function Radar.ResetDetect()
+	Radar.Detected.puppet, Radar.Detected.vehicle = 0, 0
+end
+
+-- The targets (0 to 1) of the bar and of the hexagon for the server's two numbers.
+function Radar.DetectTargets(puppet, vehicle)
+	local targets = S.DETECT_TARGETS
+
+	return targets[math.Clamp(math.floor(tonumber(puppet) or 0), 0, 2)], targets[math.Clamp(math.floor(tonumber(vehicle) or 0), 0, 2)]
+end
+
+-- The higher, for each of the two, of the targets the contacts give and the ones the server's numbers give.
+function Radar.CombineTargets(bar, hexagon, detectBar, detectHexagon)
+	return math.max(bar, detectBar), math.max(hexagon, detectHexagon)
+end
+
 -- The level the bar shows now.
 Radar.Stealth = 0
 
@@ -614,10 +641,14 @@ function Radar.Feed(panel, ply, dt)
 
 	local bar, hexagon = 0, 0
 
+	local detectBar, detectHexagon = Radar.DetectTargets(Radar.Detected.puppet, Radar.Detected.vehicle)
+
 	if Hex and Hex.Enabled() then
-		bar, hexagon = Radar.SplitTargets(Radar.Snapshot)
+		local contactsBar, contactsHexagon = Radar.SplitTargets(Radar.Snapshot)
+		bar, hexagon = Radar.CombineTargets(contactsBar, contactsHexagon, detectBar, detectHexagon)
 	else
-		bar = Radar.StealthTarget(Radar.Snapshot)
+		-- no hexagon: the bar follows every hostile, the machines' number too
+		bar = math.max(Radar.StealthTarget(Radar.Snapshot), detectBar, detectHexagon)
 	end
 
 	Radar.Stealth = Radar.StealthStep(Radar.Stealth, bar, dt)

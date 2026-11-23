@@ -21,6 +21,7 @@ Settings.List = {
 	{name = "gry_radar_objects", kind = "bool"},
 	{name = "gry_radar_pings", kind = "bool"},
 	{name = "gry_radar_teammates", kind = "bool"},
+	{name = "gry_radar_detect", kind = "bool"},
 	{name = "gry_zonemap", kind = "bool"},
 	{name = "gry_zonemap_navmesh", kind = "bool"},
 	{name = "gry_health_regen", kind = "bool"},
