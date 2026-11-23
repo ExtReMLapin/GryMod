@@ -88,6 +88,7 @@ slider:gry_zoom_tap_ms]]
 
 local RADAR = [[box:gry_hud_radar
 box:gry_hud_radarhex
+box:gry_hud_radarobjectives
 box:gry_hud_radarunits
 box:gry_minimap
 box:gry_minimap_definition_auto

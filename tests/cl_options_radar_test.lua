@@ -99,7 +99,7 @@ local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_radar
 
 -- what must not be in the Config menu any more: the settings of the radar, the compass and the maps
 local RADAR_CONVARS = {
-	"gry_hud_radar", "gry_hud_radarunits", "gry_hud_radarhex", "gry_hud_radarmarkers", "gry_hud_radarpings", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
+	"gry_hud_radar", "gry_hud_radarunits", "gry_hud_radarhex", "gry_hud_radarmarkers", "gry_hud_radarobjectives", "gry_hud_radarpings", "gry_minimap", "gry_minimap_definition_auto", "gry_minimap_definition", "gry_minimap_opacity",
 	"gry_minimap_below", "gry_minimap_outside", "gry_minimap_cache_mb", "gry_minimap_tile", "gry_minimap_budget_ms", "gry_radar_range",
 	"gry_radar_autozoom", "gry_radar_zoom_vehicle", "gry_radar_zoom_foot", "gry_radar_zoom_indoor", "gry_radar_zoom_delay", "gry_zonemap_debug",
 	"gry_zonemap_debug_range", "gry_zonemap_debug_in", "gry_zonemap_debug_out", "gry_zonemap_debug_faces", "gry_zonemap_debug_edges", "gry_radar_allies_always", "gry_radar_objects", "gry_radar_pings", "gry_radar_detect", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh"
@@ -219,6 +219,7 @@ return {
 					"box:gry_hud_radarunits",
 					"box:gry_hud_radarhex",
 					"box:gry_hud_radarmarkers",
+					"box:gry_hud_radarobjectives",
 					"box:gry_hud_radarpings",
 					"label:Minimap",
 					"box:gry_minimap",
