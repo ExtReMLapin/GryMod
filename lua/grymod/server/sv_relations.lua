@@ -21,7 +21,8 @@ Rel.GAP = 0.3
 function Rel.Allowed(ply, now)
 	local before = last[ply]
 
-	if before and now - before < Rel.GAP then
+	-- (a stamp after `now` is from a clock that went back: it must not lock the player out until the clock catches up)
+	if before and now >= before and now - before < Rel.GAP then
 		return false
 	end
 

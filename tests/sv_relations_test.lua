@@ -77,6 +77,19 @@ return {
 				expect(Rel.Handle(p, {npc:EntIndex()}, 500.1, reply)).to.beFalse()
 				expect(got).to.beNil()
 			end
+		},
+		{
+			-- fails without the "before is in the future" rule in Rel.Allowed: a stamp left by a test (or a clock that went back) refused every question until the clock caught up
+			name = "a question stamped after now (a clock that went back) does not lock the player out: he is answered",
+			func = function()
+				local Rel = GryMod.RelationsServer
+				local p = player.GetAll()[1]
+
+				expect(Rel.Allowed(p, 900)).to.beTrue()
+				expect(Rel.Allowed(p, 10)).to.beTrue()
+				expect(Rel.Allowed(p, 10.1)).to.beFalse()
+				expect(Rel.Allowed(p, 10.4)).to.beTrue()
+			end
 		}
 	}
 }
