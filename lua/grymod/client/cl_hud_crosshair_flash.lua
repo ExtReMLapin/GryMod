@@ -330,9 +330,11 @@ end
 
 -- setUsable's mode for what the player aims at: 1 something can be used or taken, 0 nothing. WHAT can be used is the registry of usable entities
 -- (GryMod.API.RegisterUsable): anything it names counts, but not an entry of a group the player switched off, not one that is busy (a ladder being climbed),
--- an entity with the "grab" icon only when the player can lift it (Cross.Grabbable), a vehicle not while the player sits in one. What is taken by
--- walking over it (a weapon, an item) is in no entry, so it is not usable: it needs no key.
-function Cross.UsableFor(ent, ply)
+-- an entity with the "grab" icon only when the player can lift it (Cross.Grabbable: not for an entry with `nolimits`), a vehicle not while the player sits
+-- in one. What is taken by walking over it (a weapon, an item) is in no entry, so it is not usable: it needs no key. The registry also drops an entity
+-- whose spawnflags say the key does nothing (a door that ignores it...), see GryMod.API.GetUsable. `dist` (units from the eye to what was hit, optional) is
+-- tested against the reach of the key: 80 units, or the entry's own `range`; the HUD used to test 110, so a prompt showed where the key did nothing.
+function Cross.UsableFor(ent, ply, dist)
 	if not ent or not IsValid(ent) then
 		return 0
 	end
@@ -353,7 +355,11 @@ function Cross.UsableFor(ent, ply)
 		return 0
 	end
 
-	if entry.icon == "grab" and not Cross.Grabbable(ent) then
+	if dist and dist > API.UsableRange(entry) then
+		return 0
+	end
+
+	if entry.icon == "grab" and not entry.nolimits and not Cross.Grabbable(ent) then
 		return 0
 	end
 
@@ -374,6 +380,13 @@ end
 -- when the trace found nothing usable. Returns the entity or nil.
 local PAD = 6 -- units added around the box: the aim need not be exact
 
+-- How far the scan looks for what can be used: the greatest reach of the registry's entries (80 units, the key's own, for the stock ones).
+function Cross.UseTraceLength()
+	local API = GryMod.API
+
+	return API and API.UsableMaxRange and API.UsableMaxRange() or 80
+end
+
 function Cross.NonSolidAimed(ply, maxDist)
 	local API = GryMod.API
 	local classes = API and API.UsableNonSolidClasses and API.UsableNonSolidClasses()
@@ -383,7 +396,7 @@ function Cross.NonSolidAimed(ply, maxDist)
 	end
 
 	local eye = ply:EyePos()
-	local delta = ply:GetAimVector() * maxDist
+	local aim = ply:GetAimVector()
 	local pad = Vector(PAD, PAD, PAD)
 
 	for i = 1, #classes do
@@ -392,8 +405,18 @@ function Cross.NonSolidAimed(ply, maxDist)
 		for j = 1, #list do
 			local ent = list[j]
 
-			if IsValid(ent) and util.IntersectRayWithOBB(eye, delta, ent:GetPos(), ent:GetAngles(), ent:OBBMins() - pad, ent:OBBMaxs() + pad) then
-				return ent
+			if IsValid(ent) then
+				-- the key's reach for this very thing (a ladder: 64 units), never more than the caller allows
+				local reach = maxDist
+				local entry = API.GetUsable(ent)
+
+				if entry then
+					reach = math.min(reach, API.UsableRange(entry))
+				end
+
+				if util.IntersectRayWithOBB(eye, aim * reach, ent:GetPos(), ent:GetAngles(), ent:OBBMins() - pad, ent:OBBMaxs() + pad) then
+					return ent
+				end
 			end
 		end
 	end
@@ -778,17 +801,20 @@ local function scan(ply)
 
 	nextScan = now + 0.1
 
+	-- the key's reach (80 units for the stock things), not the 110 the scan used to look at
+	local eye = ply:EyePos()
+	local length = Cross.UseTraceLength()
 	local trace = util.TraceLine({
-		start = ply:EyePos(),
-		endpos = ply:EyePos() + ply:GetAimVector() * 110,
+		start = eye,
+		endpos = eye + ply:GetAimVector() * length,
 		filter = ply
 	})
 	local aimedAt = trace.Entity
-	local mode = aimedAt and Cross.UsableFor(aimedAt, ply) or 0
+	local mode = aimedAt and Cross.UsableFor(aimedAt, ply, trace.Hit and eye:Distance(trace.HitPos) or nil) or 0
 
 	-- nothing usable was hit: a non-solid thing (a ladder) in front, nearer than what the trace hit, may be
 	if mode == 0 then
-		local reach = trace.Hit and ply:EyePos():Distance(trace.HitPos) or 110
+		local reach = trace.Hit and eye:Distance(trace.HitPos) or length
 		local ghost = Cross.NonSolidAimed(ply, reach)
 
 		if ghost then

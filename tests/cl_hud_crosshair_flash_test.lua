@@ -23,6 +23,28 @@ local function posOf(c, path)
 	return clip.entry.m[5], clip.entry.m[6]
 end
 
+-- Runs fn with the replicated variable sv_ladder_useonly set to `value` ("0" or "1"), and puts the game's GetConVar back whatever happens: the stock ladder
+-- entry of the usable registry reads it at each question, and the real value (0) means "no prompt: walking into a ladder climbs it".
+local function withLadderUseOnly(value, fn)
+	local saved = GetConVar
+
+	GetConVar = function(name)
+		if name == "sv_ladder_useonly" then
+			return {GetBool = function() return value == "1" end, GetInt = function() return tonumber(value) end}
+		end
+
+		return saved(name)
+	end
+
+	local ok, err = pcall(fn)
+
+	GetConVar = saved
+
+	if not ok then
+		error(err, 0)
+	end
+end
+
 local function scaleOf(c, path)
 	local clip = c.current:Find(path)
 	local m = clip.entry.m
@@ -423,7 +445,9 @@ return {
 					expect(C.UsableFor(fake("func_button"), player)).to.equal(1)
 					expect(C.UsableFor(fake("prop_door_rotating"), player)).to.equal(1)
 					expect(C.UsableFor(fake("prop_physics"), player)).to.equal(1)
-					expect(C.UsableFor(fake("func_useableladder"), player)).to.equal(1)
+					-- the ladder is climbed by walking into it (sv_ladder_useonly 0, the game's default): no prompt; with 1 there is
+					expect(C.UsableFor(fake("func_useableladder"), player)).to.equal(0)
+					withLadderUseOnly("1", function() expect(C.UsableFor(fake("func_useableladder"), player)).to.equal(1) end)
 					expect(C.UsableFor(fake("item_healthcharger"), player)).to.equal(1)
 					expect(C.UsableFor(fake("func_brush"), player)).to.equal(0)
 					expect(C.UsableFor(nil, player)).to.equal(0)
@@ -455,11 +479,11 @@ return {
 				local ok, err = pcall(function()
 					convar:SetString("0")
 					expect(C.UsableFor(fake("prop_physics"), {})).to.equal(0)
-					expect(C.UsableFor(fake("prop_ragdoll"), {})).to.equal(0)
 					expect(C.UsableFor(fake("func_physbox"), {})).to.equal(0)
+					expect(C.UsableFor(fake("npc_turret_floor"), {})).to.equal(0)
 					expect(C.UsableFor(fake("func_button"), {})).to.equal(1)
 					expect(C.UsableFor(fake("npc_grenade_frag"), {})).to.equal(1)
-					expect(C.UsableFor(fake("func_useableladder"), {})).to.equal(1)
+					withLadderUseOnly("1", function() expect(C.UsableFor(fake("func_useableladder"), {})).to.equal(1) end)
 
 					convar:SetString("1")
 					expect(C.UsableFor(fake("prop_physics"), {})).to.equal(1)
@@ -483,8 +507,10 @@ return {
 				local C = GryMod.FlashCrosshair
 				local ladder = {IsValid = function() return true end, GetClass = function() return "func_useableladder" end, IsWeapon = function() return false end}
 
-				expect(C.UsableFor(ladder, {GetMoveType = function() return MOVETYPE_WALK end})).to.equal(1)
-				expect(C.UsableFor(ladder, {GetMoveType = function() return MOVETYPE_LADDER end})).to.equal(0)
+				withLadderUseOnly("1", function()
+					expect(C.UsableFor(ladder, {GetMoveType = function() return MOVETYPE_WALK end})).to.equal(1)
+					expect(C.UsableFor(ladder, {GetMoveType = function() return MOVETYPE_LADDER end})).to.equal(0)
+				end)
 			end
 		},
 		{
@@ -511,7 +537,7 @@ return {
 					return {EyePos = function() return eye end, GetAimVector = function() return aim end}
 				end
 
-				local ok, err = pcall(function()
+				local ok, err = pcall(withLadderUseOnly, "1", function()
 					ents.FindByClass = function(class)
 						if class == "func_useableladder" then return {ladder} end
 						if class == "func_brush" then return {other} end
@@ -531,6 +557,9 @@ return {
 					expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 30)).to.beNil()
 					-- a class the registry does not mark nonsolid is never looked for
 					expect(GryMod.API.UsableNonSolidClasses()[1] ~= "func_brush").to.beTrue()
+					-- the ladder's own range is 64 units, not the 110 the scan may look: 82 units from its box is out of the key's reach
+					expect(C.NonSolidAimed(player(Vector(0, 84, 80), Vector(0, -1, 0)), 110)).to.beNil()
+					expect(C.NonSolidAimed(player(Vector(0, 60, 80), Vector(0, -1, 0)), 110) == ladder).to.beTrue()
 				end)
 
 				ents.FindByClass = savedFind
@@ -538,6 +567,53 @@ return {
 				if not ok then
 					error(err, 0)
 				end
+			end
+		},
+		{
+			-- fails without the distance test of UsableFor: the HUD tested 110 units, the key reaches 80
+			name = "a thing is usable only within the reach of the key: 80 units, an entry's own range (the ladder 64) when it has one; no distance given means no test",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function fake(class, flags)
+					return {IsValid = function() return true end, GetClass = function() return class end, IsWeapon = function() return false end,
+						GetSpawnFlags = function() return flags or 0 end}
+				end
+
+				expect(isfunction(GryMod.API.UsableMaxRange)).to.beTrue()
+				expect(C.UsableFor(fake("item_ammo_crate"), {}, 79)).to.equal(1)
+				expect(C.UsableFor(fake("item_ammo_crate"), {}, 80)).to.equal(1)
+				expect(C.UsableFor(fake("item_ammo_crate"), {}, 81)).to.equal(0)
+				expect(C.UsableFor(fake("item_ammo_crate"), {}, 109)).to.equal(0)
+				expect(C.UsableFor(fake("item_ammo_crate"), {})).to.equal(1)
+				expect(C.UsableFor(fake("prop_door_rotating"), {}, 100)).to.equal(0)
+
+				withLadderUseOnly("1", function()
+					expect(C.UsableFor(fake("func_useableladder"), {}, 63)).to.equal(1)
+					expect(C.UsableFor(fake("func_useableladder"), {}, 70)).to.equal(0)
+				end)
+
+				-- how far the scan looks is what the registry says (the greatest range, 80 for the stock entries)
+				expect(C.UseTraceLength()).to.equal(GryMod.API.UsableMaxRange())
+			end
+		},
+		{
+			-- fails without the spawnflags rule being applied by the crosshair's own test
+			name = "the crosshair's test follows the spawnflags: a door that ignores +use, a touch-only button, a func_door without Use opens give no prompt",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local function fake(class, flags)
+					return {IsValid = function() return true end, GetClass = function() return class end, IsWeapon = function() return false end,
+						GetSpawnFlags = function() return flags end}
+				end
+
+				expect(C.UsableFor(fake("prop_door_rotating", 34817), {})).to.equal(0)
+				expect(C.UsableFor(fake("prop_door_rotating", 8192), {})).to.equal(1)
+				expect(C.UsableFor(fake("func_door", 0), {})).to.equal(0)
+				expect(C.UsableFor(fake("func_door", 2312), {})).to.equal(1)
+				expect(C.UsableFor(fake("func_button", 513), {})).to.equal(0)
+				expect(C.UsableFor(fake("func_button", 1025), {})).to.equal(1)
+				expect(C.UsableFor(fake("func_tank", 5120), {})).to.equal(0)
+				expect(C.UsableFor(fake("func_tank", 1312), {})).to.equal(1)
 			end
 		},
 		{
