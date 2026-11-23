@@ -262,8 +262,9 @@ return {
 			end)
 		},
 		{
-			-- breaks if: every step of a chain is listed at the start, or the exit is held back until the last step, or the main objective is the exit / a secondary one
-			name = "Start lists the first step of the chain, the independent steps and the exit; the later steps wait; the main objective is the first primary step",
+			-- breaks if: every step of a chain is listed at the start, or an exit that has an `after` is listed before its steps are done (the owner saw the far exit arrow in the radar's
+			-- corner from the first second), or the main objective is the exit / a secondary one
+			name = "Start lists the first step of the chain and the independent steps; the later steps and an exit that has an `after` wait; the main objective is the first primary step",
 			func = scene(function()
 				give({
 					def("side", {primary = false}),
@@ -272,10 +273,10 @@ return {
 				})
 				start()
 
-				expect(listed()).to.equal("a,exit,side")
+				expect(listed()).to.equal("a,side")
 				expect(state("a")).to.equal("active")
 				expect(API.GetObjective("a").main).to.beTrue()
-				expect(API.GetObjective("exit").main).to.beFalse()
+				expect(API.GetObjective("exit")).to.beNil()
 				expect(API.GetObjective("side").primary).to.beFalse()
 				expect(API.GetObjective("a").title).to.equal("Title a")
 			end)
