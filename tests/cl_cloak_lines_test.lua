@@ -368,13 +368,16 @@ return {
 				local log = record()
 				local ply = fakePlayer()
 				stub(L, "ScreenPoints", function() return boxOnScreen end)
+				-- the box (up to y = 648) must fit the screen: a small test window (640 x 360) would clip it
+				stub(_G, "ScrW", function() return 1920 end)
+				stub(_G, "ScrH", function() return 1080 end)
 				local drawnWhile
 
-				local ok = L.Draw(ply, 1, function(ent)
+				local ok, err = L.Draw(ply, 1, function(ent)
 					drawnWhile = {stencil = log.stencil, colorWrite = log.colorWrite, compare = log.compare, ent = ent}
 				end)
 
-				expect(ok).to.beTrue()
+				assert(ok, "Draw failed: " .. tostring(err))
 				expect(drawnWhile.ent).to.equal(ply)
 				expect(drawnWhile.stencil).to.beTrue()
 				expect(drawnWhile.colorWrite).to.beFalse()
