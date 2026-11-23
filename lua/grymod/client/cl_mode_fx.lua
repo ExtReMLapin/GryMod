@@ -294,6 +294,27 @@ hook.Add("EntityNetworkedVarChanged", HOOK, function(ent, name, _, down)
 	end
 end)
 
+-- Reports for other addons: GryMod_MalfunctionStart(ply) and GryMod_MalfunctionEnd(ply), the client twins of the server hooks of the same
+-- names. This side only sees the networked flag change, so it knows the player and nothing else (no seconds, no reason). It is told for every
+-- player the client knows, not only the local one. The same game hook as above, so nothing new runs at every frame. A change is a flag that
+-- really goes from false to true or back: an old value of nil is the full update that tells the client what a player already is (when he comes
+-- into view, or when we join), it is not an event. A listener that fails is told once on screen and does not stop the game's other change
+-- hooks (the mode tint above, the cloak, the suit flag), which a plain hook.Run inside this one would do.
+local reportedError
+
+hook.Add("EntityNetworkedVarChanged", "GryMalfunctionReport", function(ent, name, old, down)
+	if name ~= "GryMalfunction" or old == down or (down ~= true and down ~= false) or (old ~= true and old ~= false) then
+		return
+	end
+
+	local ok, err = pcall(hook.Run, down and "GryMod_MalfunctionStart" or "GryMod_MalfunctionEnd", ent)
+
+	if not ok and err ~= reportedError then
+		reportedError = err
+		ErrorNoHalt("[GryMod] GryMod_Malfunction" .. (down and "Start" or "End") .. " listener: " .. tostring(err) .. "\n")
+	end
+end)
+
 -- The arrival in game counts as a respawn: the server's answer with the mode (sv_system.lua) must not tint.
 hook.Add("InitPostEntity", HOOK, function()
 	FX.Spawn(FX.State, FX.Now())
