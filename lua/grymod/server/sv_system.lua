@@ -289,6 +289,8 @@ function GryMod.SuperJump(ply, key)
 		ply.ps = true
 		net.Start("gry_jump")
 		net.Send(ply)
+		-- a report for the addons: the jump is granted (and paid, unless the armor is infinite). Not for the weak jump below.
+		hook.Run("GryMod_StrengthJump", ply)
 	elseif energy < cost and not ply.ps then
 		ply:SetJumpPower(200)
 		ply.ps = true
