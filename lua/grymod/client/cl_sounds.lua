@@ -261,3 +261,154 @@ hook.Add("Think", "GryModSounds", function()
 	sprintLoops.underwater = speedLoopUnderwater
 	GryMod.SprintSound.Apply(actions, sprintLoops)
 end)
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The loops that go with a state of the suit: the malfunction (the failure sound goes on while the suit is down) and the camouflage (the
+-- original's hud/cloak_feedback, 8.73 s, plays over and over while cloaked). Each starts at an event the game already reports and ends when the
+-- state ends; while it plays, and only then, a Think hook watches the state (it also catches a death, a disconnect and the HUD going off, which
+-- end the state without any report of their own). With nothing playing, no hook exists.
+-- ---------------------------------------------------------------------------------------------------------
+local Loops = GryMod.SuitLoops or {}
+GryMod.SuitLoops = Loops
+
+local MalfunctionLoopConVar = CreateClientConVar("gry_sound_malfunction_loop", "1", true, false, "The failure sound repeats while the suit is down (the original); 0: it plays once")
+local CloakLoopConVar = CreateClientConVar("gry_sound_cloak_loop", "1", true, false, "A loop plays while the suit is cloaked (the original's hud cloak feedback)")
+
+Loops.Files = {
+	malfunction = "grymod/hud/hud_malfunction_hit.wav",
+	cloak = "grymod/hud/hud_cloak_feedback.wav"
+}
+
+-- The failure sound of the lost sequence (cl_hud_boot_flash.lua) plays once, from the start of the malfunction: the loop takes over when that
+-- sample (1.97 s) is over, so the two never play together.
+Loops.DELAY = {malfunction = 1.97, cloak = 0}
+
+local function newLoop(name)
+	return {name = name, path = Loops.Files[name], wanted = false, started = false, startAt = 0, since = 0, channel = nil, loading = false}
+end
+
+Loops.State = {malfunction = newLoop("malfunction"), cloak = newLoop("cloak")}
+
+-- What a loop does on a frame: "idle" (nothing wanted), "stop" (it was wanted and its state is over: `keepOn` false), "run" (playing),
+-- "start" (its time has come and its channel is ready) or "wait". A pure rule.
+function Loops.Phase(loop, now, keepOn, ready)
+	if not loop.wanted then
+		return "idle"
+	end
+
+	if not keepOn then
+		return "stop"
+	end
+
+	if loop.started then
+		return "run"
+	end
+
+	if ready and now >= loop.startAt then
+		return "start"
+	end
+
+	return "wait"
+end
+
+local function hookName(loop)
+	return "GrySuitLoop_" .. loop.name
+end
+
+-- The state that keeps a loop going: sounds on, its own switch, the player alive and the state itself (the HUD's malfunction, the camouflage).
+-- The state the player is in is read from the client's own copies, so nothing is asked of the server.
+function Loops.KeepOn(name)
+	local ply = LocalPlayer()
+
+	if not IsValid(ply) or not ply:Alive() or not GryMod.SoundsEnabled() then
+		return false
+	end
+
+	if name == "malfunction" then
+		local Boot = GryMod.FlashBoot
+
+		return MalfunctionLoopConVar:GetBool() and Boot ~= nil and Boot.Malfunctioning()
+	end
+
+	return CloakLoopConVar:GetBool() and ply.NanosuitMode == GryMod.Modes.CLOAK
+end
+
+function Loops.End(loop)
+	loop.wanted, loop.started = false, false
+	hook.Remove("Think", hookName(loop))
+
+	if IsValid(loop.channel) then
+		loop.channel:SetVolume(0)
+		loop.channel:Pause()
+	end
+end
+
+-- One frame of a loop: its phase, and what the phase asks of the channel.
+function Loops.Step(loop, now, keepOn)
+	local phase = Loops.Phase(loop, now, keepOn, IsValid(loop.channel))
+
+	if phase == "stop" then
+		Loops.End(loop)
+	elseif phase == "start" then
+		loop.started, loop.since = true, now
+		loop.channel:SetTime(0)
+		loop.channel:SetVolume(0)
+		loop.channel:Play()
+	elseif phase == "run" then
+		-- brought up over the first hundredths of a second, as the binoculars' loop is (a loop that starts at its level clicks)
+		loop.channel:SetVolume(GryMod.SoundMix.Volume(loop.path) * GryMod.SoundMix.FadeIn(now - loop.since))
+	end
+
+	return phase
+end
+
+-- The loop is wanted from now: its channel is made once (the loading is asynchronous), and the Think hook that follows its state exists until
+-- the state ends. A loop that is already wanted is left as it is.
+function Loops.Begin(loop)
+	if loop.wanted then
+		return false
+	end
+
+	loop.wanted, loop.started = true, false
+	loop.startAt = GryMod.SoundMix.Now() + Loops.DELAY[loop.name]
+
+	if not IsValid(loop.channel) and not loop.loading then
+		loop.loading = true
+
+		sound.PlayFile("sound/" .. loop.path, "noblock noplay", function(created)
+			loop.loading = false
+
+			if IsValid(created) then
+				loop.channel = created
+				created:EnableLooping(true)
+			end
+		end)
+	end
+
+	hook.Add("Think", hookName(loop), function()
+		Loops.Step(loop, GryMod.SoundMix.Now(), Loops.KeepOn(loop.name))
+	end)
+
+	return true
+end
+
+-- the suit goes down: the lost sequence (cl_hud_boot_flash.lua) says "lost" or "malfunction" through its event, and has set its own state first
+hook.Add("GryMod_HUDEvent", "GRYSUITLOOPS", function(name)
+	if (name == "lost" or name == "malfunction") and Loops.KeepOn("malfunction") then
+		Loops.Begin(Loops.State.malfunction)
+	end
+end)
+
+-- the suit goes to the camouflage (the local player's mode, told by the server or chosen here)
+hook.Add("GryMod_ModeChanged", "GRYSUITLOOPS", function(ply, mode)
+	if mode == GryMod.Modes.CLOAK and ply == LocalPlayer() and Loops.KeepOn("cloak") then
+		Loops.Begin(Loops.State.cloak)
+	end
+end)
+
+-- the game closes: nothing keeps playing
+hook.Add("ShutDown", "GRYSUITLOOPS", function()
+	for _, loop in pairs(Loops.State) do
+		Loops.End(loop)
+	end
+end)

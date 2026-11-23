@@ -131,6 +131,32 @@ end
 -- a mouse at 400 counts per second towards the bottom right, 35 degrees under the horizontal
 local DIAGONAL = {{time = 3, vx = 400 * math.cos(math.rad(35)), vy = 400 * math.sin(math.rad(35))}}
 
+-- The menu must send NOTHING when it opens (the server pushes the mask by itself): net.Start and net.SendToServer are
+-- replaced for the length of fn and put back after it, whatever happens inside (afterEach puts them back too). `asked` holds the names started.
+local realNet
+local asked
+
+local function unspyAsk()
+	if realNet then
+		net.Start, net.SendToServer = realNet.start, realNet.send
+		realNet = nil
+	end
+end
+
+local function spyAsk(fn)
+	realNet = {start = net.Start, send = net.SendToServer}
+	asked = {}
+	net.Start = function(name) asked[#asked + 1] = name end
+	net.SendToServer = function() end
+
+	local ok, err = pcall(fn)
+	unspyAsk()
+
+	if not ok then
+		error(err, 0)
+	end
+end
+
 return {
 	groupName = "GryMod quick menu (Flash)",
 	-- opening and closing the menu play its sounds: nothing is played by the tests (the mix's single exit is replaced)
@@ -142,10 +168,16 @@ return {
 		GetConVar("gry_menu_ring_film"):SetString("1")
 		state.savedFilm = GetConVar("gry_menu_pointer_film"):GetString()
 		GetConVar("gry_menu_pointer_film"):SetString("1")
+		GryMod.FlashMenu.SetRefused(0) -- (the mask the server sent is kept by the menu, even through Reset: no case may inherit one)
+		state.savedShow = GetConVar("gry_menu_show_refused"):GetString()
+		GetConVar("gry_menu_show_refused"):SetString("1")
 		state.realEmit = GryMod.SoundMix.Emit
 		GryMod.SoundMix.Emit = function() end
 	end,
 	afterEach = function(state)
+		unspyAsk()
+		GryMod.FlashMenu.SetRefused(0)
+		GetConVar("gry_menu_show_refused"):SetString(state.savedShow)
 		GetConVar("gry_menu_pointer_film"):SetString(state.savedFilm)
 		GryMod.SoundMix.Emit = state.realEmit
 		GetConVar("gry_menu_keep_highlight"):SetString(state.savedKeep)
@@ -894,6 +926,290 @@ return {
 				end
 
 				expect(found["gry_menu_pointer_film"]).to.beTrue()
+			end
+		},
+		{
+			-- fails without Menu.FillStates (cl_hud_quickmenu_flash.lua)
+			name = "FillStates: a refused mode is inactive, the armor never is, a suit that is off keeps only the armor and the weapon, and the tables are reused in place",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local active, defect = {}, {}
+				local Modes = GryMod.Modes
+
+				M.FillStates(active, defect, {weapon = true})
+				expect(active.Speed and active.Strength and active.Cloak and active.Armor and active.Weapon).to.beTrue()
+				expect(next(defect)).to.beNil()
+
+				M.FillStates(active, defect, {weapon = false, refused = {[Modes.SPEED] = true, [Modes.STRENGTH] = true}})
+				expect(active.Speed).to.beFalse()
+				expect(active.Strength).to.beFalse()
+				expect(active.Cloak).to.beTrue()
+				expect(active.Armor).to.beTrue()
+				expect(active.Weapon).to.beFalse()
+
+				-- the armor is the suit's safe state: a veto never reaches it
+				M.FillStates(active, defect, {weapon = true, refused = {[Modes.ARMOR] = true, [Modes.DROP] = true}})
+				expect(active.Armor).to.beTrue()
+				expect(active.Weapon).to.beTrue()
+
+				-- the same tables: nothing of the previous call stays (a mode that is no longer refused is active again)
+				M.FillStates(active, defect, {weapon = true, refused = {}})
+				expect(active.Speed).to.beTrue()
+				expect(active.Strength).to.beTrue()
+
+				M.FillStates(active, defect, {weapon = true, off = true})
+				expect(active.Speed).to.beFalse()
+				expect(active.Cloak).to.beFalse()
+				expect(active.Strength).to.beFalse()
+				expect(active.Armor).to.beTrue()
+				expect(active.Weapon).to.beTrue()
+			end
+		},
+		{
+			-- fails without the defect part of FillStates
+			name = "FillStates: while the suit is down every icon is defective, and no longer once it is back",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local active, defect = {}, {}
+				M.FillStates(active, defect, {weapon = true, down = true})
+
+				for _, name in ipairs({"Speed", "Strength", "Cloak", "Armor", "Weapon"}) do
+					expect(defect[name]).to.beTrue()
+				end
+
+				M.FillStates(active, defect, {weapon = true, down = false})
+				expect(next(defect)).to.beNil()
+			end
+		},
+		{
+			-- fails if the inactive frame is not shown for a refused mode, or if a refused mode can still be chosen
+			name = "the movie shows a refused mode on its inactive frame (3), it cannot be chosen, and the other icons are normal",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local active, defect = M.FillStates({}, {}, {weapon = true, refused = {[GryMod.Modes.SPEED] = true}})
+				local menu = openMenu(active, defect)
+				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(3)
+				expect(modeClip(menu, "Cloak"):CurrentFrame()).to.equal(1)
+
+				menu:Select("Speed")
+				menu:Update(1 / 30)
+				expect(menu:Choice()).to.beNil()
+				expect(modeClip(menu, "Speed"):CurrentFrame()).to.equal(3) -- pointed at, still not lit
+			end
+		},
+		{
+			-- fails if a defective mode (the suit is down) is shown on any frame but 4, with the HUD status still at 0
+			name = "the movie shows every icon on its defective frame (4) when the suit is down, even when the HUD status has not told the menu",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local active, defect = M.FillStates({}, {}, {weapon = true, down = true})
+				local menu = openMenu(active, defect)
+				expect(menu.malfunction).to.equal(0)
+
+				for _, name in ipairs({"Speed", "Strength", "Cloak", "Armor", "Weapon"}) do
+					expect(modeClip(menu, name):CurrentFrame()).to.equal(4)
+				end
+			end
+		},
+		{
+			-- fails without Menu.SetRefused / IsRefused, or if Reset forgets the mask (the server sends it again only when it changes)
+			name = "what the server says is kept as a table keyed by mode, and Reset (a new theme, a respawn) keeps it",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local Modes = GryMod.Modes
+				M.SetRefused(GryMod.ModeStates.Pack({[Modes.CLOAK] = true}))
+				expect(M.IsRefused(Modes.CLOAK)).to.beTrue()
+				expect(M.IsRefused(Modes.SPEED)).to.beFalse()
+				M.Reset()
+				expect(M.IsRefused(Modes.CLOAK)).to.beTrue()
+				M.SetRefused(0)
+				expect(M.IsRefused(Modes.CLOAK)).to.beFalse()
+			end
+		},
+		{
+			-- fails if feedStates does not read the answer of the server, or reads it with the switch off
+			name = "an open menu shows the modes the server refuses; with gry_menu_show_refused 0 it does not, as before",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local Modes = GryMod.Modes
+
+				spyAsk(function()
+					M.Reset()
+					M.SetRefused(GryMod.ModeStates.Pack({[Modes.CLOAK] = true}))
+					expect(M.Begin()).to.beTrue()
+					local menu = M.GetMenu()
+					expect(menu.active.Cloak).to.beFalse()
+					expect(menu.active.Speed).to.beTrue()
+					M.Cancel()
+
+					GetConVar("gry_menu_show_refused"):SetString("0")
+					M.Reset()
+					M.SetRefused(GryMod.ModeStates.Pack({[Modes.CLOAK] = true}))
+					expect(M.Begin()).to.beTrue()
+					expect(M.GetMenu().active.Cloak).to.beTrue()
+					M.Cancel()
+					M.Reset()
+				end)
+			end
+		},
+		{
+			-- fails if feedStates does not read the networked flags of the player
+			name = "an open menu shows every icon defective while the suit is down (GryMalfunction) and the three modes inactive while it is off (GryDisabled)",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local realFlags = M.SuitFlags
+				local flags = {}
+				M.SuitFlags = function() return flags.GryMalfunction == true, flags.GryDisabled == true end
+
+				local ok, err = pcall(function()
+					spyAsk(function()
+						flags.GryMalfunction = true
+						M.Reset()
+						expect(M.Begin()).to.beTrue()
+						expect(M.GetMenu().defect.Cloak).to.beTrue()
+						expect(M.GetMenu().defect.Armor).to.beTrue()
+						M.Cancel()
+
+						flags.GryMalfunction, flags.GryDisabled = false, true
+						M.Reset()
+						expect(M.Begin()).to.beTrue()
+						expect(M.GetMenu().active.Speed).to.beFalse()
+						expect(M.GetMenu().active.Armor).to.beTrue()
+						expect(M.GetMenu().defect.Cloak).to.beNil()
+						M.Cancel()
+
+						-- the switch off: the menu is what it was before these states
+						GetConVar("gry_menu_show_refused"):SetString("0")
+						flags.GryMalfunction = true
+						M.Reset()
+						expect(M.Begin()).to.beTrue()
+						expect(M.GetMenu().active.Speed).to.beTrue()
+						expect(M.GetMenu().defect.Cloak).to.beNil()
+						M.Cancel()
+						M.Reset()
+					end)
+				end)
+
+				M.SuitFlags = realFlags
+				M.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails if the menu sends anything to the server again (a question on opening slows the menu and fills the network)
+			name = "the menu never asks the server: opening it, with or without gry_menu_show_refused, and the hooks of a mode change or a malfunction send nothing",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local ply = LocalPlayer()
+				expect(M.Ask).to.beNil()
+
+				spyAsk(function()
+					M.Reset()
+					expect(M.Begin()).to.beTrue()
+					expect(#asked).to.equal(0)
+					M.Cancel()
+
+					GetConVar("gry_menu_show_refused"):SetString("0")
+					M.Reset()
+					expect(M.Begin()).to.beTrue()
+					expect(#asked).to.equal(0)
+					M.Cancel()
+					M.Reset()
+
+					-- (the listeners that asked again are gone)
+					for _, event in ipairs({"GryMod_ModeChanged", "GryMod_MalfunctionStart", "GryMod_MalfunctionEnd"}) do
+						expect(hook.GetTable()[event] and hook.GetTable()[event]["GRYQUICKMENUREFUSED"]).to.beNil()
+					end
+
+					expect(#asked).to.equal(0)
+				end)
+			end
+		},
+		{
+			-- fails if the menu opens without the mask it already holds (it would be empty until an answer came)
+			name = "a menu opened with a mask received before shows it at once, with nothing sent",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local Modes = GryMod.Modes
+
+				spyAsk(function()
+					M.Reset()
+					M.SetRefused(GryMod.ModeStates.Pack({[Modes.STRENGTH] = true}))
+					expect(M.Begin()).to.beTrue()
+					expect(M.GetMenu().active.Strength).to.beFalse()
+					expect(#asked).to.equal(0)
+
+					-- a new mask received while it is open is read on the next frame
+					M.SetRefused(0)
+					expect(M.IsRefused(Modes.STRENGTH)).to.beFalse()
+					M.Cancel()
+					M.Reset()
+				end)
+			end
+		},
+		{
+			-- fails without the net.Receive of gry_modes_refused
+			name = "the server's answer gry_modes_refused is received and kept",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local receiver = net.Receivers["gry_modes_refused"]
+				expect(receiver).to.beA("function")
+
+				local realRead = net.ReadUInt
+				net.ReadUInt = function(bits)
+					expect(bits).to.equal(GryMod.ModeStates.Bits)
+
+					return GryMod.ModeStates.Pack({[GryMod.Modes.STRENGTH] = true})
+				end
+
+				local ok, err = pcall(receiver, 0)
+				net.ReadUInt = realRead
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(M.IsRefused(GryMod.Modes.STRENGTH)).to.beTrue()
+				expect(M.IsRefused(GryMod.Modes.SPEED)).to.beFalse()
+				M.Reset()
+			end
+		},
+		{
+			name = "gry_menu_show_refused is saved, on by default, with a check box",
+			func = function(state)
+				local cvar = GetConVar("gry_menu_show_refused")
+				expect(cvar ~= nil).to.beTrue()
+				expect(cvar:GetDefault()).to.equal("1")
+				expect(cvar:GetFlags()).to.equal(GetConVar("gry_menu_ring_film"):GetFlags())
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_menu_show_refused"]).to.beTrue()
 			end
 		},
 		{

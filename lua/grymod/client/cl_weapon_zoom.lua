@@ -18,6 +18,8 @@ GryMod.WeaponZoom = WeaponZoom
 
 local OptionConVar = CreateClientConVar("gry_zoom_cancel_weapon", "1", true, false, "When the binoculars open while the crossbow is zoomed (right click), the crossbow's zoom is ended, so that it does not come back when the binoculars close (off: it comes back, a jump)")
 
+local HideConVar = CreateClientConVar("gry_zoom_hide_crosshair", "1", true, false, "The crosshair of the HUD is hidden while the weapon in hand is zoomed (the crossbow's right click, or any weapon declared with alt = \"zoom\"), as it is while the binoculars are up (off: it stays)")
+
 -- The weapons whose zoom the binoculars end are the ones whose registry entry says that the right click zooms (alt = "zoom", the
 -- crossbow's entry in sh_api_weapons_hl2.lua, or any other addon's weapon declared that way); the server asks the registry the same way.
 
@@ -26,6 +28,38 @@ WeaponZoom.TOLERANCE = 0.5
 
 function WeaponZoom.Enabled()
 	return OptionConVar:GetBool()
+end
+
+-- Whether the weapon in hand is zooming: its registry entry says the right click zooms (alt = "zoom") and the field of view is below the normal
+-- one. The crosshair of the HUD asks it (below): a scope has its own aim. Nothing is allocated, the HUD asks every frame.
+function WeaponZoom.IsZoomed(ply)
+	if not HideConVar:GetBool() or not IsValid(ply) then
+		return false
+	end
+
+	local weapon = ply:GetActiveWeapon()
+
+	if not IsValid(weapon) or GryMod.API.WeaponValue(weapon, "alt", true) ~= "zoom" then
+		return false
+	end
+
+	local fov, default = ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)
+
+	return type(fov) == "number" and type(default) == "number" and fov < default - WeaponZoom.TOLERANCE
+end
+
+-- The crosshair's own test of "the player is zooming" (cl_hud_crosshair_flash.lua, Cross.Zooming, which knows the binoculars) also says yes
+-- for a zoomed weapon. That file is loaded first; its function is wrapped once (a reload of this file does not wrap it again).
+local Cross = GryMod.FlashCrosshair
+
+if Cross and Cross.Zooming and Cross.Zooming ~= WeaponZoom.CrossWrapper then
+	WeaponZoom.CrossBase = Cross.Zooming
+
+	WeaponZoom.CrossWrapper = function(ply)
+		return WeaponZoom.CrossBase(ply) or WeaponZoom.IsZoomed(ply)
+	end
+
+	Cross.Zooming = WeaponZoom.CrossWrapper
 end
 
 -- Whether to ask the server to end the weapon's zoom. `weapon` is the weapon in hand (an entity, or its class name; nil for none). Pure

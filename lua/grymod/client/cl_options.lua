@@ -146,6 +146,8 @@ local function hudBehaviour(Panel)
 	GryMod.OptionBox(form, "Quick menu: the chosen icon stays lit", "gry_menu_keep_highlight", "While the menu fades out (the original). Off: it goes plain at the release.")
 	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one
 	GryMod.OptionBox(form, "Quick menu: the ring stays green", "gry_menu_ring_film", "Going from an active mode to an inactive one (the original). Off: it turns orange.")
+	-- client setting: the quick menu greys a mode that a rule of the server refuses, and shows every icon defective while the suit is down
+	GryMod.OptionBox(form, "Quick menu: grey out refused modes", "gry_menu_show_refused", "A mode that the server refuses (an add-on's rule, the suit switched off) is greyed; every icon turns red while the suit is down.")
 	-- client setting: the quick menu pointer runs the game's rule on a fixed clock and the arrow is eased
 	GryMod.OptionBox(form, "Quick menu: a steady arrow", "gry_menu_pointer_film", "The arrow follows the mouse on a fixed clock and does not flutter at a high frame rate. Off: on every frame, as before.")
 	-- client setting: the suit mode icon plays its reboot animation when the HUD comes back
@@ -190,7 +192,11 @@ function GryMod.BinocularsOptions(Panel)
 	GryMod.OptionBox(form, "Zoom stages with the mouse wheel", "gry_binoculars_stages", "2x, 4x, 8x, 0.055 s between them, 0.2 s to open and close. Off: the Half-Life 2 zoom (always on with the own zoom key). Changes how the mouse feels.")
 	GryMod.OptionBox(form, "Binoculars sway", "gry_binoculars_sway", "The view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view.")
 	GryMod.OptionBox(form, "Field of view follows the zoom", "gry_zoom_follow_fov", "The server sets it, so that distant windows and fades keep the details of a zoomed view. Off: only the picture is zoomed.")
+	GryMod.OptionBox(form, "Hide the crosshair in a weapon zoom", "gry_zoom_hide_crosshair", "While the crossbow (or any weapon whose right click zooms) is zoomed, the HUD crosshair goes, as it does with the binoculars.")
 	GryMod.OptionBox(form, "Cancel the crossbow zoom", "gry_zoom_cancel_weapon", "Opening the binoculars while the crossbow is zoomed (right click) ends the crossbow's zoom. Off: it comes back when the binoculars close.")
+	GryMod.OptionBox(form, "Film follows a malfunction", "gry_binoculars_malfunction", "While the suit is down the binoculars fade to white; with the HUD flickering they fade out (the original film's own states).")
+	GryMod.OptionBox(form, "No shooting with the binoculars up", "gry_binoculars_no_fire", "The original holds the binoculars in place of the weapon. Off: you can shoot through the Half-Life 2 zoom. Changes how the game plays.")
+	GryMod.OptionBox(form, "No film in third person", "gry_binoculars_thirdperson", "As in the original: the zoom works, the film is not drawn. Off: it is drawn there too.")
 	GryMod.OptionBox(form, "Full-screen vision", "gry_binoculars_vision", "Cool tint, scan lines and darker edges. The original has it in the High quality only, and it doubles the film's vignette.")
 end
 
@@ -199,6 +205,7 @@ function GryMod.SuitOptions(Panel)
 	local form = GryMod.OptionsCategory(Panel, "Suit and camouflage")
 
 	GryMod.OptionBox(form, "Screen effects", "gry_screenfx", "Heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change.")
+	GryMod.OptionBox(form, "Small shake on a light hit", "gry_hit_shake", "A hit the armor takes that costs less than a fifth of the bar shakes the screen a little (needs the screen effects above).")
 	GryMod.OptionBox(form, "Camouflage: bend the picture", "gry_cloak_fx", "The picture behind the player is bent, and it fades in and out. Off: the old material.")
 	GryMod.OptionBox(form, "Camouflage: original refraction", "gry_cloak_refract", "The bent picture is the original game's own pixel shader, blended over the model. Off: the older Refract material.")
 	GryMod.OptionBox(form, "Camouflage: original sparks", "gry_cloak_shader", "The sparks are the original game's own pixel shader, when the game can run it. Off: the older approximation.")
@@ -224,6 +231,8 @@ function GryMod.SoundOptions(Panel)
 	-- the original game's levels plus this gain (0 dB: as quiet as in the game, +12 dB: the loud ones at full volume)
 	GryMod.OptionSlider(form, "Sound level (dB)", "gry_sound_volume", -20, 12, 0, "The interface and the suit. 0 dB is as quiet as in the game, +12 dB plays the loud ones at full volume.")
 	form:CheckBox("Repair sound when health comes back", "gry_sound_regen")
+	GryMod.OptionBox(form, "Malfunction sound repeats", "gry_sound_malfunction_loop", "The failure sound goes on while the suit is down, as in the original. Off: it plays once.")
+	GryMod.OptionBox(form, "Camouflage sound loop", "gry_sound_cloak_loop", "A soft loop plays while the suit is cloaked (the original's hud cloak feedback).")
 	GryMod.OptionBox(form, "Underwater sounds", "gry_underwater_fx", "Dive in and out, breathing, gasps, ambience.")
 end
 

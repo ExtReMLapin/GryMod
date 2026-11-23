@@ -3,7 +3,9 @@
 -- * armor mode, a hit that costs a fifth of the energy bar or more: the HUD jumps (the "HUD interference" effect: random
 --   offsets of up to half 20 pixels, falling away at 4 a second), the screen flashes dark and red for 0.2 s, glitches for
 --   0.4 s and shakes for 0.5 s;
--- * the health falling through 25 % and then 20 %: a red tint over 4 s and a radial blur over 6 s (and a shake of 0.4 s at 20 %).
+-- * the health falling through 25 % and then 20 %: a red tint over 4 s and a radial blur over 6 s (and a shake of 0.4 s at 20 %);
+-- * any lighter hit the armor takes: a small shake of 0.35 s (the original's cl_hitShake, played on every hit of the player; the Half-Life 2
+--   punch that stands in for it on the health does not come when the armor takes the whole hit).
 --
 -- The HUD jump is the switch gry_hud_damagefx (one of the HUD elements, see cl_hud_options.lua); the screen effects are
 -- the switch gry_screenfx. Nothing runs when nothing is happening: the screen hook only exists while an effect plays.
@@ -18,11 +20,16 @@ local FX = {}
 GryMod.DamageFx = FX
 
 local screenConVar = CreateClientConVar("gry_screenfx", "1", true, false, "Screen effects of damage: the flash and shake of a heavy armor hit, the red tint and blur at low health")
+local hitShakeConVar = CreateClientConVar("gry_hit_shake", "1", true, false, "A hit the armor takes that is lighter than a heavy one (under a fifth of the bar) gives a small shake of the screen, as every hit does in the original game (needs the screen effects)")
 local decloakConVar = CreateClientConVar("gry_decloak_glitch", "1", true, false, "Firing out of the camouflage plays the armor hit effect (flash, HUD jump, shake) at any energy; 0: nothing plays")
 
 -- The energy an armor hit must cost: the game's 40 of 200, a fifth of the bar.
 FX.ARMOR_COST = 20
 FX.ARMOR_SECONDS = 0.5
+-- The small shake of a lighter hit: the original's cl_hitShake lasts 0.35 s. A drop of the bar under SMALL_HIT_MIN (of 100) is noise, not a hit
+-- (in armor mode nothing else takes energy).
+FX.SMALL_SECONDS = 0.35
+FX.SMALL_HIT_MIN = 1
 -- After a deliberate emptying of the bar (firing out of the camouflage) the drop is expected within this many seconds: it is
 -- not an armor hit.
 FX.EMPTIED_SECONDS = 1
@@ -59,6 +66,17 @@ function FX.ArmorShake(cost)
 
 	if cost and cost >= FX.ARMOR_COST then
 		return FX.ARMOR_SECONDS
+	end
+
+	return 0
+end
+
+-- Seconds of the small shake a hit that costs this much gives: for a hit the armor takes that is not a heavy one (0 for none).
+function FX.SmallHitShake(cost)
+	cost = number(cost)
+
+	if cost and cost >= FX.SMALL_HIT_MIN and cost < FX.ARMOR_COST then
+		return FX.SMALL_SECONDS
 	end
 
 	return 0
@@ -208,10 +226,15 @@ function FX.Observe(state, sample, now, options)
 		end
 	end
 
-	if sample.armor and dropped and not emptied and not sample.malfunction and FX.ArmorShake(lastEnergy - energy) > 0 then
-		-- the picture only: the sound of an armor hit is the server's decision (sv_health.lua, Mech.ArmorHitSoundDue), it comes with
-		-- the same event (cl_sounds.lua) and has its own rule: the two rules of the original game are not the same
-		FX.Emit("armor_hit", {sound = false}, state, now, options)
+	if sample.armor and dropped and not emptied and not sample.malfunction then
+		if FX.ArmorShake(lastEnergy - energy) > 0 then
+			-- the picture only: the sound of an armor hit is the server's decision (sv_health.lua, Mech.ArmorHitSoundDue), it comes with
+			-- the same event (cl_sounds.lua) and has its own rule: the two rules of the original game are not the same
+			FX.Emit("armor_hit", {sound = false}, state, now, options)
+		elseif options.hit == true and FX.SmallHitShake(lastEnergy - energy) > 0 then
+			-- a lighter hit: the same event, with its small look (nothing but the shake)
+			FX.Emit("armor_hit", {sound = false, small = true}, state, now, options)
+		end
 	end
 
 	local level = FX.LowHealthLevel(health, sample.max, lastHealth)
@@ -270,7 +293,12 @@ FX.Events = {}
 
 -- data.visual = false: no picture (the sound alone), data.sound = false: no sound (the picture alone)
 function FX.Events.armor_hit(state, now, data, options)
-	if data.visual ~= false and FX.ArmorImpact(state, now, options) then
+	if data.small == true then
+		-- the small look of a light hit: the shake alone (the screen switch and the hit shake switch), no flash and no jump of the HUD
+		if data.visual ~= false and options.screen and options.hit ~= false then
+			FX.Shake(0.8, 25, FX.SMALL_SECONDS)
+		end
+	elseif data.visual ~= false and FX.ArmorImpact(state, now, options) then
 		FX.Sync(state, now)
 	end
 
@@ -412,13 +440,30 @@ end
 FX.State = FX.NewState()
 
 -- One table, filled in again at each call: this is read every frame and must not make garbage.
-local switches = {hud = true, screen = true}
+local switches = {hud = true, screen = true, hit = true}
 
 function FX.Options()
 	local options = GryMod.HUDOptions
 
 	switches.hud = not options or options.Enabled("damagefx")
 	switches.screen = screenConVar:GetBool()
+	switches.hit = hitShakeConVar:GetBool()
 
 	return switches
 end
+
+-- The suit goes down (the HUD status 1) or the HUD is destroyed: the arcs of the damage direction around the crosshair are a sibling of its
+-- clip, so a crosshair hidden by the shutdown would still let them play. They are cleared once, from the report of the HUD status (cl_hud_flash.lua
+-- runs it at each change): no frame watcher.
+hook.Add("GryMod_HUDStatus", "GRYDAMAGEFXCLEAR", function(status)
+	if status ~= 1 then
+		return
+	end
+
+	local Cross = GryMod.FlashCrosshair
+	local instance = Cross and Cross.Current and Cross.Current()
+
+	if instance and instance.ClearDamageDirection then
+		instance:ClearDamageDirection()
+	end
+end)

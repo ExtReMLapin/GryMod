@@ -318,6 +318,102 @@ return {
 				expect(calls[1]).to.equal("start:gry_cancel_weapon_zoom")
 				expect(calls[2]).to.equal("send")
 			end
+		},
+		{
+			-- fails without WeaponZoom.IsZoomed
+			name = "IsZoomed: true for a weapon whose right click zooms (alt = zoom) while the field of view is under the normal one; false for the same weapon at rest, another weapon, no weapon, the option off, or no player",
+			func = function()
+				local W = GryMod.WeaponZoom
+
+				local function fake(class, fov, default)
+					return {
+						IsValid = function() return true end,
+						GetActiveWeapon = function()
+							return class and {IsValid = function() return true end, GetClass = function() return class end} or NULL
+						end,
+						GetFOV = function() return fov end,
+						GetInfoNum = function(_, name, fallback) return name == "fov_desired" and default or fallback end
+					}
+				end
+
+				expect(W.IsZoomed(fake("weapon_crossbow", 20, 75))).to.beTrue()
+				expect(W.IsZoomed(fake("weapon_crossbow", 75, 75))).to.beFalse()
+				expect(W.IsZoomed(fake("weapon_crossbow", 74.8, 75))).to.beFalse() -- within the tolerance
+				expect(W.IsZoomed(fake("weapon_smg1", 20, 75))).to.beFalse()
+				expect(W.IsZoomed(fake(nil, 20, 75))).to.beFalse()
+				expect(W.IsZoomed(NULL)).to.beFalse()
+
+				local convar = setting("gry_zoom_hide_crosshair")
+				expect(convar ~= nil).to.beTrue()
+				local saved = convar:GetString()
+				convar:SetString("0")
+				local off = W.IsZoomed(fake("weapon_crossbow", 20, 75))
+				convar:SetString(saved)
+				expect(off).to.beFalse()
+			end
+		},
+		{
+			-- fails without the wrapper of Cross.Zooming (the crosshair would stay over the crossbow's zoom), or if it hides the base answer
+			name = "the crosshair's Zooming says yes for a zoomed weapon as well, keeps its own answer for the binoculars, and is wrapped only once",
+			func = function(state)
+				local W = GryMod.WeaponZoom
+				local Cross = GryMod.FlashCrosshair
+				expect(Cross.Zooming).to.equal(W.CrossWrapper)
+
+				local function fake(fov)
+					return {
+						IsValid = function() return true end,
+						GetActiveWeapon = function()
+							return {IsValid = function() return true end, GetClass = function() return "weapon_crossbow" end}
+						end,
+						GetFOV = function() return fov end,
+						GetInfoNum = function(_, name, fallback) return name == "fov_desired" and 75 or fallback end
+					}
+				end
+
+				state.world.wanted = false
+				expect(Cross.Zooming(fake(20))).to.beTrue()
+				expect(Cross.Zooming(fake(75))).to.beFalse()
+
+				-- the binoculars up: the base rule answers yes whatever the weapon does
+				state.world.wanted = true
+				expect(Cross.Zooming(fake(75))).to.beTrue()
+			end
+		},
+		{
+			name = "gry_zoom_hide_crosshair is saved, on by default, with a check box in the Binoculars options",
+			func = function()
+				local convar = setting("gry_zoom_hide_crosshair")
+				expect(convar ~= nil).to.beTrue()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(convar:GetFlags()).to.equal(setting(OPTION):GetFlags())
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.BinocularsOptions(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_zoom_hide_crosshair"]).to.beTrue()
+			end
 		}
 	}
 }

@@ -53,6 +53,8 @@ Mix.Original = {
 	["grymod/hud/hud_activate_01.wav"] = -18,
 	["grymod/hud/hud_reboot.wav"] = -11,
 	["grymod/hud/hud_malfunction_hit.wav"] = -13.74,
+	-- the loop played while the suit is cloaked (the game's event hud/cloak_feedback, -12 dB, 8.73 s)
+	["grymod/hud/hud_cloak_feedback.wav"] = -12,
 	["grymod/menu/modification_menu_appear.wav"] = -16,
 	["grymod/menu/modification_menu_dissapear.wav"] = -13,
 	["grymod/menu/preset_navigation_beep_02.wav"] = -15,

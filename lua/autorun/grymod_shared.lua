@@ -136,6 +136,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/cl_hud_corners_flash.lua")
 	AddCSLuaFile("grymod/flash/hud_corner_left.lua")
 	AddCSLuaFile("grymod/flash/hud_corner_right.lua")
+	AddCSLuaFile("grymod/sh_mode_states.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -170,6 +171,8 @@ if SERVER then
 	include("grymod/server/sv_messages.lua")
 	include("grymod/sh_api_usable.lua")
 	include("grymod/server/sv_radar_pings.lua")
+	include("grymod/sh_mode_states.lua")
+	include("grymod/server/sv_mode_states.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.vmt")
@@ -351,6 +354,7 @@ if SERVER then
 	resource.AddFile("materials/grymod/flash/hud_ammopickup_3.vtf")
 	resource.AddFile("materials/grymod/flash/hud_ammopickup_3_w.vmt")
 	resource.AddFile("materials/grymod/flash/hud_ammopickup_3_w.vtf")
+	resource.AddFile( "sound/grymod/hud/hud_cloak_feedback.wav" )
 	else
 		resource.AddWorkshop(tostring(GryMod.WSID))
 	end
@@ -424,4 +428,5 @@ if CLIENT then
 	include("grymod/client/cl_hud_radar_sources.lua")
 	include("grymod/client/cl_hud_radar_pings.lua")
 	include("grymod/client/cl_hud_corners_flash.lua")
+	include("grymod/sh_mode_states.lua")
 end

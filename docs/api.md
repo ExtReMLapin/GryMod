@@ -135,6 +135,28 @@ end)
 It applies to every path that changes the mode, the player's own request included. It never applies to the armor mode: the armor is
 the suit's safe state (a malfunction, an empty bar and a respawn must always reach it).
 
+**The quick menu shows your veto.** To grey out a mode that is refused, the server tells each client which modes the veto refuses, and the quick
+menu opens at once with the last answer (the client never asks). The server runs `GryMod_CanSetMode` once for each of the modes speed, cloak and
+strength (never for the mode the suit is in, never for the armor, never while the suit is down or off) and sends the result when:
+
+- the client is ready and at every spawn (always);
+- the mode of the player changes, a malfunction starts or ends, or the suit is switched off or on (only if the answer changed);
+- you call `GryMod.API.RefreshModeStates(ply)` (only if the answer changed): this is THE way to say "my condition changed", for example when the
+  player walks into a zone. Call it once after you add your listener too, so that the check below starts;
+- a timer says so. A veto is any function of any state, so GryMod cannot see it change by itself. While at least one listener of
+  `GryMod_CanSetMode` exists and a player is alive, a timer (every 0.5 s) asks again for each living player and sends a message only to the
+  players whose answer changed. With no listener, or nobody alive, the timer does not exist and nothing runs.
+
+So your listener can be called more often than by real mode changes: it must only answer, with no side effect, and be cheap. The cost is 2 or 3
+calls of the hook for each living player at each tick, so at most 6 calls a second for each living player, each running all the listeners.
+
+```lua
+GryMod.API.RefreshModeStates(ply) -- true, or false and "invalid player"; the open menu greys or restores its icons at once if the answer changed
+```
+
+A player can turn the display off with `gry_menu_show_refused 0` (the menu then only greys the weapon icon when he holds nothing). On the client,
+`GryMod.FlashMenu.IsRefused(mode)` says what the server last sent.
+
 ### Notes on the reporting hooks
 
 All the hooks above only report: GryMod never reads what a handler returns, and a handler cannot change the result. (`GryMod_CanSetMode` is

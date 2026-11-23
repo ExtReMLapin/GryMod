@@ -489,16 +489,82 @@ function Menu.GetPointer()
 	return opened and pointer or nil
 end
 
+-- ---------------------------------------------------------------------------------------------------------
+-- Inactive and defective modes
+-- ---------------------------------------------------------------------------------------------------------
+
+-- Switch: the menu shows a mode that cannot be chosen as inactive (a veto of GryMod_CanSetMode, or the suit switched off) and every mode as defective
+-- while the suit is down. The server tells the client what it refuses (gry_modes_refused). Off: only the weapon icon can be inactive, as before.
+local ShowRefused = CreateClientConVar("gry_menu_show_refused", "1", true, false, "The quick menu shows a mode that a rule of the server refuses as inactive, and every mode as defective while the suit is down (0: only the weapon icon can be inactive)")
+
+-- The modes a veto can refuse, with the movie's names (the movie's icon frame 3, "inactive").
+local VETOABLE = {
+	{GryMod.Modes.SPEED, "Speed"},
+	{GryMod.Modes.CLOAK, "Cloak"},
+	{GryMod.Modes.STRENGTH, "Strength"}
+}
+
+-- Fills `active` and `defect` (tables keyed by the movie's names, emptied and filled in place) from the facts of the moment: `input.weapon` (a weapon in
+-- hand: the weapon icon can be chosen), `input.off` (the suit is switched off: no mode but the armor), `input.refused` (a table keyed by mode, true
+-- where a veto refuses the mode, or nil), `input.down` (the suit is down in a malfunction: every icon is defective, as the original's setDefect does
+-- for the whole suit). The armor is never refused. Returns the two tables.
+function Menu.FillStates(active, defect, input)
+	active.Armor = true
+	active.Weapon = input.weapon == true
+
+	for _, pair in ipairs(VETOABLE) do
+		local refused = input.off == true or (input.refused ~= nil and input.refused[pair[1]] == true)
+		active[pair[2]] = not refused
+	end
+
+	local down = input.down == true or nil
+
+	for _, name in ipairs(MODE_CLIPS) do
+		defect[name] = down
+	end
+
+	return active, defect
+end
+
+-- What the server last said (a table keyed by mode: true where a veto refuses it). Filled by Menu.SetRefused.
+local refusedNow = {}
+local stateActive, stateDefect, stateInput = {}, {}, {}
+
+function Menu.SetRefused(mask)
+	GryMod.ModeStates.Unpack(mask, refusedNow)
+end
+
+function Menu.IsRefused(mode)
+	return refusedNow[mode] == true
+end
+
+-- The server tells it by itself (sv_mode_states.lua): when the client is ready, at every spawn, and whenever the answer changes. The menu never asks;
+-- it opens with the last mask received.
+net.Receive("gry_modes_refused", function()
+	Menu.SetRefused(net.ReadUInt(GryMod.ModeStates.Bits))
+end)
+
+-- The two flags the server networks for the suit: down (a malfunction, sv_malfunction.lua) and off (GryMod.API.SetSuitEnabled). A function of the
+-- module so that a test can stand in for the server.
+function Menu.SuitFlags(ply)
+	return ply:GetNW2Bool("GryMalfunction", false), ply:GetNW2Bool("GryDisabled", false)
+end
+
 local function feedStates(ply)
 	-- while the suit is down the menu is in its malfunction state: nothing can be chosen
 	menu:Destroy(GryMod.FlashBoot and GryMod.FlashBoot.IsLost() and 1 or 0)
-	menu:SetStates({
-		Speed = true,
-		Strength = true,
-		Cloak = true,
-		Armor = true,
-		Weapon = IsValid(ply:GetActiveWeapon())
-	}, {})
+
+	local input = stateInput
+	local show = ShowRefused:GetBool()
+	input.weapon = IsValid(ply:GetActiveWeapon())
+	input.refused = show and refusedNow or nil
+	input.down, input.off = false, false
+
+	if show then
+		input.down, input.off = Menu.SuitFlags(ply)
+	end
+
+	menu:SetStates(Menu.FillStates(stateActive, stateDefect, input))
 end
 
 -- The key goes down: the menu opens on the current mode, the view stays where it is.
@@ -693,4 +759,9 @@ function Menu.Reset()
 	end
 
 	menu, pointer, locked, opened = nil, nil, nil, false
+end
+
+-- The menu of the moment (nil before its first opening); for the tests.
+function Menu.GetMenu()
+	return menu
 end

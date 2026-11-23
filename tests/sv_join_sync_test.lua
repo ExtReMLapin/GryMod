@@ -115,9 +115,20 @@ local function ready(ply, now)
 	local receiver = net.Receivers["gry_client_ready"]
 	expect(receiver).to.beA("function")
 
-	return recorded(function()
+	local all = recorded(function()
 		receiver(0, ply)
 	end, now)
+
+	-- (the answer also carries the modes a veto refuses, gry_modes_refused, sv_mode_states.lua: its own test file looks at that message)
+	local sent = {}
+
+	for _, message in ipairs(all) do
+		if message.name ~= "gry_modes_refused" then
+			sent[#sent + 1] = message
+		end
+	end
+
+	return sent
 end
 
 return {
