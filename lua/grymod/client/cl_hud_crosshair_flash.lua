@@ -246,6 +246,11 @@ function Cross.UsableFor(ent, ply)
 		return 1
 	end
 
+	-- a vehicle to get into (the original's use_vehicle); not when the player already sits in one
+	if isfunction(ent.IsVehicle) and ent:IsVehicle() then
+		return (ply and isfunction(ply.InVehicle) and ply:InVehicle()) and 0 or 1
+	end
+
 	return 0
 end
 
@@ -512,6 +517,7 @@ local instance, friendly
 local lastTime
 local spread, kick, lastNextFire = 0, 0, 0
 local usableMode, friendlyShown = 0, false
+local usableEnt -- the entity that can be used and was last reported (nil: none)
 local nextScan = 0
 local failed = false -- the movie could not make a crosshair: not tried again until Reset
 
@@ -563,6 +569,10 @@ local function hidden(ply)
 		or ply:InVehicle()
 end
 
+-- Whether the crosshair is hidden for this player (the Lost animation, the quick menu, a vehicle): what hangs on it, such as the use
+-- prompt (cl_hud_use_flash.lua), goes with it.
+Cross.IsHidden = hidden
+
 -- Whether the player is zooming with the binoculars on (with them off the zoom is the plain game's).
 function Cross.Zooming(ply)
 	-- (the binoculars know both zooms, the game's key and the own zoom)
@@ -591,6 +601,18 @@ function Cross.VanillaHiddenFor(weapon)
 	return not (weapon and IsValid(weapon) and weapon.DoDrawCrosshair ~= nil)
 end
 
+-- The thing the player aims at that can be used changed (`ent` is nil and `mode` 0 when there is none; `mode` is setUsable's: 1 can be used or
+-- taken, 2 can not). The hook GryMod_UsableChanged(ent, mode, ply) tells the other parts and the addons; nothing reads what it returns. The use
+-- prompt (cl_hud_use_flash.lua) hangs on it. A field so that a test can replace it.
+function Cross.ReportUsable(ent, mode, ply)
+	-- a listener that fails must not break the crosshair's frame: its error is printed, the crosshair goes on
+	local ok, err = pcall(hook.Run, "GryMod_UsableChanged", ent, mode, ply)
+
+	if not ok then
+		ErrorNoHalt("[GryMod] A listener of GryMod_UsableChanged failed: " .. tostring(err) .. "\n")
+	end
+end
+
 -- What the player aims at, looked for ten times a second: the mode of setUsable and the friendly cross.
 local function scan(ply)
 	local now = RealTime()
@@ -607,10 +629,18 @@ local function scan(ply)
 		filter = ply
 	})
 	local mode = trace.Entity and Cross.UsableFor(trace.Entity, ply) or 0
+	local usable = mode ~= 0 and trace.Entity or nil
+	local changed = mode ~= usableMode or usable ~= usableEnt
 
 	if mode ~= usableMode then
 		usableMode = mode
 		instance:SetUsable(mode)
+	end
+
+	-- the same test says WHAT can be used: the report is made once at each change of the entity or of the mode, not at each look
+	if changed then
+		usableEnt = usable
+		Cross.ReportUsable(usable, mode, ply)
 	end
 
 	local far = util.TraceLine({

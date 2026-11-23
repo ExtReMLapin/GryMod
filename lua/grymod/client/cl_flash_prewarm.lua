@@ -98,6 +98,9 @@ Prewarm.Pieces = {
 	end},
 	{name = "messages", tier = 2, hud = true, option = "messages", films = function()
 		return movieNames(movieOf("FlashMessages", "MOVIE"))
+	end},
+	{name = "usehint", tier = 2, hud = true, option = "usehint", films = function()
+		return movieNames(movieOf("FlashUse", "MOVIE"))
 	end}
 }
 
