@@ -76,6 +76,7 @@ In the examples that follow, the guard (`if GRYMOD_INSTALLED and ...`) stands fo
 | `heat` | a function returning 0 to 1: the heat bar above the weapon icon (`gry_hud_overheat` turns it off). A weapon without it shows no bar |
 | `grenade` | the kind of hand grenade of the grenade slot: `explosivegrenade` (default), `flashbang`, `smokegrenade`, `empgrenade`. The slot shows that icon and counts the weapon's own primary ammo; the icon blinks when you switch to a weapon of another kind |
 | `crosshair` = `false` | the HUD draws no crosshair while the weapon is in hand (the fists and the RPG). `true` or no field: the crosshair is shown |
+| `crosshair` = a number 1 to 13 | the weapon shows that crosshair of the HUD movie instead of the player's style (the player can turn that off with `gry_hud_crosshair_weapon`) |
 | `altLabel` | handed to the HUD (`GryMod.FlashHUD.LauncherLookFor(wep)`), **not drawn**: the movie has no text field for it |
 | `ammo`, `counter`, `burst` | resolved and returned by `ResolveWeapon`, **not read by the HUD**: the counter shows the weapon's engine ammo (`Clip1`, `GetMaxClip1`, the reserve of its primary ammo type) |
 
@@ -219,6 +220,10 @@ if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
 	})
 end
 ```
+
+A weapon that wants one of the 13 crosshairs of the HUD movie gives its number instead (`crosshair = 12`). The three last ones (11, 12, 13) are the ones the
+original game forces for its special weapons (a cannon, an overheating weapon...), and no Half-Life 2 weapon uses them. The player's own
+style is used again when he switches off "Weapons choose their crosshair" (`gry_hud_crosshair_weapon`).
 
 The weapon can also say it itself, with no call to GryMod: `SWEP.GryHUD = {crosshair = false}`. The HUD asks by the class name of
 the weapon in hand, so the adapters (which only see weapon entities) cannot decide it: use the registry or `SWEP.GryHUD`.

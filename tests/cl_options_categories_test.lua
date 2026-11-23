@@ -31,6 +31,7 @@ box:gry_hud
 box:gry_hud_binoculars
 box:gry_hud_boot
 box:gry_hud_crosshair
+box:gry_hud_crosshair_weapon
 box:gry_hud_damage
 box:gry_hud_damagefx
 box:gry_hud_energy_smooth

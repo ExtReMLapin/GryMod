@@ -155,9 +155,21 @@ Cross.DEFAULT_STYLE = 6
 
 -- The crosshair number for a style: 0 (none) when there is no weapon, the weapon hides it (or draws its own: its
 -- DrawCrosshair is false) or the player zooms; a style that is not one of the movie's 13 gives the default.
-function Cross.IndexFor(style, class, weaponDraws, zoomed)
-	if not class or not weaponDraws or zoomed or GryMod.API.WeaponValue(class, "crosshair", true) == false then
+-- A weapon may choose its own crosshair (the registry's `crosshair` is a number from 1 to 13, as the original forces the 11 to 13 by
+-- weapon) unless `weaponStyles` is false (the player's gry_hud_crosshair_weapon: he wants his own style everywhere).
+function Cross.IndexFor(style, class, weaponDraws, zoomed, weaponStyles)
+	if not class or not weaponDraws or zoomed then
 		return 0
+	end
+
+	local declared = GryMod.API.WeaponValue(class, "crosshair", true)
+
+	if declared == false then
+		return 0
+	end
+
+	if weaponStyles ~= false and isnumber(declared) and declared >= 1 and declared <= Cross.COUNT then
+		return math.floor(declared)
 	end
 
 	if type(style) ~= "number" or style ~= style or style < 1 or style > Cross.COUNT then
@@ -508,6 +520,14 @@ Cross.FRIENDLY_MOVIE = "hud_friendlycross"
 local STYLE_CONVAR = CreateClientConVar("gry_hud_crosshair_style", tostring(Cross.DEFAULT_STYLE), true, false,
 	"Crosshair style, 1 to 13 (the original's profile uses 6)")
 
+local WEAPON_CONVAR = CreateClientConVar("gry_hud_crosshair_weapon", "1", true, false,
+	"A weapon that declares its own crosshair (the weapon registry's crosshair field) shows it; 0: always the style chosen above")
+
+-- Whether the weapons may choose their crosshair (gry_hud_crosshair_weapon).
+function Cross.WeaponStyles()
+	return WEAPON_CONVAR:GetBool()
+end
+
 local instance, friendly
 local lastTime
 local spread, kick, lastNextFire = 0, 0, 0
@@ -688,7 +708,7 @@ function Cross.Paint()
 
 	local weapon = ply:GetActiveWeapon()
 	local class = IsValid(weapon) and weapon:GetClass() or nil
-	local index = Cross.IndexFor(STYLE_CONVAR:GetInt(), class, Cross.WeaponDraws(weapon), Cross.Zooming(ply))
+	local index = Cross.IndexFor(STYLE_CONVAR:GetInt(), class, Cross.WeaponDraws(weapon), Cross.Zooming(ply), WEAPON_CONVAR:GetBool())
 
 	if hidden(ply) then
 		index = 0

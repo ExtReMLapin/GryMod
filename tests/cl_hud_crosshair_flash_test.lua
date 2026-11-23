@@ -336,6 +336,51 @@ return {
 			end
 		},
 		{
+			-- Fails without the weapon style in Cross.IndexFor: a number in the registry's `crosshair` was never read (the user's style won)
+			name = "a weapon that declares a crosshair number (11 to 13 have no stock weapon) shows that one, unless the player turned the weapon styles off; hiding and zoom still win",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local API = GryMod.API
+				expect((API.RegisterWeapon("doc_test_cross_gun", {fire = "auto", crosshair = 12}))).to.beTrue()
+
+				expect(C.IndexFor(6, "doc_test_cross_gun", true, false)).to.equal(12)
+				expect(C.IndexFor(6, "doc_test_cross_gun", true, false, true)).to.equal(12)
+				-- the player does not want the weapons to choose: his own style
+				expect(C.IndexFor(6, "doc_test_cross_gun", true, false, false)).to.equal(6)
+				-- the weapon that draws its own, the zoom and no weapon still give none
+				expect(C.IndexFor(6, "doc_test_cross_gun", false, false)).to.equal(0)
+				expect(C.IndexFor(6, "doc_test_cross_gun", true, true)).to.equal(0)
+				expect(C.IndexFor(6, nil, true, false)).to.equal(0)
+
+				-- the three that the original forces by weapon
+				for _, style in ipairs({11, 12, 13}) do
+					API.RegisterWeapon("doc_test_cross_gun", {crosshair = style})
+					expect(C.IndexFor(3, "doc_test_cross_gun", true, false)).to.equal(style)
+				end
+
+				-- `true` keeps the player's style
+				API.RegisterWeapon("doc_test_cross_gun", {crosshair = true})
+				expect(C.IndexFor(3, "doc_test_cross_gun", true, false)).to.equal(3)
+			end
+		},
+		{
+			name = "gry_hud_crosshair_weapon: saved, on by default, with a check box in the HUD menu",
+			func = function(state)
+				local convar = GetConVar("gry_hud_crosshair_weapon")
+				expect(convar ~= nil).to.beTrue()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(GryMod.FlashCrosshair.WeaponStyles()).to.equal(convar:GetBool())
+				local saved = convar:GetString()
+				convar:SetString("0")
+				local ok, err = pcall(function() expect(GryMod.FlashCrosshair.WeaponStyles()).to.beFalse() end)
+				convar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "the spread grows with speed, in the air and while firing, and shrinks when crouching; it eases at 20 a second",
 			func = function(state)
 				local C = GryMod.FlashCrosshair

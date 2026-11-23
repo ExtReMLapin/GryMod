@@ -290,6 +290,30 @@ return {
 			end
 		},
 		{
+			-- Fails without the number case of CHECK.crosshair in sh_api_weapons.lua (a number is refused: "invalid crosshair")
+			name = "crosshair may also be the number of one of the 13 crosshairs of the movie (the weapon's own style); 0, 14, a fraction or text are refused",
+			func = function()
+				for _, style in ipairs({1, 6, 11, 12, 13}) do
+					expect((API.RegisterWeapon("t_wep_a", {crosshair = style}))).to.beTrue()
+					expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.equal(style)
+					expect(API.ResolveWeapon(weapon("t_wep_a")).crosshair).to.equal(style)
+				end
+
+				for _, bad in ipairs({0, 14, -1, 2.5, "11"}) do
+					local ok, reason = API.RegisterWeapon("t_wep_a", {crosshair = bad})
+					expect(ok).to.beFalse()
+					expect(string.find(reason, "crosshair", 1, true) ~= nil).to.beTrue()
+					expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.equal(13)
+				end
+
+				-- from SWEP.GryHUD too, and an invalid one is ignored
+				stored.t_wep_b = {GryHUD = {crosshair = 12}}
+				expect(API.WeaponValue("t_wep_b", "crosshair", true)).to.equal(12)
+				stored.t_wep_child = {GryHUD = {crosshair = 40}}
+				expect(API.WeaponValue("t_wep_child", "crosshair", true)).to.beNil()
+			end
+		},
+		{
 			name = "the functions are accepted for fire and counter",
 			func = function()
 				local ok = API.RegisterWeapon("t_wep_a", {fire = function() return "auto" end, counter = function() return "12" end})
