@@ -1,4 +1,4 @@
--- The big map: its saved settings (GryMod.Map.Settings). Five client convars and the accessors the other modules use. Whatever the convar holds (the
+-- The big map: its saved settings (GryMod.Map.Settings). Six client convars and the accessors the other modules use. Whatever the convar holds (the
 -- player can type anything in the console or in a cfg file) an accessor gives a value of the right kind and inside its range; the Parse functions are pure
 -- and take any text. The key that opens the map is made by the key factory (cl_key_binder.lua) in map/panel.lua: gry_map_key, M by default.
 
@@ -13,6 +13,7 @@ Settings.DEFAULT_ZOOM = 1
 Settings.DEFAULT_FX = "glitch"
 Settings.DEFAULT_FINISHED = false
 Settings.DEFAULT_GRID = true
+Settings.DEFAULT_CHROME = true
 
 -- GetConVar first, so that a hot reload of this file keeps the same convars
 local EnableConVar = GetConVar("gry_map_enable") or CreateClientConVar("gry_map_enable", "1", true, false,
@@ -25,6 +26,9 @@ local FinishedConVar = GetConVar("gry_map_finished") or CreateClientConVar("gry_
 	"The big map also shows the objectives that are done or failed, greyed (1), or only the active ones (0)", 0, 1)
 local GridConVar = GetConVar("gry_map_grid") or CreateClientConVar("gry_map_grid", "1", true, false,
 	"The big map shows its 8 x 8 grid with the letters A to H and the numbers 1 to 8 (1), or not (0)", 0, 1)
+
+local ChromeConVar = GetConVar("gry_map_chrome") or CreateClientConVar("gry_map_chrome", "1", true, false,
+	"The big map is drawn in the frame of the original Crysis PDA map (1), or in the plain panel it had before (0)", 0, 1)
 
 local function number(text)
 	local n = tonumber(text)
@@ -92,4 +96,8 @@ end
 
 function Settings.ShowGrid()
 	return Settings.ParseSwitch(GridConVar:GetString(), Settings.DEFAULT_GRID)
+end
+
+function Settings.Chrome()
+	return Settings.ParseSwitch(ChromeConVar:GetString(), Settings.DEFAULT_CHROME)
 end

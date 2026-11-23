@@ -54,6 +54,7 @@ function GryMod.MapOptionsPanel(Panel)
 		status:SetText(keyStatus(Map.Key.Chosen()))
 	end
 
+	GryMod.OptionBox(form, "Crysis PDA frame", "gry_map_chrome", "Draw the map in the frame of the original Crysis PDA map (its title, status strip, DONE button and opening). Off: the plain panel. Takes effect at the next opening.")
 	GryMod.OptionBox(form, "Grid", "gry_map_grid", "The 8 x 8 grid with the letters A to H and the numbers 1 to 8.")
 	GryMod.OptionBox(form, "Finished objectives", "gry_map_finished", "Show the objectives that are done or failed, greyed. Off: only the active ones.")
 

@@ -91,6 +91,9 @@ def _action(action):
         return '{"%s"}' % action["do"]
     if action["do"] == "color":
         return '{"color",%s,%s}' % (_str(action["theme"]), _str(action["target"] or ""))
+    if action["do"] == "child":
+        where = _str(action["label"]) if "label" in action else str(action["frame"])
+        return '{"child",%s,%s,%s}' % (_str(action["name"]), "true" if action["play"] else "false", where)
     if "label" in action:
         return '{"gotol",%s}' % _str(action["label"])
     return '{"goto",%d}' % action["frame"]

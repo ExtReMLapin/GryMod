@@ -15,11 +15,11 @@ return {
 	cases = {
 		-- fails when a convar of the big map is missing or not saved
 		{
-			name = "the convars exist and are saved: gry_map_enable, gry_map_zoom, gry_map_loading_fx, gry_map_finished, gry_map_grid",
+			name = "the convars exist and are saved: gry_map_enable, gry_map_zoom, gry_map_loading_fx, gry_map_finished, gry_map_grid, gry_map_chrome",
 			func = function()
 				S()
 
-				for _, name in ipairs({"gry_map_enable", "gry_map_zoom", "gry_map_loading_fx", "gry_map_finished", "gry_map_grid"}) do
+				for _, name in ipairs({"gry_map_enable", "gry_map_zoom", "gry_map_loading_fx", "gry_map_finished", "gry_map_grid", "gry_map_chrome"}) do
 					local convar = GetConVar(name)
 
 					expect(convar ~= nil).to.beTrue()
@@ -30,7 +30,7 @@ return {
 		},
 		-- fails when the defaults are not the documented ones
 		{
-			name = "the defaults: the map on, zoom 1, the glitch look, finished objectives hidden, the grid shown",
+			name = "the defaults: the map on, zoom 1, the glitch look, finished objectives hidden, the grid shown, the Crysis PDA frame on",
 			func = function()
 				local settings = S()
 
@@ -39,11 +39,13 @@ return {
 				expect(settings.DEFAULT_FX).to.equal("glitch")
 				expect(settings.DEFAULT_FINISHED).to.beFalse()
 				expect(settings.DEFAULT_GRID).to.beTrue()
+				expect(settings.DEFAULT_CHROME).to.beTrue()
 				expect(GetConVar("gry_map_enable"):GetDefault()).to.equal("1")
 				expect(GetConVar("gry_map_zoom"):GetDefault()).to.equal("1")
 				expect(GetConVar("gry_map_loading_fx"):GetDefault()).to.equal("glitch")
 				expect(GetConVar("gry_map_finished"):GetDefault()).to.equal("0")
 				expect(GetConVar("gry_map_grid"):GetDefault()).to.equal("1")
+				expect(GetConVar("gry_map_chrome"):GetDefault()).to.equal("1")
 			end
 		},
 		-- fails when a switch is read as the engine reads a boolean
@@ -99,6 +101,7 @@ return {
 				expect(type(settings.LoadingFx())).to.equal("string")
 				expect(type(settings.ShowFinished())).to.equal("boolean")
 				expect(type(settings.ShowGrid())).to.equal("boolean")
+				expect(type(settings.Chrome())).to.equal("boolean")
 			end
 		}
 	}

@@ -1,5 +1,5 @@
 -- Tests of the options page of the big map (lua/grymod/client/map/options.lua, GryMod.MapOptionsPanel), GLuaTest format, client realm. The page is a third entry of
--- the GryMod category of the Options tab, next to Config and Radar and map: the switch, the key, the grid, the finished objectives and the loading look. Opening
+-- the GryMod category of the Options tab, next to Config and Radar and map: the switch, the key, the Crysis PDA frame, the grid, the finished objectives and the loading look. Opening
 -- the page writes nothing. The stand-ins (RunConsoleCommand, spawnmenu.AddToolMenuOption) are put back in afterEach inside a pcall, also when a case failed.
 
 local function walk(panel, found)
@@ -57,7 +57,7 @@ return {
 	cases = {
 		-- fails without GryMod.MapOptionsPanel (the file is missing) or when a control is left out or moved
 		{
-			name = "the page holds, in this order: the Big map category, the switch, the key picker, the grid, the finished objectives and the loading look",
+			name = "the page holds, in this order: the Big map category, the switch, the key picker, the Crysis PDA frame, the grid, the finished objectives and the loading look",
 			func = function(state)
 				expect(isfunction(GryMod.MapOptionsPanel)).to.beTrue()
 
@@ -68,6 +68,7 @@ return {
 					"label:Big map",
 					"box:gry_map_enable",
 					"binder",
+					"box:gry_map_chrome",
 					"box:gry_map_grid",
 					"box:gry_map_finished",
 					"combo:gry_map_loading_fx"
