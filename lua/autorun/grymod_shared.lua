@@ -177,6 +177,7 @@ if SERVER then
 	include("grymod/server/sv_radar_pings.lua")
 	include("grymod/sh_mode_states.lua")
 	include("grymod/server/sv_mode_states.lua")
+	include("grymod/server/sv_objectives_demo.lua")
 
 	if GryMod.Workshop == false then
 	resource.AddFile("materials/grymod/flash/hud_ammohealthenergysuit_1.vmt")
