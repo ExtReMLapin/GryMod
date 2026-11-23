@@ -4,6 +4,9 @@
 
 local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx", "messages", "usehint", "pickups", "corners", "overheat"}
 
+-- the corner marks are off until the player asks for them (Options.List gives each element its `default`)
+local OFF_BY_DEFAULT = {corners = true}
+
 local saved = {}
 
 return {
@@ -26,7 +29,7 @@ return {
 				for _, name in ipairs(NAMES) do
 					local convar = GetConVar("gry_hud_" .. name)
 					expect(convar ~= nil).to.beTrue()
-					expect(convar:GetDefault()).to.equal("1")
+					expect(convar:GetDefault()).to.equal(OFF_BY_DEFAULT[name] and "0" or "1")
 					expect(GryMod.HUDOptions.Find(name)).to.exist()
 				end
 			end
@@ -54,7 +57,7 @@ return {
 			end
 		},
 		{
-			name = "Reset puts every switch back on",
+			name = "Reset puts every switch back to its default (on, but for the corner marks)",
 			func = function(state)
 				for _, name in ipairs(NAMES) do
 					GetConVar("gry_hud_" .. name):SetString("0")
@@ -63,7 +66,7 @@ return {
 				GryMod.HUDOptions.Reset()
 
 				for _, name in ipairs(NAMES) do
-					expect(GetConVar("gry_hud_" .. name):GetBool()).to.beTrue()
+					expect(GetConVar("gry_hud_" .. name):GetBool()).to.equal(not OFF_BY_DEFAULT[name])
 				end
 			end
 		},
