@@ -43,10 +43,10 @@ box:gry_hud_energy_smooth
 box:gry_hud_grenade
 box:gry_hud_grenade_edge
 box:gry_hud_hit
-box:gry_hud_messages
-box:gry_hud_pickups
 box:gry_hud_lost_on_death
+box:gry_hud_messages
 box:gry_hud_overheat
+box:gry_hud_pickups
 box:gry_hud_quickmenu
 box:gry_hud_status
 box:gry_hud_usehint
@@ -55,10 +55,10 @@ box:gry_malfunction_empty
 box:gry_menu_keep_highlight
 box:gry_menu_pointer_film
 box:gry_menu_ring_film
+box:gry_menu_show_refused
 box:gry_msg_cloak_disabled
 box:gry_msg_cloak_health
 box:gry_msg_killed_friend
-box:gry_menu_show_refused
 box:gry_screenfx
 box:gry_sound_cloak_loop
 box:gry_sound_malfunction_loop
@@ -86,6 +86,8 @@ slider:gry_zoom_tap_ms]]
 
 local RADAR = [[box:gry_hud_radar
 box:gry_hud_radarhex
+box:gry_hud_radarmarkers
+box:gry_hud_radarpings
 box:gry_hud_radarunits
 box:gry_minimap
 box:gry_minimap_definition_auto
