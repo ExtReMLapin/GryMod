@@ -360,6 +360,7 @@ function GryMod.AdminOptions(Panel)
 		}
 	})
 	form:ControlHelp("Crysis vanilla: the original game's walk 177 and sprint 266 units a second, the speed mode's sprint climbing to 757 in a second. Ratios: GMod's walk 200 and sprint 400 with the same increases in the speed mode. Both also use the original's energy rules.")
+	GryMod.AdminOption(Panel, "Objectives", "gry_objectives", "bool", {into = form, help = "Objectives given by maps and addons are sent to the players. Off: none are sent."})
 	GryMod.AdminOption(Panel, "Grenade warning: armed ones only", "gry_grenade_armed_only", "bool", {into = form, help = "Only armed grenades, mines in the air... Off: also the ones lying around."})
 	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
 	GryMod.AdminOption(Panel, "Health regeneration", "gry_health_regen", "bool", {into = form, help = "The suit repairs the health over time. Off: no regeneration."})
