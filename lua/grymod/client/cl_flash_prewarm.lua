@@ -104,6 +104,9 @@ Prewarm.Pieces = {
 	end},
 	{name = "pickups", tier = 2, hud = true, option = "pickups", films = function()
 		return movieNames(movieOf("FlashPickup", "MOVIE"))
+	end},
+	{name = "weaponlist", tier = 2, hud = true, option = "weaponlist", films = function()
+		return movieNames(movieOf("FlashWeaponList", "MOVIE"))
 	end}
 }
 

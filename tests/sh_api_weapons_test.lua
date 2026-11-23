@@ -291,7 +291,7 @@ return {
 		},
 		{
 			-- Fails without the `listIcon` field in sh_api_weapons.lua (dropped as unknown: GetWeapon(...).listIcon is nil)
-			name = "listIcon: one of the 26 silhouettes of the weapon list movie; an unknown label or a non-string is refused and keeps the previous entry",
+			name = "listIcon: one of the 25 silhouettes of the weapon list movie; an unknown label or a non-string is refused and keeps the previous entry",
 			func = function()
 				expect(API.WeaponListIcons).to.exist()
 

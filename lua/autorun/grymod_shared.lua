@@ -138,6 +138,7 @@ if SERVER then
 	AddCSLuaFile("grymod/flash/hud_corner_right.lua")
 	AddCSLuaFile("grymod/sh_mode_states.lua")
 	AddCSLuaFile("grymod/flash/hud_weaponselection.lua")
+	AddCSLuaFile("grymod/client/cl_hud_weaponlist_flash.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -442,4 +443,5 @@ if CLIENT then
 	include("grymod/client/cl_hud_radar_pings.lua")
 	include("grymod/client/cl_hud_corners_flash.lua")
 	include("grymod/sh_mode_states.lua")
+	include("grymod/client/cl_hud_weaponlist_flash.lua")
 end

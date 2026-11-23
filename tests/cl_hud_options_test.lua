@@ -2,7 +2,7 @@
 -- client realm. The original game has no such switches (its menu only has the colour sets and the crosshair
 -- style, see research-ui2/options.md), so these are GryMod's own and every element can be turned off.
 
-local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx", "messages", "usehint", "pickups", "corners", "overheat"}
+local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx", "messages", "usehint", "pickups", "corners", "overheat", "weaponlist"}
 
 local saved = {}
 
@@ -26,7 +26,8 @@ return {
 				for _, name in ipairs(NAMES) do
 					local convar = GetConVar("gry_hud_" .. name)
 					expect(convar ~= nil).to.beTrue()
-					expect(convar:GetDefault()).to.equal("1")
+					-- (corners are off by default: the element says so in its `default` field)
+					expect(convar:GetDefault()).to.equal(GryMod.HUDOptions.Find(name).default or "1")
 					expect(GryMod.HUDOptions.Find(name)).to.exist()
 				end
 			end

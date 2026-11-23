@@ -1110,7 +1110,13 @@ local function feed(ply)
 	end
 
 	local weaponChanged = fed.weapon ~= weapon
+	local previousWeapon = fed.weapon
 	fed.weapon = weapon
+
+	-- the weapon list (cl_hud_weaponlist_flash.lua) shows at each real change of the weapon in hand; nothing of its own runs between two changes
+	if weaponChanged and GryMod.FlashWeaponList then
+		GryMod.FlashWeaponList.OnWeaponChanged(ply, weapon, previousWeapon)
+	end
 
 	-- the heat bar: the source is looked up when the weapon (or the switch) changes, the weapon is asked at each frame. Nothing runs
 	-- for a weapon without a heat source.
@@ -1387,7 +1393,7 @@ end
 function Module.ResetAll()
 	Module.Reset()
 
-	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashMessages, GryMod.FlashUse, GryMod.FlashPickup, GryMod.FlashCorners}) do
+	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashMessages, GryMod.FlashUse, GryMod.FlashPickup, GryMod.FlashCorners, GryMod.FlashWeaponList}) do
 		-- a piece that has a state to keep (the boot sequences) rebuilds its pictures instead of starting over
 		local rebuild = module and (module.Rebuild or module.Reset)
 
