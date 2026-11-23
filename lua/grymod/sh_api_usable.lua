@@ -8,6 +8,10 @@
 -- decides, see cl_hud_crosshair_flash.lua), `use` ("once", the default, for a use that changes the state of the thing: a grenade taken, a mounted gun,
 -- a vehicle; "repeat" for one that can be done again at once: a door, a button, a charger), `cooldown` (seconds a repeatable use is dimmed after the key),
 -- `ready(ent)` (false while the thing cannot be used again) and `busy(ent, ply)` (true: no prompt now, the thing is in use).
+-- More fields say WHEN an entry applies: `spawnflags` (a rule over the entity's spawnflags, which the client can read: a door that "ignores +use", a
+-- button that only reacts to touch, a func_door without "Use opens" never answer the key, so they get no prompt), `active` (a function, false while the
+-- entry does not apply at all: the ladder only while sv_ladder_useonly is 1), `range` (units; the key reaches 80 by default, API.USE_REACH), `hold`
+-- (the key must be kept down: one pulse at the press, not one for each repeat of the bind) and `nolimits` (a "grab" with no size or mass limit).
 --
 -- An entry is matched on a class (`class`, a name or a list), on a base class (`base`) or by a function (`match`), like the entries of the
 -- tracked registry; the entries are tried by priority (the higher first), then in the order of registration. The stock Half-Life 2 entries
@@ -27,6 +31,13 @@ API.UsableIcons = ICONS
 
 local MAX_NAME, MAX_TEXT = 64, 64
 local MAX_PRIORITY = 1000
+local MAX_FLAGS = 0x7FFFFFFF
+local MAX_RANGE = 1000
+
+-- How far the use key reaches: PLAYER_USE_RADIUS of the Source SDK, the distance from the eye to the point hit. The crosshair used to test 110.
+API.USE_REACH = 80
+
+local band = bit.band
 
 local function names(v)
 	if isstring(v) then
@@ -66,6 +77,38 @@ local function set(list)
 	return result
 end
 
+-- A rule over the spawnflags: a table {need = bits (all must be set), forbid = bits (none may be set)}, or a function(flags, ent) that says true to let the
+-- entity through. Returns the rule, or nil when it is not valid.
+local function flagBits(v)
+	return isnumber(v) and v >= 0 and v <= MAX_FLAGS and v == math.floor(v)
+end
+
+local function flagsRule(v)
+	if isfunction(v) then
+		return v
+	end
+
+	if not istable(v) then
+		return nil
+	end
+
+	local count = 0
+
+	for key, bits in pairs(v) do
+		if (key ~= "need" and key ~= "forbid") or not flagBits(bits) then
+			return nil
+		end
+
+		count = count + 1
+	end
+
+	if count == 0 then
+		return nil
+	end
+
+	return {need = v.need, forbid = v.forbid}
+end
+
 local CHECK = {
 	class = names,
 	base = names,
@@ -82,10 +125,21 @@ local CHECK = {
 	use = function(v) if v == "once" or v == "repeat" then return v end end,
 	cooldown = function(v) if isnumber(v) and v >= 0 and v <= 60 then return v end end,
 	ready = function(v) if isfunction(v) then return v end end,
-	busy = function(v) if isfunction(v) then return v end end
-}
+	busy = function(v) if isfunction(v) then return v end end,
+	-- what the spawnflags must say for the entry to apply (see flagsRule)
+	spawnflags = flagsRule,
+	-- false: the entry does not apply now (a rule of the server's settings, not of the entity)
+	active = function(v) if isfunction(v) then return v end end,
+	-- how far the key reaches for this entry, in units (API.USE_REACH when missing)
+	range = function(v) if isnumber(v) and v >= 1 and v <= MAX_RANGE then return v end end,
+	-- the key must be kept down (a charger, a wheel): the feedback comes once, at the press
+	hold = function(v) if isbool(v) then return v end end,
+	-- a "grab" whose engine use has no size or mass limit (the floor turret)
+	nolimits = function(v) if isbool(v) then return v end end
+	}
 
-local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority", "nonsolid", "group", "use", "cooldown", "ready", "busy"}
+	local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority", "nonsolid", "group", "use", "cooldown", "ready", "busy", "spawnflags", "active", "range", "hold",
+	"nolimits"}
 
 -- The entries by priority, then in the order of registration; they live through a reload of this file.
 local order = API._usableOrder or {}
@@ -94,10 +148,12 @@ API._usableOrder = order
 -- [class] = the entries that can match an entity of that class (and .static[entry] = the class or base matched), or false when none can.
 local cache = {}
 local nonSolidList -- the classes of the entries marked nonsolid (made when asked, forgotten at each change)
+local maxRange -- the greatest range of the entries (made when asked, forgotten at each change)
 
 local function changed()
 	cache = {}
 	nonSolidList = nil
+	maxRange = nil
 end
 
 local function priorityOf(entry)
@@ -131,7 +187,8 @@ function API.RegisterUsable(key, def)
 	end
 
 	local entry = {key = key, icon = "use", text = "USE", priority = 0, use = "once", matchId = "usable:" .. key .. "/match", textId = "usable:" .. key .. "/text",
-		nameId = "usable:" .. key .. "/name", readyId = "usable:" .. key .. "/ready", busyId = "usable:" .. key .. "/busy"}
+		nameId = "usable:" .. key .. "/name", readyId = "usable:" .. key .. "/ready", busyId = "usable:" .. key .. "/busy",
+				flagsId = "usable:" .. key .. "/flags", activeId = "usable:" .. key .. "/active"}
 
 	for _, field in ipairs(FIELDS) do
 		local value = def[field]
@@ -164,6 +221,8 @@ function API.RegisterUsable(key, def)
 	API.SafeCallReset(entry.nameId)
 	API.SafeCallReset(entry.readyId)
 	API.SafeCallReset(entry.busyId)
+	API.SafeCallReset(entry.flagsId)
+	API.SafeCallReset(entry.activeId)
 
 	for i = 1, #order do
 		if order[i].key == key then
@@ -246,8 +305,50 @@ local function build(class, ent)
 	return list or false
 end
 
+-- Whether the spawnflags of the entity let the entry apply: true when the entry has no rule, or when the entity cannot say its flags (a stand-in, a
+-- client that cannot read them) or the rule's function fails: only a flag that clearly says no refuses. Pure over the flags (tests use fake entities).
+function API.UsableFlagsAllow(entry, ent)
+	if not entry or not entry.spawnflags or not ent or not isfunction(ent.GetSpawnFlags) then
+		return true
+	end
+
+	local flags = ent:GetSpawnFlags()
+
+	if not isnumber(flags) then
+		return true
+	end
+
+	local rule = entry.spawnflags
+
+	if isfunction(rule) then
+		local ok, result = API.SafeCall(entry.flagsId, rule, flags, ent)
+
+		return not ok or result == true
+	end
+
+	if rule.need and band(flags, rule.need) ~= rule.need then
+		return false
+	end
+
+	return not (rule.forbid and band(flags, rule.forbid) ~= 0)
+end
+
+-- Whether an entry applies now: its `active` function (a failing one counts as "applies") and the spawnflags of the entity.
+local function applies(entry, ent)
+	if entry.active then
+		local ok, result = API.SafeCall(entry.activeId, entry.active)
+
+		if ok and not result then
+			return false
+		end
+	end
+
+	return API.UsableFlagsAllow(entry, ent)
+end
+
 -- The first entry that matches the entity, or nil (a stored entry: read it, do not change it). Fields: key, priority, icon, text, name,
--- class, base, match. The match functions run under SafeCall.
+-- class, base, match, and the others the entry was registered with. The match functions run under SafeCall. An entry whose `active` says no, or whose
+-- `spawnflags` rule refuses the entity, does not match: the next entry is tried.
 function API.GetUsable(ent)
 	if order[1] == nil then
 		return nil
@@ -277,13 +378,15 @@ function API.GetUsable(ent)
 		local entry = list[i]
 
 		if list.static[entry] then
-			return entry
-		end
+			if applies(entry, ent) then
+				return entry
+			end
+		else
+			local ok, result = API.SafeCall(entry.matchId, entry.match, ent)
 
-		local ok, result = API.SafeCall(entry.matchId, entry.match, ent)
-
-		if ok and result == true then
-			return entry
+			if ok and result == true and applies(entry, ent) then
+				return entry
+			end
 		end
 	end
 
@@ -293,26 +396,59 @@ end
 -- The classes of the entries marked `nonsolid`, in the order of the entries (a stored list: read it, do not change it). The crosshair looks for the
 -- entities of these classes along the aim ray, since the eye trace passes through them.
 function API.UsableNonSolidClasses()
-	if not nonSolidList then
-		nonSolidList = {}
+	if nonSolidList then
+		return nonSolidList
+	end
 
-		local seen = {}
+	local list, seen, volatile = {}, {}, false
 
-		for i = 1, #order do
-			local entry = order[i]
+	for i = 1, #order do
+		local entry = order[i]
 
-			if entry.nonsolid and entry.class then
+		if entry.nonsolid and entry.class then
+			-- an entry that applies only at times (the ladder) is asked again at each call, the others are kept
+			volatile = volatile or entry.active ~= nil
+
+			local ok, result = true, true
+
+			if entry.active then
+				ok, result = API.SafeCall(entry.activeId, entry.active)
+			end
+
+			if not ok or result then
 				for _, class in ipairs(entry.class) do
 					if not seen[class] then
 						seen[class] = true
-						nonSolidList[#nonSolidList + 1] = class
+						list[#list + 1] = class
 					end
 				end
 			end
 		end
 	end
 
-	return nonSolidList
+	if not volatile then
+		nonSolidList = list
+	end
+
+	return list
+end
+
+-- How far the key reaches for an entry (its `range`, else the engine's 80 units); for no entry, the engine's.
+function API.UsableRange(entry)
+	return entry and entry.range or API.USE_REACH
+end
+
+-- The greatest range of all the entries: how far the crosshair has to look to see anything usable (80 for the stock entries).
+function API.UsableMaxRange()
+	if not maxRange then
+		maxRange = API.USE_REACH
+
+		for i = 1, #order do
+			maxRange = math.max(maxRange, order[i].range or 0)
+		end
+	end
+
+	return maxRange
 end
 
 -- Whether the thing can be used now, for an entry with a `ready` function (true when it has none, or when the function fails: a broken function must not
@@ -428,7 +564,7 @@ local function register(key, def)
 end
 
 -- (a hot reload of this file: the entries of the earlier versions are taken away)
-for _, old in ipairs({"hl2_weapons", "hl2_items", "hl2_turrets"}) do
+for _, old in ipairs({"hl2_weapons", "hl2_items", "hl2_turrets", "hl2_doors", "hl2_floor_turret", "hl2_metropolice"}) do
 	API.UnregisterUsable(old)
 end
 
@@ -443,7 +579,10 @@ register("hl2_ammo_crate", {class = "item_ammo_crate", icon = "pickup", text = "
 
 -- The wall chargers: FCAP_CONTINUOUS_USE (func_recharge.cpp), held +use. item_healthcharger: d1_canals_01 (three), d1_canals_07, d2_coast_08;
 -- item_suitcharger: d1_trainstation_01, d1_trainstation_05, d1_canals_08. (func_healthcharger and func_recharge are the old brush versions.)
-register("hl2_chargers", {class = {"item_healthcharger", "item_suitcharger", "func_healthcharger", "func_recharge"}, icon = "use", text = "USE", use = "repeat", cooldown = 0.5})
+-- The key is kept down while they work, so the text says it and the feedback comes once (hold).
+register("hl2_chargers", {
+	class = {"item_healthcharger", "item_suitcharger", "func_healthcharger", "func_recharge"}, icon = "use", text = "USE (HOLD)", use = "repeat", cooldown = 0.5, hold = true
+})
 
 -- The vehicles: CPropVehicleDriveable::ObjectCaps (vehicle_base.h), the airboat (USE_IN_RADIUS), the crane, the prisoner pod and the
 -- choreographed seats all have FCAP_IMPULSE_USE. d2_coast_01 (prop_vehicle_jeep: the buggy, and the crane), d1_canals_05 and the other canal maps
@@ -452,64 +591,85 @@ register("hl2_chargers", {class = {"item_healthcharger", "item_suitcharger", "fu
 -- player sits in a vehicle).
 register("hl2_vehicles", {match = function(ent) return ask(ent, "IsVehicle") == true end, icon = "enter", text = "ENTER VEHICLE", use = "once"})
 
--- The ladder: func_useableladder, +use gets on (func_ladder.h). d1_canals_01 (once), d1_canals_03 (five), gm_construct (once). A ladder is not
--- solid: the eye trace never hits it, so the crosshair looks for it along the aim ray (nonsolid). While the player climbs it there is no prompt.
+-- The ladder: func_useableladder. The player gets on it by WALKING INTO IT (the game's movement code, sv_ladder_useonly 0, the default): the use key is
+-- optional, so there is no prompt, unless the server set sv_ladder_useonly 1 ("ladders can only be mounted by pressing +USE"). That variable is
+-- replicated to the client. The class has no use cap of its own (ObjectCaps read in game: 2), the key is handled by the movement; its reach is 64 units.
+-- d1_canals_01 (once), d1_canals_03 (five), gm_construct (once). A ladder is not solid: the eye trace never hits it, so the crosshair looks for it along
+-- the aim ray (nonsolid). While the player climbs it there is no prompt.
+local function ladderUseOnly()
+	local var = GetConVar("sv_ladder_useonly")
+
+	return var ~= nil and var:GetBool()
+end
+
 register("hl2_ladders", {
-	class = "func_useableladder", icon = "ladder", text = "CLIMB", nonsolid = true, use = "once",
+	class = "func_useableladder", icon = "ladder", text = "CLIMB", nonsolid = true, use = "once", active = ladderUseOnly, range = 64,
 	busy = function(_, ply) return ply ~= nil and isfunction(ply.GetMoveType) and ply:GetMoveType() == MOVETYPE_LADDER end
 })
 
 -- What the player lifts: CPhysicsProp::ObjectCaps (props.cpp) and CPhysBox::ObjectCaps (physobj.cpp) give FCAP_IMPULSE_USE when
 -- CBasePlayer::CanPickupObject(this, 35, 128) is true: at most 35 kg and 128 units on every side (the crosshair applies those limits to a
--- "grab" icon, see UsableFor, and asks the server for the mass). prop_physics in every stock map (d1_trainstation_01: 178), func_physbox in d1_canals_02
--- (25), prop_ragdoll in d1_town_01 (36; the HL2 SDK gives ragdolls no use caps: this one is Garry's Mod's carry of a ragdoll and is to be checked in
--- game). "You can pick up almost anything": the owner is not sure the prompt is wanted on all of them, so they are the group "props", which the
--- player switches with gry_usehint_props (off by default).
+-- "grab" icon, see UsableFor, and asks the server for the mass), or whatever the spawnflags say. prop_physics in every stock map (d1_trainstation_01:
+-- 178), func_physbox in d1_canals_02 (25). prop_ragdoll is NOT here: its ObjectCaps has no use bit (read in game, 0x40000002), the game does not lift it with
+-- the key. "You can pick up almost anything": the owner is not sure the prompt is wanted on all of them, so they are the group "props", which the player
+-- switches with gry_usehint_props (off by default).
+--
+-- The flags: prop_physics 512 "Prevent pickup" is never liftable, and a prop that starts frozen (8 "motion disabled") only with 64 "enable motion on
+-- gravity gun grab". func_physbox 8192 "Ignore +USE for Pickup" is never, 32768 "motion disabled" only with 131072. (props_shared.h, physobj.h.)
 register("hl2_props", {
-	class = {"prop_physics", "prop_physics_multiplayer", "prop_ragdoll", "func_physbox"},
-	icon = "grab", text = "PICK UP", group = "props", use = "once"
+	class = {"prop_physics", "prop_physics_multiplayer"}, icon = "grab", text = "PICK UP", group = "props", use = "once",
+	spawnflags = function(flags) return band(flags, 512) == 0 and (band(flags, 8) == 0 or band(flags, 64) ~= 0) end
 })
+
+register("hl2_physbox", {
+	class = "func_physbox", icon = "grab", text = "PICK UP", group = "props", use = "once",
+	spawnflags = function(flags) return band(flags, 8192) == 0 and (band(flags, 32768) == 0 or band(flags, 131072) ~= 0) end
+})
+
+-- The floor turret: its Use is PickupObject with no limit (npc_turret_floor.h; read in game: after Use the player holds it, IsPlayerHolding). Not a toggle,
+-- as the first list said. A carry like the props, so the same group; the limits of a prop do not apply to it. d2_prison_02 and d2_prison_03.
+register("hl2_floor_turret", {class = "npc_turret_floor", icon = "grab", text = "PICK UP", group = "props", use = "once", nolimits = true})
 
 -- The thrown frag grenade (npc_grenade_frag) has "Allow +USE pickup" (basegrenade_shared.h): it exists only at run time. Taking it changes the state
 -- (it is in the hand, or it goes off), so one-shot; it is not a prop of the group (a grenade that is about to explode is worth a prompt).
 register("hl2_grenade", {class = "npc_grenade_frag", icon = "grab", text = "PICK UP", use = "once"})
 
--- The doors: CBasePropDoor::ObjectCaps (props.cpp, unless "ignore +use"), CBaseDoor with the "use opens" flag (doors.h). The server's flags are not
--- readable on the client: a door that ignores +use also shows the prompt. prop_door_rotating in d1_trainstation_01 (9) and d1_town_01 (4), func_door in
--- d1_trainstation_01 (7), func_door_rotating in d1_trainstation_01 (9). A door can be used again once it has moved: a cooldown of a second.
-register("hl2_doors", {class = {"prop_door_rotating", "func_door", "func_door_rotating"}, icon = "use", text = "USE", use = "repeat", cooldown = 1})
+-- The doors: CBasePropDoor::ObjectCaps (props.cpp) answers the key unless 32768 "Ignore player +USE" is set (36 stock doors have it: barney_door_1 and _2 of
+-- d1_trainstation_01 are the examples). CBaseDoor (func_door, func_door_rotating, doors.h) answers it ONLY with 256 "Use opens": 367 of the 492 stock
+-- func_door have neither that nor 1024 "Touch opens" (a button or a trigger opens them), so they get no prompt. A door that "starts locked" (2048) still
+-- takes the key (it plays the locked sound); whether it is locked NOW cannot be read on the client (checked: GetInternalVariable gives nothing), so the
+-- prompt stays. A door can be used again once it has moved: a cooldown of a second. prop_door_rotating in d1_trainstation_01 (9) and d1_town_01 (4),
+-- func_door in d1_canals_01 (-766 -7378 56), func_door_rotating in d1_trainstation_01.
+register("hl2_prop_doors", {class = "prop_door_rotating", icon = "use", text = "USE", use = "repeat", cooldown = 1, spawnflags = {forbid = 32768}})
+register("hl2_func_doors", {class = {"func_door", "func_door_rotating"}, icon = "use", text = "USE", use = "repeat", cooldown = 1, spawnflags = {need = 256}})
 
--- The buttons: CBaseButton with "use activates" (buttons.cpp), CMomentaryRotButton (continuous use). func_button in d1_trainstation_01 (3) and d1_eli_01
--- (20), func_rot_button in d1_town_01 (5), momentary_rot_button (the wheels) in d1_canals_05 (4). A button waits before it works again (its `wait`, not
--- readable on the client): a cooldown of a second.
-register("hl2_buttons", {class = {"func_button", "func_rot_button", "momentary_rot_button"}, icon = "use", text = "USE", use = "repeat", cooldown = 1})
+-- The buttons: CBaseButton (func_button, func_rot_button) answers the key only with 1024 "Use activates" (buttons.cpp); 10 stock buttons are touch or
+-- damage only. A button waits before it works again (its `wait`, not readable on the client): a cooldown of a second. func_button in
+-- d1_trainstation_01 (soda_machine_1) and d1_eli_01 (20), func_rot_button in d1_town_01 (5). The wheels (momentary_rot_button, d1_canals_05: four) turn
+-- while the key is held (FCAP_CONTINUOUS_USE), with the same flag 1024.
+register("hl2_buttons", {class = {"func_button", "func_rot_button"}, icon = "use", text = "USE", use = "repeat", cooldown = 1, spawnflags = {need = 1024}})
+register("hl2_wheels", {class = "momentary_rot_button", icon = "use", text = "USE (HOLD)", use = "repeat", cooldown = 1, hold = true, spawnflags = {need = 1024}})
 
--- The mounted guns: CFuncTank::ObjectCaps (func_tank.h: FCAP_IMPULSE_USE, USE_IN_RADIUS, all func_tank* classes). Taking the gun changes the state
--- (the player now controls it): one-shot. func_tank in d1_canals_01a, d1_canals_07, d2_coast_01.
+-- The mounted guns: CFuncTank::ObjectCaps (func_tank.h: FCAP_IMPULSE_USE, USE_IN_RADIUS, all func_tank* classes), but its Use does nothing unless 32
+-- "Controllable" is set (13 maps have such a gun that is not). The control volume the player must stand in is a server trigger: not readable, the prompt
+-- shows whatever the place. Taking the gun changes the state (the player now controls it): one-shot. func_tank in d1_canals_01a, d1_canals_07, d2_coast_01.
 register("hl2_tanks", {
 	class = {"func_tank", "func_tankairboatgun", "func_tankapcrocket", "func_tanklaser", "func_tankmortar", "func_tankphyscannister",
 		"func_tankpulselaser", "func_tankrocket", "func_tank_combine_cannon"},
-	icon = "use", text = "USE", use = "once"
+	icon = "use", text = "USE", use = "once", spawnflags = {need = 32}
 })
 
--- The floor turret (npc_turret_floor.h: +use toggles it on and off): it can be done again. npc_turret_floor in d2_prison_02.
-register("hl2_floor_turret", {class = "npc_turret_floor", icon = "use", text = "USE", use = "repeat", cooldown = 1})
-
 -- The NPCs that answer +use while they live: CAI_PlayerAlly::ObjectCaps (ai_playerally.h) through UsableNPCObjectCaps, which gives
--- FCAP_IMPULSE_USE to an NPC that is alive. The citizen, Barney, Alyx and the vortigaunt (CNPC_PlayerCompanion), Dr Mossman and the Monk
--- (CAI_PlayerAlly). npc_citizen in d1_trainstation_01, npc_barney in d1_trainstation_01 and d1_trainstation_05, npc_alyx in d1_eli_01,
--- npc_vortigaunt in d1_canals_01 (boxcar) and d1_eli_01, npc_monk in d1_town_01, npc_mossman in d1_eli_01. The metropolice also answers
--- +use (npc_metropolice.h, PrecriminalUse): d1_trainstation_01. Talking can be done again.
-local TALKERS = {npc_citizen = true, npc_barney = true, npc_alyx = true, npc_vortigaunt = true, npc_mossman = true, npc_monk = true}
+-- FCAP_IMPULSE_USE to an NPC that is alive. Only the ones whose Use does something: the citizen (follow me, or a question), Barney and Alyx (they speak)
+-- and the vortigaunt (he heals, or speaks), all CNPC_PlayerCompanion. npc_citizen in d1_trainstation_01, npc_barney in d1_trainstation_01 and
+-- d1_trainstation_05, npc_alyx in d1_eli_01, npc_vortigaunt in d1_canals_01 (boxcar) and d1_eli_01. NOT here, although the game gives them a use cap
+-- (ObjectCaps read in game: 26): the Monk, Dr Mossman and G-Man have no Use function (the key does nothing), and the metropolice only gets
+-- angry (PrecriminalUse adds a warning). Kleiner, Eli, Breen and the dog have no use cap at all. Talking can be done again.
+local TALKERS = {npc_citizen = true, npc_barney = true, npc_alyx = true, npc_vortigaunt = true}
 
 register("hl2_talkers", {
 	match = function(ent) return ask(ent, "IsNPC") == true and TALKERS[ent:GetClass()] == true and (ask(ent, "Health") or 0) > 0 end,
 	icon = "use", text = "TALK", use = "repeat", cooldown = 1
-})
-
-register("hl2_metropolice", {
-	match = function(ent) return ask(ent, "IsNPC") == true and ent:GetClass() == "npc_metropolice" and (ask(ent, "Health") or 0) > 0 end,
-	icon = "use", text = "USE", use = "repeat", cooldown = 1
 })
 
 -- Garry's Mod's own: gmod_button (ENT:Use toggles it or presses it) in gamemodes/sandbox/entities/entities/gmod_button.lua, gmod_wheel
