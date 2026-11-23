@@ -15,6 +15,7 @@ return {
 			id = "hl2c.d1_town_02a.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-6584, -716, -3180),
 			via = {Vector(-7504, -358, -3344)},
+			after = "hl2c.d1_town_02a.hl2_beat_cemetery",
 			complete = {kind = "changelevel", target = "d1_town_04"},
 		},
 	},

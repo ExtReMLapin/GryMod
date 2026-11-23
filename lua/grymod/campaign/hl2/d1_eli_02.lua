@@ -13,6 +13,7 @@ return {
 		{
 			id = "hl2c.d1_eli_02.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-3504, 4048, -1604),
+			after = "hl2c.d1_eli_02.hl2_get_gravitygun",
 			complete = {kind = "changelevel", target = "d1_town_01"},
 		},
 		-- [hl2/d1_eli_02 #1224] classname=logic_achievement targetname=achievement_found_HEVplate origin=-215.103 822.521 -2487 AchievementEvent=ACHIEVEMENT_EVENT_HL2_FIND_HEVFACEPLATE hammerid=2648875

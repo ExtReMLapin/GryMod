@@ -15,6 +15,7 @@ return {
 			id = "hl2c.d3_c17_06a.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(2144, 3066, -8),
 			via = {Vector(2560, 4904, -168)},
+			after = "hl2c.d3_c17_06a.hl2_beat_toxictunnel",
 			complete = {kind = "changelevel", target = "d3_c17_06b"},
 		},
 		-- [hl2/d3_c17_06a #1367] classname=logic_achievement targetname=achievement_cache_1 origin=3781.96 -1785.83 -243.223 AchievementEvent=ACHIEVEMENT_EVENT_HL2_LAMDACACHE_FREEWAYTUNNEL hammerid=607449

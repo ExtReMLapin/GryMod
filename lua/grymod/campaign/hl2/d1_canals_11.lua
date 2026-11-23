@@ -18,6 +18,7 @@ return {
 			id = "hl2c.d1_canals_11.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-11520, -1104, -968),
 			via = {Vector(7477.99, 4867.84, -924), Vector(6341.08, 4859.53, -964), Vector(6396, 5352, -848), Vector(6152, 5136, -799.8)},
+			after = "hl2c.d1_canals_11.hl2_get_airboatgun",
 			complete = {kind = "changelevel", target = "d1_canals_12"},
 		},
 	},

@@ -26,6 +26,7 @@ return {
 			id = "hl2c.ep2_outland_09.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(3328, 9904, 333),
 			via = {Vector(456, -9186, 121), Vector(-1251, -9490, 77), Vector(-247.95, -7565.51, 107.09), Vector(2450.96, 1847.15, 73.46)},
+			after = "hl2c.ep2_outland_09.ep2_kill_combinecannon",
 			complete = {kind = "changelevel", target = "ep2_outland_10"},
 		},
 		-- [ep2/ep2_outland_09 #2681] classname=logic_achievement targetname=achievement.van origin=-466.744 -4574.84 73.0869 AchievementEvent=ACHIEVEMENT_EVENT_EP2_RADARCACHE_VAN hammerid=3297692

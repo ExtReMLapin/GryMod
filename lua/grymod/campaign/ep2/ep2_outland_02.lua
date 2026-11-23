@@ -23,6 +23,7 @@ return {
 			id = "hl2c.ep2_outland_02.exit.ep2_outland_03", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-925, -10261, -428),
 			via = {Vector(-3189.81, -9234.5, -865.97)},
+			after = "hl2c.ep2_outland_02.ep2_beat_antlioninvasion",
 			complete = {kind = "changelevel", target = "ep2_outland_03"},
 		},
 		-- [ep2/ep2_outland_02 #547] classname=trigger_changelevel map=ep2_outland_05 landmark=landmark_ep2_outland_04-05 spawnflags=0 hammerid=758487
@@ -31,6 +32,7 @@ return {
 			id = "hl2c.ep2_outland_02.exit.ep2_outland_05", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-4032, -9968, 208),
 			via = {Vector(-3189.81, -9234.5, -865.97)},
+			after = "hl2c.ep2_outland_02.ep2_beat_antlioninvasion",
 			complete = {kind = "changelevel", target = "ep2_outland_05"},
 		},
 	},

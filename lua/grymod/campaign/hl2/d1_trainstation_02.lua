@@ -18,6 +18,7 @@ return {
 			id = "hl2c.d1_trainstation_02.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-5328, -4486, 64),
 			via = {Vector(-3728, -696, 78), Vector(-3912, -816, 120), Vector(-4268, -808, 120)},
+			after = "hl2c.d1_trainstation_02.hl2_put_canintrash",
 			complete = {kind = "changelevel", target = "d1_trainstation_03"},
 		},
 	},

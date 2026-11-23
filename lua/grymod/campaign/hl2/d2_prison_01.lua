@@ -15,6 +15,7 @@ return {
 			id = "hl2c.d2_prison_01.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true, exit = true,
 			pos = Vector(656, -1536, 1660),
 			via = {Vector(1064, -1536, 1664)},
+			after = "hl2c.d2_prison_01.hl2_enter_novaprospekt",
 			complete = {kind = "input", entity = "changelevel_01-02", input = "ChangeLevel"},
 		},
 	},

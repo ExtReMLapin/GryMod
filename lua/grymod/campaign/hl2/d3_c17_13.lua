@@ -17,6 +17,7 @@ return {
 			id = "hl2c.d3_c17_13.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(8388, 1488, -360),
 			via = {Vector(5576, -1212, -68), Vector(6296, -564, 132), Vector(6440, -192, -72)},
+			after = "hl2c.d3_c17_13.hl2_beat_c1713striderstandoff",
 			complete = {kind = "changelevel", target = "d3_citadel_01"},
 		},
 	},

@@ -13,6 +13,7 @@ return {
 		{
 			id = "hl2c.d3_c17_07.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(10160, 2940, -400),
+			after = "hl2c.d3_c17_07.hl2_beat_plazastandoff",
 			complete = {kind = "changelevel", target = "d3_c17_08"},
 		},
 	},

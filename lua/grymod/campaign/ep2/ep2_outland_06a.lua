@@ -15,6 +15,7 @@ return {
 			id = "hl2c.ep2_outland_06a.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-9952, -3968, -2304),
 			via = {Vector(-3080, -9712, -1492)},
+			after = "hl2c.ep2_outland_06a.ep2_beat_hunterambush",
 			complete = {kind = "changelevel", target = "ep2_outland_07"},
 		},
 	},

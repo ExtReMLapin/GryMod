@@ -183,6 +183,27 @@ class Build(unittest.TestCase):
         self.assertEqual(report['curated'], 1)
 
 
+class ExitAfterTheStory(unittest.TestCase):
+    def test_the_exit_of_a_baseline_map_waits_for_its_primary_steps(self):
+        # fails if: the exit is listed from the first second next to the first step (the owner saw its arrow stuck in the radar's corner on d1_trainstation_02, a far
+        # objective next to the current one): the exit must come after the last primary step of the map, and keep no `after` when the map has no primary step
+        ents = [ent('trigger_changelevel', map='m2', landmark='lm', model='*1')]
+        models = [((0, 0, 0), (0, 0, 0)), ((100, 100, 0), (200, 200, 50))]
+        step = {'id': 'hl2c.m1.step', 'rule': 'R2_event', 'primary': True, 'title': 'Do it', 'description': 'd', 'pos': [10, 20, 30],
+                'complete': {'kind': 'input', 'entity': 'relay', 'input': 'Trigger'}, 'evidence': []}
+        side = {'id': 'hl2c.m1.side', 'rule': 'R3_pickup', 'primary': False, 'title': 'Side', 'description': 'd', 'pos': [1, 2, 3],
+                'complete': {'kind': 'input', 'entity': 'relay2', 'input': 'Trigger'}, 'evidence': []}
+        exit_ = {'id': 'hl2c.m1.exit', 'rule': 'R1_exit', 'primary': True, 'title': 'Reach the exit', 'description': 'd', 'pos': [150, 150, 25],
+                 'complete': {'kind': 'changelevel', 'target': 'm2', 'mapid': 5}, 'evidence': []}
+        texts, _ = BC.build({('hl2', 'm1'): (ents, models)}, {('hl2', 'm1'): ([step, side, exit_], [], [])}, {})
+        text = texts[('hl2', 'm1')]
+        self.assertIn('after = "hl2c.m1.step"', text)
+        self.assertEqual(text.count('after ='), 1)
+
+        texts, _ = BC.build({('hl2', 'm1'): (ents, models)}, {('hl2', 'm1'): ([side, exit_], [], [])}, {})
+        self.assertNotIn('after =', texts[('hl2', 'm1')])
+
+
 class ShippedData(unittest.TestCase):
     """The files in lua/grymod/campaign are checked by the REAL validator of the addon (sv_campaign_core.lua), run in LuaJIT."""
 

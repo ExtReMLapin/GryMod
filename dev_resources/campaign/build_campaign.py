@@ -72,12 +72,14 @@ def vec(p):
     return tuple(round(float(a), 3) for a in p)
 
 
-def baseline_objective(o, wps=()):
+def baseline_objective(o, wps=(), after=None):
     fields = {
         'id': o['id'], 'title': o['title'], 'description': o['description'], 'primary': o['primary'],
         'exit': True if (o['rule'] == 'R1_exit' and o['complete']['kind'] == 'input') else None,
         'pos': vec(o['pos']), 'complete': baseline_complete(o['complete']),
     }
+    if after:
+        fields['after'] = after
     if wps:
         fields['via'] = [vec(w['pos']) for w in wps]
     notes = [e.strip() for e in o.get('evidence', [])[:3]]
@@ -137,6 +139,8 @@ def build(maps, derived=None, curated_maps=None):
             continue
         ents, models = maps[(game, name)]
         entries = []
+        # the exit comes AFTER the last primary step of the map: next to the first step it showed a far arrow from the first second (stuck in the radar's corner)
+        story = [x for x in objs if x['rule'] != 'R1_exit' and x['primary']]
         for o in objs:
             wps = []
             if o['rule'] == 'R1_exit':
@@ -145,7 +149,7 @@ def build(maps, derived=None, curated_maps=None):
                     if not proofs.check(w['proof'], ents, models):
                         report['false_proofs'].append((name, o['id'], w['proof']))
                 report['waypoints'] += len(wps)
-            entries.append(baseline_objective(o, wps))
+            entries.append(baseline_objective(o, wps, story[-1]['id'] if (o['rule'] == 'R1_exit' and story) else None))
         entries += [secret_objective(s) for s in secrets]
         fail_events = []
         for f in fails:

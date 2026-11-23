@@ -13,6 +13,7 @@ return {
 		{
 			id = "hl2c.d1_trainstation_06.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-8836, -544, -420),
+			after = "hl2c.d1_trainstation_06.hl2_get_crowbar",
 			complete = {kind = "changelevel", target = "d1_canals_01"},
 		},
 	},

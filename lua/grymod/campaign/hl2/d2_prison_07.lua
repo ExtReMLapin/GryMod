@@ -13,6 +13,7 @@ return {
 		{
 			id = "hl2c.d2_prison_07.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(4476, -4336, -632),
+			after = "hl2c.d2_prison_07.hl2_beat_turretstandoff2",
 			complete = {kind = "changelevel", target = "d2_prison_08"},
 		},
 	},

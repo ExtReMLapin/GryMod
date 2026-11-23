@@ -13,6 +13,7 @@ return {
 		{
 			id = "hl2c.d1_canals_13.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true, exit = true,
 			pos = Vector(-1024, -7424, 896),
+			after = "hl2c.d1_canals_13.hl2_kill_chopper",
 			complete = {kind = "input", entity = "canals_trigger_elitrans", input = "ChangeLevel"},
 		},
 		-- [hl2/d1_canals_13 #811] classname=logic_achievement targetname=achievement_vort_sighting_1 origin=11179.5 1320 -264 AchievementEvent=ACHIEVEMENT_EVENT_HL2_FIND_VORTIGAUNTCAVE hammerid=2272646

@@ -17,6 +17,7 @@ return {
 			id = "hl2c.ep2_outland_10.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(2318, 8012, -1408),
 			via = {Vector(1076, -2488, 218.17), Vector(1636, -84, 8), Vector(3448, -384, 0.05)},
+			after = "hl2c.ep2_outland_10.ep2_beat_whiteforestinn",
 			complete = {kind = "changelevel", target = "ep2_outland_10a"},
 		},
 		-- [ep2/ep2_outland_10 #2438] classname=logic_achievement targetname=cave_achievement origin=2532.51 -7539.65 -407 AchievementEvent=ACHIEVEMENT_EVENT_EP2_RADARCACHE_CAVE hammerid=4329153

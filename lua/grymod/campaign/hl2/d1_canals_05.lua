@@ -16,6 +16,7 @@ return {
 			id = "hl2c.d1_canals_05.exit", title = "Reach the exit", description = "Leave this area to continue to the next map.", primary = true,
 			pos = Vector(-4160, -2304, -416),
 			via = {Vector(6678.83, 1405.96, -408), Vector(4228, 1746, -390.5)},
+			after = "hl2c.d1_canals_05.hl2_get_airboat",
 			complete = {kind = "changelevel", target = "d1_canals_06"},
 		},
 		-- [hl2/d1_canals_05 #1148] classname=logic_achievement targetname=achievement_cache_1 origin=4124.02 4966.02 -61.95 AchievementEvent=ACHIEVEMENT_EVENT_HL2_LAMDACACHE_CURVEDROOM hammerid=1922149
