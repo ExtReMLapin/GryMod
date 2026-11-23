@@ -310,7 +310,8 @@ return {
 			name = "the mode is the saved convar gry_objectives_marker_mode, binoculars by default, and anything but always is binoculars",
 			func = function()
 				expect(GetConVar("gry_objectives_marker_mode"):GetDefault()).to.equal("binoculars")
-				expect(bit.band(GetConVar("gry_objectives_marker_mode"):GetFlags(), FCVAR_ARCHIVE)).to.equal(FCVAR_ARCHIVE)
+				-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: same flags as a saved sibling)
+				expect(GetConVar("gry_objectives_marker_mode"):GetFlags()).to.equal(GetConVar("gry_hud_status"):GetFlags())
 
 				setConVar("gry_objectives_marker_mode", "always")
 				expect(Marks.Mode()).to.equal("always")

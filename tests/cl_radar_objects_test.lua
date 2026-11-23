@@ -17,6 +17,7 @@ local function fake(class, props)
 	function e:IsNextBot() return false end
 	function e:IsPlayer() return false end
 	function e:IsWorld() return false end
+	function e:IsWeapon() return false end
 	function e:IsVehicle() return self.vehicle end
 	function e:Health() return 0 end
 	function e:GetMaxHealth() return 0 end

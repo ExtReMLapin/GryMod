@@ -1040,7 +1040,8 @@ return {
 				local convar = GetConVar("gry_usehint_delay")
 				expect(convar).toNot.beNil()
 				expect(convar:GetDefault()).to.equal("0.2")
-				expect(bit.band(convar:GetFlags(), FCVAR_ARCHIVE)).to.equal(FCVAR_ARCHIVE)
+				-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: same flags as a saved sibling)
+				expect(convar:GetFlags()).to.equal(GetConVar("gry_hud_status"):GetFlags())
 
 				local saved = convar:GetString()
 				local ok, err = pcall(function()

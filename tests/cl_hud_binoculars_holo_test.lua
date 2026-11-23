@@ -187,7 +187,8 @@ return {
 					expect(kept[i - 1].dist <= kept[i].dist).to.beTrue()
 				end
 
-				expect(kept[16].dist).to.equal(16)
+				-- (the list holds 2 to 31, each once: the 16th is 17)
+				expect(kept[16].dist).to.equal(17)
 			end
 		},
 		{

@@ -726,8 +726,8 @@ function Cross.DwellStep(state, ent, now, delay)
 		return nil
 	end
 
-	-- (a hair of tolerance for the clock's floating point)
-	if now - state.since >= delay - 1e-9 then
+	-- (a hair of tolerance: the convar is a 32 bit float, 0.2 reads 0.2000000030, and the 10 Hz scan would else wait a whole extra step)
+	if now - state.since >= delay - 1e-6 then
 		return ent
 	end
 
