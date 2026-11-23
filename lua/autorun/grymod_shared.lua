@@ -155,6 +155,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/map/panel.lua")
 	AddCSLuaFile("grymod/client/map/options.lua")
 	AddCSLuaFile("grymod/flash/hud_pda_map.lua")
+	AddCSLuaFile("grymod/client/map/chrome.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -498,4 +499,5 @@ if CLIENT then
 	include("grymod/client/map/tiles.lua")
 	include("grymod/client/map/panel.lua")
 	include("grymod/client/map/options.lua")
+	include("grymod/client/map/chrome.lua")
 end
