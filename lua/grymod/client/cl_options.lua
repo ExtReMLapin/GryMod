@@ -158,6 +158,7 @@ local function grenadeWarning(Panel)
 	form:NumSlider("Warning range (metres)", "gry_grenade_range", 5, 200, 0)
 	GryMod.OptionBox(form, "Also for a grenade you threw", "gry_grenade_own_warn", "Only within 15 m. Off: a grenade you threw never warns; your own missiles never do.")
 	GryMod.OptionBox(form, "Only what you can see", "gry_grenade_los", "Off: also through walls, as in the original game.")
+	GryMod.OptionBox(form, "Warning stays at the screen edge", "gry_hud_grenade_edge", "A grenade off the screen to the side, above or below keeps its warning at the edge it is on (the original). Off: the warning goes away.")
 end
 
 -- The HUD settings: the colours (the four sets of the original game, or your own), one switch for each element of the interface, the quick menu and the

@@ -84,10 +84,41 @@ end
 -- The stage position of the icon's corner for a point of the screen (the stage is scaled to the screen height and
 -- centred). The icon hangs from its corner and shrinks towards it with the distance, so the hexagon's centre is
 -- 18 * size from the corner: that centre is what lands on the point.
-function Grenade.StagePosition(screenX, screenY, screenW, screenH, metres)
+-- Where the icon goes for a grenade in front of the player whose projection (x, y) may be off the screen: a point that is inside the
+-- frame (3 percent in from every side) stays, one outside is brought back along the line from the centre of the screen, so the icon sits
+-- at the edge the grenade is on and points to it. Returns x, y and whether it moved.
+function Grenade.EdgePoint(x, y, screenW, screenH)
+	local marginX, marginY = EDGE * screenW, EDGE * screenH
+
+	if x >= marginX and x <= screenW - marginX and y >= marginY and y <= screenH - marginY then
+		return x, y, false
+	end
+
+	local centreX, centreY = screenW / 2, screenH / 2
+	local dx, dy = x - centreX, y - centreY
+	local keep = 1
+
+	if dx ~= 0 then
+		keep = math.min(keep, (centreX - marginX) / math.abs(dx))
+	end
+
+	if dy ~= 0 then
+		keep = math.min(keep, (centreY - marginY) / math.abs(dy))
+	end
+
+	return centreX + dx * keep, centreY + dy * keep, true
+end
+
+-- With `edge` (gry_hud_grenade_edge) the point is held inside the frame on both axes (EdgePoint); without it only x is, as before.
+function Grenade.StagePosition(screenX, screenY, screenW, screenH, metres, edge)
 	local scale = screenH / STAGE_H
 	local half = HALF_ICON * Grenade.SizeFor(metres or 0) / 100
-	screenX = math.Clamp(screenX, EDGE * screenW, (1 - EDGE) * screenW)
+
+	if edge then
+		screenX, screenY = Grenade.EdgePoint(screenX, screenY, screenW, screenH)
+	else
+		screenX = math.Clamp(screenX, EDGE * screenW, (1 - EDGE) * screenW)
+	end
 
 	return (screenX - (screenW - STAGE_W * scale) / 2) / scale - half, screenY / scale - half
 end
@@ -98,7 +129,7 @@ end
 -- gry_grenade_armed_only, for debugging). opts: range (metres, default DEFAULT_RANGE), ownWarn (true: the player's own hand
 -- grenade warns within OWN_WARN_RANGE, the old rule; default false: a grenade the player threw never warns, whatever the
 -- distance), los (true: only a projectile seen from the eye, `visible` not false; default false, as in the original, which
--- warns through walls).
+-- warns through walls), edge (true: a projectile off the screen but in front, c.front, warns too; default false).
 function Grenade.Warns(c, armedOnly, opts)
 	opts = opts or {}
 	local range = opts.range or Grenade.DEFAULT_RANGE
@@ -114,7 +145,20 @@ function Grenade.Warns(c, armedOnly, opts)
 		range = entry.danger.range
 	end
 
-	if not c.onScreen or c.metres < Grenade.MIN_OWN or c.metres > range then
+	if c.metres < Grenade.MIN_OWN or c.metres > range then
+		return false
+	end
+
+	-- the side: with the edge setting the alert also follows a grenade that is off the screen but in front of the player (it sits at the
+	-- screen edge, see EdgePoint); only one behind the camera is dropped, as in the original. A candidate that does not say (front nil) is
+	-- judged by the screen.
+	local inView = c.onScreen
+
+	if opts.edge and c.front ~= nil then
+		inView = c.front
+	end
+
+	if not inView then
 		return false
 	end
 
@@ -315,9 +359,11 @@ local ownWarnVar = CreateClientConVar("gry_grenade_own_warn", "0", true, false,
 	"1: the player's own hand grenade warns within 15 m (the old rule); 0: a grenade the player threw never warns", 0, 1)
 local losVar = CreateClientConVar("gry_grenade_los", "0", true, false,
 	"Warn only about a projectile in the line of sight (0: also through walls, as in the original game)", 0, 1)
+local edgeVar = CreateClientConVar("gry_hud_grenade_edge", "1", true, false,
+	"1: the grenade warning stays at the edge of the screen when the grenade is off it to the side, above or below (the original); 0: it goes away", 0, 1)
 
 function Grenade.Options()
-	return {range = Grenade.ClampRange(rangeVar:GetFloat()), ownWarn = ownWarnVar:GetBool(), los = losVar:GetBool()}
+	return {range = Grenade.ClampRange(rangeVar:GetFloat()), ownWarn = ownWarnVar:GetBool(), los = losVar:GetBool(), edge = edgeVar:GetBool()}
 end
 
 -- The line of sight of the projectiles, one table each (weak: they go with the entity).
@@ -444,8 +490,9 @@ catchUp()
 
 -- What Pick reads of an entity: its class, the distance in metres from the eye, whether it is on the screen (the point
 -- is its projection), the server's mark (sv_grenade.lua), whether it is the player's own (the engine's owner, or the
--- thrower the server writes) and the line of sight when it was read (`visible`: true, false, or nil when not asked).
-function Grenade.Candidate(ent, ply, point, visible)
+-- thrower the server writes), the line of sight when it was read (`visible`: true, false, or nil when not asked) and the side of the
+-- eye it is on (`front`).
+function Grenade.Candidate(ent, ply, point, visible, front)
 	point = point or ent:WorldSpaceCenter():ToScreen()
 	local owner = ent:GetOwner()
 	local thrower = ent:GetNW2Entity("GryThrower")
@@ -458,6 +505,7 @@ function Grenade.Candidate(ent, ply, point, visible)
 		own = (IsValid(owner) and owner == ply) or (IsValid(thrower) and thrower == ply),
 		armed = ent:GetNW2Bool("GryArmed"),
 		visible = visible,
+		front = front, -- whether it is in front of the eye (nil: not asked); the screen point of one behind the camera is mirrored
 		screen = point
 	}
 end
@@ -474,20 +522,28 @@ function Grenade.Candidates(ply, opts)
 		return list
 	end
 
+	local eye, looking
+
 	for ent in pairs(followed) do
 		if IsValid(ent) then
 			local entry = API.GetDanger(ent:GetClass())
 
 			if entry and entry.indicator == "warning" then
-				local point = ent:WorldSpaceCenter():ToScreen()
+				local centre = ent:WorldSpaceCenter()
+				local point = centre:ToScreen()
 				local visible
 
-				-- the line of sight costs a ray: only for a projectile that is on the screen and active
-				if opts.los and point.visible and ent:GetNW2Bool("GryArmed") then
+				-- in front of the eye: the projection of a point behind the camera lands on the screen mirrored and says nothing
+				eye = eye or ply:EyePos()
+				looking = looking or EyeVector()
+				local front = (centre - eye):Dot(looking) > 0
+
+				-- the line of sight costs a ray: only for a projectile that is on the screen (or at its edge) and active
+				if opts.los and (point.visible or (opts.edge and front)) and ent:GetNW2Bool("GryArmed") then
 					visible = lineOfSight(ent, ply)
 				end
 
-				list[#list + 1] = Grenade.Candidate(ent, ply, point, visible)
+				list[#list + 1] = Grenade.Candidate(ent, ply, point, visible, front)
 			end
 		else
 			followed[ent] = nil
@@ -534,7 +590,7 @@ hook.Add("HUDPaint", "GRYGRENADEWARNING", function()
 	warning:Show()
 	warning:SetType(Grenade.TypeFor(best.class))
 	warning:SetDistance(best.metres)
-	warning:SetPosition(Grenade.StagePosition(best.screen.x, best.screen.y, ScrW(), ScrH(), best.metres))
+	warning:SetPosition(Grenade.StagePosition(best.screen.x, best.screen.y, ScrW(), ScrH(), best.metres, opts.edge))
 
 	local now = RealTime()
 	local dt = math.min(now - (lastTime or now), 0.1)
