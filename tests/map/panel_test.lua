@@ -702,6 +702,44 @@ return {
 				Map.Close()
 			end
 		},
+		-- fails without Map.ARROW_MIN: at zoom 1 the arrow was 4.5 pixels at 720p, a speck
+		{
+			name = "the player's arrow is never smaller than ARROW_MIN at zoom 1 (about 17 pixels long), and still grows with the screen",
+			func = function(state)
+				local Map = M()
+				local Mini = GryMod.Minimap
+				local Tiles = Map.Tiles
+
+				Mini.Cache = {Has = function() return false end, IsEmpty = function() return false end, Path = function() return "x" end}
+				Mini.Capture = {MayCapture = function() return true end, RenderTo = function() return true end}
+				Mini.Floors = {Outside = function() return LEVEL end}
+				Mini.Settings = setmetatable({TileRes = function() return 1024 end}, {__index = state.saved.Settings})
+				Tiles.Engine.RealTime = function() return 1 end
+				Tiles.Engine.FrameNumber = function() return 10 end
+				Tiles.Engine.NewSlot = function(res, index)
+					return {rt = {}, pic = {mat = "SLOT_MAT_" .. index, fade = "SLOT_FADE_" .. index}}
+				end
+				Tiles.Reset()
+
+				Map._state.opened = true
+				GetConVar("gry_map_zoom"):SetString("1")
+				Map.Open()
+				stubDrawing(state)
+
+				local ok = pcall(Map._state.panel.Paint, Map._state.panel, ScrW(), ScrH())
+
+				expect(ok).to.beTrue()
+
+				-- the last polygon is the arrow (tip first, then the two wings and the notch): its length is tip to the middle of the wings, 2.4 times the size
+				local polys = callsOf("surface.DrawPoly")
+				local a = polys[#polys][2]
+				local mx, my = (a[2].x + a[4].x) / 2, (a[2].y + a[4].y) / 2
+				local length = math.sqrt((a[1].x - mx) ^ 2 + (a[1].y - my) ^ 2)
+
+				expect(length >= 2.4 * (Map.ARROW_MIN or 7) - 0.01).to.beTrue()
+				Map.Close()
+			end
+		},
 		-- fails when the grid switch is not read
 		{
 			name = "with gry_map_grid 0 the frame draws no grid lines and no letters or numbers",

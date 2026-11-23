@@ -163,6 +163,28 @@ return {
 				expect(b.y0 <= -20000).to.beTrue()
 			end
 		},
+		-- fails when an objective can sit on the edge of the map (its ring was cut in two by the window)
+		{
+			name = "the points given (the objectives) are inside the bounds with the same margin as the player, also the ones the graph does not reach",
+			func = function()
+				local b = B().Compute({nodes = nodes(10, 0, 10000, 0, 10000), points = {{x = 10000, y = 5000}, {x = -4000, y = 3000}, {x = 2000, y = 15000}}})
+				local m = B().PLAYER_MARGIN
+
+				expect(b.x0 <= -4000 - m).to.beTrue()
+				expect(b.x1 >= 10000 + m).to.beTrue()
+				expect(b.y1 >= 15000 + m).to.beTrue()
+
+				-- a point that is already well inside changes nothing
+				local c = B().Compute({nodes = nodes(10, 0, 10000, 0, 10000), points = {{x = 5000, y = 5000}}})
+
+				expect(c.x1).to.aboutEqual(10512, 1e-6)
+
+				-- bad points are skipped
+				local ok = pcall(B().Compute, {nodes = nodes(10, 0, 10000, 0, 10000), points = {"a", {x = 0 / 0, y = 1}, {}}})
+
+				expect(ok).to.beTrue()
+			end
+		},
 		-- fails when a bad input raises
 		{
 			name = "bad inputs never raise: not-a-table entries, NaN and infinity are skipped",

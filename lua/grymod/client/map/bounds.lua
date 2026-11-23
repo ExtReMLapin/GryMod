@@ -7,7 +7,7 @@
 --   3. the box of the world (game.GetWorld():GetModelBounds(), x and y), which is often far larger than the playable area;
 --   4. a square of FALLBACK_HALF units around the player; and a square around the origin when even that is unknown.
 -- The result is padded (3 percent, at least 512 units: the walls and the terrain reach a little past the nodes), cut at the world's box when that leaves a usable map, widened to MIN_SIDE units, and always
--- holds the player. Pure: everything is given as plain tables, nothing is read from the engine here.
+-- holds the player and the points given (the objectives). Pure: everything is given as plain tables, nothing is read from the engine here.
 
 GryMod = GryMod or {}
 GryMod.Map = GryMod.Map or {}
@@ -23,6 +23,7 @@ Bounds.PAD_FRACTION = 0.03
 Bounds.MIN_SIDE = 5249 -- about 100 m
 Bounds.FALLBACK_HALF = 13123 -- about 250 m each side of the player
 Bounds.PLAYER_MARGIN = 512
+Bounds.MAX_POINTS = 64 -- the most points (objectives) that widen the bounds
 Bounds.METRES_PER_UNIT = 0.01905
 
 local function finite(n)
@@ -117,7 +118,17 @@ local function worldBox(world)
 	return {x0 = world.x0, x1 = world.x1, y0 = world.y0, y1 = world.y1}
 end
 
--- The bounds {x0, x1, y0, y1, source} from {nodes, boxes, world, player}, every field optional. Never raises. `source` says where the box came from:
+-- Widens the box so the point is inside it with PLAYER_MARGIN units to spare.
+local function holdPoint(box, x, y)
+	local m = Bounds.PLAYER_MARGIN
+
+	if x - m < box.x0 then box.x0 = x - m end
+	if x + m > box.x1 then box.x1 = x + m end
+	if y - m < box.y0 then box.y0 = y - m end
+	if y + m > box.y1 then box.y1 = y + m end
+end
+
+-- The bounds {x0, x1, y0, y1, source} from {nodes, boxes, world, player, points}, every field optional. Never raises. `source` says where the box came from:
 -- "nodes", "zones" (the boxes, with or without the nodes), "world", "player" or "default".
 function Bounds.Compute(input)
 	input = type(input) == "table" and input or {}
@@ -173,12 +184,18 @@ function Bounds.Compute(input)
 
 	-- the player is inside, even where the graph does not reach
 	if px then
-		local m = Bounds.PLAYER_MARGIN
+		holdPoint(box, px, py)
+	end
 
-		if px - m < box.x0 then box.x0 = px - m end
-		if px + m > box.x1 then box.x1 = px + m end
-		if py - m < box.y0 then box.y0 = py - m end
-		if py + m > box.y1 then box.y1 = py + m end
+	-- so is every point given (the objectives): a marker on the edge of the map would have its ring cut in two by the window
+	if type(input.points) == "table" then
+		for i = 1, math.min(#input.points, Bounds.MAX_POINTS) do
+			local p = input.points[i]
+
+			if type(p) == "table" and finite(p.x) and finite(p.y) then
+				holdPoint(box, p.x, p.y)
+			end
+		end
 	end
 
 	-- not smaller than MIN_SIDE a side, around the middle

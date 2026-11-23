@@ -37,6 +37,7 @@ Map.Sounds = {
 }
 
 Map.TRIM_SECONDS = 60 -- the tiles of the map are forgotten this long after it closed
+Map.ARROW_MIN = 7 -- the smallest size (pixels) of the player arrow
 Map.CLOSE_GUARD = 0.25 -- seconds after a close during which the key does not open it again (the key that closed it may be seen by two readers)
 
 -- the colours of the original's map: line, hover, text, and the accent
@@ -144,6 +145,22 @@ local function worldBox()
 	return {x0 = low.x, x1 = high.x, y0 = low.y, y1 = high.y}
 end
 
+-- The positions of the objectives that are still to do: the bounds hold them, so the ring of one never sits half outside the window (opening only: not per frame).
+local function objectivePoints()
+	local list = GryMod.Objectives and GryMod.Objectives.List and GryMod.Objectives.List() or nil
+	local points = {}
+
+	for i = 1, type(list) == "table" and #list or 0 do
+		local o = list[i]
+
+		if type(o) == "table" and o.state == "active" and o.pos ~= nil and isvector(o.pos) then
+			points[#points + 1] = {x = o.pos.x, y = o.pos.y}
+		end
+	end
+
+	return points
+end
+
 local function computeBounds(ply)
 	local Zone = GryMod.ZoneMapClient
 	local boxes = Zone and Zone.Boxes and Zone.Boxes() or nil
@@ -153,7 +170,8 @@ local function computeBounds(ply)
 		nodes = mapNodes(),
 		boxes = boxes,
 		world = worldBox(),
-		player = pos and {x = pos.x, y = pos.y} or nil
+		player = pos and {x = pos.x, y = pos.y} or nil,
+		points = objectivePoints()
 	})
 end
 
@@ -517,10 +535,11 @@ local function drawMarker(view, m, uiScale)
 	end
 
 	local sx, sy = Frame.ToScreen(view, pos.x, pos.y)
-	local x, y, pinned = Markers.Pin(sx, sy, view, 8)
+	local size = Markers.IconSize(view.zoom, 7 * uiScale, m.scale)
+	-- a marker pinned to the edge keeps its whole icon inside the window (the main objective's ring is the widest: 1.9 times the size, plus the line)
+	local x, y, pinned = Markers.Pin(sx, sy, view, m.main and size * 1.9 + 3 or 8)
 	local shape, r, g, b = Markers.Style(m)
 	local alpha = floor((type(m.alpha) == "number" and math.Clamp(m.alpha, 0, 1) or 1) * (pinned and 0.6 or 1) * 255)
-	local size = Markers.IconSize(view.zoom, 7 * uiScale, m.scale)
 
 	if shape == "diamond" then
 		if m.main then
@@ -554,7 +573,8 @@ local function drawPlayer(view, ply, uiScale)
 	local sx, sy = Frame.ToScreen(view, pos.x, pos.y)
 	local fx, fy = -sin(yaw), -cos(yaw) -- forward on the screen
 	local rx, ry = -fy, fx -- to its right on the screen
-	local s = Markers.IconSize(view.zoom, 9 * uiScale, 100)
+	-- at zoom 1 on a small screen the proportional size is a few pixels: the arrow never goes under ARROW_MIN (a size, not a scale: it does not grow with the zoom)
+	local s = math.max(Markers.IconSize(view.zoom, 9 * uiScale, 100), Map.ARROW_MIN)
 	local x, y = sx, sy
 
 	arrow[1].x, arrow[1].y = x + fx * s * 1.4, y + fy * s * 1.4
