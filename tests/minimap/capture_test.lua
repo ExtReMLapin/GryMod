@@ -8,12 +8,12 @@
 local HOOK_NAME = "GryMod minimap capture"
 local EVENTS = {"PreDrawHalos", "PreDrawEffects", "PrePlayerDraw", "PreDrawViewModel", "PreDrawSkyBox", "SetupWorldFog"}
 local MODEL = "models/props_junk/PopCan01a.mdl"
-local RENDER_CALLS = {"PushRenderTarget", "Clear", "RenderView", "Capture", "PopRenderTarget", "SetLightingMode", "FogMode", "SetWriteDepthToDestAlpha"}
+local RENDER_CALLS = {"PushRenderTarget", "Clear", "RenderView", "Capture", "PopRenderTarget", "SetLightingMode", "FogMode", "SetWriteDepthToDestAlpha", "CopyRenderTargetToTexture", "OverrideAlphaWriteEnable"}
 local OTHER_HOOK = "GryMod minimap capture test other addon"
 
 local savedRender = {}   -- render.<name> originals, saved by stubRender
 local savedEntity = {}   -- the Entity metatable's original CreatedByMap (and the hook, if any)
-local savedGlobals = {}  -- GetRenderTargetEx
+local savedGlobals = {}  -- GetRenderTargetEx, FrameNumber
 local made = {}          -- client props created by a case
 local fakeMap = {}       -- {ent = , value = , raise = } entries of the CreatedByMap stand-in
 local snapshot           -- {{ent, noDraw}} of every entity before the case
@@ -208,6 +208,19 @@ return {
 				pcall(C.ResetRTCache)
 			end
 		end
+
+		if savedGlobals.FrameNumber then
+			FrameNumber = savedGlobals.FrameNumber
+			savedGlobals.FrameNumber = nil
+		end
+
+		-- the arbitration of the frame (MayCapture) is global state: back to nothing
+		pcall(function()
+			local C = GryMod.Minimap.Capture
+
+			C.SetPriority(nil)
+			C.ResetFrame()
+		end)
 
 		pcall(hook.Remove, "PreDrawHalos", OTHER_HOOK)
 
@@ -1373,6 +1386,219 @@ return {
 				end
 
 				expect(created).to.equal(0)
+			end
+		},
+		-- RenderTo and the arbitration of the frame (the big map shares the render with the minimap) ----------------------------------
+		{
+			-- fails without Capture.RenderTo (the big map would need a copy of the render), or when it reads the bytes instead of copying
+			name = "RenderTo copies the picture into the caller's target before the shared one is popped: PushRenderTarget, Clear, RenderView, CopyRenderTargetToTexture, PopRenderTarget; render.Capture is never called",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local a = makeProp(false)
+				local dest = {fake = "destination"}
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {})
+
+				local ok, r1, r2 = pcall(RenderTo, validTile(), validLevel(), dest)
+
+				expect(ok).to.beTrue()
+				expect(r1).to.equal(true)
+				expect(r2).to.beNil()
+
+				local order = {}
+
+				for i = 1, #seq do
+					local n = seq[i]
+
+					if n == "PushRenderTarget" or n == "Clear" or n == "RenderView" or n == "Capture" or n == "CopyRenderTargetToTexture" or n == "PopRenderTarget" then
+						order[#order + 1] = n
+					end
+				end
+
+				expect(table.concat(order, ",")).to.equal("PushRenderTarget,Clear,RenderView,CopyRenderTargetToTexture,PopRenderTarget")
+				expect(args.CopyRenderTargetToTexture[1] == dest).to.beTrue()
+				-- the same render as Render: the shared target of that resolution, the entities hidden until the end, then back, no hook left
+				expect(args.PushRenderTarget[1] == capture().GetRT(64)).to.beTrue()
+				expect(noDrawOf(a)).to.equal(false)
+				expect(countHooks()).to.equal(0)
+				expect(capture().IsCapturing()).to.equal(false)
+			end
+		},
+		{
+			-- fails if the big map's picture keeps the minimap's void alpha (its tiles would fade into nothing) or the alpha override is left on
+			name = "RenderTo makes an opaque picture: the target is cleared to black with alpha 255, the view may not write the alpha, and the override is switched off again before the copy",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local seq, args = {}, {}
+				local overrides = {}
+
+				stubRender(seq, args, {
+					OverrideAlphaWriteEnable = function(enable, write) overrides[#overrides + 1] = {enable, write, #seq} end
+				})
+
+				expect(RenderTo(validTile(), validLevel(), {})).to.equal(true)
+				expect(args.Clear[1]).to.equal(0)
+				expect(args.Clear[2]).to.equal(0)
+				expect(args.Clear[3]).to.equal(0)
+				expect(args.Clear[4]).to.equal(255)
+				expect(#overrides).to.equal(2)
+				expect(overrides[1][1]).to.equal(true)
+				expect(overrides[1][2]).to.equal(false)
+				expect(overrides[2][1]).to.equal(false)
+				expect(overrides[2][2]).to.equal(true)
+
+				local at = {}
+
+				for i = 1, #seq do
+					at[seq[i]] = at[seq[i]] or i
+				end
+
+				-- on, then the view, then off, then the copy
+				expect(overrides[1][3] < at.RenderView).to.beTrue()
+				expect(overrides[2][3] > at.RenderView).to.beTrue()
+				expect(overrides[2][3] < at.CopyRenderTargetToTexture).to.beTrue()
+			end
+		},
+		{
+			-- fails if a view that raises leaves the alpha override on for the rest of the game
+			name = "RenderTo with a RenderView that raises: the alpha override is switched off again",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local seq, args = {}, {}
+				local overrides = {}
+
+				stubRender(seq, args, {
+					OverrideAlphaWriteEnable = function(enable, write) overrides[#overrides + 1] = {enable, write} end,
+					RenderView = function() error("view exploded", 0) end
+				})
+
+				local ok, r1 = pcall(RenderTo, validTile(), validLevel(), {})
+
+				expect(ok).to.beTrue()
+				expect(r1).to.beNil()
+				expect(overrides[#overrides][1]).to.equal(false)
+				expect(overrides[#overrides][2]).to.equal(true)
+			end
+		},
+		{
+			-- fails if the minimap's own render starts to touch the alpha override (its void rule needs the alpha it has)
+			name = "Render (the minimap's) never touches the alpha override and clears to (0, 0, 0, 0) as before",
+			func = function()
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {Capture = function() return pixels(64) end})
+				expect(capture().Render(validTile(), validLevel()) ~= nil).to.beTrue()
+
+				for i = 1, #seq do
+					expect(seq[i] == "OverrideAlphaWriteEnable").to.beFalse()
+				end
+
+				expect(args.Clear[4]).to.equal(0)
+			end
+		},
+		{
+			-- fails if a missing destination renders anyway (a picture nobody can read) or raises
+			name = "RenderTo without a destination answers nil, a reason, and renders nothing",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {})
+
+				local ok, r1, r2 = pcall(RenderTo, validTile(), validLevel(), nil)
+
+				expect(ok).to.beTrue()
+				expect(r1).to.beNil()
+				expect(type(r2)).to.equal("string")
+				expect(#seq).to.equal(0)
+			end
+		},
+		{
+			-- fails if a copy that raises leaves the target pushed, the hooks installed or the entities hidden
+			name = "RenderTo with a copy that raises: the shared target is popped, the hooks are removed, the entities are back, IsCapturing is false, it answers nil, reason",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local a = makeProp(false)
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {CopyRenderTargetToTexture = function() error("copy exploded", 0) end})
+
+				local ok, r1, r2 = pcall(RenderTo, validTile(), validLevel(), {})
+
+				expect(ok).to.beTrue()
+				expect(r1).to.beNil()
+				expect(type(r2)).to.equal("string")
+				expect(seq[#seq]).to.equal("PopRenderTarget")
+				expect(noDrawOf(a)).to.equal(false)
+				expect(countHooks()).to.equal(0)
+				expect(capture().IsCapturing()).to.equal(false)
+			end
+		},
+		{
+			-- fails if RenderTo does not validate the tile and the level as Render does
+			name = "RenderTo refuses a bad tile or level like Render (nil, reason, no render call)",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {})
+
+				local _, why = RenderTo(validTile({res = 100}), validLevel(), {})
+				local _, why2 = RenderTo(validTile(), {id = "a1", zlo = 5, zhi = 5}, {})
+
+				expect(type(why)).to.equal("string")
+				expect(type(why2)).to.equal("string")
+				expect(#seq).to.equal(0)
+			end
+		},
+		{
+			-- fails if two captures can be made in one frame whoever asks, or if the frame of the last one is not recorded
+			name = "MayCapture: a frame where a capture ran is closed to everybody (Render and RenderTo record their frame), the next frame is open",
+			func = function()
+				local C = capture()
+				local frame = 41
+
+				savedGlobals.FrameNumber = FrameNumber
+				FrameNumber = function() return frame end
+				C.ResetFrame()
+
+				expect(C.MayCapture("gen")).to.beTrue()
+
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {Capture = function() return pixels(64) end})
+				expect(C.Render(validTile(), validLevel()) ~= nil).to.beTrue()
+
+				expect(C.MayCapture("gen")).to.beFalse()
+				expect(C.MayCapture("map")).to.beFalse()
+				expect(C.MayCapture("gen", 41)).to.beFalse()
+				expect(C.MayCapture("gen", 42)).to.beTrue()
+
+				frame = 42
+				expect(C.MayCapture("gen")).to.beTrue()
+
+				-- RenderTo records its frame too
+				expect(C.RenderTo(validTile(), validLevel(), {})).to.equal(true)
+				expect(C.MayCapture("map")).to.beFalse()
+			end
+		},
+		{
+			-- fails if the priority does not give the even frames to its owner, or takes the odd ones from the others
+			name = "SetPriority(owner): the owner may capture in every frame, the others only in the odd ones; no priority, everybody every frame",
+			func = function()
+				local C = capture()
+
+				C.ResetFrame()
+				C.SetPriority("map")
+
+				expect(C.MayCapture("map", 10)).to.beTrue()
+				expect(C.MayCapture("map", 11)).to.beTrue()
+				expect(C.MayCapture("gen", 10)).to.beFalse()
+				expect(C.MayCapture("gen", 11)).to.beTrue()
+
+				C.SetPriority(nil)
+				expect(C.MayCapture("gen", 10)).to.beTrue()
 			end
 		}
 	}

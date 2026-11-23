@@ -34,6 +34,7 @@ option is off plays nothing for that half.
 | `enabled` | | the HUD comes back with the reboot sequence | the suit flag changes to on | `gry_hud`, `gry_hud_boot` |
 | `objective` | `kind` (`"added"`, `"completed"` or `"failed"`), `title` (the objective's title) | the top line `NEW OBJECTIVE: <title>` (or `OBJECTIVE COMPLETED:` / `OBJECTIVE FAILED:`) and its sound, together: `pda_update` for added and failed, `objective_completed` for completed | an objective is added, finished or failed (the list sent when the player joins is silent; see "Objective banner") | `gry_msg_objectives`, `gry_hud_messages`, `gry_hud`, `gry_sounds` |
 | `message` | `text` (128 characters at most), `lane` (`"top"`, `"middle"`, `"status"`, `"crosshair"` or 1 to 4; `"top"`), `sound` (a sound path), `duration` (seconds, 0.5 to 60; 5), or `line` (a key of the suit's own lines, see "Text lines") | a line of text on the HUD, in the movie's own stack, and its sound together | the suit's own lines (see "Text lines"); never by itself otherwise | `gry_hud_messages`, `gry_hud`, `gry_sounds` |
+| `map_open`, `map_close` | | the big map opens (its window, the first picture and the opening sound) / closes (the closing sound) | the player's key (M by default) or `GryMod.Map.Open()` / `Close()` | `gry_map_enable`, `gry_sounds` |
 
 Not events, because they run on every frame: the sprint sounds and the binoculars loop. The binoculars cues and the quick menu sounds are
 not events yet.
@@ -76,6 +77,16 @@ frame code of the HUD, so only while the HUD is drawn (see "What depends on the 
 close of the binoculars' zoom, are driven by it. A HUD that is built again (a respawn, a new theme) starts at `0` and does not report it: a
 suit that is down at that moment gives `1` at once, and the end of a malfunction that came while no HUD was drawn gives nothing. It has no
 "previous" argument; keep the last value yourself. For the state of the suit itself, use `GryMod_MalfunctionStart` and `GryMod_MalfunctionEnd`.
+
+### `GryMod_MapOpened()`, `GryMod_MapClosed()`, `GryMod_MapZoomed(zoom)`
+
+The big map (see `docs/minimap.md`) opened, closed, or changed its zoom (`zoom`, from 1 to 8, after a wheel notch or a middle-button drag; not at opening). Run inside a
+`pcall`: a listener that fails is shown once in the console and stops nothing.
+
+```lua
+hook.Add("GryMod_MapOpened", "my_addon", function() print("the big map is open") end)
+hook.Add("GryMod_MapZoomed", "my_addon", function(zoom) print(("zoom x%.1f"):format(zoom)) end)
+```
 
 ### `GryMod_MalfunctionStart(ply)`, `GryMod_MalfunctionEnd(ply)`
 
