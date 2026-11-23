@@ -69,6 +69,20 @@ local function setMinimumAbsorption(value)
 	GryMod.Mech.ArmorMinimumAbsorption = function() return value end
 end
 
+-- the sprint test of the Think hook, told by the test (the real one needs a moving player): only the test player sprints, when `state.on`
+local realSprinting
+local state = {on = false}
+
+local function stubSprint(p)
+	realSprinting = realSprinting or GryMod.IsSpeedSprinting
+	state.on = false
+	GryMod.IsSpeedSprinting = function(who) return who == p and state.on end
+end
+
+local function think()
+	hook.GetTable().Think["GrySpeedThink"]()
+end
+
 local savedJumpPower
 
 -- a player as far as GryMod.ZoomFov looks (the same fake as tests/sv_zoom_fov_test.lua): alive, the normal field of view, no zoom owner
@@ -137,6 +151,15 @@ return {
 		end
 
 		GryMod.ZoomFov.Reset()
+
+		if realSprinting then
+			GryMod.IsSpeedSprinting = realSprinting
+			realSprinting = nil
+		end
+
+		if IsValid(p) then
+			p.gryApiSprint = nil
+		end
 
 		if realMinimum then
 			GryMod.Mech.ArmorMinimumAbsorption = realMinimum
@@ -523,6 +546,156 @@ return {
 				p:SetNW2Bool("GryDisabled", true)
 				takeDamage(p, 10, DMG_BULLET)
 				expect(#calls).to.equal(0)
+			end
+		},
+		-- GryMod_SprintStart(ply), GryMod_SprintEnd(ply)
+		{
+			-- fails without: the flag compared with GryMod.IsSpeedSprinting and the two hook.Run in the Think hook GrySpeedThink (sv_system.lua)
+			name = "GryMod_SprintStart / GryMod_SprintEnd: one Start when the speed sprint begins, one End when it stops, nothing on the ticks in between; a returned value changes nothing",
+			func = function()
+				local p = ply()
+				local starts, ends = {}, {}
+
+				stubSprint(p)
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				p:SetNW2Float("GryEnergy", 100)
+
+				listen("GryMod_SprintStart", function(who) starts[#starts + 1] = who return false end)
+				listen("GryMod_SprintEnd", function(who) ends[#ends + 1] = who return false end)
+
+				think()
+				expect(#starts).to.equal(0)
+				expect(#ends).to.equal(0)
+
+				state.on = true
+				think()
+				expect(#starts).to.equal(1)
+				expect(starts[1]).to.equal(p)
+				expect(#ends).to.equal(0)
+
+				think()
+				think()
+				expect(#starts).to.equal(1)
+				-- (the drain still works: the reports are not the drain's business)
+				expect(p:GetNW2Float("GryEnergy") < 100).to.beTrue()
+
+				state.on = false
+				think()
+				expect(#ends).to.equal(1)
+				expect(ends[1]).to.equal(p)
+				expect(#starts).to.equal(1)
+
+				think()
+				expect(#ends).to.equal(1)
+
+				-- a second sprint is a second pair
+				state.on = true
+				think()
+				state.on = false
+				think()
+				expect(#starts).to.equal(2)
+				expect(#ends).to.equal(2)
+			end
+		},
+		{
+			-- fails without: the check of Alive() in the flag (a dead player is not sprinting: End fires, no Start for him)
+			name = "GryMod_SprintEnd: a death ends the sprint on the next tick; a dead player does not start one",
+			func = function()
+				local p = ply()
+				local starts, ends = record("GryMod_SprintStart"), record("GryMod_SprintEnd")
+
+				stubSprint(p)
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				state.on = true
+				think()
+				expect(#starts).to.equal(1)
+
+				override(p, "Alive", function() return false end)
+				think()
+				expect(#ends).to.equal(1)
+
+				think()
+				expect(#starts).to.equal(1)
+				expect(#ends).to.equal(1)
+			end
+		},
+		{
+			-- fails without: the same flag compares IsSpeedSprinting, which says false in another mode: End one tick after the change
+			name = "GryMod_SprintEnd: leaving the speed mode while sprinting ends it on the next tick",
+			func = function()
+				local p = ply()
+				local starts, ends = record("GryMod_SprintStart"), record("GryMod_SprintEnd")
+
+				-- the real rule this time: a sprinting player in speed mode is what IsSpeedSprinting says; here the stub follows the mode
+				stubSprint(p)
+				GryMod.IsSpeedSprinting = function(who) return who == p and who.Nanosuit_mode == GryMod.Modes.SPEED end
+
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				think()
+				expect(#starts).to.equal(1)
+
+				p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
+				expect(#ends).to.equal(0) -- not at once: the Think reports
+				think()
+				expect(#ends).to.equal(1)
+			end
+		},
+		{
+			-- fails without: the PlayerDisconnected handler "GryMod sprint report" that ends a sprint the Think will never see again
+			name = "GryMod_SprintEnd: a player who leaves while sprinting gets his End at once (no Start without an End), and only when he was sprinting",
+			func = function()
+				local p = ply()
+				local starts, ends = record("GryMod_SprintStart"), record("GryMod_SprintEnd")
+				local onLeave = hook.GetTable().PlayerDisconnected["GryMod sprint report"]
+
+				expect(isfunction(onLeave)).to.beTrue()
+
+				stubSprint(p)
+				onLeave(p)
+				expect(#ends).to.equal(0)
+
+				state.on = true
+				think()
+				expect(#starts).to.equal(1)
+
+				onLeave(p)
+				expect(#ends).to.equal(1)
+				expect(ends[1][1]).to.equal(p)
+
+				onLeave(p)
+				expect(#ends).to.equal(1)
+			end
+		},
+		{
+			-- fails without: the flag uses GryMod.IsSpeedSprinting (the real rule, the infinite armor included), not a rule of its own
+			name = "GryMod_SprintStart / GryMod_SprintEnd follow the real rule of the speed sprint: a fast sprinting player on the ground in speed mode starts one; the infinite armor gives none, and ends it",
+			func = function()
+				local p = ply()
+				local starts, ends = record("GryMod_SprintStart"), record("GryMod_SprintEnd")
+
+				-- the engine's facts only, the rule is GryMod's
+				override(p, "IsSprinting", function() return true end)
+				override(p, "GetVelocity", function() return Vector(1000, 0, 0) end)
+				override(p, "IsOnGround", function() return true end)
+				override(p, "WaterLevel", function() return 0 end)
+
+				-- the infinite armor from the start: no sprint, so no Start
+				GryMod.Config.InfiniteArmor = true
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				think()
+				expect(GryMod.IsSpeedSprinting(p)).to.beFalse()
+				expect(#starts).to.equal(0)
+
+				-- the real thing
+				GryMod.Config.InfiniteArmor = false
+				think()
+				expect(GryMod.IsSpeedSprinting(p)).to.beTrue()
+				expect(#starts).to.equal(1)
+
+				-- the infinite armor is switched on while he sprints: the sprint is over for the rule
+				GryMod.Config.InfiniteArmor = true
+				think()
+				expect(#ends).to.equal(1)
 			end
 		}
 	}
