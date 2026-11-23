@@ -152,6 +152,15 @@ local function run(seconds)
 	end
 end
 
+-- The map's own listener of GryMod_HUDStatus, called directly: running the hook would run the listeners of the boot sequences, the binoculars and the others too (a malfunction
+-- sound and film in the owner's game).
+local function status(value)
+	local listener = hook.GetTable().GryMod_HUDStatus and hook.GetTable().GryMod_HUDStatus.GRYMAPCHROME
+
+	expect(isfunction(listener)).to.beTrue()
+	listener(value)
+end
+
 local function paint()
 	local panel = M()._state.panel
 
@@ -534,7 +543,7 @@ return {
 				run(2)
 				expect(Map._state.chrome:Jammed()).to.beFalse()
 
-				hook.Run("GryMod_HUDStatus", 1)
+				status(1)
 				expect(Map._state.chrome:Jammed()).to.beTrue()
 				run(0.5)
 				stubDrawing(state)
@@ -549,24 +558,24 @@ return {
 
 				expect(dimmed).to.beTrue()
 
-				hook.Run("GryMod_HUDStatus", 0)
+				status(0)
 				expect(Map._state.chrome:Jammed()).to.beFalse()
 
 				-- a flicker hides the movie and the map for a moment
-				hook.Run("GryMod_HUDStatus", 2)
+				status(2)
 				recorded, flashDraws = {}, {}
 				paint()
 				expect(#flashDraws).to.equal(0)
 				expect(#callsOf("surface.DrawPoly")).to.equal(0)
-				hook.Run("GryMod_HUDStatus", 0)
+				status(0)
 				Map.Close()
 
 				-- a map that opens while the suit is down
-				hook.Run("GryMod_HUDStatus", 1)
+				status(1)
 				Map.Open()
 				expect(Map._state.chrome:Jammed()).to.beTrue()
 				Map.Close()
-				hook.Run("GryMod_HUDStatus", 0)
+				status(0)
 				expect(Map._state.hudStatus).to.equal(0)
 			end
 		},
