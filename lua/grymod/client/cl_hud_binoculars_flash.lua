@@ -43,7 +43,9 @@ local VisionConVar = CreateClientConVar("gry_binoculars_vision", "0", true, fals
 local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view (on by default)")
 
 local MalfunctionConVar = CreateClientConVar("gry_binoculars_malfunction", "1", true, false, "The binoculars' film follows the HUD while the suit is down: it fades to white on a malfunction and fades out when the HUD flickers, as the original film does (off: it stays as it is)")
-local NoFireConVar = CreateClientConVar("gry_binoculars_no_fire", "0", true, false, "No shooting while the binoculars are up: the original holds them as an item instead of a weapon (off by default: the Half-Life 2 zoom lets you shoot; on changes how the game plays)")
+local NoFireConVar = CreateClientConVar("gry_binoculars_no_fire", "1", true, false, "No shooting while the binoculars are up: the original holds them as an item instead of a weapon (on by default, as in the original; off: the Half-Life 2 zoom lets you shoot)")
+local WalkConVar = CreateClientConVar("gry_binoculars_walk", "1", true, false, "No sprint while the binoculars are up, and the pace of a slow walk, as in the original (off: you move as usual)")
+local HoldZoomConVar = CreateClientConVar("gry_binoculars_hold_zoom", "1", true, false, "Holding the zoom key steps the zoom up (2x, 4x, 8x) and, after the last stage, back to the first, as in the original (needs the zoom stages)")
 local ThirdPersonConVar = CreateClientConVar("gry_binoculars_thirdperson", "1", true, false, "The binoculars' film is not drawn in third person, as the original does (off: it is drawn there too)")
 
 -- The stages are on with their own switch, and always while the own zoom has a key (gry_zoom_own, see cl_suit_zoom.lua): the wheel is
@@ -63,6 +65,8 @@ function Bino.TagEnabled() return TagConVar:GetBool() end
 function Bino.VignetteFade() return VignetteConVar:GetBool() end
 function Bino.MalfunctionLook() return MalfunctionConVar:GetBool() end
 function Bino.NoFireEnabled() return NoFireConVar:GetBool() end
+function Bino.WalkEnabled() return WalkConVar:GetBool() end
+function Bino.HoldZoomEnabled() return HoldZoomConVar:GetBool() end
 
 -- The film is not drawn in third person (the original's setVisible(true, animation, thirdPerson) leaves the movie hidden when the third
 -- argument is true), unless the player turned that off.
@@ -852,11 +856,48 @@ function Bino.StageModeFor(base, fov)
 end
 
 function Bino.NewZoom()
-	return {stage = 0, active = false, fov = nil, from = 0, to = 0, start = 0, duration = 0, closeStart = nil, lastStage = 0}
+	return {stage = 0, active = false, fov = nil, from = 0, to = 0, start = 0, duration = 0, closeStart = nil, lastStage = 0, holdNext = nil}
 end
 
 function Bino.ZoomReset(z)
-	z.stage, z.active, z.fov, z.from, z.to, z.start, z.duration, z.closeStart, z.lastStage = 0, false, nil, 0, 0, 0, 0, nil, 0
+	z.stage, z.active, z.fov, z.from, z.to, z.start, z.duration, z.closeStart, z.lastStage, z.holdNext = 0, false, nil, 0, 0, 0, 0, nil, 0, nil
+end
+
+-- Holding the zoom key (the original: the key held steps the zoom, and after the last stage it starts again from the first). The key must
+-- be held HOLD_DELAY before the first step, then a step comes every HOLD_REPEAT. Pure: z is the zoom state, held whether the key is down,
+-- now the clock. Moves z.stage and gives the sound cue ("zoom_in" for a step up, "zoom_out" for the wrap back to the first), or nil.
+Bino.ZOOM_HOLD_DELAY = 0.7
+Bino.ZOOM_HOLD_REPEAT = 0.7
+
+function Bino.ZoomHold(z, held, now)
+	if not held or z.stage == 0 then
+		z.holdNext = nil
+
+		return nil
+	end
+
+	if z.holdNext == nil then
+		z.holdNext = now + Bino.ZOOM_HOLD_DELAY
+
+		return nil
+	end
+
+	-- (a hair of tolerance: 10 + 0.7 must count as 10.7)
+	if now < z.holdNext - 1e-9 then
+		return nil
+	end
+
+	z.holdNext = now + Bino.ZOOM_HOLD_REPEAT
+
+	if z.stage >= #Bino.ZOOM_STAGES then
+		z.stage = 1
+
+		return "zoom_out"
+	end
+
+	z.stage = z.stage + 1
+
+	return "zoom_in"
 end
 
 local function zoomFovAt(z, now)
@@ -1111,7 +1152,9 @@ end)
 
 -- No shooting while the binoculars are up (gry_binoculars_no_fire): the original holds the binoculars as an item in place of the weapon. The
 -- buttons of attack are taken out of the move; nothing else of the weapon is touched (it can still be switched, reloaded, used). The
--- hook on CreateMove exists only while the binoculars are up: it is added and removed by the report of the toggle above.
+-- same move also has the pace of the binoculars (gry_binoculars_walk): no sprint, and the engine's slow walk (IN_WALK, the player's
+-- SlowWalkSpeed) in place of the jog. The buttons are what the server reads too, so both sides agree and nothing runs on the server.
+-- The hook on CreateMove exists only while the binoculars are up: it is added and removed by the report of the toggle above.
 function Bino.StripFire(buttons)
 	return bit.band(buttons, bit.bnot(bit.bor(IN_ATTACK, IN_ATTACK2)))
 end
@@ -1124,13 +1167,35 @@ function Bino.NoFireMove(cmd)
 	cmd:SetButtons(Bino.StripFire(cmd:GetButtons()))
 end
 
-hook.Add("GryMod_BinocularsToggled", "GRYBINOCULARSNOFIRE", function(wanted)
+-- The pace: the sprint button out, the slow walk in.
+function Bino.PaceButtons(buttons)
+	return bit.bor(bit.band(buttons, bit.bnot(IN_SPEED)), IN_WALK)
+end
+
+function Bino.WalkMove(cmd)
+	if not WalkConVar:GetBool() or not Bino.Enabled() or not Bino.Wanted(LocalPlayer()) then
+		return
+	end
+
+	cmd:SetButtons(Bino.PaceButtons(cmd:GetButtons()))
+end
+
+function Bino.BinocularsMove(cmd)
+	Bino.NoFireMove(cmd)
+	Bino.WalkMove(cmd)
+end
+
+hook.Add("GryMod_BinocularsToggled", "GRYBINOCULARSMOVE", function(wanted)
 	if wanted then
-		hook.Add("CreateMove", "GRYBINOCULARSNOFIRE", Bino.NoFireMove)
+		hook.Add("CreateMove", "GRYBINOCULARSMOVE", Bino.BinocularsMove)
 	else
-		hook.Remove("CreateMove", "GRYBINOCULARSNOFIRE")
+		hook.Remove("CreateMove", "GRYBINOCULARSMOVE")
 	end
 end)
+
+-- (the name of the hook was GRYBINOCULARSNOFIRE before the pace rule joined it: a hot reload must not leave the old one behind)
+hook.Remove("GryMod_BinocularsToggled", "GRYBINOCULARSNOFIRE")
+hook.Remove("CreateMove", "GRYBINOCULARSNOFIRE")
 
 -- Whether the movie could not be loaded (the own zoom is then not offered).
 function Bino.IsMissing()
@@ -1431,6 +1496,18 @@ end)
 -- ---------------------------------------------------------------------------------------------------------
 
 function Bino.Now() return RealTime() end
+
+-- Whether a zoom key is down: the game's own (IN_ZOOM) or the own zoom's (its key, or a +gry_zoom bind).
+function Bino.KeyHeld(ply)
+	if isfunction(ply.KeyDown) and ply:KeyDown(IN_ZOOM) then
+		return true
+	end
+
+	local suit = GryMod.SuitZoom
+	local held = suit and suit.State and suit.State.held
+
+	return held ~= nil and (held.key or held.bind) or false
+end
 
 -- The engine's own scale of the mouse for a zoomed field of view (the Half-Life 2 client's zoom_sensitivity_ratio, 1 by default).
 function Bino.ZoomRatio()
@@ -1881,7 +1958,18 @@ function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 			Bino.ZoomReset(zoom)
 		end
 	elseif wanted or zoom.active then
-		stageFov = Bino.ZoomStep(zoom, Bino.Now(), wanted, ply:GetInfoNum("fov_desired", 75), fov)
+		local now = Bino.Now()
+
+		-- the key held steps the stage (before the step is worked out, so that the same frame starts the move)
+		if HoldZoomConVar:GetBool() then
+			local cue = Bino.ZoomHold(zoom, wanted and Bino.KeyHeld(ply), now)
+
+			if cue then
+				Bino.PlayZoomSound(cue)
+			end
+		end
+
+		stageFov = Bino.ZoomStep(zoom, now, wanted, ply:GetInfoNum("fov_desired", 75), fov)
 	end
 
 	local pitch, yaw = swayFor(ply, wanted)
