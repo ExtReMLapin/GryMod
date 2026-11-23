@@ -42,6 +42,10 @@ local StagesConVar = CreateClientConVar("gry_binoculars_stages", "1", true, fals
 local VisionConVar = CreateClientConVar("gry_binoculars_vision", "0", true, false, "The renderer's full-screen binoculars vision: a cool tint (0.7, 0.8, 1.0), fine scan lines (period of 4 pixels) and a darkening towards the edges (1 - 0.6 * distance from the centre). The original shows it in the High quality only and the film already has its own vignette: the edges get darker twice. Off by default")
 local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "The original's slow sway of the view while the binoculars are up (a figure of eight, strongest at the start and settling in about a second, less when crouching or in strength mode). Moves the view (on by default)")
 
+local MalfunctionConVar = CreateClientConVar("gry_binoculars_malfunction", "1", true, false, "The binoculars' film follows the HUD while the suit is down: it fades to white on a malfunction and fades out when the HUD flickers, as the original film does (off: it stays as it is)")
+local NoFireConVar = CreateClientConVar("gry_binoculars_no_fire", "0", true, false, "No shooting while the binoculars are up: the original holds them as an item instead of a weapon (off by default: the Half-Life 2 zoom lets you shoot; on changes how the game plays)")
+local ThirdPersonConVar = CreateClientConVar("gry_binoculars_thirdperson", "1", true, false, "The binoculars' film is not drawn in third person, as the original does (off: it is drawn there too)")
+
 -- The stages are on with their own switch, and always while the own zoom has a key (gry_zoom_own, see cl_suit_zoom.lua): the wheel is
 -- its interface.
 function Bino.StagesEnabled()
@@ -57,6 +61,24 @@ function Bino.AimRules() return AimConVar:GetBool() end
 function Bino.HorizonEnabled() return HorizonConVar:GetBool() end
 function Bino.TagEnabled() return TagConVar:GetBool() end
 function Bino.VignetteFade() return VignetteConVar:GetBool() end
+function Bino.MalfunctionLook() return MalfunctionConVar:GetBool() end
+function Bino.NoFireEnabled() return NoFireConVar:GetBool() end
+
+-- The film is not drawn in third person (the original's setVisible(true, animation, thirdPerson) leaves the movie hidden when the third
+-- argument is true), unless the player turned that off.
+function Bino.ThirdPersonHidden(thirdPerson)
+	return thirdPerson == true and ThirdPersonConVar:GetBool()
+end
+
+-- What the film does this frame: "show" (the binoculars are up and seen), "hide" (up, but in third person: the film goes at once, no closing
+-- animation, the zoom and the sounds go on), "close" (not wanted: the closing animation).
+function Bino.FilmAction(wanted, thirdPerson)
+	if not wanted then
+		return "close"
+	end
+
+	return Bino.ThirdPersonHidden(thirdPerson) and "hide" or "show"
+end
 
 -- The mode (1 to 4, shown as X02 to X08) of a zoom: the factor is the ratio of the tangents of the half fields
 -- of view, and each mode covers two factors.
@@ -193,6 +215,7 @@ function Bino.New(movie, theme)
 		bino = bino,
 		shown = false,
 		closing = false,
+		status = 0,
 		zoom = 1,
 		north = "000° 000.00 N",
 		west = "000° 000.00 W",
@@ -256,6 +279,55 @@ function Instance:Hide()
 	self.shown = false
 	self.closing = false
 	self.lastFrame = nil
+end
+
+-- The label of the film's Root clip for a status of destroy(): 1 the malfunction (the picture fades to white in 0.33 s and stays), 2 the flicker
+-- (it fades out in 0.3 s), anything else the normal look.
+function Bino.DestroyLabel(status)
+	if status == 1 then
+		return "malfunction"
+	elseif status == 2 then
+		return "flickering"
+	end
+
+	return "normal"
+end
+
+-- destroy(status): the film's own function, the Root clip goes to the label (its frame script plays the fade). Going back to "normal" rebuilds the
+-- clips from the first frame, as Flash does: the Binoculars clip is a new one (it plays its intro again, as in the original), so it is looked up
+-- again and the values are said again.
+function Instance:Destroy(status)
+	status = status or 0
+
+	if self.status == status then
+		return
+	end
+
+	self.status = status
+	local rootClip = self.root:Child("Root")
+
+	if not rootClip then
+		return
+	end
+
+	rootClip:GotoAndStop(Bino.DestroyLabel(status))
+	self.bino = self.root:Find("Root.Binoculars") or self.bino
+	self.lastFrame = nil
+
+	-- a clip rebuilt while the picture is closing plays its intro: it has to close again
+	if self.closing then
+		self.bino:GotoAndPlay("close")
+
+		local vignette = self:_vignette()
+
+		if vignette and Bino.VignetteFade() then
+			vignette:GotoAndPlay("close")
+		end
+	end
+
+	if self.shown then
+		self:_apply()
+	end
 end
 
 function Instance:SetZoomMode(mode)
@@ -1037,6 +1109,29 @@ hook.Add("KeyRelease", "GRYBINOCULARSTOGGLED", function(ply, key)
 	end
 end)
 
+-- No shooting while the binoculars are up (gry_binoculars_no_fire): the original holds the binoculars as an item in place of the weapon. The
+-- buttons of attack are taken out of the move; nothing else of the weapon is touched (it can still be switched, reloaded, used). The
+-- hook on CreateMove exists only while the binoculars are up: it is added and removed by the report of the toggle above.
+function Bino.StripFire(buttons)
+	return bit.band(buttons, bit.bnot(bit.bor(IN_ATTACK, IN_ATTACK2)))
+end
+
+function Bino.NoFireMove(cmd)
+	if not NoFireConVar:GetBool() or not Bino.Enabled() or not Bino.Wanted(LocalPlayer()) then
+		return
+	end
+
+	cmd:SetButtons(Bino.StripFire(cmd:GetButtons()))
+end
+
+hook.Add("GryMod_BinocularsToggled", "GRYBINOCULARSNOFIRE", function(wanted)
+	if wanted then
+		hook.Add("CreateMove", "GRYBINOCULARSNOFIRE", Bino.NoFireMove)
+	else
+		hook.Remove("CreateMove", "GRYBINOCULARSNOFIRE")
+	end
+end)
+
 -- Whether the movie could not be loaded (the own zoom is then not offered).
 function Bino.IsMissing()
 	return missing
@@ -1209,6 +1304,19 @@ local function feed(ply, dt)
 	end
 end
 
+-- The status of the HUD (0 working, 1 malfunction, 2 flickering): cl_hud_flash.lua runs the hook GryMod_HUDStatus each time it changes, so the
+-- film is told then and never asks.
+Bino.HudStatus = 0
+
+hook.Add("GryMod_HUDStatus", "GRYBINOCULARSSTATUS", function(status)
+	Bino.HudStatus = (status == 1 or status == 2) and status or 0
+end)
+
+-- The status the film shows: the HUD's, unless the player turned that look off (gry_binoculars_malfunction).
+function Bino.FilmStatus()
+	return Bino.MalfunctionLook() and Bino.HudStatus or 0
+end
+
 hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	Bino.VisionStep(Bino.Wanted(LocalPlayer()))
 
@@ -1250,9 +1358,16 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 
 	Bino.AudioStep(wanted)
 	Bino.MoodStep(wanted)
+	binoculars:Destroy(Bino.FilmStatus())
 
-	if wanted then
+	-- (the zoom, the sounds and the mood go on in third person: only the film is left out)
+	local action = Bino.FilmAction(wanted, wanted and ply:ShouldDrawLocalPlayer())
+
+	if action == "show" then
 		binoculars:Show()
+	elseif action == "hide" then
+		binoculars:Hide()
+		Bino.ScanReset(scan)
 	else
 		binoculars:Close()
 		Bino.ScanReset(scan)
@@ -1266,7 +1381,7 @@ hook.Add("HUDPaint", "GRYBINOCULARS", function()
 	local dt = math.min(now - (lastTime or now), 0.1)
 	lastTime = now
 
-	if wanted then
+	if action == "show" then
 		feed(ply, dt)
 	end
 

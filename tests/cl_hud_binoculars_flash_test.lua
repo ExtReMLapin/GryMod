@@ -47,6 +47,20 @@ local function field(clip, name)
 	return entry and entry.text
 end
 
+-- runs fn with a convar set, and puts the player's own value back whatever happens
+local function withConVar(name, value, fn)
+	local cvar = GetConVar(name)
+	local saved = cvar:GetString()
+	cvar:SetString(value)
+
+	local ok, err = pcall(fn)
+	cvar:SetString(saved)
+
+	if not ok then
+		error(err, 0)
+	end
+end
+
 return {
 	groupName = "GryMod binoculars (Flash)",
 	beforeEach = function(state)
@@ -2522,6 +2536,254 @@ return {
 
 				if not ok then
 					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without Bino.DestroyLabel
+			name = "destroy(status) names the film's labels: 1 malfunction, 2 flickering, anything else normal",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				expect(M.DestroyLabel(0)).to.equal("normal")
+				expect(M.DestroyLabel(1)).to.equal("malfunction")
+				expect(M.DestroyLabel(2)).to.equal("flickering")
+				expect(M.DestroyLabel(nil)).to.equal("normal")
+				expect(M.DestroyLabel(7)).to.equal("normal")
+			end
+		},
+		{
+			-- fails without Instance:Destroy: the film never leaves its normal frame
+			name = "a malfunction fades the film to white in ten frames and keeps it there; the label is malfunctionOn",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				run(b, 0.1)
+				local clip = b.root:Child("Root")
+				expect(clip:CurrentLabel()).to.equal("normal")
+				expect(b.bino.entry.cx).to.beNil()
+
+				b:Destroy(1)
+				run(b, 0.6)
+				expect(clip:CurrentLabel()).to.equal("malfunctionOn")
+				expect(clip.playing).to.beFalse()
+				-- the picture is painted white by the film's colour transform (multiplier 0, added 255)
+				expect(b.bino.entry.cx[1]).to.equal(0)
+				expect(b.bino.entry.cx[5]).to.equal(255)
+			end
+		},
+		{
+			-- fails without the "flickering" label played by Instance:Destroy(2)
+			name = "a flicker fades the film out (alpha 0 at the end of its nine frames)",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				run(b, 0.1)
+				b:Destroy(2)
+				run(b, 0.6)
+				expect(b.root:Child("Root"):CurrentFrame()).to.equal(20)
+				expect(b.bino.entry.cx[4]).to.equal(0)
+			end
+		},
+		{
+			-- fails if Destroy keeps the old Binoculars clip: going back to the first frame builds a new one (Flash rebuilds the display list)
+			name = "back to normal rebuilds the film's clips and the instance follows the new Binoculars clip, with the values said again",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				b:SetPosition("051° 012.34 N", "002° 003.45 W")
+				run(b, 0.1)
+				b:Destroy(1)
+				run(b, 0.6)
+				local old = b.bino
+
+				b:Destroy(0)
+				expect(b.bino ~= old).to.beTrue()
+				expect(b.bino).to.equal(b.root:Find("Root.Binoculars"))
+				expect(b.root:Child("Root"):CurrentLabel()).to.equal("normal")
+				expect(b.bino.entry.cx).to.beNil()
+				run(b, 0.5)
+				expect(field(b.bino:Find("DegreeN.Colorset"), "DegreeN")).to.equal("051° 012.34 N")
+			end
+		},
+		{
+			-- fails if the same status is applied twice (it would restart the fade at every frame)
+			name = "the same status again does nothing: the fade is not restarted",
+			func = function(state)
+				local b = newBinoculars()
+				b:Show()
+				b:Destroy(1)
+				run(b, 0.1)
+				local frame = b.root:Child("Root"):CurrentFrame()
+				expect(frame > 2).to.beTrue()
+				b:Destroy(1)
+				expect(b.root:Child("Root"):CurrentFrame()).to.equal(frame)
+			end
+		},
+		{
+			-- fails without the listener of GryMod_HUDStatus, or if FilmStatus ignores gry_binoculars_malfunction
+			name = "the HUD status told by GryMod_HUDStatus becomes the film's status, unless gry_binoculars_malfunction is 0",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local listener = hook.GetTable().GryMod_HUDStatus and hook.GetTable().GryMod_HUDStatus["GRYBINOCULARSSTATUS"]
+				expect(listener).to.beA("function")
+				local saved = M.HudStatus
+
+				local ok, err = pcall(function()
+					withConVar("gry_binoculars_malfunction", "1", function()
+						listener(1)
+						expect(M.FilmStatus()).to.equal(1)
+						listener(2)
+						expect(M.FilmStatus()).to.equal(2)
+						listener(0)
+						expect(M.FilmStatus()).to.equal(0)
+						listener(5) -- not a status of the film
+						expect(M.FilmStatus()).to.equal(0)
+						listener(1)
+					end)
+
+					withConVar("gry_binoculars_malfunction", "0", function()
+						expect(M.FilmStatus()).to.equal(0)
+					end)
+				end)
+
+				M.HudStatus = saved
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without Bino.ThirdPersonHidden / FilmAction
+			name = "in third person the film is hidden at once (the zoom goes on); nothing up closes it; gry_binoculars_thirdperson 0 draws it there too",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+
+				withConVar("gry_binoculars_thirdperson", "1", function()
+					expect(M.ThirdPersonHidden(true)).to.beTrue()
+					expect(M.ThirdPersonHidden(false)).to.beFalse()
+					expect(M.FilmAction(true, false)).to.equal("show")
+					expect(M.FilmAction(true, true)).to.equal("hide")
+					expect(M.FilmAction(false, true)).to.equal("close")
+					expect(M.FilmAction(false, false)).to.equal("close")
+				end)
+
+				withConVar("gry_binoculars_thirdperson", "0", function()
+					expect(M.ThirdPersonHidden(true)).to.beFalse()
+					expect(M.FilmAction(true, true)).to.equal("show")
+				end)
+			end
+		},
+		{
+			-- fails without Bino.StripFire
+			name = "StripFire takes out the two attack buttons and keeps the others",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local all = bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP, IN_RELOAD, IN_USE)
+				expect(M.StripFire(all)).to.equal(bit.bor(IN_JUMP, IN_RELOAD, IN_USE))
+				expect(M.StripFire(0)).to.equal(0)
+			end
+		},
+		{
+			-- fails without Bino.NoFireMove, or if it strips when the option is off, the binoculars are down or the element is off
+			name = "NoFireMove strips the attack buttons only while the option is on, the binoculars are up and their HUD element is on",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local realWanted, realEnabled = M.Wanted, M.Enabled
+				local buttons
+				local cmd = {
+					GetButtons = function() return buttons end,
+					SetButtons = function(_, value) buttons = value end
+				}
+
+				local function fire(option, wanted, enabled)
+					buttons = bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP)
+					M.Wanted = function() return wanted end
+					M.Enabled = function() return enabled end
+					local result
+
+					withConVar("gry_binoculars_no_fire", option, function()
+						M.NoFireMove(cmd)
+						result = buttons
+					end)
+
+					return result
+				end
+
+				local ok, err = pcall(function()
+					expect(GetConVar("gry_binoculars_no_fire"):GetDefault()).to.equal("0")
+					expect(fire("1", true, true)).to.equal(IN_JUMP)
+					expect(fire("0", true, true)).to.equal(bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP))
+					expect(fire("1", false, true)).to.equal(bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP))
+					expect(fire("1", true, false)).to.equal(bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP))
+				end)
+
+				M.Wanted, M.Enabled = realWanted, realEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the listener of GryMod_BinocularsToggled: the hook on CreateMove would be there all the time, or never
+			name = "the CreateMove hook of the no fire rule exists only while the binoculars are up",
+			func = function(state)
+				local listener = hook.GetTable().GryMod_BinocularsToggled and hook.GetTable().GryMod_BinocularsToggled["GRYBINOCULARSNOFIRE"]
+				expect(listener).to.beA("function")
+
+				local ok, err = pcall(function()
+					listener(true)
+					expect(hook.GetTable().CreateMove["GRYBINOCULARSNOFIRE"]).to.beA("function")
+					listener(false)
+					expect(hook.GetTable().CreateMove["GRYBINOCULARSNOFIRE"]).to.beNil()
+				end)
+
+				hook.Remove("CreateMove", "GRYBINOCULARSNOFIRE")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the three new switches are saved, their defaults are 1, 0 and 1, and each has a check box in the Binoculars options",
+			func = function(state)
+				local expected = {gry_binoculars_malfunction = "1", gry_binoculars_no_fire = "0", gry_binoculars_thirdperson = "1"}
+
+				for name, default in pairs(expected) do
+					local cvar = GetConVar(name)
+					expect(cvar ~= nil).to.beTrue()
+					expect(cvar:GetDefault()).to.equal(default)
+					expect(cvar:GetFlags()).to.equal(GetConVar("gry_binoculars_sway"):GetFlags())
+				end
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.BinocularsOptions(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				for name in pairs(expected) do
+					expect(found[name]).to.beTrue()
 				end
 			end
 		}

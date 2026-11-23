@@ -189,6 +189,9 @@ function GryMod.BinocularsOptions(Panel)
 	GryMod.OptionBox(form, "Binoculars sway", "gry_binoculars_sway", "The view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view.")
 	GryMod.OptionBox(form, "Field of view follows the zoom", "gry_zoom_follow_fov", "The server sets it, so that distant windows and fades keep the details of a zoomed view. Off: only the picture is zoomed.")
 	GryMod.OptionBox(form, "Cancel the crossbow zoom", "gry_zoom_cancel_weapon", "Opening the binoculars while the crossbow is zoomed (right click) ends the crossbow's zoom. Off: it comes back when the binoculars close.")
+	GryMod.OptionBox(form, "Film follows a malfunction", "gry_binoculars_malfunction", "While the suit is down the binoculars fade to white; with the HUD flickering they fade out (the original film's own states).")
+	GryMod.OptionBox(form, "No shooting with the binoculars up", "gry_binoculars_no_fire", "The original holds the binoculars in place of the weapon. Off: you can shoot through the Half-Life 2 zoom. Changes how the game plays.")
+	GryMod.OptionBox(form, "No film in third person", "gry_binoculars_thirdperson", "As in the original: the zoom works, the film is not drawn. Off: it is drawn there too.")
 	GryMod.OptionBox(form, "Full-screen vision", "gry_binoculars_vision", "Cool tint, scan lines and darker edges. The original has it in the High quality only, and it doubles the film's vignette.")
 end
 
