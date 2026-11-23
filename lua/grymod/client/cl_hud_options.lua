@@ -26,7 +26,8 @@ Options.List = {
 	{name = "usehint", label = "Use prompt", help = "The icon and the text under the crosshair when you can use or take what you look at (TAKE, ENTER VEHICLE, CLIMB, USE)"},
 	{name = "pickups", label = "Pickup popups", help = "The small popup when you take ammo, a weapon or an item (the Half-Life 2 pickup list is hidden when it is on)"},
 	{name = "corners", label = "Corner marks", default = "0", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them; GryMod's HUD never did, so they are off until you ask for them)"},
-	{name = "overheat", label = "Weapon heat bar", help = "The bar above the weapon icon, for the weapons that say how hot they are (an addon's energy weapon). The Half-Life 2 weapons have none"}
+	{name = "overheat", label = "Weapon heat bar", help = "The bar above the weapon icon, for the weapons that say how hot they are (an addon's energy weapon). The Half-Life 2 weapons have none"},
+	{name = "weaponlist", label = "Weapon list", help = "The list of your weapons at the bottom right when you change weapon, with the one in hand on a plate (the Half-Life 2 selector at the top right stays as it is)"}
 }
 
 local byName = {}

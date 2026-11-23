@@ -233,6 +233,7 @@ function GryMod.SoundOptions(Panel)
 	form:CheckBox("Repair sound when health comes back", "gry_sound_regen")
 	GryMod.OptionBox(form, "Malfunction sound repeats", "gry_sound_malfunction_loop", "The failure sound goes on while the suit is down, as in the original. Off: it plays once.")
 	GryMod.OptionBox(form, "Camouflage sound loop", "gry_sound_cloak_loop", "A soft loop plays while the suit is cloaked (the original's hud cloak feedback).")
+	GryMod.OptionBox(form, "Quieter steps in camouflage", "gry_cloak_foley_quiet", "While cloaked, your own footsteps and the suit's sounds are at 70 % over one second, as in the original. Other players' steps and the ambience are not changed.")
 	GryMod.OptionBox(form, "Underwater sounds", "gry_underwater_fx", "Dive in and out, breathing, gasps, ambience.")
 end
 

@@ -804,6 +804,251 @@ return {
 				expect(hooks and hooks["GRYMODSOUNDMOOD"]).toNot.beNil()
 				Mix.MoodReset()
 			end
+		},
+		{
+			-- fails without the `cloak` entry of Mix.Moods
+			name = "the cloak mood is the original's (SoundMoods.xml: priority 30, one second in and out): the foley, the suit sounds and the first-person weapon handling at 70 %, nothing else",
+			func = function(state)
+				local mood = GryMod.SoundMix.Moods.cloak
+				expect(mood).toNot.beNil()
+				expect(mood.priority).to.equal(30)
+				expect(mood.fadeIn).to.equal(1)
+				expect(mood.fadeOut).to.equal(1)
+
+				local expected = {player_foley = 0.7, hud_suit = 0.7, ["1st_weapon_foley"] = 0.7}
+				local count = 0
+
+				for category, volume in pairs(mood.volumes) do
+					count = count + 1
+					expect(expected[category]).to.aboutEqual(volume, 1e-6)
+				end
+
+				expect(count).to.equal(3)
+			end
+		},
+		{
+			-- fails without the cloak mood (the gain stays 1)
+			name = "the cloak mood goes to 70 % over one second in a straight line, and back over one second from where it was",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 10
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+
+				Mix.MoodSet("cloak", true)
+				expect(Mix.MoodGain("player_foley")).to.equal(1)
+				now = 10.5
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.85, 1e-6)
+				expect(Mix.MoodGain("hud_suit")).to.aboutEqual(0.85, 1e-6)
+				expect(Mix.MoodGain("collision")).to.equal(1) -- a category the mood does not lower
+				now = 11
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.7, 1e-6)
+				now = 30
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.7, 1e-6)
+
+				-- out again: from 0.7 back to 1 in a second
+				Mix.MoodSet("cloak", false)
+				now = 30.5
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.85, 1e-6)
+				now = 31
+				expect(Mix.MoodGain("player_foley")).to.equal(1)
+
+				-- out half way in: it goes back from where it was
+				Mix.MoodSet("cloak", true)
+				now = 31.4
+				Mix.MoodSet("cloak", false)
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.88, 1e-6)
+				Mix.MoodReset()
+			end
+		},
+		{
+			-- fails without Mix.IsFootstepName
+			name = "the match rule of a footstep: the files of the game's footsteps and the sound scripts of the surfaces' steps; nothing else",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+
+				for _, name in ipairs({"player/footsteps/concrete1.wav", "Player/Footsteps/Wood3.wav", "player/pl_step2.wav", "*player/footsteps/grass4.wav",
+					"Concrete.StepLeft", "Grass.StepRight", "Metal_Box.StepLeft", "Wood.Stepleft", "NPC_Citizen.FootstepLeft", "Gravel.StepRight"}) do
+					expect(Mix.IsFootstepName(name)).to.beTrue()
+				end
+
+				for _, name in ipairs({"weapons/smg1/smg1_fire1.wav", "player/pl_fallpain1.wav", "physics/concrete/concrete_impact_hard1.wav", "grymod/suit/suit_armor_108.wav",
+					"Concrete.ImpactHard", "Weapon_SMG1.Single", "ambient/footstep_machine.wav", "", nil, 5}) do
+					expect(Mix.IsFootstepName(name)).to.beFalse()
+				end
+			end
+		},
+		{
+			-- fails without the own-foley branch of DuckEmitted
+			name = "while the cloak mood is on, the LOCAL player's own footsteps are lowered (and only they): another player's steps, a weapon shot and a sound of no entity are not, and nothing is lowered with no mood",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 1
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+
+				local ply = LocalPlayer()
+				local other = {IsValid = function() return true end}
+
+				-- no mood: nothing changes
+				local step = {SoundName = "player/footsteps/concrete1.wav", OriginalSoundName = "Concrete.StepLeft", Volume = 0.5, Entity = ply}
+				expect(Mix.DuckEmitted(step)).to.beNil()
+				expect(step.Volume).to.equal(0.5)
+
+				Mix.MoodSet("cloak", true)
+				now = 3
+				expect(Mix.DuckEmitted(step)).to.beTrue() -- true only because the data was changed
+				expect(step.Volume).to.aboutEqual(0.35, 1e-6)
+
+				-- by the script name alone too
+				local byScript = {SoundName = "", OriginalSoundName = "Grass.StepRight", Volume = 1, Entity = ply}
+				expect(Mix.DuckEmitted(byScript)).to.beTrue()
+				expect(byScript.Volume).to.aboutEqual(0.7, 1e-6)
+
+				-- not the local player's: left alone
+				local others = {SoundName = "player/footsteps/concrete1.wav", Volume = 0.5, Entity = other}
+				expect(Mix.DuckEmitted(others)).to.beNil()
+				expect(others.Volume).to.equal(0.5)
+				expect(Mix.DuckEmitted({SoundName = "player/footsteps/concrete1.wav", Volume = 0.5})).to.beNil()
+
+				-- the local player's, but not a footstep
+				local shot = {SoundName = "weapons/smg1/smg1_fire1.wav", OriginalSoundName = "Weapon_SMG1.Single", Volume = 1, Entity = ply}
+				expect(Mix.DuckEmitted(shot)).to.beNil()
+				expect(shot.Volume).to.equal(1)
+
+				-- the other moods' categories still work in the cloak
+				local crash = {SoundName = "physics/concrete/concrete_impact_hard1.wav", Volume = 1}
+				expect(Mix.DuckEmitted(crash)).to.beNil() -- the cloak mood does not lower collisions
+				Mix.MoodReset()
+			end
+		},
+		{
+			-- fails without Mix.SuitGain and the factor in Mix.Emit
+			name = "the suit's own sounds (grymod/suit, grymod/hud) are played at 70 % in the cloak; the menu, the binoculars and the water are not; a play after the cloak is at its own volume",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 1
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+
+				expect(Mix.SuitCategoryOf("grymod/suit/suit_armor_108.wav")).to.equal("hud_suit")
+				expect(Mix.SuitCategoryOf("sound/GryMod/HUD/hud_reboot.wav")).to.equal("hud_suit")
+				expect(Mix.SuitCategoryOf("grymod/menu/temperature_beep.wav")).to.beNil()
+				expect(Mix.SuitCategoryOf("grymod/binoculars/binocular_select.wav")).to.beNil()
+				expect(Mix.SuitCategoryOf("grymod/water/dive_out.wav")).to.beNil()
+				expect(Mix.SuitCategoryOf(nil)).to.beNil()
+
+				local emitted = {}
+				stub(FindMetaTable("Entity"), "EmitSound", function(self, ...)
+					if self == LocalPlayer() then emitted[#emitted + 1] = {...} end
+				end)
+
+				expect(Mix.SuitGain("grymod/suit/suit_armor_108.wav")).to.equal(1)
+				Mix.Emit("grymod/suit/suit_armor_108.wav", 0.4)
+				expect(emitted[1][4]).to.equal(0.4)
+
+				Mix.MoodSet("cloak", true)
+				now = 3
+				expect(Mix.SuitGain("grymod/suit/suit_armor_108.wav")).to.aboutEqual(0.7, 1e-6)
+				expect(Mix.SuitGain("grymod/menu/temperature_beep.wav")).to.equal(1)
+				Mix.Emit("grymod/suit/suit_armor_108.wav", 0.4)
+				expect(emitted[2][4]).to.aboutEqual(0.28, 1e-6)
+				Mix.Emit("grymod/menu/temperature_beep.wav", 0.5)
+				expect(emitted[3][4]).to.equal(0.5)
+
+				Mix.MoodSet("cloak", false)
+				now = 5
+				Mix.Emit("grymod/suit/suit_armor_108.wav", 0.4)
+				expect(emitted[4][4]).to.equal(0.4)
+				Mix.MoodReset()
+			end
+		},
+		{
+			-- fails without the listener of GryMod_ModeChanged and without gry_cloak_foley_quiet
+			name = "the mood follows the LOCAL player's camouflage through GryMod_ModeChanged, and only while gry_cloak_foley_quiet is on (default on)",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 1
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+
+				local convar = GetConVar("gry_cloak_foley_quiet")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				setConVar("gry_cloak_foley_quiet", "1") -- (the player's own saved value must not decide the test)
+				expect(convar:GetBool()).to.beTrue()
+
+				local listener = hook.GetTable().GryMod_ModeChanged["GRYCLOAKFOLEY"]
+				expect(listener).toNot.beNil()
+
+				-- the camouflage: the mood comes in
+				listener(LocalPlayer(), GryMod.Modes.CLOAK)
+				now = 1.5
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.85, 1e-6)
+
+				-- another mode: it goes out
+				listener(LocalPlayer(), GryMod.Modes.ARMOR)
+				now = 2.5
+				expect(Mix.MoodGain("player_foley")).to.equal(1)
+
+				-- somebody else's suit: nothing
+				listener({IsValid = function() return true end}, GryMod.Modes.CLOAK)
+				now = 5
+				expect(Mix.MoodGain("player_foley")).to.equal(1)
+
+				-- the option off: the camouflage does not lower anything
+				setConVar("gry_cloak_foley_quiet", "0")
+				listener(LocalPlayer(), GryMod.Modes.CLOAK)
+				now = 8
+				expect(Mix.MoodGain("player_foley")).to.equal(1)
+				expect(Mix.MoodGain("hud_suit")).to.equal(1)
+
+				-- the option turned off while it is on: the mood goes out
+				setConVar("gry_cloak_foley_quiet", "1")
+				listener(LocalPlayer(), GryMod.Modes.CLOAK)
+				now = 10
+				expect(Mix.MoodGain("player_foley")).to.aboutEqual(0.7, 1e-6)
+				setConVar("gry_cloak_foley_quiet", "0")
+				now = 12
+				expect(Mix.MoodGain("player_foley")).to.equal(1)
+				Mix.MoodReset()
+			end
+		},
+		{
+			-- fails if the engine's sound hook stays when no mood is on (no permanent hook)
+			name = "the EntityEmitSound hook exists only while a mood is on: added when it starts, removed when the last one is over (or reset)",
+			func = function(state)
+				local Mix = GryMod.SoundMix
+				local now = 1
+				stub(Mix, "Now", function() return now end)
+				Mix.MoodReset()
+
+				local function present()
+					local hooks = hook.GetTable().EntityEmitSound
+
+					return hooks ~= nil and hooks["GRYMODSOUNDMOOD"] ~= nil
+				end
+
+				expect(present()).to.beFalse()
+
+				Mix.MoodSet("cloak", true)
+				expect(present()).to.beTrue()
+
+				now = 2 -- all the way in
+				Mix.MoodSet("cloak", false)
+				now = 2.5
+				Mix.PruneMoods() -- still fading out: it stays
+				expect(present()).to.beTrue()
+
+				now = 3.1
+				Mix.PruneMoods()
+				expect(present()).to.beFalse()
+
+				Mix.MoodSet("cloak", true)
+				expect(present()).to.beTrue()
+				Mix.MoodReset()
+				expect(present()).to.beFalse()
+			end
 		}
 	}
 }

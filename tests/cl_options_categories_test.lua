@@ -21,6 +21,7 @@ box:gry_binoculars_vignette
 box:gry_binoculars_vision
 box:gry_boot_every_spawn
 box:gry_cloak_altfire
+box:gry_cloak_foley_quiet
 box:gry_cloak_fx
 box:gry_cloak_lines
 box:gry_cloak_refract
@@ -50,6 +51,7 @@ box:gry_hud_pickups
 box:gry_hud_quickmenu
 box:gry_hud_status
 box:gry_hud_usehint
+box:gry_hud_weaponlist
 box:gry_icon_reboot
 box:gry_malfunction_empty
 box:gry_menu_keep_highlight

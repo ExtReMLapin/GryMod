@@ -75,6 +75,7 @@ In the examples that follow, the guard (`if GRYMOD_INSTALLED and ...`) stands fo
 | `alt` = `"zoom"` | the right click zooms and the weapon owns that zoom: when the binoculars open while it is zoomed, the zoom is ended (so that it does not come back, as a jump, when they close; the player's option `gry_zoom_cancel_weapon`). The server sends one right click to the weapon to toggle it off, so use it only for a weapon that zooms on its right click |
 | `heat` | a function returning 0 to 1: the heat bar above the weapon icon (`gry_hud_overheat` turns it off). A weapon without it shows no bar |
 | `grenade` | the kind of hand grenade of the grenade slot: `explosivegrenade` (default), `flashbang`, `smokegrenade`, `empgrenade`. The slot shows that icon and counts the weapon's own primary ammo; the icon blinks when you switch to a weapon of another kind |
+| `listIcon` | the silhouette of the weapon in the weapon list (below). Without it: the kind of the weapon's `grenade`, else the list writes the weapon's name |
 | `crosshair` = `false` | the HUD draws no crosshair while the weapon is in hand (the fists and the RPG). `true` or no field: the crosshair is shown |
 | `crosshair` = a number 1 to 13 | the weapon shows that crosshair of the HUD movie instead of the player's style (the player can turn that off with `gry_hud_crosshair_weapon`) |
 | `altLabel` | handed to the HUD (`GryMod.FlashHUD.LauncherLookFor(wep)`), **not drawn**: the movie has no text field for it |
@@ -205,6 +206,34 @@ The heat of a weapon base (ARC9, ArcCW...) is kept in that base's own fields: re
 from an adapter, see api.md). GryMod does not read them itself. A client hook reports the bar:
 `GryMod_WeaponHeat(ply, wep, percent)` runs each time the bar moves (`percent` is 0 when it is hidden). Its return value is ignored.
 
+### The weapon list
+
+When the player changes the weapon in hand, the HUD shows the list of the player's weapons at the bottom right, as the original game does: up
+to five rows (more weapons give a window around the one in hand), the lowest slot on top, the weapon in hand on a plate. It fades out after
+three seconds. The player can turn it off with `gry_hud_weaponlist` (a line of the options menu). The Half-Life 2 weapon selector (the letter at
+the top right) is not touched: it keeps working and stays on screen next to the list.
+
+Each row shows a silhouette, chosen by `listIcon`. The silhouettes are the 25 of the original game (`SOCOM`, `SMG`, `Shotgun`, `SCAR`, `FY71`,
+`Hurricane`, `LAW`, `TACGun`, `GaussRifle`, `DSG1`, `Grenade_Explosive`, `Grenade_Flashbang`, `Grenade_Smoke`, `C4`, `LockpickKit`, `RadarKit`,
+`RepairKit`, `AVMine`, `Claymore`, `MOARAttach`, `AlienMount`, `Grenade_EMP`, `NightVision`, `Binoculars`, `Fists`; `GryMod.API.WeaponListIcons`
+lists them). A weapon with no `listIcon` gets the grenade silhouette of its `grenade` kind if it has one; else its row shows the name of the
+weapon in plain letters. GryMod never guesses a picture.
+
+```lua
+-- shared
+if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
+	GryMod.API.RegisterWeapon("weapon_my_addon_rifle", {
+		fire = "auto",
+		listIcon = "SCAR",
+	})
+end
+```
+
+The client hook `GryMod_WeaponListShown(ply, wep)` runs each time the list is shown (the return value is ignored). The stock Half-Life 2
+weapons are mapped as data in `lua/grymod/sh_api_weapons_hl2.lua`: the pistol and the .357 `SOCOM`, the SMG `SMG`, the AR2 `SCAR`, the shotgun
+`Shotgun`, the RPG `LAW`, the crossbow `DSG1`, the grenade `Grenade_Explosive`, the crowbar, the stun baton and the fists `Fists`, the SLAM
+`AVMine`, the medkit `RepairKit`. The gravity gun, the physics gun, the tool gun, the camera and the bug bait show their name.
+
 ### A weapon that draws its own crosshair, or none
 
 `crosshair = false` keeps GryMod's crosshair off while the weapon is in hand: for a weapon with no aiming point (a melee weapon, a
@@ -268,7 +297,7 @@ The 19 classes registered in `lua/grymod/sh_api_weapons_hl2.lua`:
 | `weapon_shotgun` | semi, `Buckshot`; secondary: the double barrel (shoots, no counter); slot icon `Shotgun` |
 | `weapon_crossbow` | semi, `XBowBolt`; secondary: a zoom (not a shot) |
 | `weapon_frag` | `Grenade`; secondary: the low throw (shoots); slot icon `HandGrenade` |
-| `weapon_pistol`, `weapon_357` | semi, no secondary |
+| `weapon_pistol`, `weapon_357` | semi, no secondary; list silhouette `SOCOM` |
 | `weapon_rpg` | `RPG_Round`, no secondary; slot icon `Missle`; no crosshair |
 | `weapon_physcannon` | no gun icon |
 | `weapon_crowbar`, `weapon_stunstick` | no gun icon; secondary: a swing |

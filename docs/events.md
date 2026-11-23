@@ -23,7 +23,7 @@ option is off plays nothing for that half.
 | `low_health` | `level` (1: under 25 %, 2: under 20 %) | the red tint and the blur, a shake at level 2 | the health falls through a low zone | `gry_screenfx` |
 | `jam` | `seconds` (2; 0.1 to 60) | the interface trembles (12 px), then settles | never by itself | `gry_hud_damagefx` |
 | `radar_exposure` | `level` (100; 0 to 100), `seconds` (3; 0.1 to 60) | the hexagon of the radar shows at least `level` for `seconds` (no sound: the original has none), then goes back to what the vehicles say | never by itself: the radar's contacts drive the hexagon (see below), this is for addons and the debug window | `gry_hud_radarhex`, `gry_hud_radar` |
-| `mode` | `mode` (`"armor"`, `"speed"`, `"strength"`, `"cloak"` or the number), `tint` (false), `sound` (false) | the colour tint of the mode (none for the camouflage) + its activation sound + its voice half a second later | the suit changes mode (the camouflage also plays its own loop while it lasts, `gry_sound_cloak_loop`) | `gry_screenfx`, `gry_sounds` |
+| `mode` | `mode` (`"armor"`, `"speed"`, `"strength"`, `"cloak"` or the number), `tint` (false), `sound` (false) | the colour tint of the mode (none for the camouflage) + its activation sound + its voice half a second later | the suit changes mode (the camouflage also plays its own loop while it lasts, `gry_sound_cloak_loop`, and lowers your own footsteps and the suit's own sounds to 70 % over one second, `gry_cloak_foley_quiet`; other players' steps and the world's ambience are not changed) | `gry_screenfx`, `gry_sounds`, `gry_cloak_foley_quiet` |
 | `energy_critical` | | the "energy critical" voice | the energy falls under 25 % (at most every 30 s) | `gry_sounds` |
 | `regen_start`, `regen_stop` | | the repair sound from its start / its fade out (1 s) | the server starts / stops the health regeneration | `gry_sound_regen`, `gry_sounds` |
 | `dive_in` | `fall` (the fall speed, 0) | the splash, slow or fast | the head goes under water | `gry_underwater_fx`, `gry_sounds` |
@@ -155,6 +155,12 @@ a `pcall`: a listener that fails is shown on the console (five times at most per
 Client. Runs each time the weapon heat bar moves: `percent` is 0 to 100, and 0 when the bar is hidden (a weapon that declares no `heat`
 in the weapon registry, another weapon in hand, or the player turned the bar off). Run inside a `pcall`.
 
+### `GryMod_WeaponListShown(ply, wep)`
+
+Client. Runs each time the weapon list is shown: the player changed the weapon in hand (`wep`) and the list of the player's weapons (at the
+bottom right, up to five rows, the weapon in hand on a plate) appears for three seconds. It is not run when the list is off (`gry_hud_weaponlist`,
+the HUD, the suit) or when the HUD was just made (nothing changed). Run inside a `pcall`; the return value is ignored.
+
 ## What depends on the drawn HUD
 
 GryMod's HUD is drawn by one `HUDPaint` hook (`Module.Paint` of `cl_hud_flash.lua`). `Module.Apply` removes it when `gry_hud` is 0 or when
@@ -166,6 +172,7 @@ code that this hook runs, so in those cases they are not made:
 - the event `low_health`, and the picture half of `armor_hit` (the sound half comes from a message of the server and does not need the HUD);
 - `GryMod_RadarExposure` (the meter of the hexagon is fed by the radar's frame code, `Radar.Feed`).
 - the event `message` and `GryMod_MessageShown`: a line is shown only while the HUD is on (and the suit with it); the event still runs, it shows nothing and plays no sound.
+- `GryMod_WeaponListShown` (the list is drawn by the HUD's own frame code).
 
 These do **not** depend on the HUD being drawn: the events `mode`, `decloak`, `energy_critical`, `regen_start`, `regen_stop`, `dive_in`,
 `dive_out`, `drown`, `enabled` and `disabled`, the sound half of `armor_hit`, the hooks `GryMod_MalfunctionStart` and `GryMod_MalfunctionEnd`, and

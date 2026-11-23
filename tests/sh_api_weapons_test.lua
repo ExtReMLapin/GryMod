@@ -290,6 +290,66 @@ return {
 			end
 		},
 		{
+			-- Fails without the `listIcon` field in sh_api_weapons.lua (dropped as unknown: GetWeapon(...).listIcon is nil)
+			name = "listIcon: one of the 25 silhouettes of the weapon list movie; an unknown label or a non-string is refused and keeps the previous entry",
+			func = function()
+				expect(API.WeaponListIcons).to.exist()
+
+				local count = 0
+
+				for label in pairs(API.WeaponListIcons) do
+					count = count + 1
+					expect((API.RegisterWeapon("t_wep_a", {listIcon = label}))).to.beTrue()
+					expect(API.GetWeapon("t_wep_a").listIcon).to.equal(label)
+					expect(API.WeaponValue("t_wep_a", "listIcon", true)).to.equal(label)
+				end
+
+				expect(count).to.equal(25)
+				-- the "forbidden" sign of the movie ("emtpy") is not a weapon: it is not on the list of labels
+				expect(API.WeaponListIcons.emtpy).to.beNil()
+
+				API.RegisterWeapon("t_wep_a", {listIcon = "SCAR"})
+				expect(API.ResolveWeapon(weapon("t_wep_a")).listIcon).to.equal("SCAR")
+
+				for _, bad in ipairs({"scar", "Laser", "emtpy", 3, true}) do
+					local ok, reason = API.RegisterWeapon("t_wep_a", {listIcon = bad})
+					expect(ok).to.beFalse()
+					expect(string.find(reason, "listIcon", 1, true) ~= nil).to.beTrue()
+					expect(API.GetWeapon("t_wep_a").listIcon).to.equal("SCAR")
+				end
+
+				-- SWEP.GryHUD and the base class give it too; an invalid one in GryHUD is ignored
+				stored.t_wep_b = {GryHUD = {listIcon = "DSG1"}}
+				expect(API.WeaponValue("t_wep_b", "listIcon", true)).to.equal("DSG1")
+				stored.t_wep_child = {GryHUD = {listIcon = "nope"}}
+				expect(API.WeaponValue("t_wep_child", "listIcon", true)).to.beNil()
+				API.RegisterWeapon("t_wep_base", {listIcon = "Fists"})
+				stored.t_wep_a = {Base = "t_wep_base"}
+				API.UnregisterWeapon("t_wep_a")
+				expect(API.WeaponValue("t_wep_a", "listIcon", true)).to.equal("Fists")
+			end
+		},
+		{
+			-- Fails without the listIcon data in sh_api_weapons_hl2.lua (the stock weapons say nothing: nil)
+			name = "the stock Half-Life 2 weapons are mapped to a silhouette of the list as data; the ones with no look-alike have none (a text row)",
+			func = function()
+				local MAP = {
+					weapon_pistol = "SOCOM", weapon_357 = "SOCOM", weapon_smg1 = "SMG", weapon_ar2 = "SCAR", weapon_shotgun = "Shotgun",
+					weapon_rpg = "LAW", weapon_crossbow = "DSG1", weapon_frag = "Grenade_Explosive", weapon_crowbar = "Fists",
+					weapon_stunstick = "Fists", weapon_fists = "Fists", weapon_slam = "AVMine", weapon_medkit = "RepairKit"
+				}
+
+				for class, label in pairs(MAP) do
+					expect(API.WeaponValue(class, "listIcon", true)).to.equal(label)
+					expect(API.WeaponListIcons[label]).to.beTrue()
+				end
+
+				for _, class in ipairs({"weapon_physcannon", "weapon_physgun", "gmod_tool", "gmod_camera", "weapon_bugbait", "weapon_flechettegun"}) do
+					expect(API.WeaponValue(class, "listIcon", true)).to.beNil()
+				end
+			end
+		},
+		{
 			-- Fails without the number case of CHECK.crosshair in sh_api_weapons.lua (a number is refused: "invalid crosshair")
 			name = "crosshair may also be the number of one of the 13 crosshairs of the movie (the weapon's own style); 0, 14, a fraction or text are refused",
 			func = function()
