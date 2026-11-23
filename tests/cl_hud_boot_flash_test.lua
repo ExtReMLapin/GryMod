@@ -524,6 +524,50 @@ return {
 			end
 		},
 		{
+			-- needs: Boot.Step holding the Lost movie at Boot.LOST_HOLD_FRAME while the death is held (the movie itself ends on an empty stage at frame 137,
+			-- 4.6 s after it starts: the panel vanished while the player was still dead)
+			name = "the Lost screen of a death is still on the stage long after the movie's own end, and the respawn lets it go",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					Boot.NoteSpawn()
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					life.dead = true
+					HUD.Paint()
+					expect(Boot.IsLost()).to.beTrue()
+
+					-- the clip of the movie's stage, found through the sequences table the step works on
+					local sequences
+					local i = 1
+
+					while true do
+						local name, value = debug.getupvalue(Boot.Step, i)
+
+						if not name then break end
+
+						if name == "sequences" then sequences = value end
+
+						i = i + 1
+					end
+
+					expect(sequences ~= nil and sequences.lost ~= nil).to.beTrue()
+
+					local clip = sequences.lost.root:Child("Root")
+
+					run(8) -- the movie alone would be over after 4.6 s
+					expect(Boot.IsLost()).to.beTrue()
+					expect(clip.frame < 137).to.beTrue()
+					expect(clip.frame >= 11).to.beTrue() -- past the start, on a frame that has the panel
+
+					-- the respawn: nothing stays
+					life.dead = false
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					HUD.Paint()
+					expect(Boot.Current()).to.beNil()
+				end)
+			end
+		},
+		{
 			-- needs: the respawn handled by the HUD paint alone too (the sequences' paint not run first), through Boot.EndDeath
 			name = "the Lost screen of a death ends at the respawn whichever of the two paints runs first, and the HUD's own paint ends it too",
 			func = function(state)

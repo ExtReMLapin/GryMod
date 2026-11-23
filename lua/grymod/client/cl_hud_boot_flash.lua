@@ -22,6 +22,10 @@ Boot.MOVIES = {initialize = "hud_initialize", reboot = "hud_reboot", lost = "hud
 -- How long each sequence runs (seconds); the Lost animation loops until the malfunction ends.
 Boot.DURATION = {initialize = 89 / 30, reboot = 3.97 + 0.67}
 
+-- The Lost movie ends by itself (frame 137, 4.6 s after it starts) on an empty stage, as the original's does. A DEATH keeps the panel until the respawn: the
+-- movie's stage stops here, on a frame where the panel is still on (the orange frame with its side bars, which is what the movie shows for most of its length).
+Boot.LOST_HOLD_FRAME = 100
+
 local STAGE_W, STAGE_H = 1024, 768
 
 -- Where the stage of the movies (4:3) goes on a screen of w x h pixels: x and y of its origin and the scale. The stage
@@ -306,6 +310,15 @@ function Boot.Step(dt)
 	end
 
 	seq:Update(dt)
+
+	-- a death holds the Lost panel on its full frame (one check a step, nothing is redone once the stage is stopped)
+	if deathHeld and current == "lost" then
+		local stage = seq.root:Child("Root")
+
+		if stage and stage.playing and stage.frame >= Boot.LOST_HOLD_FRAME then
+			stage:GotoAndStop(Boot.LOST_HOLD_FRAME)
+		end
+	end
 
 	if seq:IsDone() then
 		local kind = current
