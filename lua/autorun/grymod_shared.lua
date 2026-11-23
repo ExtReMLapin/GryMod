@@ -154,6 +154,7 @@ if SERVER then
 	AddCSLuaFile("grymod/client/map/tiles.lua")
 	AddCSLuaFile("grymod/client/map/panel.lua")
 	AddCSLuaFile("grymod/client/map/options.lua")
+	AddCSLuaFile("grymod/flash/hud_pda_map.lua")
 	include("grymod/sh_api.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
@@ -400,6 +401,14 @@ if SERVER then
 	resource.AddFile("materials/grymod/flash/hud_missionobjective_icon_3.vtf")
 	resource.AddFile("materials/grymod/flash/hud_missionobjective_icon_3_w.vmt")
 	resource.AddFile("materials/grymod/flash/hud_missionobjective_icon_3_w.vtf")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_1.vmt")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_1.vtf")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_1_w.vmt")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_1_w.vtf")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_2.vmt")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_2.vtf")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_2_w.vmt")
+	resource.AddFile("materials/grymod/flash/hud_pda_map_2_w.vtf")
 	else
 		resource.AddWorkshop(tostring(GryMod.WSID))
 	end

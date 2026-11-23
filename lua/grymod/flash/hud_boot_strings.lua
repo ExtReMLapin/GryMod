@@ -53,5 +53,12 @@ return {
 	-- the objective banner (cl_objectives_banner.lua): the original shows the objective's name and "activated" / "completed" / "failed"; GryMod puts a prefix first
 	["ui_objective_added"] = "NEW OBJECTIVE",
 	["ui_objective_completed"] = "OBJECTIVE COMPLETED",
-	["ui_objective_failed"] = "OBJECTIVE FAILED"
+	["ui_objective_failed"] = "OBJECTIVE FAILED",
+	-- the big map's movie (HUD_PDA_Map, cl_map chrome): its title, its labels and its DONE button
+	["ui_map_head"] = "STRATEGIC MAP ONLINE",
+	["ui_map_objective"] = "OBJECTIVE:",
+	["ui_map_deployspot"] = "DEPLOY SPOT:",
+	["ui_map_coremessage"] = "Satellite Uplink disconnected",
+	["ui_map_infotext"] = "InfoText",
+	["ui_btn_done"] = "DONE"
 }

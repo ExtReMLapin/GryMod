@@ -29,6 +29,20 @@ class ScriptEdgeTest(unittest.TestCase):
         self.assertEqual(text, '"' + chr(92) + "000" + '1"')
 
 
+class EmitChildActionTest(unittest.TestCase):
+    """A frame script that plays or stops a NAMED child clip (`this.mask_02.gotoAndPlay("on")`) must be written as a "child" action.
+    Written as a plain {"gotol", label} it would jump the clip's OWN timeline to a label of the same name (HUD_PDA_Map: the
+    `malfunction` frame jumped to its `on` frame), or do nothing when the label is not its own."""
+
+    def test_a_child_call_is_emitted_as_a_child_action(self):
+        self.assertEqual(emit_lua._action({"do": "child", "name": "mask_02", "play": True, "label": "on"}), '{"child","mask_02",true,"on"}')
+        self.assertEqual(emit_lua._action({"do": "child", "name": "Heading", "play": False, "frame": 3}), '{"child","Heading",false,3}')
+
+    def test_the_clip_s_own_goto_is_unchanged(self):
+        self.assertEqual(emit_lua._action({"do": "goto", "label": "a"}), '{"gotol","a"}')
+        self.assertEqual(emit_lua._action({"do": "goto", "frame": 4}), '{"goto",4}')
+
+
 class MovieNameTest(unittest.TestCase):
     def test_a_movie_name_cannot_leave_the_output_folders(self):
         for bad in ("../x", ".." + BACKSLASH + "x", "a/b", "", "x.swf", "x y"):
