@@ -356,7 +356,8 @@ function Loops.Step(loop, now, keepOn)
 		loop.channel:Play()
 	elseif phase == "run" then
 		-- brought up over the first hundredths of a second, as the binoculars' loop is (a loop that starts at its level clicks)
-		loop.channel:SetVolume(GryMod.SoundMix.Volume(loop.path) * GryMod.SoundMix.FadeIn(now - loop.since))
+		-- (SuitGain: the camouflage's sound mood lowers the suit's own sounds, cl_sound_mix.lua)
+		loop.channel:SetVolume(GryMod.SoundMix.Volume(loop.path) * GryMod.SoundMix.FadeIn(now - loop.since) * GryMod.SoundMix.SuitGain(loop.path))
 	end
 
 	return phase

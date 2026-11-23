@@ -21,6 +21,7 @@ box:gry_binoculars_vignette
 box:gry_binoculars_vision
 box:gry_boot_every_spawn
 box:gry_cloak_altfire
+box:gry_cloak_foley_quiet
 box:gry_cloak_fx
 box:gry_cloak_lines
 box:gry_cloak_refract

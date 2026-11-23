@@ -13,6 +13,10 @@ local Mix = GryMod.SoundMix
 local GainConVar = CreateClientConVar("gry_sound_volume", "6", true, false,
 	"Level of the GryMod suit and interface sounds, in dB (the original game's levels plus this gain)", -20, 12)
 
+-- The camouflage lowers the player's own footsteps and the suit's sounds (the cloak mood below), as the original's sound moods do.
+local FoleyConVar = CreateClientConVar("gry_cloak_foley_quiet", "1", true, false,
+	"In the camouflage, your own footsteps and the suit's sounds are quieter (70 %, over one second), as in the original")
+
 Mix.MinGain = -20
 Mix.MaxGain = 12
 
@@ -238,7 +242,8 @@ function Mix.Emit(path, volume)
 	local ply = LocalPlayer()
 
 	if IsValid(ply) then
-		ply:EmitSound(path, 0, Mix.Pitch(path), volume, CHAN_STATIC)
+		-- the suit's own sounds are lowered while the cloak mood is on (a play that starts after it began; the loops follow it, cl_sounds.lua)
+		ply:EmitSound(path, 0, Mix.Pitch(path), volume * Mix.SuitGain(path), CHAN_STATIC)
 
 		return true
 	end
@@ -286,6 +291,22 @@ Mix.Moods = {
 	}
 }
 
+-- cloak: the camouflage (FUN_390cc7a0 of CryGame.dll pushes it, 1000 ms in and out), priority 30. SoundMoods.xml: the player's foley (own
+-- footsteps and clothes), the suit and HUD sounds and the first-person weapon handling at 0.7; the ambience is pitched down half an octave
+-- (not reproduced: the engine's ambient sounds cannot be pitched from here) and no category is filtered. Out of reach here: the weapon
+-- handling (1st_weapon_foley) cannot be told from a shot by the name of a sound, so nothing is mapped to it, and the other players' steps are
+-- not the player's foley.
+Mix.Moods.cloak = {
+	priority = 30,
+	fadeIn = 1,
+	fadeOut = 1,
+	volumes = {
+		player_foley = 0.7,
+		hud_suit = 0.7,
+		["1st_weapon_foley"] = 0.7
+	}
+}
+
 -- the moods that are on or fading: name -> {from (the weight when the last change came), target (1 or 0), start}
 local moods = {}
 
@@ -299,6 +320,30 @@ local function moodWeight(name, state, now)
 	end
 
 	return math.max(0, state.from - elapsed / mood.fadeOut)
+end
+
+-- The game's EntityEmitSound hook exists only while a mood is on: added when one starts, removed when the last one is over (a hook that
+-- looks at every sound the game makes is not left on for nothing). onEmitted is set below, with the function it runs.
+local EMIT_HOOK = "GRYMODSOUNDMOOD"
+local onEmitted
+
+local function dropHook()
+	hook.Remove("EntityEmitSound", EMIT_HOOK)
+end
+
+-- Forgets the moods that are fully out; the hook goes with the last one.
+function Mix.PruneMoods()
+	local now = Mix.Now()
+
+	for name, state in pairs(moods) do
+		if state.target == 0 and moodWeight(name, state, now) <= 0 then
+			moods[name] = nil
+		end
+	end
+
+	if next(moods) == nil then
+		dropHook()
+	end
 end
 
 -- Switches a mood on or off (nothing happens when it already is). Returns false for a mood that does not exist.
@@ -321,11 +366,19 @@ function Mix.MoodSet(name, on)
 
 	moods[name] = {from = state and moodWeight(name, state, now) or 0, target = target, start = now}
 
+	if on then
+		hook.Add("EntityEmitSound", EMIT_HOOK, onEmitted)
+	else
+		-- the mood is forgotten, and the hook with it, once its fade out is over
+		timer.Simple(Mix.Moods[name].fadeOut + 0.1, Mix.PruneMoods)
+	end
+
 	return true
 end
 
 function Mix.MoodReset()
 	moods = {}
+	dropHook()
 end
 
 -- The gain (0 to 1) of a category now: 1 + (the volume the mood gives it - 1) * the mood's weight, the mood being the
@@ -348,6 +401,10 @@ function Mix.MoodGain(category)
 		elseif weight > 0 and (not bestPriority or priority > bestPriority) then
 			best, bestWeight, bestPriority = name, weight, priority
 		end
+	end
+
+	if next(moods) == nil then
+		dropHook()
 	end
 
 	if not best then
@@ -393,6 +450,56 @@ function Mix.CategoryOf(name)
 	return nil
 end
 
+-- Whether the name of a sound (a file, or a sound script) is a footstep: the files of the game's player footsteps, and the scripts of the
+-- surfaces' steps ("Concrete.StepLeft", "NPC_Citizen.FootstepRight"). Case does not matter, the engine's flag characters are not part of it.
+function Mix.IsFootstepName(name)
+	if type(name) ~= "string" or name == "" then
+		return false
+	end
+
+	name = Mix.Normalize((string.gsub(name, "^[%*#%^%)%(<>%$%?@!~`]+", "")))
+
+	return string.sub(name, 1, 17) == "player/footsteps/" or string.sub(name, 1, 14) == "player/pl_step"
+		or string.find(name, "%.step[lr]") ~= nil or string.find(name, "%.footstep[lr]") ~= nil
+end
+
+-- The category of a sound that only the player's OWN steps have: player_foley, for a footstep of the local player (the sound's entity).
+-- The other players' steps are not touched: the original's mood lowers the foley of the player of this game, not the others'.
+function Mix.OwnFoleyCategory(data)
+	local entity = data.Entity
+
+	if entity == nil or not IsValid(entity) or entity ~= LocalPlayer() then
+		return nil
+	end
+
+	if Mix.IsFootstepName(data.SoundName) or Mix.IsFootstepName(data.OriginalSoundName) then
+		return "player_foley"
+	end
+
+	return nil
+end
+
+-- The category of one of the addon's own suit and HUD sounds (the folders sound/grymod/suit and sound/grymod/hud): hud_suit. The quick menu,
+-- the binoculars and the water have their own events in the original and are not lowered.
+function Mix.SuitCategoryOf(path)
+	if type(path) ~= "string" or path == "" then
+		return nil
+	end
+
+	path = Mix.Normalize(path)
+
+	if string.sub(path, 1, 12) == "grymod/suit/" or string.sub(path, 1, 11) == "grymod/hud/" then
+		return "hud_suit"
+	end
+
+	return nil
+end
+
+-- The gain (0 to 1) the moods give to a suit sound now (1 when no mood lowers it). The loops use it at each step, Mix.Emit at the play.
+function Mix.SuitGain(path)
+	return Mix.MoodGain(Mix.SuitCategoryOf(path))
+end
+
 -- What EntityEmitSound does: while a mood is on, the volume of a sound of a lowered category is multiplied by the gain
 -- (the hook returns true when it changed the data, as the game wants). A sound of a vehicle is a vehicle sound whatever
 -- its file.
@@ -401,7 +508,7 @@ function Mix.DuckEmitted(data)
 		return nil
 	end
 
-	local category = Mix.CategoryOf(data.SoundName) or Mix.CategoryOf(data.OriginalSoundName)
+	local category = Mix.CategoryOf(data.SoundName) or Mix.CategoryOf(data.OriginalSoundName) or Mix.OwnFoleyCategory(data)
 
 	if not category and IsValid(data.Entity) and data.Entity.IsVehicle and data.Entity:IsVehicle() then
 		category = "vehicle_sounds"
@@ -418,6 +525,30 @@ function Mix.DuckEmitted(data)
 	return true
 end
 
-hook.Add("EntityEmitSound", "GRYMODSOUNDMOOD", function(data)
+onEmitted = function(data)
 	return Mix.DuckEmitted(data)
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The camouflage's mood (gry_cloak_foley_quiet): on while the LOCAL player's suit is in the camouflage and the player wants it. Driven by the
+-- report of the mode change (GryMod_ModeChanged) and by the setting, never by a frame hook.
+-- ---------------------------------------------------------------------------------------------------------
+
+-- Whether the camouflage mood is wanted for a suit in this mode.
+function Mix.CloakFoleyWanted(mode)
+	return FoleyConVar:GetBool() and mode == GryMod.Modes.CLOAK
+end
+
+hook.Add("GryMod_ModeChanged", "GRYCLOAKFOLEY", function(ply, mode)
+	if ply == LocalPlayer() then
+		Mix.MoodSet("cloak", Mix.CloakFoleyWanted(mode))
+	end
 end)
+
+cvars.AddChangeCallback("gry_cloak_foley_quiet", function()
+	local ply = LocalPlayer()
+
+	if IsValid(ply) then
+		Mix.MoodSet("cloak", Mix.CloakFoleyWanted(ply.NanosuitMode))
+	end
+end, "GryCloakFoley")

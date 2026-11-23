@@ -139,6 +139,44 @@ return {
 			end
 		},
 		{
+			-- fails without the suit gain in Loops.Step (the loop would stay at full level in the camouflage)
+			name = "a suit loop is lowered with the cloak mood (70 % of its level, the mood's fade) and back to its own level when the mood is over",
+			func = function()
+				local Mix = GryMod.SoundMix
+				local now = 50
+				local realNow = Mix.Now
+				Mix.Now = function() return now end
+
+				local ok, err = pcall(function()
+					Mix.MoodReset()
+
+					local loop = L.State.cloak
+					local channel = fakeChannel()
+					loop.channel = channel
+					L.Begin(loop)
+					local t0 = loop.startAt
+					L.Step(loop, t0, true)
+
+					L.Step(loop, t0 + 1, true)
+					expect(channel.volume).to.aboutEqual(Mix.Volume(loop.path), 1e-9)
+
+					Mix.MoodSet("cloak", true)
+					now = 51 -- a second: the mood is all the way in
+					L.Step(loop, t0 + 2, true)
+					expect(channel.volume).to.aboutEqual(Mix.Volume(loop.path) * 0.7, 1e-9)
+
+					Mix.MoodSet("cloak", false)
+					now = 53
+					L.Step(loop, t0 + 3, true)
+					expect(channel.volume).to.aboutEqual(Mix.Volume(loop.path), 1e-9)
+				end)
+
+				Mix.Now = realNow
+				Mix.MoodReset()
+				assert(ok, err)
+			end
+		},
+		{
 			-- fails if the loop keeps a hook with nothing playing, or has none while it plays
 			name = "the Think hook of a loop exists from its beginning to its end, and not otherwise",
 			func = function()
