@@ -73,6 +73,7 @@ In the examples that follow, the guard (`if GRYMOD_INSTALLED and ...`) stands fo
 | `altShoots` | the camouflage ends on a right click that really shoots (the player's option `gry_cloak_altfire`) |
 | `alt` (any value) | with `altShoots`, how the HUD knows if the right click shoots now (below) |
 | `alt` = `"zoom"` | the right click zooms and the weapon owns that zoom: when the binoculars open while it is zoomed, the zoom is ended (so that it does not come back, as a jump, when they close; the player's option `gry_zoom_cancel_weapon`). The server sends one right click to the weapon to toggle it off, so use it only for a weapon that zooms on its right click |
+| `heat` | a function returning 0 to 1: the heat bar above the weapon icon (`gry_hud_overheat` turns it off). A weapon without it shows no bar |
 | `grenade` | the kind of hand grenade of the grenade slot: `explosivegrenade` (default), `flashbang`, `smokegrenade`, `empgrenade`. The slot shows that icon and counts the weapon's own primary ammo; the icon blinks when you switch to a weapon of another kind |
 | `crosshair` = `false` | the HUD draws no crosshair while the weapon is in hand (the fists and the RPG). `true` or no field: the crosshair is shown |
 | `altLabel` | handed to the HUD (`GryMod.FlashHUD.LauncherLookFor(wep)`), **not drawn**: the movie has no text field for it |
@@ -179,6 +180,29 @@ if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
 	})
 end
 ```
+
+### A weapon that overheats
+
+The HUD has a heat bar above the weapon icon. It is shown only for a weapon that says how hot it is: `heat` is a function that gets the
+weapon (an entity) and returns a number from 0 (cold, the bar is hidden) to 1 (overheated, the bar is full). The HUD asks it at each
+frame while the weapon is in hand, under `SafeCall` (an error is caught, and 5 in a row disable it). The Half-Life 2 weapons have
+no heat, so they never show the bar. Whatever your weapon keeps its heat in works: a networked variable, a field...
+
+```lua
+-- shared
+if GRYMOD_INSTALLED and GryMod.API.Has("weapons") then
+	GryMod.API.RegisterWeapon("weapon_my_addon_plasma", {
+		fire = "auto",
+		heat = function(wep)
+			return wep:GetNW2Float("MyAddonHeat") / 100
+		end,
+	})
+end
+```
+
+The heat of a weapon base (ARC9, ArcCW...) is kept in that base's own fields: read its source for the getter and give it here (or
+from an adapter, see api.md). GryMod does not read them itself. A client hook reports the bar:
+`GryMod_WeaponHeat(ply, wep, percent)` runs each time the bar moves (`percent` is 0 when it is hidden). Its return value is ignored.
 
 ### A weapon that draws its own crosshair, or none
 

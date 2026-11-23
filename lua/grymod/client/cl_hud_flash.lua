@@ -123,7 +123,7 @@ function HUD:_resolve()
 		local overheat = self.player:Child("OverheatBar")
 
 		if overheat then
-			overheat:SetVisible(false)
+			overheat:SetVisible(false) -- shown again by _applyHeat when a weapon gives a heat
 		end
 	end
 
@@ -166,6 +166,32 @@ function HUD:SetEnergy(value)
 		self.numbers:SetText("EnergyText2", tens)
 		self.numbers:SetText("EnergyText3", ones)
 	end
+end
+
+-- setOverheatBar: the bar above the weapon icon. frame: 1 to 100 (the heat in percent), 0 or nil hides it (the original hides it for 0).
+-- The movie's player HUD only; nothing is shown for a weapon that gives no heat.
+function HUD:SetHeat(frame)
+	self.heat = isnumber(frame) and number(frame, 0) or 0
+	self:_applyHeat()
+end
+
+function HUD:_applyHeat()
+	local bar = self.player and self.player:Child("OverheatBar")
+
+	if not bar then
+		return
+	end
+
+	local frame = math.Clamp(math.floor(self.heat or 0), 0, 100)
+
+	if frame == 0 then
+		bar:SetVisible(false)
+
+		return
+	end
+
+	bar:SetVisible(true)
+	bar:GotoAndStop(frame)
 end
 
 -- setMode: "Cloak", "Speed", "Strength" or "Armor" (anything else is ignored). While the suit is
@@ -481,6 +507,7 @@ function HUD:_refresh()
 	end
 
 	self:_applyAmmo()
+	self:_applyHeat()
 end
 
 function HUD:Update(dt)
@@ -831,6 +858,49 @@ function Module.AmmoFor(ply, weapon)
 	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode, kind
 end
 
+-- The frame of the overheat bar for a heat of 0 (cold) to 1 (overheated): 0 hides the bar, anything above 0 is at least the frame 1.
+-- Anything that is not a number is a cold weapon.
+function Module.HeatFrame(heat)
+	if not isnumber(heat) or heat ~= heat or heat <= 0 then
+		return 0
+	end
+
+	return math.Clamp(math.ceil(heat * 100 - 0.5), 1, 100)
+end
+
+-- What tells the heat of this weapon: the function the weapon registry declares (`heat`), or nil: the weapon has no heat source, no weapon
+-- in hand, or the player turned the bar off (gry_hud_overheat). Asked when the weapon changes, not at every frame.
+function Module.HeatSourceFor(weapon)
+	weapon = validWeapon(weapon)
+
+	if not weapon or (GryMod.HUDOptions and not GryMod.HUDOptions.Enabled("overheat")) then
+		return nil
+	end
+
+	local source = weaponValue(weapon, "heat", true)
+
+	return isfunction(source) and source or nil
+end
+
+local heatIds = setmetatable({}, {__index = function(ids, class)
+	ids[class] = "weapon:" .. class .. "/heat"
+
+	return ids[class]
+end})
+
+-- The frame of the bar for the weapon, from its heat source (HeatSourceFor): 0 when it has none or the source fails (it runs under
+-- GryMod.API.SafeCall, so a broken one never reaches the HUD).
+function Module.HeatOf(weapon, source)
+	if not source then
+		return 0
+	end
+
+	local class = weapon.GetClass and weapon:GetClass()
+	local ok, heat = GryMod.API.SafeCall(heatIds[isstring(class) and class or "?"], source, weapon)
+
+	return ok and Module.HeatFrame(heat) or 0
+end
+
 -- The energy (0 to 100) at which the suit stops under GryMod's old rule (gry_malfunction_empty): the HUD malfunctions
 -- (red) while the bar is empty and reboots once it is back above RECOVER_AT. Between the two, and with no usable value, the state stays as it is.
 Module.RECOVER_AT = 10
@@ -1014,6 +1084,23 @@ local function feed(ply)
 
 	local weaponChanged = fed.weapon ~= weapon
 	fed.weapon = weapon
+
+	-- the heat bar: the source is looked up when the weapon (or the switch) changes, the weapon is asked at each frame. Nothing runs
+	-- for a weapon without a heat source.
+	local heatOn = not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("overheat")
+
+	if weaponChanged or fed.heatOn ~= heatOn then
+		fed.heatOn = heatOn
+		fed.heatSource = Module.HeatSourceFor(weapon)
+	end
+
+	local heat = fed.heatSource and Module.HeatOf(weapon, fed.heatSource) or 0
+
+	if fed.heat ~= heat then
+		fed.heat = heat
+		hud:SetHeat(heat)
+		pcall(hook.Run, "GryMod_WeaponHeat", ply, weapon, heat) -- a broken listener must not stop the paint
+	end
 
 	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher
 		or fed.launcherIcon ~= launcherIcon or fed.launcherLabel ~= launcherLabel or fed.grenadeKind ~= grenadeKind then

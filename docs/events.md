@@ -125,6 +125,11 @@ it sends at most four a second). With a state under `4`, or `6`, the map the cli
 the message comes first and the file after it: `GryMod_InOutMapReady` follows. A message with a state outside 0 to 6 is ignored, no hook.
 A listener that fails is shown once in the console and does not stop the receiver.
 
+### `GryMod_WeaponHeat(ply, wep, percent)`
+
+Client. Runs each time the weapon heat bar moves: `percent` is 0 to 100, and 0 when the bar is hidden (a weapon that declares no `heat`
+in the weapon registry, another weapon in hand, or the player turned the bar off). Run inside a `pcall`.
+
 ## What depends on the drawn HUD
 
 GryMod's HUD is drawn by one `HUDPaint` hook (`Module.Paint` of `cl_hud_flash.lua`). `Module.Apply` removes it when `gry_hud` is 0 or when

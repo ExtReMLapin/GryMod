@@ -545,6 +545,94 @@ return {
 			end
 		},
 		{
+			-- Fails without HUD:SetHeat (cl_hud_flash.lua): the bar of the movie is hidden for good, nothing can show it
+			name = "the overheat bar: hidden by default, SetHeat shows it on the frame of the heat (1 to 100), 0 hides it, and it comes back after a malfunction",
+			func = function(state)
+				local hud = newHud()
+				local function bar() return hud.player:Child("OverheatBar") end
+				expect(bar().visible).to.beFalse()
+				hud:SetHeat(50)
+				expect(bar().visible).to.beTrue()
+				expect(bar():CurrentFrame()).to.equal(50)
+				hud:SetHeat(100)
+				expect(bar():CurrentFrame()).to.equal(100)
+				hud:SetHeat(0)
+				expect(bar().visible).to.beFalse()
+
+				hud:SetHeat(30)
+				hud:Destroy(1)
+				hud:Destroy(0)
+				expect(bar().visible).to.beTrue()
+				expect(bar():CurrentFrame()).to.equal(30)
+				hud:SetHeat(nil)
+				expect(bar().visible).to.beFalse()
+			end
+		},
+		{
+			name = "HeatFrame turns a heat of 0 to 1 into a frame of the bar: 0 is hidden, anything above 0 is at least frame 1, junk is hidden",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				expect(M.HeatFrame(0)).to.equal(0)
+				expect(M.HeatFrame(nil)).to.equal(0)
+				expect(M.HeatFrame(-1)).to.equal(0)
+				expect(M.HeatFrame(0 / 0)).to.equal(0)
+				expect(M.HeatFrame("hot")).to.equal(0)
+				expect(M.HeatFrame(0.001)).to.equal(1)
+				expect(M.HeatFrame(0.5)).to.equal(50)
+				expect(M.HeatFrame(1)).to.equal(100)
+				expect(M.HeatFrame(7)).to.equal(100)
+			end
+		},
+		{
+			-- Fails without Module.HeatSourceFor / HeatOf: nothing reads the registry's `heat`. The switch gry_hud_overheat comes from the
+			-- HUD options list (an element "overheat").
+			name = "only a weapon that declares a heat source shows the bar; a broken source shows nothing and never raises; gry_hud_overheat turns it off",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local weapon = {GetClass = function() return "t_firemode" end}
+				local convar = GetConVar("gry_hud_overheat")
+				local saved = convar:GetString()
+				local value = 0.4
+
+				local ok, err = pcall(function()
+					convar:SetString("1")
+					expect(M.HeatSourceFor(weapon)).to.beNil()
+					expect(M.HeatOf(weapon, nil)).to.equal(0)
+
+					GryMod.API.RegisterWeapon("t_firemode", {heat = function(wep) return value end})
+					local source = M.HeatSourceFor(weapon)
+					expect(isfunction(source)).to.beTrue()
+					expect(M.HeatOf(weapon, source)).to.equal(40)
+					value = 1
+					expect(M.HeatOf(weapon, source)).to.equal(100)
+
+					-- a weapon that says it itself
+					expect(isfunction(M.HeatSourceFor({GetClass = function() return "t_other" end, GryHUD = {heat = function() return 1 end}}))).to.beTrue()
+
+					-- an error is caught, and the bar is hidden
+					GryMod.API.RegisterWeapon("t_firemode", {heat = function() error("broken heat") end})
+					expect(M.HeatOf(weapon, M.HeatSourceFor(weapon))).to.equal(0)
+					GryMod.API.RegisterWeapon("t_firemode", {heat = function() return "hot" end})
+					expect(M.HeatOf(weapon, M.HeatSourceFor(weapon))).to.equal(0)
+
+					-- no weapon in hand
+					expect(M.HeatSourceFor(nil)).to.beNil()
+
+					-- the option off: no source
+					GryMod.API.RegisterWeapon("t_firemode", {heat = function() return 1 end})
+					convar:SetString("0")
+					expect(M.HeatSourceFor(weapon)).to.beNil()
+				end)
+
+				convar:SetString(saved)
+				GryMod.API.SafeCallReset("weapon:t_firemode/heat")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "the stock Half-Life 2 and Garry's Mod weapons have their own fire mode icon",
 			func = function(state)
 				local M = GryMod.FlashHUD

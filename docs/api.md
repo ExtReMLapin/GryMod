@@ -233,6 +233,7 @@ A weapon is described by a **definition**, a table of optional fields. A field y
 | `icon` | an icon key | the icon of the weapon slot (it wins over `fire`) |
 | `slotIcon` | an icon key | the stock icon of the weapon slot, when `icon` is not given |
 | `crosshair` | boolean | `false`: the HUD draws no crosshair while the weapon is in hand (the stock fists and RPG). `true` or no field: it is shown |
+| `heat` | `function(wep)` returning a number, 0 (cold) to 1 (overheated) | how hot the weapon is: the HUD shows the heat bar above the weapon icon, only for a weapon that declares this. Asked at each frame while the weapon is in hand, under `SafeCall`. The player can turn the bar off (`gry_hud_overheat`) |
 | `grenade` | `"explosivegrenade"`, `"flashbang"`, `"smokegrenade"`, `"empgrenade"` (`GryMod.API.GrenadeKinds`) | the kind of hand grenade the grenade slot shows while the weapon is in hand. A weapon that declares it counts **its own primary ammo** there (the player's hand grenades are the explosive ones). Default: `"explosivegrenade"` and the hand grenades' count |
 
 The icon keys are the ones of the HUD movie: `Single`, `Burst`, `Auto`, `Grenade`, `Shotgun`, `Mine`, `Repairkit`, `Missle`, `NoGun`,
@@ -297,6 +298,7 @@ entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
 | `altShoots` | client | the camouflage: a right click that shoots ends it (the HUD tells the server) |
 | `icon`, `slotIcon` | client | the icon of the weapon slot |
 | `crosshair` | client | the HUD's crosshair is hidden while the weapon is in hand |
+| `heat` | client | the heat bar above the weapon icon; also reported to the hook `GryMod_WeaponHeat(ply, wep, percent)` (client, each time the bar moves, 0 when it is hidden) |
 | `grenade` | client | the icon of the grenade slot, and its blink when the kind changes (a weapon change from one kind to another) |
 
 ### Where a field comes from

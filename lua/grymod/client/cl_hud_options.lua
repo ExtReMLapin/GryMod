@@ -21,7 +21,8 @@ Options.List = {
 	{name = "binoculars", label = "Binoculars", help = "The binoculars screen while you zoom"},
 	{name = "quickmenu", label = "Quick menu", help = "The suit mode wheel (hold its key, point, release)"},
 	{name = "boot", label = "Start-up and reboot sequences", help = "The log at the first spawn, the shutdown animation and the reboot after a malfunction"},
-	{name = "damagefx", label = "HUD jump on a heavy armor hit", help = "The panels shake for a moment when the armor takes a hit of a fifth of the bar or more, as in the original"}
+	{name = "damagefx", label = "HUD jump on a heavy armor hit", help = "The panels shake for a moment when the armor takes a hit of a fifth of the bar or more, as in the original"},
+	{name = "overheat", label = "Weapon heat bar", help = "The bar above the weapon icon, for the weapons that say how hot they are (an addon's energy weapon). The Half-Life 2 weapons have none"}
 }
 
 local byName = {}

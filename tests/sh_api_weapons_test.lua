@@ -266,6 +266,30 @@ return {
 			end
 		},
 		{
+			-- Fails without the `heat` field in sh_api_weapons.lua (dropped as unknown: GetWeapon(...).heat is nil)
+			name = "heat: a function returning the heat of the weapon (0 to 1); anything else is refused and keeps the previous entry",
+			func = function()
+				local function read() return 0.5 end
+				expect((API.RegisterWeapon("t_wep_a", {heat = read}))).to.beTrue()
+				expect(API.GetWeapon("t_wep_a").heat).to.equal(read)
+				expect(API.WeaponValue("t_wep_a", "heat", true)).to.equal(read)
+				expect(API.ResolveWeapon(weapon("t_wep_a")).heat).to.equal(read)
+
+				for _, bad in ipairs({0.5, "heat", true}) do
+					local ok, reason = API.RegisterWeapon("t_wep_a", {heat = bad})
+					expect(ok).to.beFalse()
+					expect(string.find(reason, "heat", 1, true) ~= nil).to.beTrue()
+					expect(API.GetWeapon("t_wep_a").heat).to.equal(read)
+				end
+
+				-- SWEP.GryHUD and the adapters can give it too
+				stored.t_wep_b = {GryHUD = {heat = read}}
+				expect(API.WeaponValue("t_wep_b", "heat", true)).to.equal(read)
+				stored.t_wep_child = {GryHUD = {heat = 0.3}}
+				expect(API.WeaponValue("t_wep_child", "heat", true)).to.beNil()
+			end
+		},
+		{
 			name = "the functions are accepted for fire and counter",
 			func = function()
 				local ok = API.RegisterWeapon("t_wep_a", {fire = function() return "auto" end, counter = function() return "12" end})

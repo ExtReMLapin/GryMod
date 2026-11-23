@@ -36,6 +36,7 @@ box:gry_hud_damagefx
 box:gry_hud_energy_smooth
 box:gry_hud_grenade
 box:gry_hud_hit
+box:gry_hud_overheat
 box:gry_hud_quickmenu
 box:gry_hud_status
 box:gry_icon_reboot

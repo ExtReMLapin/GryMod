@@ -64,10 +64,12 @@ local CHECK = {
 	icon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	slotIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	crosshair = function(v) if isbool(v) then return v end end,
-	grenade = function(v) if isstring(v) and GRENADES[v] then return v end end
+	grenade = function(v) if isstring(v) and GRENADES[v] then return v end end,
+	-- function(wep) returning the heat of the weapon, 0 (cold) to 1 (overheated): the bar of the HUD shows it
+	heat = function(v) if isfunction(v) then return v end end
 }
 
-local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade"}
+local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade", "heat"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -110,6 +112,7 @@ function API.RegisterWeapon(class, def)
 	registry[class] = clean
 	API.SafeCallReset(functionId(class, "fire"))
 	API.SafeCallReset(functionId(class, "counter"))
+	API.SafeCallReset(functionId(class, "heat"))
 
 	return true
 end
@@ -403,7 +406,7 @@ resolveField = function(field, class, wep, source, entity, explicit)
 end
 
 -- The final description of a weapon, the one the HUD uses: a table with the fields of a definition (fire, burst, ammo, counter,
--- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
+-- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade, heat) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
 -- wep is the weapon entity, or its class name (then only what is declared or read from the stored SWEP counts). nil for an invalid
 -- weapon. explicit = true: only what is declared (registry, GryHUD, adapters), no defaults, no alt/altShoots/counter fallbacks.
 function API.ResolveWeapon(wep, explicit)
