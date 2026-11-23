@@ -36,6 +36,15 @@ ZoomFov.TOLERANCE = 0.5
 local held = setmetatable({}, {__mode = "k"}) -- [player] = {fov = degrees, seen = time}
 local windows = setmetatable({}, {__mode = "k"}) -- [player] = {start = time, count = n}
 
+-- A report for the addons (nothing is read from it): the field of view this module asks of the engine for the player, 0 when the zoom is
+-- over. Only called when the value really changed, so an addon never sees the same value twice in a row. It covers the zoom that goes
+-- through gry_zoom_fov (the suit's own zoom and the binoculars), not the zoom of a weapon.
+local function report(ply, fov)
+	if IsValid(ply) then
+		hook.Run("GryMod_Zoom", ply, fov)
+	end
+end
+
 -- Everything forgotten (the tests).
 function ZoomFov.Reset()
 	held = setmetatable({}, {__mode = "k"})
@@ -51,8 +60,15 @@ end
 
 -- Drops what is held without any call (the player died, left, the map changed: the engine has the normal field of view again).
 function ZoomFov.Forget(ply)
+	local was = held[ply] ~= nil
+
 	held[ply] = nil
 	windows[ply] = nil
+
+	-- (the zoom is over for whoever follows it, even when the engine is not called)
+	if was then
+		report(ply, 0)
+	end
 end
 
 -- Gives the player's field of view back when this module had set one.
@@ -65,6 +81,7 @@ function ZoomFov.Release(ply)
 
 	if IsValid(ply) then
 		ply:SetFOV(0, ZoomFov.TRANSITION)
+		report(ply, 0)
 	end
 
 	return true
@@ -137,6 +154,7 @@ function ZoomFov.Handle(ply, fov, now)
 
 	held[ply] = {fov = fov, seen = now}
 	ply:SetFOV(fov, ZoomFov.TRANSITION)
+	report(ply, fov)
 
 	return "set"
 end
@@ -172,5 +190,11 @@ end)
 
 hook.Add("PostPlayerDeath", "GryMod zoom fov", function(ply)
 	-- (the engine gives the normal field of view back at the respawn)
+	local was = held[ply] ~= nil
+
 	held[ply] = nil
+
+	if was then
+		report(ply, 0)
+	end
 end)
