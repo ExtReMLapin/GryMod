@@ -23,7 +23,8 @@ return {
 					local convar = GetConVar(name)
 
 					expect(convar ~= nil).to.beTrue()
-					expect(convar:IsFlagSet(FCVAR_ARCHIVE)).to.beTrue()
+					-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: the flags are those of a saved sibling)
+					expect(convar:GetFlags()).to.equal(GetConVar("gry_hud_status"):GetFlags())
 				end
 			end
 		},

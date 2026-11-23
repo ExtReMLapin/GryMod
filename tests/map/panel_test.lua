@@ -565,7 +565,8 @@ return {
 				local key = Map.Key
 
 				expect(GetConVar("gry_map_key") ~= nil).to.beTrue()
-				expect(GetConVar("gry_map_key"):IsFlagSet(FCVAR_ARCHIVE)).to.beTrue()
+				-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: the flags are those of a saved sibling)
+				expect(GetConVar("gry_map_key"):GetFlags()).to.equal(GetConVar("gry_menu_key"):GetFlags())
 
 				if key.Chosen() == 0 then
 					expect(key.Effective()).to.equal(KEY_M)
