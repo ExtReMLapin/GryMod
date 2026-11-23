@@ -2715,7 +2715,7 @@ return {
 				end
 
 				local ok, err = pcall(function()
-					expect(GetConVar("gry_binoculars_no_fire"):GetDefault()).to.equal("0")
+					expect(GetConVar("gry_binoculars_no_fire"):GetDefault()).to.equal("1")
 					expect(fire("1", true, true)).to.equal(IN_JUMP)
 					expect(fire("0", true, true)).to.equal(bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP))
 					expect(fire("1", false, true)).to.equal(bit.bor(IN_ATTACK, IN_ATTACK2, IN_JUMP))
@@ -2731,19 +2731,19 @@ return {
 		},
 		{
 			-- fails without the listener of GryMod_BinocularsToggled: the hook on CreateMove would be there all the time, or never
-			name = "the CreateMove hook of the no fire rule exists only while the binoculars are up",
+			name = "the CreateMove hook of the no fire and walk rules exists only while the binoculars are up",
 			func = function(state)
-				local listener = hook.GetTable().GryMod_BinocularsToggled and hook.GetTable().GryMod_BinocularsToggled["GRYBINOCULARSNOFIRE"]
+				local listener = hook.GetTable().GryMod_BinocularsToggled and hook.GetTable().GryMod_BinocularsToggled["GRYBINOCULARSMOVE"]
 				expect(listener).to.beA("function")
 
 				local ok, err = pcall(function()
 					listener(true)
-					expect(hook.GetTable().CreateMove["GRYBINOCULARSNOFIRE"]).to.beA("function")
+					expect(hook.GetTable().CreateMove["GRYBINOCULARSMOVE"]).to.beA("function")
 					listener(false)
-					expect(hook.GetTable().CreateMove["GRYBINOCULARSNOFIRE"]).to.beNil()
+					expect(hook.GetTable().CreateMove["GRYBINOCULARSMOVE"]).to.beNil()
 				end)
 
-				hook.Remove("CreateMove", "GRYBINOCULARSNOFIRE")
+				hook.Remove("CreateMove", "GRYBINOCULARSMOVE")
 
 				if not ok then
 					error(err, 0)
@@ -2751,9 +2751,244 @@ return {
 			end
 		},
 		{
-			name = "the three new switches are saved, their defaults are 1, 0 and 1, and each has a check box in the Binoculars options",
+			name = "the three new switches are saved, their defaults are 1, 1 and 1, and each has a check box in the Binoculars options",
 			func = function(state)
-				local expected = {gry_binoculars_malfunction = "1", gry_binoculars_no_fire = "0", gry_binoculars_thirdperson = "1"}
+				local expected = {gry_binoculars_malfunction = "1", gry_binoculars_no_fire = "1", gry_binoculars_thirdperson = "1"}
+
+				for name, default in pairs(expected) do
+					local cvar = GetConVar(name)
+					expect(cvar ~= nil).to.beTrue()
+					expect(cvar:GetDefault()).to.equal(default)
+					expect(cvar:GetFlags()).to.equal(GetConVar("gry_binoculars_sway"):GetFlags())
+				end
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.BinocularsOptions(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				for name in pairs(expected) do
+					expect(found[name]).to.beTrue()
+				end
+			end
+		},
+		{
+			-- fails without Bino.PaceButtons: the sprint button would stay and no slow walk would be asked
+			name = "PaceButtons takes out the sprint button and asks the slow walk, keeping the other buttons",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local all = bit.bor(IN_SPEED, IN_FORWARD, IN_JUMP)
+
+				expect(M.PaceButtons(all)).to.equal(bit.bor(IN_WALK, IN_FORWARD, IN_JUMP))
+				expect(M.PaceButtons(0)).to.equal(IN_WALK)
+				expect(bit.band(M.PaceButtons(IN_SPEED), IN_SPEED)).to.equal(0)
+			end
+		},
+		{
+			-- fails without Bino.WalkMove, or if it acts with the option off, the binoculars down or the element off
+			name = "WalkMove (no sprint, slow walk) acts only while gry_binoculars_walk is on, the binoculars are up and their HUD element is on; it is on by default",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local realWanted, realEnabled = M.Wanted, M.Enabled
+				local buttons
+				local cmd = {
+					GetButtons = function() return buttons end,
+					SetButtons = function(_, value) buttons = value end
+				}
+
+				local function move(option, wanted, enabled)
+					buttons = bit.bor(IN_SPEED, IN_FORWARD)
+					M.Wanted = function() return wanted end
+					M.Enabled = function() return enabled end
+					local result
+
+					withConVar("gry_binoculars_walk", option, function()
+						M.WalkMove(cmd)
+						result = buttons
+					end)
+
+					return result
+				end
+
+				local ok, err = pcall(function()
+					expect(GetConVar("gry_binoculars_walk"):GetDefault()).to.equal("1")
+					expect(move("1", true, true)).to.equal(bit.bor(IN_WALK, IN_FORWARD))
+					expect(move("0", true, true)).to.equal(bit.bor(IN_SPEED, IN_FORWARD))
+					expect(move("1", false, true)).to.equal(bit.bor(IN_SPEED, IN_FORWARD))
+					expect(move("1", true, false)).to.equal(bit.bor(IN_SPEED, IN_FORWARD))
+				end)
+
+				M.Wanted, M.Enabled = realWanted, realEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without Bino.BinocularsMove: the hook would do only one of the two rules
+			name = "the move hook does both rules: no shooting and no sprint (a walk), each with its own option",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local realWanted, realEnabled = M.Wanted, M.Enabled
+				local buttons
+				local cmd = {
+					GetButtons = function() return buttons end,
+					SetButtons = function(_, value) buttons = value end
+				}
+
+				M.Wanted = function() return true end
+				M.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					withConVar("gry_binoculars_no_fire", "1", function()
+						withConVar("gry_binoculars_walk", "1", function()
+							buttons = bit.bor(IN_ATTACK, IN_ATTACK2, IN_SPEED, IN_JUMP)
+							M.BinocularsMove(cmd)
+							expect(buttons).to.equal(bit.bor(IN_WALK, IN_JUMP))
+						end)
+
+						withConVar("gry_binoculars_walk", "0", function()
+							buttons = bit.bor(IN_ATTACK, IN_SPEED)
+							M.BinocularsMove(cmd)
+							expect(buttons).to.equal(IN_SPEED)
+						end)
+					end)
+
+					withConVar("gry_binoculars_no_fire", "0", function()
+						withConVar("gry_binoculars_walk", "1", function()
+							buttons = bit.bor(IN_ATTACK, IN_SPEED)
+							M.BinocularsMove(cmd)
+							expect(buttons).to.equal(bit.bor(IN_ATTACK, IN_WALK))
+						end)
+					end)
+				end)
+
+				M.Wanted, M.Enabled = realWanted, realEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without Bino.ZoomHold: a held key would never step the zoom
+			name = "holding the zoom key steps the stage after 0.7 s and every 0.7 s after, and at the last stage the next step goes back to the first (sound zoom_out, the others zoom_in)",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local z = M.NewZoom()
+				local base = 100
+
+				M.ZoomStep(z, 0, true, base, base)
+				expect(z.stage).to.equal(1)
+
+				-- the key goes down: nothing yet
+				expect(M.ZoomHold(z, true, 10)).to.beNil()
+				expect(M.ZoomHold(z, true, 10.69)).to.beNil()
+				expect(z.stage).to.equal(1)
+
+				-- 0.7 s later: the second stage
+				expect(M.ZoomHold(z, true, 10.7)).to.equal("zoom_in")
+				expect(z.stage).to.equal(2)
+				expect(M.ZoomHold(z, true, 11.0)).to.beNil()
+				expect(M.ZoomHold(z, true, 11.4)).to.equal("zoom_in")
+				expect(z.stage).to.equal(3)
+
+				-- at the maximum the next step wraps to the minimum
+				expect(M.ZoomHold(z, true, 12.1)).to.equal("zoom_out")
+				expect(z.stage).to.equal(1)
+				expect(M.ZoomHold(z, true, 12.8)).to.equal("zoom_in")
+				expect(z.stage).to.equal(2)
+
+				-- a release starts the wait again; a key that is not held never steps
+				expect(M.ZoomHold(z, false, 13)).to.beNil()
+				expect(M.ZoomHold(z, true, 13.1)).to.beNil()
+				expect(M.ZoomHold(z, true, 13.7)).to.beNil()
+				expect(M.ZoomHold(z, true, 13.8)).to.equal("zoom_in")
+				expect(z.stage).to.equal(3)
+
+				-- no stage up (the binoculars down): nothing, whatever the key says
+				local down = M.NewZoom()
+				expect(M.ZoomHold(down, true, 20)).to.beNil()
+				expect(M.ZoomHold(down, true, 21)).to.beNil()
+				expect(down.stage).to.equal(0)
+			end
+		},
+		{
+			-- fails without the hold in Bino.CalcView: the field of view would stay at the first stage with the key held
+			name = "CalcView with the key held and gry_binoculars_hold_zoom on gives the next stage's field of view after the wait, and the option off does not step",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local realWanted, realEnabled, realNow, realHeld, realSound = M.Wanted, M.Enabled, M.Now, M.KeyHeld, M.PlayZoomSound
+				local now = 0
+				local sounds = {}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+
+				M.Wanted = function() return true end
+				M.Enabled = function() return true end
+				M.Now = function() return now end
+				M.KeyHeld = function() return true end
+				M.PlayZoomSound = function(cue) sounds[#sounds + 1] = cue end
+
+				local ok, err = pcall(function()
+					withConVar("gry_binoculars_stages", "1", function()
+						withConVar("gry_binoculars_hold_zoom", "1", function()
+							M.Drop()
+							M.CalcView(ply, Vector(0, 0, 0), Angle(0, 0, 0), 100, 1, 1000)
+							now = 0.1
+							M.CalcView(ply, Vector(0, 0, 0), Angle(0, 0, 0), 100, 1, 1000)
+							expect(M.ZoomState.stage).to.equal(1)
+							now = 1.0
+							M.CalcView(ply, Vector(0, 0, 0), Angle(0, 0, 0), 100, 1, 1000)
+							expect(M.ZoomState.stage).to.equal(2)
+							expect(sounds[1]).to.equal("zoom_in")
+							M.Drop()
+						end)
+
+						withConVar("gry_binoculars_hold_zoom", "0", function()
+							now = 10
+							M.CalcView(ply, Vector(0, 0, 0), Angle(0, 0, 0), 100, 1, 1000)
+							now = 10.1
+							M.CalcView(ply, Vector(0, 0, 0), Angle(0, 0, 0), 100, 1, 1000)
+							now = 12
+							M.CalcView(ply, Vector(0, 0, 0), Angle(0, 0, 0), 100, 1, 1000)
+							expect(M.ZoomState.stage).to.equal(1)
+							M.Drop()
+						end)
+					end)
+				end)
+
+				M.Wanted, M.Enabled, M.Now, M.KeyHeld, M.PlayZoomSound = realWanted, realEnabled, realNow, realHeld, realSound
+				pcall(M.Drop)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			name = "the pace and the zoom hold switches are saved, on by default, and each has a check box in the Binoculars options",
+			func = function(state)
+				local expected = {gry_binoculars_walk = "1", gry_binoculars_hold_zoom = "1"}
 
 				for name, default in pairs(expected) do
 					local cvar = GetConVar(name)

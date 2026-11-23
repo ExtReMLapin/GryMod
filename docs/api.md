@@ -81,6 +81,7 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_Zoom(ply, fov)` | the field of view the server zoom asks of the engine for the player, in degrees; `fov = 0` when the zoom is over |
 | `GryMod_ArmorAbsorbed(ply, absorbed, passed)` | a hit was taken by the armor: `absorbed` points went to the armor, `passed` points went on to the health (`absorbed + passed` is the hit). Only when `absorbed > 0` |
 | `GryMod_SprintStart(ply)`, `GryMod_SprintEnd(ply)` | the speed-mode sprint began, ended |
+| `GryMod_TargetSpotted(ply, ent, relation)` | the player's binoculars spotted `ent` (the scan ended on it and the radar shows it from now on). Once, the first time the entity is tagged for this player. `relation` is `"ally"`, `"neutral"` or `"hostile"` (the relation chain below) |
 
 The other hooks of this table run on the server only. `GryMod_ModeChanged` also runs on the client, for the local player. The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire (on the server).
 
@@ -196,6 +197,37 @@ GryMod.API.RemoveRelationProvider("my_addon")
 
 A provider returns one of the three words, or `nil` for no opinion; any other value is ignored. Adding an id again replaces its
 provider. A provider is never asked about an invalid player or entity.
+
+## Binoculars: spotting and the hologram
+
+While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD follows the original game's rules. Every part has its own setting of the player
+(the Binoculars category of the options, all saved client convars):
+
+- **Pace and shot.** No sprint, and the slow walk instead of the jog (`gry_binoculars_walk`, 1); no shooting (`gry_binoculars_no_fire`, 1). Both work on the buttons of
+  the player's move, only while the binoculars are up. Holding the zoom key steps the zoom (2x, 4x, 8x, then back to 2x) (`gry_binoculars_hold_zoom`, 1).
+- **The hologram** (`gry_binoculars_hologram`, 1; needs `gry_binoculars_silhouette`). What the binoculars spot is drawn with a thin outline and its whole body
+  filled with scan lines. A **hostile** NPC in view is lit from the start (`gry_binoculars_baseline`, 1; with 0 only what the scan reaches), in
+  the colour of its alert level, as in the original: dark green when it is idle, amber when it is alerted (`NPC_STATE_ALERT`), dark red when it fights
+  (`NPC_STATE_COMBAT`, or when it has the player as its enemy). The NPC the binoculars are scanning turns **white** for the last 0.3 s of its scan, then it is
+  **spotted**: the server is told, the radar shows it, and it goes back to its colour. An **ally** (or a neutral NPC) is not drawn; when it is scanned it pulses
+  once from white to blue and nothing stays (no label: the box with a name and a distance belongs to the objective markers). A **weapon lying on the ground**
+  (nobody holds it) within 10 m is blue, and white while the player aims at it; a weapon in someone's hand is never lit on its own: it is part of the silhouette
+  of its holder (a lit hostile) or nothing (an ally). At most 16 things are drawn, the nearest ones; the sides and the alert levels come from the relation chain
+  (`GryMod.API.Relation`) and the radar's rule, asked in one batch of questions (three a second at most, each answer worth one second).
+- **The hologram's style** (`gry_binoculars_holo_style`, `crysis` by default). `crysis` draws it the way the original does, with a pixel shader: the things are drawn
+  flat, in their colour, into a buffer the size of the screen (only where they are not behind a wall); a full-screen pass finds the boundary of the shapes, fills
+  every body with a share of its colour, brightens the boundary, puts a bright and a dim pixel row on all of it (the scan lines) and a vignette, and adds a blurred
+  glow. `simple` is the older drawing (an additive scan-line material and the game's halo). The game falls back to `simple` by itself when it cannot run the shader.
+  The levels are the fields of `GryMod.BinocularsHolo.Crysis` (`FILL`, `BOOST`, `STRENGTH`, `TAP_1080` for the width of the boundary, `GLOW_GAIN`, `SCAN_HI`,
+  `SCAN_LO`, `VIGNETTE`), read at every frame: change them from the console to tune the look. With antialiasing on (`mat_antialias` above 1) the buffer cannot share the
+  scene's depth, so a wall is looked for with a trace for each thing instead.
+- **The radar.** A hostile is on the radar once the binoculars spotted it, or when it is alerted or fighting within 26 m. It is **yellow** while it is alerted
+  (`NPC_STATE_ALERT`: it heard something, it is searching) and **red** when it is fighting (`NPC_STATE_COMBAT`). The hook `GryMod_TargetSpotted(ply, ent, relation)`
+  (server, in the table of the hooks above) tells your addon when a target is spotted.
+- **The objectives** (`gry_objectives_marker_mode`): `binoculars` (the default, as in the original) shows the objective markers on the screen only while the
+  binoculars are up, `always` shows them all the time. The radar and the maps are not affected.
+- **The use prompt** (`gry_usehint_delay`, 0.2 seconds by default, 0 for at once): the prompt shows after the crosshair stayed that long on the same usable thing,
+  and goes at once when the thing changes. `GryMod_UsableChanged` (docs/events.md) is run when the prompt appears or goes.
 
 ## HUD events
 
@@ -876,7 +908,8 @@ The HUD shows the objectives with no code on your side, and each part has its ow
   objective whose `marker` is on, with its distance in metres; it shrinks from 1.4 times its size at 10 metres to 0.7 at 500 metres. When the
   objective is off the screen or behind the player, an arrow of the original's eight sits on the border of the screen and points the way. The marker
   nearest to the middle of the screen opens a small box with the objective's title. A primary and a secondary objective look the same here, as in the
-  original. A finished or failed objective has no marker. Nothing changes while the player looks through the binoculars.
+  original. A finished or failed objective has no marker. By default (`gry_objectives_marker_mode` `binoculars`, as in the original) the markers are only
+  there while the player looks through the binoculars; `always` draws them all the time.
 - **On the radar and the minimap** (`gry_hud_radarobjectives`, in the Radar and map menu): a green glow for a primary objective and a yellow one for a
   secondary one, for each active objective whose `radar` is on, and an arrow on the border of the radar when the objective is farther than its range.
   The minimap is the radar's own window, so it shows the same markers. This uses the marker sources of the radar (see "Radar markers (client)").

@@ -7,6 +7,9 @@
 local CONFIG = [[binder
 binder
 box:gry_binoculars_aim
+box:gry_binoculars_baseline
+box:gry_binoculars_hold_zoom
+box:gry_binoculars_hologram
 box:gry_binoculars_horizon
 box:gry_binoculars_malfunction
 box:gry_binoculars_mood
@@ -19,6 +22,7 @@ box:gry_binoculars_tag
 box:gry_binoculars_thirdperson
 box:gry_binoculars_vignette
 box:gry_binoculars_vision
+box:gry_binoculars_walk
 box:gry_boot_every_spawn
 box:gry_cloak_altfire
 box:gry_cloak_foley_quiet
@@ -80,12 +84,15 @@ button:Switch every element back on
 combo:?
 combo:?
 combo:?
+combo:gry_binoculars_holo_style
+combo:gry_objectives_marker_mode
 mixer
 mixer
 mixer
 slider:gry_grenade_range
 slider:gry_hud_crosshair_style
 slider:gry_sound_volume
+slider:gry_usehint_delay
 slider:gry_xadd
 slider:gry_xdist
 slider:gry_zoom_tap_ms]]
