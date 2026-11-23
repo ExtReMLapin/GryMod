@@ -31,7 +31,8 @@ end
 
 -- the local player, as far as the mode code goes
 local function fakeMe(mode)
-	local me = {NanosuitMode = mode}
+	-- a plain table has no SetNanosuitMode: the real Player methods are reached through the metatable (the fake's own methods below win)
+	local me = setmetatable({NanosuitMode = mode}, {__index = meta})
 
 	function me:IsValid() return true end
 	function me:GetViewModel() return NULL end
