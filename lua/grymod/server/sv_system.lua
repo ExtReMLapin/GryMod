@@ -296,6 +296,8 @@ function GryMod.SuperJump(ply, key)
 		ply.ps = true
 		net.Start("gry_jump")
 		net.Send(ply)
+		-- a report for the addons: the jump is granted (and paid, unless the armor is infinite). Not for the weak jump below.
+		hook.Run("GryMod_StrengthJump", ply)
 	elseif energy < cost and not ply.ps then
 		ply:SetJumpPower(200)
 		ply.ps = true
@@ -323,14 +325,36 @@ hook.Add("Think", "GrySpeedThink", function()
 	for _, v in ipairs(GryMod.Players.All()) do
 		local amnt = v:GetNW2Float("GryEnergy")
 		local amnt_to_drain = GryMod.Mech.SpeedDrain(amnt) * FrameTime()
+		local sprinting = GryMod.IsSpeedSprinting(v)
 
-		if GryMod.IsSpeedSprinting(v) then
+		-- Reports for the addons (nothing is read from them), told here and not in a Think of their own: the start and the end of the
+		-- speed sprint, once each. A change of mode, a death or the infinite armor ends the sprint for the rule above, so the end comes
+		-- on the next tick. A dead player is not sprinting.
+		local reported = sprinting and v:Alive()
+
+		if reported and not v.gryApiSprint then
+			v.gryApiSprint = true
+			hook.Run("GryMod_SprintStart", v)
+		elseif not reported and v.gryApiSprint then
+			v.gryApiSprint = nil
+			hook.Run("GryMod_SprintEnd", v)
+		end
+
+		if sprinting then
 			-- an empty bar or a drain that cannot be paid: nothing is taken (the run speed follows the energy, sv_mechanics.lua)
 			if amnt_to_drain <= amnt and amnt > 0 then
 				v:SetNW2Float("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
 			end
 		end
+	end
+end)
+
+-- A player who leaves while sprinting never comes back in the loop above: his End is told here, so a Start always gets its End.
+hook.Add("PlayerDisconnected", "GryMod sprint report", function(ply)
+	if ply.gryApiSprint then
+		ply.gryApiSprint = nil
+		hook.Run("GryMod_SprintEnd", ply)
 	end
 end)
 
