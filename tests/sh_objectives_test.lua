@@ -307,7 +307,7 @@ return {
 				local name = "GryMod_ObjTest_" .. os.time() .. "_" .. math.random(1, 1000000)
 				local got = {}
 
-				hook.Add(name, "good", function(...) got[#got + 1] = {...} return 5 end)
+				hook.Add(name, "good", function(...) got[#got + 1] = {...} end) -- returns nothing: hook.Call stops at the first listener that returns a value, and "bad" could then never run
 				hook.Add(name, "bad", function() error("boom") end)
 
 				local ok, err = pcall(function() Obj.Fire(name, "a", 2) end)
