@@ -36,6 +36,8 @@ end
 --     away while the same thing is aimed; it comes back after the player looked away or at another thing;
 --   "repeat": a door, a button, a charger: the prompt stays, one HUD event (use_feedback: the icon pulses and a sound plays) says the key was seen,
 --     and the prompt is dimmed for the entry's cooldown (0.5 s when it gives none), or while its ready(ent) says no.
+--   a "repeat" entry with `hold` (the chargers, the wheels: the key is kept down while they work): the event comes ONCE, at the press, however many times
+--     the bind repeats while the key is down, and the prompt is not dimmed; the release (or looking elsewhere) lets the next press count again.
 -- The key is seen through PlayerBindPress, which the game calls when a bind is pressed: nothing runs between two presses.
 -- ---------------------------------------------------------------------------------------------------------
 
@@ -51,6 +53,7 @@ local hooked = false
 local shownEnt, shownEntry -- what the prompt on show is for
 local hiddenEnt -- a one-shot use was made on this thing: no prompt for it until the player looks elsewhere
 local cooldownEnt, cooldownUntil = nil, 0
+local heldEnt -- the thing a "hold" use is being done on: the key is down, the next presses are repeats
 local pulseAt = -math.huge
 
 -- Whether the prompt on show is dimmed at `now`: the key was just used on it (the cooldown), or its ready(ent) says it cannot be used yet.
@@ -85,6 +88,25 @@ function Use.OnUsePressed(now)
 
 	now = now or RealTime()
 
+	if shownEntry and shownEntry.hold then
+		-- the key is already down on this thing: a repeat of the bind, not a new use
+		if heldEnt == shownEnt then
+			return false
+		end
+
+		heldEnt = shownEnt
+
+		if not feedbackVar:GetBool() then
+			return false
+		end
+
+		if API and API.HUDEvent then
+			API.HUDEvent("use_feedback")
+		end
+
+		return true
+	end
+
 	if shownEntry and shownEntry.use == "repeat" then
 		if not feedbackVar:GetBool() or Use.Dimmed(now) then
 			return false
@@ -104,6 +126,11 @@ function Use.OnUsePressed(now)
 	Use.Set(nil)
 
 	return true
+end
+
+-- The use key went up: the next press on a thing used by holding counts as a new use.
+function Use.OnUseReleased()
+	heldEnt = nil
 end
 
 if API and API.RegisterHUDEvent then
@@ -291,7 +318,7 @@ end
 function Use.Reset()
 	stopPaint()
 	shown = nil
-	shownEnt, shownEntry, hiddenEnt, cooldownEnt, cooldownUntil, pulseAt = nil, nil, nil, nil, 0, -math.huge
+	shownEnt, shownEntry, hiddenEnt, cooldownEnt, cooldownUntil, pulseAt, heldEnt = nil, nil, nil, nil, 0, -math.huge, nil
 
 	if instance then
 		Flash.ReleaseClip(instance.root)
@@ -311,6 +338,11 @@ hook.Add("GryMod_UsableChanged", "GryUsePrompt", function(ent, mode, ply)
 		cooldownEnt = nil
 	end
 
+	-- the key may have gone up while another thing was aimed, with nobody to see it: a hold ends with the thing
+	if ent ~= heldEnt then
+		heldEnt = nil
+	end
+
 	if not Use.Enabled() or (ent ~= nil and ent == hiddenEnt) then
 		shownEnt, shownEntry = nil, nil
 		Use.Set(nil)
@@ -326,7 +358,11 @@ end)
 
 -- The use key: seen when pressed, never taken away from the game (nothing is returned).
 hook.Add("PlayerBindPress", "GryUseFeedback", function(ply, bind, pressed)
-	if pressed and isstring(bind) and string.find(bind, "+use", 1, true) then
-		Use.OnUsePressed(RealTime())
+	if isstring(bind) and string.find(bind, "+use", 1, true) then
+		if pressed then
+			Use.OnUsePressed(RealTime())
+		else
+			Use.OnUseReleased()
+		end
 	end
 end)

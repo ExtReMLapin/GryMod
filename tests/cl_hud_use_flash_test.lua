@@ -76,6 +76,20 @@ local function fake(class, fields)
 	return ent
 end
 
+-- The stock ladder entry applies only while the replicated variable sv_ladder_useonly is 1 (otherwise walking into a ladder climbs it): the case that needs a
+-- CLIMB prompt puts a stand-in GetConVar in front of the game's, restored with the other stubs.
+local function ladderUseOnly(value)
+	local real = GetConVar
+
+	stub(_G, "GetConVar", function(name)
+		if name == "sv_ladder_useonly" then
+			return {GetBool = function() return value == "1" end, GetInt = function() return tonumber(value) end}
+		end
+
+		return real(name)
+	end)
+end
+
 local function fakePlayer(inVehicle)
 	return {
 		IsValid = function() return true end,
@@ -120,6 +134,8 @@ return {
 				expect(vehicle.text).to.equal("ENTER VEHICLE")
 				expect(entry.key).to.equal("hl2_vehicles")
 
+				ladderUseOnly("1")
+
 				local ladder = Use.Describe(fake("func_useableladder"), 1, player)
 				expect(ladder.icon).to.equal("ladder")
 				expect(ladder.text).to.equal("CLIMB")
@@ -158,7 +174,7 @@ return {
 				local player = fakePlayer(false)
 
 				for _, row in ipairs({
-					{"func_door", nil, 1}, {"prop_door_rotating", nil, 1}, {"func_tank", nil, 1}, {"npc_turret_floor", nil, 1},
+					{"func_door", nil, 1}, {"prop_door_rotating", nil, 1}, {"func_tank", nil, 1},
 					{"npc_citizen", {npc = true, health = 40}, 1}, {"npc_citizen", {npc = true, health = 0}, 0},
 					{"npc_kleiner", {npc = true, health = 40}, 0}, {"npc_zombie", {npc = true, health = 40}, 0},
 					{"item_healthkit", nil, 0}, {"weapon_pistol", nil, 0}, {"item_healthcharger", nil, 1}, {"item_ammo_crate", nil, 1},
@@ -199,6 +215,7 @@ return {
 				expect(Use.Active()).to.beFalse()
 				expect(hook.GetTable()["HUDPaint"]["GRYFLASHUSE"]).to.beNil()
 
+				ladderUseOnly("1")
 				listener()(fake("func_useableladder"), 1, fakePlayer())
 				expect(Use.Shown().icon).to.equal("ladder")
 				expect(Use.Shown().text).to.equal("CLIMB")
@@ -374,8 +391,80 @@ return {
 			end
 		},
 		{
+			-- fails without the hold rule: the key is kept down on a charger, and the pulse and the beep came again at each repeat of the bind
+			name = "a thing used by holding the key (a charger, a wheel): ONE use_feedback at the start, none while the key stays down (repeats of the bind), no dimming; a new press after the release, or on another thing, gives one again",
+			func = function()
+				local events = {}
+				local ply = fakePlayer()
+				local charger = fake("item_healthcharger")
+
+				setConVar("gry_usehint_feedback", "1")
+				stub(GryMod.API, "HUDEvent", function(name) events[#events + 1] = name return true end)
+				listener()(charger, 1, ply)
+				expect(Use.Shown().text).to.equal("USE (HOLD)")
+
+				expect(Use.OnUsePressed(10)).to.beTrue()
+				expect(#events).to.equal(1)
+				expect(Use.Dimmed(10.1)).to.beFalse() -- a held use is not a use "done": no dimming
+				expect(Use.OnUsePressed(10.2)).to.beFalse() -- the bind repeating while the key is down
+				expect(Use.OnUsePressed(11)).to.beFalse()
+				expect(#events).to.equal(1)
+				expect(Use.Shown()).to.exist()
+
+				-- the release, then a new press: one more
+				expect(isfunction(Use.OnUseReleased)).to.beTrue()
+				Use.OnUseReleased()
+				expect(Use.OnUsePressed(12)).to.beTrue()
+				expect(#events).to.equal(2)
+
+				-- looking away while the key is down ends the hold for the prompt (the release may never be seen): the next thing gets its pulse
+				listener()(nil, 0, ply)
+				listener()(fake("item_suitcharger"), 1, ply)
+				expect(Use.OnUsePressed(13)).to.beTrue()
+				expect(#events).to.equal(3)
+
+				-- the game's bind hook drives it: +use down, down again (a repeat), up
+				local bind = hook.GetTable()["PlayerBindPress"]["GryUseFeedback"]
+
+				Use.OnUseReleased()
+				bind(ply, "+use", true)
+				bind(ply, "+use", true)
+				expect(#events).to.equal(4)
+				bind(ply, "+use", false)
+				bind(ply, "+use", true)
+				expect(#events).to.equal(5)
+				-- another bind does not count
+				bind(ply, "+jump", true)
+				bind(ply, "+jump", false)
+				expect(#events).to.equal(5)
+			end
+		},
+		{
+			-- fails if the floor turret were still a "USE" without limits, or if the props group did not hold it
+			name = "the floor turret is a carry: PICK UP in the props group, with no size or mass limit (the engine gives none), nothing without the group",
+			func = function()
+				local player = fakePlayer(false)
+				local asked = 0
+				local turret = fake("npc_turret_floor", {size = Vector(300, 300, 300), mass = 500})
+
+				turret.EntIndex = function() return 777 end
+				stub(Cross, "AskMass", function() asked = asked + 1 end)
+				setConVar("gry_usehint_props", "0")
+				expect(Cross.UsableFor(turret, player)).to.equal(0)
+
+				setConVar("gry_usehint_props", "1")
+				expect(Cross.UsableFor(turret, player)).to.equal(1)
+				expect(asked).to.equal(0)
+
+				local info = Use.Describe(turret, 1, player)
+
+				expect(info.icon).to.equal("grab")
+				expect(info.text).to.equal("PICK UP")
+			end
+		},
+		{
 			-- fails when an entry's own cooldown or ready function is not read
-			name = "the entry's cooldown (0.5 s for a charger, 0.5 s when it gives none) and its ready(ent) function decide when the prompt is dimmed",
+			name = "the entry's cooldown (0.5 s for a gmod button, 0.5 s when it gives none) and its ready(ent) function decide when the prompt is dimmed",
 			func = function()
 				local events = {}
 				local ready = true
@@ -384,7 +473,7 @@ return {
 				stub(GryMod.API, "HUDEvent", function(name) events[#events + 1] = name return true end)
 				setConVar("gry_usehint_feedback", "1")
 
-				listener()(fake("item_healthcharger"), 1, ply)
+				listener()(fake("gmod_button"), 1, ply)
 				expect(Use.OnUsePressed(20)).to.beTrue()
 				expect(Use.Dimmed(20.4)).to.beTrue()
 				expect(Use.Dimmed(20.6)).to.beFalse()
