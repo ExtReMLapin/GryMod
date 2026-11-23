@@ -77,6 +77,10 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_SuitEnabled(ply)`, `GryMod_SuitDisabled(ply)` | `SetSuitEnabled` changed the state |
 | `GryMod_MalfunctionStart(ply, seconds, reason)`, `GryMod_MalfunctionEnd(ply)` | the suit went down, came back |
 | `GryMod_EMP(pos, radius, seconds)` | you can run this hook yourself to fire an EMP (same as `API.EMP`) |
+| `GryMod_StrengthJump(ply)` | a strength jump was granted on the ground (once per key press). It is paid in energy, or free with the infinite armor. Not fired for the weak jump you get when the bar is too low |
+| `GryMod_Zoom(ply, fov)` | the field of view the server zoom asks of the engine for the player, in degrees; `fov = 0` when the zoom is over |
+| `GryMod_ArmorAbsorbed(ply, absorbed, passed)` | a hit was taken by the armor: `absorbed` points went to the armor, `passed` points went on to the health (`absorbed + passed` is the hit). Only when `absorbed > 0` |
+| `GryMod_SprintStart(ply)`, `GryMod_SprintEnd(ply)` | the speed-mode sprint began, ended |
 
 The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire.
 
@@ -117,6 +121,23 @@ end)
 
 It applies to every path that changes the mode, the player's own request included. It never applies to the armor mode: the armor is
 the suit's safe state (a malfunction, an empty bar and a respawn must always reach it).
+
+### Notes on the reporting hooks
+
+All the hooks above only report: GryMod never reads what a handler returns, and a handler cannot change the result. (`GryMod_CanSetMode` is
+the one veto.)
+
+- `GryMod_Zoom` only covers the zoom that goes through `gry_zoom_fov`: the suit's own zoom and the binoculars. The zoom of a weapon (the
+  crossbow, a scope) is not reported. The value is sent once per real change, never twice in a row; the final `0` also comes when the zoom
+  stops by itself (the client went silent), when the player dies and when he leaves, but only if a zoom was held.
+- `GryMod_ArmorAbsorbed` runs after the damage was changed: the `DamageInfo` already holds `passed`. A handler that calls `TakeDamage` from
+  this hook starts a nested damage event (the handler of the armor runs again inside yours): guard against it.
+- `GryMod_SprintStart` / `GryMod_SprintEnd` follow `GryMod.IsSpeedSprinting`: fast enough, on the ground or swimming, in speed mode. With the
+  infinite armor there is no sprint and no event (switching the infinite armor on while a player sprints ends it). The events are told by
+  the existing speed `Think`, so the end comes one tick after a change of mode or a death. A player who leaves while sprinting gets his
+  `GryMod_SprintEnd` at once, so a start always has an end.
+- `GryMod_StrengthJump` is fired right after the jump is granted and the energy is paid. With the infinite armor the jump is free but it is
+  reported too.
 
 ## Relation: ally, neutral or hostile (server)
 
