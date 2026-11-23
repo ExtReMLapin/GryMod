@@ -48,6 +48,14 @@ API.GrenadeKinds = set({"explosivegrenade", "flashbang", "smokegrenade", "empgre
 
 local GRENADES = API.GrenadeKinds
 
+-- The silhouettes of the weapon list movie (HUD_WeaponSelection, the labels of its icon clip). Its first frame, "emtpy", is a
+-- "forbidden" sign, not a weapon: it is not on the list (a weapon with no silhouette gets a text row instead, never that sign).
+API.WeaponListIcons = set({"SOCOM", "SMG", "Shotgun", "SCAR", "FY71", "Hurricane", "LAW", "TACGun", "GaussRifle", "DSG1",
+	"Grenade_Explosive", "Grenade_Flashbang", "Grenade_Smoke", "C4", "LockpickKit", "RadarKit", "RepairKit", "AVMine", "Claymore",
+	"MOARAttach", "AlienMount", "Grenade_EMP", "NightVision", "Binoculars", "Fists"})
+
+local LIST_ICONS = API.WeaponListIcons
+
 -- The crosshairs of the HUD movie.
 API.CrosshairCount = 13
 
@@ -70,10 +78,12 @@ local CHECK = {
 	crosshair = function(v) if isbool(v) or (isnumber(v) and v == math.floor(v) and v >= 1 and v <= API.CrosshairCount) then return v end end,
 	grenade = function(v) if isstring(v) and GRENADES[v] then return v end end,
 	-- function(wep) returning the heat of the weapon, 0 (cold) to 1 (overheated): the bar of the HUD shows it
-	heat = function(v) if isfunction(v) then return v end end
+	heat = function(v) if isfunction(v) then return v end end,
+	-- the silhouette of the weapon in the weapon list that shows at each weapon change (one of API.WeaponListIcons)
+	listIcon = function(v) if isstring(v) and LIST_ICONS[v] then return v end end
 }
 
-local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade", "heat"}
+local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade", "heat", "listIcon"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -410,7 +420,7 @@ resolveField = function(field, class, wep, source, entity, explicit)
 end
 
 -- The final description of a weapon, the one the HUD uses: a table with the fields of a definition (fire, burst, ammo, counter,
--- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade, heat) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
+-- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade, heat, listIcon) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
 -- wep is the weapon entity, or its class name (then only what is declared or read from the stored SWEP counts). nil for an invalid
 -- weapon. explicit = true: only what is declared (registry, GryHUD, adapters), no defaults, no alt/altShoots/counter fallbacks.
 function API.ResolveWeapon(wep, explicit)
