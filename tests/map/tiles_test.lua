@@ -30,6 +30,7 @@ local function install(state)
 		state.saved.Engine[k] = v
 	end
 
+	state.level = nil -- (the state is one table for the whole file: a level set by an earlier case would be the stand-in's answer)
 	state.clock = 100
 	state.frame = 1
 	state.res = RES
