@@ -161,6 +161,50 @@ return {
 			end
 		},
 		{
+			-- Fails without the "blink all digits" rule in HUD:SetAmmo (cl_hud_flash.lua): only the digit whose value changed blinked.
+			-- The original updateTextColor runs updateColor on every digit at every setAmmo, and updateColor always plays the blink.
+			name = "every visible ammo digit blinks at each ammo update, not only the digit that changed (updateColor)",
+			func = function(state)
+				local hud = newHud()
+				local primary = hud.root:Find("Root.Player.AmmoTexts.PrimaryAmmo")
+				local function blink(name) return primary:Child(name):Child("NumberText_blink") end
+				local function settle() for _ = 1, 60 do hud:Update(1 / 30) end end
+
+				hud:SetAmmo(31, 71, 40, 7, "explosivegrenade")
+				settle()
+				expect(blink("ObjNumber2") ~= nil).to.beTrue()
+				expect(blink("ObjNumber3") ~= nil).to.beTrue()
+				expect(blink("ObjNumber2").playing).to.beFalse()
+				expect(blink("ObjNumber3").playing).to.beFalse()
+
+				-- 31 -> 30: only the units changed, the tens blink too
+				hud:SetAmmo(30, 71, 40, 7, "explosivegrenade")
+				expect(blink("ObjNumber3").playing).to.beTrue()
+				expect(blink("ObjNumber2").playing).to.beTrue()
+				settle()
+				expect(blink("ObjNumber2").playing).to.beFalse()
+
+				-- same magazine, the reserve changed: the original blinks the digits anyway
+				hud:SetAmmo(30, 70, 40, 7, "explosivegrenade")
+				expect(blink("ObjNumber2").playing).to.beTrue()
+				expect(blink("ObjNumber3").playing).to.beTrue()
+			end
+		},
+		{
+			-- Fails if _refresh (the values put back at a refresh) played the blinks: only a real ammo update does. (A rebuild of the
+			-- clips after a malfunction runs the original setAmmo again, so it blinks on its own, as in the original.)
+			name = "putting the same values back (a refresh) does not blink the ammo digits",
+			func = function(state)
+				local hud = newHud()
+				local primary = hud.root:Find("Root.Player.AmmoTexts.PrimaryAmmo")
+				hud:SetAmmo(31, 71, 40, 7, "explosivegrenade")
+				for _ = 1, 60 do hud:Update(1 / 30) end
+				hud:_refresh()
+				expect(primary:Child("ObjNumber2"):Child("NumberText_blink").playing).to.beFalse()
+				expect(primary:Child("ObjNumber3"):Child("NumberText_blink").playing).to.beFalse()
+			end
+		},
+		{
 			name = "no ammo system (-1) shows the infinity icon",
 			func = function(state)
 				local hud = newHud()

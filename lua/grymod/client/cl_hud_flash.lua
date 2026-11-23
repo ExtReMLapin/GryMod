@@ -197,13 +197,14 @@ function HUD:SetMode(mode)
 	end
 end
 
-local function setNumberClip(clip, value, colour)
+-- blinkAll: a real ammo update (setAmmo), where the original's updateColor plays the blink of every digit, changed or not.
+-- Without it (the values put back at a refresh) a digit only flashes when its value changes.
+local function setNumberClip(clip, value, colour, blinkAll)
 	if not clip then
 		return
 	end
 
-	-- the digit flashes when its value changes, not every time the clips are put back
-	local changed = clip.shownValue ~= value
+	local changed = blinkAll or clip.shownValue ~= value
 	clip.shownValue = value
 	clip:GotoAndStop(colour)
 
@@ -244,7 +245,7 @@ function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launch
 	ammo.grenades = number(grenades, 0)
 	ammo.grenadeType = grenadeType or ammo.grenadeType
 	ammo.fireMode = fireMode or ammo.fireMode
-	self:_applyAmmo()
+	self:_applyAmmo(true)
 	ammo.shown = true
 
 	-- after the icons are in place: a new icon frame rebuilds its clips, which would stop an animation started before
@@ -342,7 +343,7 @@ local function fillSlot(parent, name, id, frame, add)
 	end
 end
 
-function HUD:_applyAmmo()
+function HUD:_applyAmmo(blinkAll)
 	local player = self.player
 	local ammo = self.ammo
 
