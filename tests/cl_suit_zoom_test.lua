@@ -1363,6 +1363,8 @@ return {
 				local ply = {
 					IsValid = function() return true end,
 					Alive = function() return alive end,
+					-- the crosshair's zoom test also asks the weapon in hand (cl_weapon_zoom.lua): no weapon here
+					GetActiveWeapon = function() return NULL end,
 					KeyDown = function(_, key) return key == IN_ZOOM and zooming end
 				}
 
