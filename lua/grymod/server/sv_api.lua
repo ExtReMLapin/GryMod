@@ -122,7 +122,7 @@ function API.SetMode(ply, mode)
 		return false, "invalid mode"
 	end
 
-	return ply:SetNanosuitMode(mode, true)
+	return ply:SetNanosuitMode(mode, true, GryMod.ModeReasons.API)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -159,7 +159,7 @@ function API.SetSuitEnabled(ply, enabled)
 	ply:SetNW2Bool("GryDisabled", not enabled)
 
 	if not enabled and ply.Nanosuit_mode ~= Modes.ARMOR then
-		ply:SetNanosuitMode(Modes.ARMOR, true)
+		ply:SetNanosuitMode(Modes.ARMOR, true, GryMod.ModeReasons.DISABLED)
 	end
 
 	hook.Run(enabled and "GryMod_SuitEnabled" or "GryMod_SuitDisabled", ply)

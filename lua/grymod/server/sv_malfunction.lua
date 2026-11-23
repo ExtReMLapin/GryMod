@@ -74,7 +74,7 @@ function Malfunction.Start(ply, seconds, reason)
 
 		-- the suit is forced to armor mode and the bar is empty
 		if ply.Nanosuit_mode ~= GryMod.Modes.ARMOR then
-			ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
+			ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.MALFUNCTION)
 		end
 
 		ply:SetNW2Float("GryEnergy", 0)

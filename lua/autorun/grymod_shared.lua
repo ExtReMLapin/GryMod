@@ -13,6 +13,17 @@ GryMod.Modes = {
 	DROP = 4
 }
 
+-- Why the suit changed mode: the 4th argument of the GryMod_ModeChanged hook (server). Plain strings, so a log or a print is readable.
+GryMod.ModeReasons = {
+	SPAWN = "spawn", -- the player respawned: the suit always starts again in armor
+	PLAYER = "player", -- the player asked for it (quick menu, key)
+	API = "api", -- an addon, through GryMod.API.SetMode
+	ENERGY = "energy", -- the camouflage ran out of energy
+	MALFUNCTION = "malfunction", -- the suit went down (also when a mode is refused because it is down)
+	DISABLED = "disabled", -- the suit was switched off (also when a mode is refused because it is off)
+	OTHER = "other" -- a caller that gave no cause
+}
+
 function math.MapSimple(numb, endA, endB)
 	return numb * (endB / endA)
 end

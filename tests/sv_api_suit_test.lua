@@ -298,6 +298,110 @@ return {
 			end
 		},
 		{
+			name = "GryMod.ModeReasons names the causes of a mode change: plain strings, all different",
+			func = function()
+				expect(GryMod.ModeReasons).to.exist()
+
+				local seen = {}
+
+				for _, key in ipairs({"SPAWN", "PLAYER", "API", "ENERGY", "MALFUNCTION", "DISABLED", "OTHER"}) do
+					local value = GryMod.ModeReasons[key]
+					expect(isstring(value)).to.beTrue()
+					expect(seen[value]).to.beNil()
+					seen[value] = true
+				end
+			end
+		},
+		{
+			name = "GryMod_ModeChanged gets the cause as 4th argument: the API, the player's request, the empty bar of the camouflage, a malfunction, the suit switched off",
+			func = function()
+				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
+				local causes = {}
+
+				listen("GryMod_ModeChanged", function(who, mode, old, why) causes[#causes + 1] = why end)
+
+				API.SetMode(p, GryMod.Modes.SPEED)
+				expect(causes[#causes]).to.equal(Why.API)
+
+				GryMod.SetModeFromClient(p, GryMod.Modes.STRENGTH)
+				expect(causes[#causes]).to.equal(Why.PLAYER)
+
+				p:SetNanosuitMode(GryMod.Modes.CLOAK, false, Why.API)
+				p:SetNW2Float("GryEnergy", 0)
+				hook.GetTable().Think["GryCloakThink"]()
+				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
+				expect(causes[#causes]).to.equal(Why.ENERGY)
+
+				API.SetMode(p, GryMod.Modes.SPEED)
+				API.StartMalfunction(p, 5, "test")
+				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
+				expect(causes[#causes]).to.equal(Why.MALFUNCTION)
+				GryMod.Malfunction.Clear(p)
+
+				API.SetMode(p, GryMod.Modes.SPEED)
+				API.SetSuitEnabled(p, false)
+				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
+				expect(causes[#causes]).to.equal(Why.DISABLED)
+			end
+		},
+		{
+			name = "a mode that is asked while the suit cannot take it ends in armor, and the cause is the real one (disabled), not the asker's",
+			func = function()
+				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
+				local seen = {}
+
+				API.SetMode(p, GryMod.Modes.SPEED)
+				p:SetNW2Bool("GryDisabled", true)
+
+				listen("GryMod_ModeChanged", function(who, mode, old, why) seen[#seen + 1] = {mode, old, why} end)
+
+				local ok, refused = API.SetMode(p, GryMod.Modes.CLOAK)
+
+				expect(ok).to.beFalse()
+				expect(refused).to.equal("disabled")
+				expect(#seen).to.equal(1)
+				expect(seen[1][1]).to.equal(GryMod.Modes.ARMOR)
+				expect(seen[1][2]).to.equal(GryMod.Modes.SPEED)
+				expect(seen[1][3]).to.equal(Why.DISABLED)
+			end
+		},
+		{
+			name = "the respawn puts the suit back in armor and says so: cause SPAWN with the old mode; no event when it was already armor",
+			func = function()
+				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
+				local seen = {}
+				local spawn = hook.GetTable().PlayerSpawn["GryModSpawn"]
+
+				expect(spawn ~= nil).to.beTrue()
+				listen("GryMod_ModeChanged", function(who, mode, old, why) seen[#seen + 1] = {who, mode, old, why} end)
+
+				spawn(p)
+				expect(#seen).to.equal(0) -- armor to armor: not a change
+
+				API.SetMode(p, GryMod.Modes.CLOAK)
+				seen = {}
+				spawn(p)
+
+				expect(#seen).to.equal(1)
+				expect(seen[1][1]).to.equal(p)
+				expect(seen[1][2]).to.equal(GryMod.Modes.ARMOR)
+				expect(seen[1][3]).to.equal(GryMod.Modes.CLOAK)
+				expect(seen[1][4]).to.equal(Why.SPAWN)
+			end
+		},
+		{
+			name = "a caller that gives no cause gets OTHER (the old two-argument calls keep working)",
+			func = function()
+				local p, Why = ply(), GryMod.ModeReasons
+				local cause
+
+				listen("GryMod_ModeChanged", function(who, mode, old, why) cause = why end)
+
+				p:SetNanosuitMode(GryMod.Modes.SPEED, false)
+				expect(cause).to.equal(Why.OTHER)
+			end
+		},
+		{
 			name = "the veto GryMod_CanSetMode(ply, mode): a handler that returns false refuses the mode; any other answer lets it through",
 			func = function()
 				local API, p = GryMod.API, ply()

@@ -71,7 +71,7 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 
 | Hook | When |
 | --- | --- |
-| `GryMod_ModeChanged(ply, mode, oldMode)` | the mode really changed (any path: the player's menu, the API, a malfunction) |
+| `GryMod_ModeChanged(ply, mode, oldMode, reason)` | the mode really changed (any path: the player's menu, the API, a malfunction, a respawn). `reason` is one of `GryMod.ModeReasons` (see below) |
 | `GryMod_EnergyEmpty(ply)` | the bar reached 0 (once, not again until it has been above 0) |
 | `GryMod_EnergyUsed(ply)` | energy was used (the new name of `GryUseEnergy`, which keeps firing too) |
 | `GryMod_SuitEnabled(ply)`, `GryMod_SuitDisabled(ply)` | `SetSuitEnabled` changed the state |
@@ -79,6 +79,31 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_EMP(pos, radius, seconds)` | you can run this hook yourself to fire an EMP (same as `API.EMP`) |
 
 The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire.
+
+### Why the mode changed: `GryMod.ModeReasons`
+
+The 4th argument of `GryMod_ModeChanged` is one of these plain strings:
+
+| Constant | Value | Cause |
+| --- | --- | --- |
+| `GryMod.ModeReasons.SPAWN` | `"spawn"` | the player respawned: the suit always starts again in armor |
+| `GryMod.ModeReasons.PLAYER` | `"player"` | the player asked for it (quick menu, key) |
+| `GryMod.ModeReasons.API` | `"api"` | an addon called `GryMod.API.SetMode` |
+| `GryMod.ModeReasons.ENERGY` | `"energy"` | the camouflage ran out of energy |
+| `GryMod.ModeReasons.MALFUNCTION` | `"malfunction"` | the suit went down, or a mode was asked while it is down |
+| `GryMod.ModeReasons.DISABLED` | `"disabled"` | the suit was switched off, or a mode was asked while it is off |
+| `GryMod.ModeReasons.OTHER` | `"other"` | a caller of `Player:SetNanosuitMode` that gave no cause |
+
+A respawn is announced like any other change (`reason == SPAWN`, `oldMode` is the mode the player died in). A respawn from armor to armor is not a
+change: no event. A new player's first spawn is armor too, so it gives no event either.
+
+```lua
+hook.Add("GryMod_ModeChanged", "my_addon", function(ply, mode, oldMode, reason)
+	if reason == GryMod.ModeReasons.SPAWN then
+		-- the suit was reset by the respawn: put my own look back
+	end
+end)
+```
 
 ### Veto: `GryMod_CanSetMode(ply, mode)`
 

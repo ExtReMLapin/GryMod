@@ -57,7 +57,7 @@ local selectableModes = {
 
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
-	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
+	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.SPAWN)
 	ply:SetNW2Float("GryEnergy", 100)
 	net.Start("gry_spawn")
 	net.Send(ply)
@@ -80,7 +80,7 @@ function GryMod.SetModeFromClient(ply, mode)
 		return
 	end
 
-	ply:SetNanosuitMode(mode, false)
+	ply:SetNanosuitMode(mode, false, GryMod.ModeReasons.PLAYER)
 end
 
 net.Receive("gry_nanosuit_mode_change", function(len, ply)
@@ -126,7 +126,9 @@ end)
 -- out, a malfunction, the extension API (GryMod.API.SetMode). Returns true, or false and why the suit stayed as it was or
 -- went to armor instead: "dead", "malfunction", "disabled" (the suit is off: GryMod.API.SetSuitEnabled), "vetoed".
 -- The armor is the suit's safe state: it is never vetoed (a malfunction, an empty bar or a respawn must always reach it).
-function meta:SetNanosuitMode(mode, networked)
+-- `reason` (one of GryMod.ModeReasons, OTHER when left out) is the 4th argument of GryMod_ModeChanged. When the suit cannot take the mode asked (down or
+-- off) it goes to armor and the reason is the real one (malfunction, disabled), not the asker's.
+function meta:SetNanosuitMode(mode, networked, reason)
 	if not self:Alive() then
 		return false, "dead"
 	end
@@ -144,6 +146,7 @@ function meta:SetNanosuitMode(mode, networked)
 		if refused then
 			mode = GryMod.Modes.ARMOR
 			networked = true
+			reason = GryMod.ModeReasons[string.upper(refused)]
 		elseif mode ~= (self.Nanosuit_mode or GryMod.Modes.ARMOR) and hook.Run("GryMod_CanSetMode", self, mode) == false then
 			-- another addon refuses this mode (veto): nothing changes, and the client is told, as for any refused request
 			tellMode(self, self.Nanosuit_mode or GryMod.Modes.ARMOR)
@@ -195,7 +198,7 @@ function meta:SetNanosuitMode(mode, networked)
 	hook.Run("GryNanosuitMode", self, mode) -- sv_cloak_ai.lua: the NPCs forget a camouflaged player
 
 	if mode ~= oldMode then
-		hook.Run("GryMod_ModeChanged", self, mode, oldMode)
+		hook.Run("GryMod_ModeChanged", self, mode, oldMode, reason or GryMod.ModeReasons.OTHER)
 	end
 
 	if networked then
@@ -332,7 +335,7 @@ hook.Add("Think", "GryCloakThink", function()
 			local amnt_to_drain = GryMod.Mech.CloakDrain(v:GetVelocity():Length()) * FrameTime()
 
 			if amnt_to_drain > amnt or GryMod.Mech.CloakFailsAt(amnt) then
-				v:SetNanosuitMode(GryMod.Modes.ARMOR, true)
+				v:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.ENERGY)
 			else
 				v:SetNW2Float("GryEnergy", amnt - amnt_to_drain)
 				hook.Run("GryUseEnergy", v)
