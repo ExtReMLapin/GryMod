@@ -570,7 +570,7 @@ function Menu.Finish()
 	if mode == ply.NanosuitMode then
 		play(snd_same)
 	else
-		ply:SetNanosuitMode(mode, true)
+		ply:SetNanosuitMode(mode, true, GryMod.ModeReasons.PLAYER)
 	end
 end
 

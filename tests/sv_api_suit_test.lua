@@ -31,24 +31,32 @@ local function takeDamage(p, amount, damageType)
 	return dmg
 end
 
--- the messages sent to the client, without sending them: the mode the server tells
+-- the messages "gry_nanosuit_mode_change" the server starts: the mode (first UInt) and the cause (second UInt, an id of GryMod.ModeReasonIds) of each,
+-- kept apart. The real functions still run (the message goes to the test client's player, as before).
 local realStart, realUInt, realSend
-local sentModes
+local sentModes, sentReasons, sentReasonBits
 
 local function spyNet()
 	realStart, realUInt, realSend = net.Start, net.WriteUInt, net.Send
-	sentModes = {}
-	local current
+	sentModes, sentReasons, sentReasonBits = {}, {}, {}
+	local current, written = nil, 0
 
 	net.Start = function(name, ...)
-		current = name
+		current, written = name, 0
 
 		return realStart(name, ...)
 	end
 
 	net.WriteUInt = function(value, bits)
 		if current == "gry_nanosuit_mode_change" then
-			sentModes[#sentModes + 1] = value
+			written = written + 1
+
+			if written == 1 then
+				sentModes[#sentModes + 1] = value
+			elseif written == 2 then
+				sentReasons[#sentReasons + 1] = value
+				sentReasonBits[#sentReasonBits + 1] = bits
+			end
 		end
 
 		return realUInt(value, bits)
@@ -59,6 +67,18 @@ local function unspyNet()
 	if realStart then
 		net.Start, net.WriteUInt, net.Send = realStart, realUInt, realSend
 		realStart, realUInt, realSend = nil, nil, nil
+	end
+end
+
+-- runs fn with the spy on; the real net functions are back right after, whatever happens inside (afterEach puts them back too)
+local function spied(fn)
+	spyNet()
+
+	local ok, err = pcall(fn)
+	unspyNet()
+
+	if not ok then
+		error(err, 0)
 	end
 end
 
@@ -304,7 +324,7 @@ return {
 
 				local seen = {}
 
-				for _, key in ipairs({"SPAWN", "PLAYER", "API", "ENERGY", "MALFUNCTION", "DISABLED", "OTHER"}) do
+				for _, key in ipairs({"SPAWN", "PLAYER", "API", "ENERGY", "MALFUNCTION", "DISABLED", "OTHER", "VETOED", "SYNC"}) do
 					local value = GryMod.ModeReasons[key]
 					expect(isstring(value)).to.beTrue()
 					expect(seen[value]).to.beNil()
@@ -366,7 +386,8 @@ return {
 			end
 		},
 		{
-			name = "the respawn puts the suit back in armor and says so: cause SPAWN with the old mode; no event when it was already armor",
+			-- would fail if: the hook only ran when the mode changed (armor to armor says nothing), or the respawn's cause was not SPAWN
+			name = "the respawn is always announced (cause SPAWN), even armor to armor, and the old mode is given when there was one",
 			func = function()
 				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
 				local seen = {}
@@ -375,8 +396,12 @@ return {
 				expect(spawn ~= nil).to.beTrue()
 				listen("GryMod_ModeChanged", function(who, mode, old, why) seen[#seen + 1] = {who, mode, old, why} end)
 
-				spawn(p)
-				expect(#seen).to.equal(0) -- armor to armor: not a change
+				spawn(p) -- armor to armor: still announced
+				expect(#seen).to.equal(1)
+				expect(seen[1][1]).to.equal(p)
+				expect(seen[1][2]).to.equal(GryMod.Modes.ARMOR)
+				expect(seen[1][3]).to.equal(GryMod.Modes.ARMOR)
+				expect(seen[1][4]).to.equal(Why.SPAWN)
 
 				API.SetMode(p, GryMod.Modes.CLOAK)
 				seen = {}
@@ -387,6 +412,125 @@ return {
 				expect(seen[1][2]).to.equal(GryMod.Modes.ARMOR)
 				expect(seen[1][3]).to.equal(GryMod.Modes.CLOAK)
 				expect(seen[1][4]).to.equal(Why.SPAWN)
+			end
+		},
+		{
+			-- would fail if: the respawn set the energy to 100 AFTER SetNanosuitMode (a handler of SPAWN would still read the energy of the last life)
+			name = "at the respawn the energy is 100 BEFORE the hook: a handler of GryMod_ModeChanged(SPAWN) reads the full bar, not the old one",
+			func = function()
+				local p, Why = ply(), GryMod.ModeReasons
+				local spawn = hook.GetTable().PlayerSpawn["GryModSpawn"]
+				local energy
+
+				p:SetNW2Float("GryEnergy", 10)
+				listen("GryMod_ModeChanged", function(who, mode, old, why)
+					if why == Why.SPAWN then energy = who:GetNW2Float("GryEnergy", -1) end
+				end)
+
+				spawn(p)
+				expect(energy).to.equal(100)
+				expect(p:GetNW2Float("GryEnergy", -1)).to.equal(100)
+			end
+		},
+		{
+			-- would fail if: the condition was only "the cause is SPAWN" (a same-mode call with any other cause would be announced) or the cause alone decided
+			name = "no hook when the mode is the same and the cause is not SPAWN: the same mode asked again says nothing, whoever asks",
+			func = function()
+				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
+				local seen = 0
+
+				API.SetMode(p, GryMod.Modes.SPEED)
+				listen("GryMod_ModeChanged", function() seen = seen + 1 end)
+
+				for _, why in ipairs({Why.API, Why.PLAYER, Why.SYNC, Why.VETOED, Why.OTHER}) do
+					p:SetNanosuitMode(GryMod.Modes.SPEED, false, why)
+				end
+
+				expect(seen).to.equal(0)
+			end
+		},
+		{
+			-- would fail if: the message carried no cause, or the cause was not the one of the path (API here), or was written with another width than ModeReasonBits
+			name = "a networked change sends the mode and then the cause as an id (API: 4 bits)",
+			func = function()
+				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
+
+				spied(function()
+					API.SetMode(p, GryMod.Modes.SPEED)
+				end)
+
+				expect(#sentModes).to.equal(1)
+				expect(sentModes[1]).to.equal(GryMod.Modes.SPEED)
+				expect(sentReasons[1]).to.equal(GryMod.ModeReasonIds[Why.API])
+				expect(sentReasonBits[1]).to.equal(GryMod.ModeReasonBits)
+			end
+		},
+		{
+			-- would fail if: the respawn's message (tellMode at the end of SetNanosuitMode) said OTHER or nothing
+			name = "the respawn's message carries the cause SPAWN",
+			func = function()
+				local p, Why = ply(), GryMod.ModeReasons
+				local spawn = hook.GetTable().PlayerSpawn["GryModSpawn"]
+
+				spied(function()
+					spawn(p)
+				end)
+
+				expect(#sentModes).to.equal(1)
+				expect(sentModes[1]).to.equal(GryMod.Modes.ARMOR)
+				expect(sentReasons[1]).to.equal(GryMod.ModeReasonIds[Why.SPAWN])
+			end
+		},
+		{
+			-- would fail if: a mode refused because the suit is down was sent with the asker's cause (API) instead of the real one
+			name = "a mode refused because the suit is down is told with the real cause (malfunction), the armor as the mode",
+			func = function()
+				local API, p, Why = GryMod.API, ply(), GryMod.ModeReasons
+
+				GryMod.Malfunction.Start(p, 5, "emp")
+
+				spied(function()
+					API.SetMode(p, GryMod.Modes.SPEED)
+				end)
+
+				expect(sentModes[#sentModes]).to.equal(GryMod.Modes.ARMOR)
+				expect(sentReasons[#sentReasons]).to.equal(GryMod.ModeReasonIds[Why.MALFUNCTION])
+			end
+		},
+		{
+			-- would fail if: the refusal of a request that is not a selectable mode (DROP, a number the client invented) was sent without the cause VETOED
+			name = "a request for something that is not a mode is refused with the real mode and the cause VETOED",
+			func = function()
+				local p, Why = ply(), GryMod.ModeReasons
+
+				GryMod.API.SetMode(p, GryMod.Modes.SPEED)
+
+				spied(function()
+					GryMod.SetModeFromClient(p, GryMod.Modes.DROP)
+				end)
+
+				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.SPEED)
+				expect(#sentModes).to.equal(1)
+				expect(sentModes[1]).to.equal(GryMod.Modes.SPEED)
+				expect(sentReasons[1]).to.equal(GryMod.ModeReasonIds[Why.VETOED])
+			end
+		},
+		{
+			-- would fail if: the veto reached the player without a cause from the API path either (the veto is in SetNanosuitMode, not in SetModeFromClient)
+			name = "a mode vetoed by an addon is told to the client with the cause VETOED, also when the request came from the API",
+			func = function()
+				local p, Why = ply(), GryMod.ModeReasons
+
+				listen("GryMod_CanSetMode", function() return false end)
+
+				spied(function()
+					local ok = GryMod.API.SetMode(p, GryMod.Modes.CLOAK)
+				end)
+
+				expect(ok).to.beFalse()
+				expect(#sentModes).to.equal(1)
+				expect(sentModes[1]).to.equal(GryMod.Modes.ARMOR)
+				expect(sentReasons[1]).to.equal(GryMod.ModeReasonIds[Why.VETOED])
 			end
 		},
 		{
@@ -439,13 +583,15 @@ return {
 				GryMod.API.SetMode(p, GryMod.Modes.SPEED)
 
 				listen("GryMod_CanSetMode", function() return false end)
-				spyNet()
-				GryMod.SetModeFromClient(p, GryMod.Modes.STRENGTH)
-				unspyNet()
+				spied(function()
+					GryMod.SetModeFromClient(p, GryMod.Modes.STRENGTH)
+				end)
 
 				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.SPEED)
 				expect(#sentModes).to.equal(1)
 				expect(sentModes[1]).to.equal(GryMod.Modes.SPEED)
+				-- would fail if: the veto's answer carried no cause or another one (the client would not know its change was undone by a refusal)
+				expect(sentReasons[1]).to.equal(GryMod.ModeReasonIds[GryMod.ModeReasons.VETOED])
 			end
 		},
 		{

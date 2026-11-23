@@ -67,22 +67,22 @@ Off means: armor mode and no mode change, the armor takes no hit (the whole dama
 recharges, the suit cannot go down in a malfunction, and the HUD is hidden on that player's screen. It is a flag
 (`GryDisabled`, a networked boolean), not a malfunction. It stays through death and respawn until you set `true`.
 
-## Suit events (server hooks)
+## Suit events (hooks)
 
 | Hook | When |
 | --- | --- |
-| `GryMod_ModeChanged(ply, mode, oldMode, reason)` | the mode really changed (any path: the player's menu, the API, a malfunction, a respawn). `reason` is one of `GryMod.ModeReasons` (see below) |
+| `GryMod_ModeChanged(ply, mode, oldMode, reason)` | the mode really changed (any path: the player's menu, the API, a malfunction), and at every respawn (even armor to armor). On the **server** and on the **client**, same name and same arguments (the client runs it only for the local player). `reason` is one of `GryMod.ModeReasons` (see below) |
 | `GryMod_EnergyEmpty(ply)` | the bar reached 0 (once, not again until it has been above 0) |
 | `GryMod_EnergyUsed(ply)` | energy was used (the new name of `GryUseEnergy`, which keeps firing too) |
 | `GryMod_SuitEnabled(ply)`, `GryMod_SuitDisabled(ply)` | `SetSuitEnabled` changed the state |
 | `GryMod_MalfunctionStart(ply, seconds, reason)`, `GryMod_MalfunctionEnd(ply)` | the suit went down, came back |
 | `GryMod_EMP(pos, radius, seconds)` | you can run this hook yourself to fire an EMP (same as `API.EMP`) |
 
-The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire.
+The other hooks of this table run on the server only. `GryMod_ModeChanged` also runs on the client, for the local player. The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire (on the server).
 
 ### Why the mode changed: `GryMod.ModeReasons`
 
-The 4th argument of `GryMod_ModeChanged` is one of these plain strings:
+The 4th argument of `GryMod_ModeChanged` is one of these plain strings, on the server and on the client:
 
 | Constant | Value | Cause |
 | --- | --- | --- |
@@ -93,9 +93,22 @@ The 4th argument of `GryMod_ModeChanged` is one of these plain strings:
 | `GryMod.ModeReasons.MALFUNCTION` | `"malfunction"` | the suit went down, or a mode was asked while it is down |
 | `GryMod.ModeReasons.DISABLED` | `"disabled"` | the suit was switched off, or a mode was asked while it is off |
 | `GryMod.ModeReasons.OTHER` | `"other"` | a caller of `Player:SetNanosuitMode` that gave no cause |
+| `GryMod.ModeReasons.VETOED` | `"vetoed"` | the server refused a request (a veto, or something that is not a mode) and sends back the mode it really keeps |
+| `GryMod.ModeReasons.SYNC` | `"sync"` | the server's answer when the client has finished loading: the client learns the real mode |
 
-A respawn is announced like any other change (`reason == SPAWN`, `oldMode` is the mode the player died in). A respawn from armor to armor is not a
-change: no event. A new player's first spawn is armor too, so it gives no event either.
+A respawn is always announced (`reason == SPAWN`), also from armor to armor (`mode == oldMode == GryMod.Modes.ARMOR`), also the first spawn of a new
+player. When the mode was not armor, `oldMode` is the mode the player died in. For the other causes the hook runs only when the mode changes: the same
+mode asked again, whoever asks, says nothing. At the respawn the energy is already back at 100 when the server's hook runs.
+
+**Server and client.** The hook has the same name and the same arguments in both realms. The client runs it only for the local player (the only
+one whose mode it knows), and it is told the cause by the server: on the network the cause is a small integer (`GryMod.ModeReasonIds`, the position in
+`GryMod.ModeReasonList` minus 1, `GryMod.ModeReasonBits` = 4 bits), and it is a string again in the hook, so your handler reads the same value in both realms.
+The mode the client sees is the new one when the hook runs. The "assumed" armor of a client that is still loading counts as the old mode.
+
+When the **player** changes the mode himself (quick menu, key), the client applies it at once and the hook runs there with `PLAYER`; the server is only told
+and runs its own hook with `PLAYER` too. If the server refuses (a veto, a malfunction, the suit switched off), it sends the real mode back and a **second**
+hook runs on the client with `VETOED` (or `MALFUNCTION` / `DISABLED` when that is why), with `oldMode` the mode the client had set. Dropping the suit's
+item is not a mode: no hook.
 
 ```lua
 hook.Add("GryMod_ModeChanged", "my_addon", function(ply, mode, oldMode, reason)

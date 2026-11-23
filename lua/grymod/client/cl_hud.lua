@@ -91,9 +91,26 @@ local function modeEvent(mode, quiet)
 	return API.HUDEvent("mode", data)
 end
 
-function meta:SetNanosuitMode(mode, networked)
-	-- the same mode again does nothing, unless the mode on the client is only the default guess (AssumeDefaultMode below): then the first one set is real
-	if mode == LocalPlayer().NanosuitMode and not LocalPlayer().NanosuitModeAssumed then
+-- Tells the other addons that the local player's suit changed mode: the hook GryMod_ModeChanged(ply, mode, oldMode, reason), the same name and arguments as
+-- on the server (sv_system.lua, which runs it for every player; here only the local player's mode is known). `reason` is a string of GryMod.ModeReasons.
+-- It runs when the mode changes, and at every respawn (cause SPAWN, even armor to armor); the guess of AssumeDefaultMode counts as the old mode.
+local function announceMode(mode, oldMode, reason)
+	if mode ~= oldMode or reason == GryMod.ModeReasons.SPAWN then
+		hook.Run("GryMod_ModeChanged", LocalPlayer(), mode, oldMode, reason)
+	end
+end
+
+-- `reason` (one of GryMod.ModeReasons, OTHER when left out) is the 4th argument of GryMod_ModeChanged. The client changes at once when the PLAYER asks (the
+-- server is only told): if the server refuses, it sends the real mode back and a second change follows, with the cause VETOED (or MALFUNCTION, DISABLED).
+function meta:SetNanosuitMode(mode, networked, reason)
+	local oldMode = LocalPlayer().NanosuitMode
+	reason = reason or GryMod.ModeReasons.OTHER
+
+	-- the same mode again does nothing, unless the mode on the client is only the default guess (AssumeDefaultMode below): then the first one set is real.
+	-- A respawn is still announced to the hook (no HUD event, no sound: nothing changed on the screen).
+	if mode == oldMode and not LocalPlayer().NanosuitModeAssumed then
+		announceMode(mode, oldMode, reason)
+
 		return
 	end
 
@@ -139,23 +156,31 @@ function meta:SetNanosuitMode(mode, networked)
 
 		LocalPlayer().NanosuitMode = mode
 		LocalPlayer().NanosuitModeAssumed = nil
+
+		-- after the assignment: a handler that reads LocalPlayer().NanosuitMode sees the new mode
+		announceMode(mode, oldMode, reason)
 	end
-	-- it's not a real mode so don't change anything
+	-- it's not a real mode so don't change anything (and no hook)
 end
 
 -- The server decides the mode (at every respawn it goes back to Armor). This must not wait for the
 -- player to be alive on the client: the respawn message can arrive first, and a client that kept its old
 -- mode ignores the player picking that mode again, so the suit stayed in Armor with a Speed icon.
-function GryMod.ApplyServerMode(mode)
+-- `reason` is the cause the server gave, as a string of GryMod.ModeReasons (OTHER when left out).
+function GryMod.ApplyServerMode(mode, reason)
 	if not IsValid(LocalPlayer()) then
 		return
 	end
 
-	LocalPlayer():SetNanosuitMode(mode, false)
+	LocalPlayer():SetNanosuitMode(mode, false, reason)
 end
 
+-- The message is the mode, then the cause as an id (GryMod.ModeReasonList, sv_system.lua tellMode); an id the list does not know goes as OTHER.
 net.Receive("gry_nanosuit_mode_change", function()
-	GryMod.ApplyServerMode(net.ReadUInt(3))
+	local mode = net.ReadUInt(3)
+	local reason = GryMod.ModeReasonList[net.ReadUInt(GryMod.ModeReasonBits) + 1] or GryMod.ModeReasons.OTHER
+
+	GryMod.ApplyServerMode(mode, reason)
 end)
 
 -- A player who joins a game in progress may miss the message of the spawn: the engine does not deliver net messages reliably before the client's
@@ -500,7 +525,8 @@ local function altFireNow(ply)
 end
 
 local function endCloak(ply)
-	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true)
+	-- the player's own act (a shot, the key): the server hears the same request, with the cause PLAYER
+	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.PLAYER)
 	net.Start("gry_empty_energy")
 	net.SendToServer() -- too lazy to fight cheaters
 
