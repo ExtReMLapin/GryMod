@@ -134,6 +134,12 @@ local function sizeFor(dz, big)
 	return big and size * 2 or size
 end
 
+-- The same helpers for the marker sources (cl_hud_radar_sources.lua), which place their icons with the rules of the contacts.
+Radar.InsideFrame, Radar.BorderPoint, Radar.SizeFor = insideFrame, borderPoint, sizeFor
+
+-- No more marker icons than this on the radar at once (the sources' markers come after the contacts, whose limit is S.MAX_CONTACTS).
+Radar.MAX_MARKERS = 64
+
 -- The entries for the movie, from the player's position and yaw (degrees) and the contacts {id, x, y, z, yaw, type, sub,
 -- marker, big}: {id, x, y, rotation, frame, scale, alpha, tint}, in the movie's coordinates (tint: the colour multipliers of an
 -- ally, nil for the movie's own colours). A unit outside the frame or more
@@ -284,9 +290,9 @@ local function setTint(icon, tint)
 	end
 end
 
--- setObjectArray: gives the icons of the Units clip the entries of Radar.Contacts. The icons are made when they are first
+-- setObjectArray: gives the icons of the Units clip the entries of Radar.Contacts (and, as a second list, the ones of Radar.MarkerEntries). The icons are made when they are first
 -- needed (named "ObjectIcon_" .. n at depth n + 99 + 1, like the script's) and kept; the ones past the list are hidden.
-function Panel:SetObjects(list)
+function Panel:SetObjects(list, extra)
 	local units = self.main:Child("Units")
 
 	if not units then
@@ -300,10 +306,12 @@ function Panel:SetObjects(list)
 	end
 
 	local icons = self.icons
-	local count = math.min(#list, S.MAX_CONTACTS)
+	-- the contacts first, then the markers of the sources (the second list, optional): the same icons and the same rules for both
+	local first = math.min(#list, S.MAX_CONTACTS)
+	local count = first + (extra and math.min(#extra, Radar.MAX_MARKERS) or 0)
 
 	for i = 1, count do
-		local e = list[i]
+		local e = i <= first and list[i] or extra[i - first]
 		local icon = icons[i]
 
 		if not icon then
@@ -559,12 +567,16 @@ function Radar.Feed(panel, ply, dt)
 
 	local options = GryMod.HUDOptions
 
+	-- the markers of the sources (cl_hud_radar_sources.lua: objectives, explosion rings, any addon's): a list of icon entries, empty when there is no source;
+	-- they have their own switch and do not depend on the contacts'
+	local markers = Radar.FeedMarkers and Radar.FeedMarkers(ply, Radar.Range()) or nil
+
 	-- the alert hexagon (cl_hud_radar_exposure.lua) follows the vehicles and machines, and then the bar the others only; with the hexagon switched
 	-- off the bar follows every hostile, as it did before it
 	local Hex = Radar.Hex
 
 	if options and not options.Enabled("radarunits") or not wanted then
-		panel:SetObjects({})
+		panel:SetObjects({}, markers)
 		-- no contacts, no news of the hostiles: the bar goes down; the hexagon's meter is forgotten (its memory of the vehicles that were there
 		-- would hold the icon up for a minute with nothing left to tell it)
 		Radar.Stealth = Radar.StealthStep(Radar.Stealth, 0, dt)
@@ -578,7 +590,7 @@ function Radar.Feed(panel, ply, dt)
 		return
 	end
 
-	panel:SetObjects(Radar.Contacts(ply:GetPos(), Flash.ViewYaw(ply), Radar.Live(), phase, Radar.Range(), placed))
+	panel:SetObjects(Radar.Contacts(ply:GetPos(), Flash.ViewYaw(ply), Radar.Live(), phase, Radar.Range(), placed), markers)
 
 	local bar, hexagon = 0, 0
 

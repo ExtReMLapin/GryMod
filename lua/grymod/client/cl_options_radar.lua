@@ -40,6 +40,9 @@ local function radarHUDSwitches(Panel)
 			end
 		end
 	end
+
+	-- the markers that the objectives and other addons put on the radar (cl_hud_radar_sources.lua): one switch for all of them
+	GryMod.OptionBox(form, "Markers from objectives and addons", "gry_hud_radarmarkers", "Arrows and dots that other parts of the game put on the radar (an objective, a team mate).")
 end
 
 -- The settings of the server about the radar and the in/out map, for the administrators only: four check boxes (a request to the server each) and the
