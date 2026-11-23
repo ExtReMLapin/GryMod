@@ -326,6 +326,65 @@ local function drawGroups(root, x, y, scale)
 	return {renders = F.Stats.groupRenders - renders, screen = screen}
 end
 
+-- Draws `root` with the mesh calls replaced by recorders and returns the triangles with the colour of their first vertex:
+-- {x1, y1, x2, y2, x3, y3, r = , g = , b = , a = } (the colour as the engine gets it, 0 to 255). The real functions are put back.
+local function drawnFills(root, x, y, scale)
+	local originals = {mesh = {}, render = {}}
+	local names = {mesh = {"Begin", "Position", "TexCoord", "Color", "AdvanceVertex", "End"}, render = {"SetMaterial", "OverrideBlend"}}
+	local vertices, current, colour = {}, nil, nil
+	local fakes = {
+		mesh = {
+			Begin = function() end,
+			Position = function(position) current = {position.x, position.y} end,
+			TexCoord = function() end,
+			Color = function(r, g, b, a) colour = {r, g, b, a} end,
+			AdvanceVertex = function() vertices[#vertices + 1] = {current[1], current[2], colour[1], colour[2], colour[3], colour[4]} end,
+			End = function() end
+		},
+		render = {SetMaterial = function() end, OverrideBlend = function() end}
+	}
+
+	for library, list in pairs(names) do
+		for _, name in ipairs(list) do
+			originals[library][name] = _G[library][name]
+			_G[library][name] = fakes[library][name]
+		end
+	end
+
+	local ok, err = pcall(GryMod.Flash.Draw, root, x or 0, y or 0, scale or 1)
+
+	for library, list in pairs(names) do
+		for _, name in ipairs(list) do
+			_G[library][name] = originals[library][name]
+		end
+	end
+
+	assert(ok and err ~= false, "the drawing failed: " .. tostring(err))
+	local triangles = {}
+
+	for i = 1, #vertices, 3 do
+		local a, b, c = vertices[i], vertices[i + 1], vertices[i + 2]
+		triangles[#triangles + 1] = {a[1], a[2], b[1], b[2], c[1], c[2], r = a[3], g = a[4], b = a[5], a = a[6]}
+	end
+
+	return triangles
+end
+
+-- A morph shape whose fill layers are `layers` (what the converter writes in `ly`), placed at ratio `ratio` with the colour transform `cx`.
+local function fillMovie(layers, ratio, cx)
+	return {
+		w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+		chars = {
+			[1] = {k = "morph", ox = 0, oy = 0, w = 10, h = 10, ex = 0, ey = 0, ew = 10, eh = 10, ly = layers},
+			[2] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 1, n = "Fill", r = ratio, cx = cx}}}}
+		},
+		root = {{{d = 1, c = 2, n = "Holder"}}}
+	}
+end
+
+-- The bar of the Lost screen: 5 pixels wide at the start, 142 at the end, 12 high, orange.
+local BAR_LAYER = {p = {0, 0, 5, 0, 5, 12, 0, 12}, pe = {0, 0, 142, 0, 142, 12, 0, 12}, c = {204, 102, 0, 255}, ce = {204, 102, 0, 255}}
+
 return {
 	groupName = "GryMod Flash drawing (no render context)",
 	cases = {
@@ -445,6 +504,183 @@ return {
 				local middle = points(32767.5, true)
 				expect(#middle).to.equal(1)
 				expect(hasPoint(middle[1], -5, 0) and hasPoint(middle[1], 15, 0) and hasPoint(middle[1], 5, 10)).to.beTrue()
+			end
+		},
+		-- the visible morph shapes of the films (the Lost bar, the reboot panels, the alert's strokes): the converter writes their fill layers in `ly`
+		{
+			-- needs: drawMorph drawing the layers `ly` of a morph (before, only a morph marked `fill` with p / pe was drawn, as a white triangle)
+			name = "a morph with fill layers is drawn without any mark, between its start and end outlines, as a polygon (a rectangle that grows)",
+			func = function(state)
+				local F = GryMod.Flash
+				expect(area(drawnFills(F.NewRoot(fillMovie({BAR_LAYER}, 0)), 0, 0, 1))).to.aboutEqual(5 * 12, 0.01)
+				expect(area(drawnFills(F.NewRoot(fillMovie({BAR_LAYER}, 65535)), 0, 0, 1))).to.aboutEqual(142 * 12, 0.01)
+				expect(area(drawnFills(F.NewRoot(fillMovie({BAR_LAYER}, 32767.5)), 0, 0, 1))).to.aboutEqual((5 + 142) / 2 * 12, 0.01)
+				-- no ratio on the placement: the start outline
+				expect(area(drawnFills(F.NewRoot(fillMovie({BAR_LAYER}, nil)), 0, 0, 1))).to.aboutEqual(5 * 12, 0.01)
+			end
+		},
+		{
+			-- needs: the colour of the layer (c at ratio 0, ce at 65535) in the vertex colour; before, a morph was white
+			name = "the colour and the alpha of a layer go from its start colour to its end colour with the ratio",
+			func = function(state)
+				local F = GryMod.Flash
+				local layer = {p = BAR_LAYER.p, pe = BAR_LAYER.pe, c = {255, 0, 0, 0}, ce = {0, 100, 200, 255}}
+				local at0 = drawnFills(F.NewRoot(fillMovie({layer}, 0)), 0, 0, 1)[1]
+				local at1 = drawnFills(F.NewRoot(fillMovie({layer}, 65535)), 0, 0, 1)[1]
+				local half = drawnFills(F.NewRoot(fillMovie({layer}, 32767.5)), 0, 0, 1)[1]
+				expect(at0 == nil).to.beTrue() -- fully transparent at the start: nothing to draw
+				expect(at1.r).to.aboutEqual(0, 0.01)
+				expect(at1.g).to.aboutEqual(100, 0.01)
+				expect(at1.b).to.aboutEqual(200, 0.01)
+				expect(at1.a).to.aboutEqual(255, 0.01)
+				expect(half.r).to.aboutEqual(127.5, 0.01)
+				expect(half.g).to.aboutEqual(50, 0.01)
+				expect(half.b).to.aboutEqual(100, 0.01)
+				expect(half.a).to.aboutEqual(127.5, 0.01)
+			end
+		},
+		{
+			-- needs: the placement's colour transform applied to the layer colour (the HUD colour sets replace the colour: multiplier 0, colour added)
+			name = "the colour transform of the placement applies to a layer: multiplied, then added, like a shape",
+			func = function(state)
+				local F = GryMod.Flash
+				local plain = drawnFills(F.NewRoot(fillMovie({BAR_LAYER}, 65535)), 0, 0, 1)[1]
+				expect(plain.r).to.aboutEqual(204, 0.01)
+				expect(plain.g).to.aboutEqual(102, 0.01)
+				expect(plain.b).to.aboutEqual(0, 0.01)
+				expect(plain.a).to.aboutEqual(255, 0.01)
+
+				-- colour set to green (0, 255, 0) at half alpha
+				local tinted = drawnFills(F.NewRoot(fillMovie({BAR_LAYER}, 65535, {0, 0, 0, 0.5, 0, 255, 0, 0})), 0, 0, 1)[1]
+				expect(tinted.r).to.aboutEqual(0, 0.01)
+				expect(tinted.g).to.aboutEqual(255, 0.01)
+				expect(tinted.b).to.aboutEqual(0, 0.01)
+				expect(tinted.a).to.aboutEqual(127.5, 0.01)
+			end
+		},
+		{
+			-- needs: the layers drawn in order (a fill first, then its strokes on top)
+			name = "the layers of a morph are drawn in order, each with its own colour",
+			func = function(state)
+				local F = GryMod.Flash
+				local panel = {p = {0, 0, 100, 0, 100, 50, 0, 50}, pe = {0, 0, 100, 0, 100, 50, 0, 50}, c = {0, 0, 0, 115}, ce = {0, 0, 0, 115}}
+				local line = {p = {0, 0, 100, 0, 100, 1, 0, 1}, pe = {0, 0, 100, 0, 100, 1, 0, 1}, c = {255, 255, 255, 255}, ce = {255, 255, 255, 255}}
+				local drawn = drawnFills(F.NewRoot(fillMovie({panel, line}, 0)), 0, 0, 1)
+				expect(#drawn).to.equal(4)
+				expect(drawn[1].a).to.equal(115)
+				expect(drawn[2].a).to.equal(115)
+				expect(drawn[3].a).to.equal(255)
+				expect(drawn[4].a).to.equal(255)
+			end
+		},
+		{
+			-- needs: the layers cut like a mask is (convexPieces), not drawn as one fan from the first corner
+			name = "a concave layer fills its polygon and none of its notch, a layer of two contours fills both and not the gap",
+			func = function(state)
+				local F = GryMod.Flash
+				local letter = {p = L_SHAPE, pe = L_SHAPE}
+				local drawn = drawnFills(F.NewRoot(fillMovie({letter}, 0)), 0, 0, 1)
+				expect(area(drawn)).to.aboutEqual(polygonArea(L_SHAPE), 0.01)
+				expect(allInside(drawn, L_SHAPE)).to.beTrue()
+
+				local bars = {ps = TWO_BARS, pes = TWO_BARS_END}
+				expect(area(drawnFills(F.NewRoot(fillMovie({bars}, 0)), 0, 0, 1))).to.aboutEqual(2 * 30 * 100, 0.01)
+				expect(area(drawnFills(F.NewRoot(fillMovie({bars}, 65535)), 0, 0, 1))).to.aboutEqual(2 * 20 * 100, 0.01)
+				expect(area(drawnFills(F.NewRoot(fillMovie({bars}, 32767.5)), 0, 0, 1))).to.aboutEqual(2 * 25 * 100, 0.01)
+			end
+		},
+		{
+			-- needs: the matrix of the placement (and the scale of the drawing) applied to the layer points
+			name = "a layer follows the matrix and the scale of its placement",
+			func = function(state)
+				local F = GryMod.Flash
+				local movie = fillMovie({BAR_LAYER}, 65535)
+				movie.chars[2].frames[1][1].m = {2, 0, 0, 1, 10, 20}
+				local drawn = drawnFills(F.NewRoot(movie), 100, 200, 0.5)
+				-- stage x 0 to 142 at scale 2 then 0.5, offset (10, 20) then (100, 200): 110 to 110 + 142, y 220 to 232 * ... height 12 at scale 0.5
+				expect(area(drawn)).to.aboutEqual(142 * 12 * 0.5 * 0.5 * 2, 0.01)
+				local right = 0
+
+				for _, t in ipairs(drawn) do
+					right = math.max(right, t[1], t[3], t[5])
+				end
+
+				expect(right).to.aboutEqual(100 + 0.5 * (2 * 142 + 10), 0.01)
+			end
+		},
+		{
+			-- needs: the drawing of the layers inside the active mask (emitClipped), as for any shape
+			name = "a layer placed under a mask layer is cut to the mask",
+			func = function(state)
+				local F = GryMod.Flash
+				local movie = {
+					w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+					chars = {
+						[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 100, dh = 100, p = {0, 0, 50, 0, 50, 100, 0, 100}},
+						[2] = {k = "morph", ox = 0, oy = 0, w = 100, h = 100, ex = 0, ey = 0, ew = 100, eh = 100, ly = {{p = {0, 0, 100, 0, 100, 100, 0, 100}, pe = {0, 0, 100, 0, 100, 100, 0, 100}}}}
+					},
+					root = {{{d = 1, c = 1, cd = 2}, {d = 2, c = 2}}}
+				}
+				local drawn = drawnFills(F.NewRoot(movie), 0, 0, 1)
+				expect(area(drawn)).to.aboutEqual(50 * 100, 0.01)
+			end
+		},
+		{
+			-- guard (green before and after): the morph placed with a clip depth stays a mask (drawEntries sends it to beginMask, not to the fill code)
+			name = "a morph placed as a mask is still only a mask, even when it has fill layers",
+			func = function(state)
+				local F = GryMod.Flash
+				local movie = {
+					w = 1024, h = 768, fps = 30, atlases = {"grymod/flash/none.png"},
+					chars = {
+						[1] = {k = "shape", a = 1, x = 0, y = 0, w = 4, h = 4, ox = 0, oy = 0, dw = 100, dh = 100},
+						[2] = {k = "morph", ox = 0, oy = 0, w = 100, h = 100, ex = 0, ey = 0, ew = 100, eh = 100,
+							p = {0, 0, 30, 0, 30, 100, 0, 100}, pe = {0, 0, 70, 0, 70, 100, 0, 100},
+							ly = {{p = {0, 0, 30, 0, 30, 100, 0, 100}, pe = {0, 0, 70, 0, 70, 100, 0, 100}}}}
+					},
+					root = {{{d = 1, c = 2, cd = 2, r = 65535}, {d = 2, c = 1}}}
+				}
+				-- only the shape (the square), cut to the mask: 70 x 100 (the mask itself draws nothing)
+				expect(area(drawnTriangles(F.NewRoot(movie), 0, 0, 1))).to.aboutEqual(70 * 100, 0.01)
+			end
+		},
+		{
+			-- needs: the measuring pass of drawMorph (a group's size comes from it; before it measured only the fill-marked triangle)
+			name = "a morph with layers inside a group (blend mode add) makes the image of the group: the measuring pass sees it",
+			func = function(state)
+				local movie = fillMovie({BAR_LAYER}, 65535)
+				movie.chars[3] = {k = "sprite", n = 1, labels = {}, frames = {{{d = 1, c = 2, n = "Group", bl = 8}}}}
+				movie.root = {{{d = 1, c = 3, n = "Holder"}}}
+				local result = drawGroups(GryMod.Flash.NewRoot(movie), 0, 0, 1)
+				expect(result.renders).to.equal(1)
+				expect(#result.screen > 0).to.beTrue()
+			end
+		},
+		{
+			-- needs: shapeContours returning false for an outline that cannot be cut, and drawMorphLayer skipping then
+			name = "a layer whose outline is a bow tie draws nothing and does not fail",
+			func = function(state)
+				local F = GryMod.Flash
+				local bow = {p = {0, 0, 10, 10, 10, 0, 0, 10}, pe = {0, 0, 10, 10, 10, 0, 0, 10}}
+				expect(#drawnFills(F.NewRoot(fillMovie({bow}, 0)), 0, 0, 1)).to.equal(0)
+			end
+		},
+		{
+			-- needs: drawMorph keeping the marked-fill path (the radar cone) next to the layers
+			name = "a morph marked as a fill with a single outline is still drawn white, and one with layers uses the layers only",
+			func = function(state)
+				local F = GryMod.Flash
+				local movie = fillMovie(nil, 0)
+				movie.chars[1].fill = true
+				movie.chars[1].p = {0, 0, 10, 0, 5, 10}
+				movie.chars[1].pe = {0, 0, 10, 0, 5, 10}
+				local drawn = drawnFills(F.NewRoot(movie), 0, 0, 1)
+				expect(#drawn).to.equal(1)
+				expect(drawn[1].r).to.equal(255)
+				expect(drawn[1].a).to.equal(255)
+
+				movie.chars[1].ly = {{p = {0, 0, 100, 0, 100, 100, 0, 100}, pe = {0, 0, 100, 0, 100, 100, 0, 100}}}
+				expect(area(drawnFills(F.NewRoot(movie), 0, 0, 1))).to.aboutEqual(100 * 100, 0.01)
 			end
 		},
 		{
