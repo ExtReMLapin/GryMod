@@ -160,7 +160,7 @@ function Markers.FromObjectives(list, showFinished, out)
 		for i = 1, #list do
 			local o = list[i]
 
-			if type(o) == "table" and o.radar ~= false and type(o.pos) == "table" and finite(o.pos.x) and finite(o.pos.y) then
+			if type(o) == "table" and o.radar ~= false and (isvector(o.pos) or type(o.pos) == "table") and finite(o.pos.x) and finite(o.pos.y) then
 				local finished = o.state == "done" or o.state == "failed"
 
 				if showFinished or not finished then
