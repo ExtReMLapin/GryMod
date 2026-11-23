@@ -531,6 +531,7 @@ local function drawGrid(view)
 
 	-- the numbers along the top (counting toward -Y), the letters down the left side (counting toward -X)
 	local stepY, stepX = (view.y1 - view.y0) / 8, (view.x1 - view.x0) / 8
+	local letterBand = 1.5 * math.max(12, floor(ScrH() / 78)) -- one and a half lines of the small font
 
 	for i = 1, 8 do
 		local sx = Frame.ToScreen(view, view.cx, view.y1 - (i - 0.5) * stepY)
@@ -541,7 +542,8 @@ local function drawGrid(view)
 
 		local _, sy = Frame.ToScreen(view, view.x1 - (i - 0.5) * stepX, view.cy)
 
-		if sy > view.y + 10 and sy < view.y + view.h - 10 then
+		-- not in the band of the numbers (they start 4 pixels under the top edge): a letter there would be drawn over the "1"
+		if sy > view.y + 4 + letterBand and sy < view.y + view.h - 10 then
 			draw.SimpleText(string.sub("ABCDEFGH", i, i), SMALL_FONT, view.x + 6, sy, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		end
 	end

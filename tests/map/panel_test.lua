@@ -705,6 +705,69 @@ return {
 				Map.Close()
 			end
 		},
+		-- fails without the margin under the numbers in drawGrid: a row letter whose line sat just under the top edge was drawn over the column number "1" (seen at 1080p)
+		{
+			name = "a grid row letter is never drawn in the band of the column numbers along the top edge of the window",
+			func = function(state)
+				local Map = M()
+				local Mini = GryMod.Minimap
+				local Tiles = Map.Tiles
+				local Frame = Map.Frame
+
+				Mini.Cache = {Has = function() return false end, IsEmpty = function() return false end, Path = function() return "x" end}
+				Mini.Capture = {MayCapture = function() return false end, RenderTo = function() return false end}
+				Mini.Floors = {Outside = function() return LEVEL end}
+				Mini.Settings = setmetatable({TileRes = function() return 1024 end}, {__index = state.saved.Settings})
+				Tiles.Engine.RealTime = function() return 1 end
+				Tiles.Engine.FrameNumber = function() return 10 end
+				Tiles.Reset()
+				Map._state.opened = true
+				GetConVar("gry_map_zoom"):SetString("1")
+				Map.Open()
+
+				local view = Map._state.view
+				local stepX = (view.x1 - view.x0) / 8
+				local rowX = view.x1 - 0.5 * stepX -- the line of the row A
+
+				-- the row A's line is put 15 pixels under the top edge (as a pan or a zoom around the mouse does it): the screen position of that one line is replaced
+				local ToScreen = Frame.ToScreen
+
+				Frame.ToScreen = function(v, wx, wy)
+					local sx, sy = ToScreen(v, wx, wy)
+
+					if math.abs(wx - rowX) < 0.01 then
+						sy = v.y + 15
+					end
+
+					return sx, sy
+				end
+
+				stubDrawing(state)
+
+				local panel = Map._state.panel
+				local ok = pcall(panel.Paint, panel, ScrW(), ScrH())
+
+				Frame.ToScreen = ToScreen
+
+				expect(ok).to.beTrue()
+
+				local letters, other = 0, 0
+
+				for _, c in ipairs(callsOf("draw.SimpleText")) do
+					if #tostring(c[2]) == 1 and string.find("ABCDEFGH", tostring(c[2]), 1, true) then
+						letters = letters + 1
+						-- c[5] is the centre of the letter: the numbers are drawn from view.y + 4, about a line of the small font tall
+						expect(c[5] > view.y + 4 + 1.5 * math.max(12, math.floor(ScrH() / 78))).to.beTrue()
+					else
+						other = other + 1
+					end
+				end
+
+				-- the other rows are still there (a rule that drew no letter at all would pass the check above)
+				expect(letters >= 5).to.beTrue()
+				Map.Close()
+			end
+		},
 		-- fails without Map.ARROW_MIN: at zoom 1 the arrow was 4.5 pixels at 720p, a speck
 		{
 			name = "the player's arrow is never smaller than ARROW_MIN at zoom 1 (about 17 pixels long), and still grows with the screen",
