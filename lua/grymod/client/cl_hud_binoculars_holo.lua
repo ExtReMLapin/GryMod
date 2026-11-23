@@ -639,7 +639,7 @@ V.NEST_CAM3D = false
 -- The shader (shaders/fxc) and the names of what it draws with. The game keeps the code of a shader name until it is closed: to try another build give it another name here.
 V.PIXEL = V.PIXEL or "grymod_vision_ps20b"
 V.PROBE_SIZE = 8
--- What the probe must see: the shader fills a uniform green with half of it; a missing shader gives white, magenta or black.
+-- What the probe must see: the shader (final mode, no glow) fills a uniform green with half of it, times the scan lines; a missing shader gives white, magenta or black.
 V.PROBE_FILL = 0.5
 V.PROBE_GREEN_MIN, V.PROBE_GREEN_MAX, V.PROBE_OTHER_MAX = 40, 250, 24
 
@@ -746,9 +746,9 @@ function V.Probe()
 		local source = GetRenderTarget("GryBinoVisionProbeSrc", size, size)
 		local target = GetRenderTarget("GryBinoVisionProbeOut", size, size)
 		local material = passMaterial("GryBinoVisionProbe_" .. V.PIXEL, source:GetName(), source:GetName(), false)
-		local registers = V.Registers(0, size, size)
+		local registers = V.Registers(1, size, size)
 
-		registers[1][1], registers[1][2], registers[1][3] = 1, 0, V.PROBE_FILL
+		registers[1][1], registers[1][2], registers[1][3], registers[2][4] = 1, 0, V.PROBE_FILL, 0 -- (the final mode, no glow: the glow mode draws the boundary alone, which a uniform buffer has not)
 
 		render.PushRenderTarget(source)
 		render.Clear(0, 255, 0, 255, false, false)

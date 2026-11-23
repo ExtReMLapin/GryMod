@@ -37,6 +37,19 @@ class VisionPixelShaderTest(unittest.TestCase):
         self.assertIn("float2(-1.0, 1.0)", code)
         self.assertIn("float2(1.0, 1.0)", code)
 
+    def test_the_edge_is_a_presence_mask_not_a_raw_alpha_difference(self):
+        # Measured in the game: the alpha the engine writes for a flat model is not 1 but 0.92 to 0.97, changing smoothly over the body; a raw difference of two alphas
+        # then drew contour lines inside a close soldier. The alpha is turned into present / absent (step) before the neighbours are compared.
+        code = code_only()
+        self.assertRegex(code, r"step\(0\.5,\s*around\)")
+        self.assertRegex(code, r"step\(0\.5,\s*c\.a\)")
+
+    def test_the_glow_source_has_no_fill(self):
+        # The glow is made from the boundary alone: with the fill in it the blurred glow turned the whole body milky (seen in the game).
+        code = code_only()
+        self.assertIn("float3 rim = c.rgb * (edge * C0.y)", code)
+        self.assertIn("(C1.z < 0.5) ? rim : final", code)
+
     def test_the_variable_is_not_called_like_an_intrinsic(self):
         # `step` is an HLSL function: a variable of that name stops the compilation.
         code = code_only()

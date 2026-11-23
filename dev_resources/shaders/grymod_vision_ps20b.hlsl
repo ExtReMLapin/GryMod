@@ -9,7 +9,7 @@
 //   vign   = saturate(1 - distance from the screen's centre)
 //   final  = (glow * GLOW_GAIN + sil) * STRENGTH * lines * vign
 //
-// Two modes (C1.z): 0 draws `sil` alone (no lines, no vignette) into a small buffer that the Lua blurs: that is the glow; 1 draws the final
+// Two modes (C1.z): 0 draws the boundary alone (c * edge * BOOST: no fill, no lines, no vignette) into a small buffer that the Lua blurs: that is the glow; 1 draws the final
 // result over the screen (the material adds it to the picture).
 // What the original's engine gave it comes from the Lua (cl_hud_binoculars_holo.lua): the numbers of the registers below.
 // Compile: python dev_resources/shaders/build_shaders.py (the file name tells the model: ps20b).
@@ -35,8 +35,9 @@ float4 main(PS_INPUT frag) : COLOR {
 	around.y = tex2D(VISION, frag.uv + reach * float2(-1.0, 1.0)).a;
 	around.z = tex2D(VISION, frag.uv + reach * float2(1.0, 1.0)).a;
 
-	// an alpha is 0 or 1 (8 bits): any difference is at least 1/255, so a threshold of half of that is enough
-	float edge = step(0.002, dot(abs(around - c.a), float3(1.0, 1.0, 1.0)));
+	// the alpha is a presence mask: the engine writes 0.92 to 0.97 (changing over the body) where an entity is and 0 elsewhere, so it is made present / absent
+	// first (a raw difference drew contour lines inside a close soldier)
+	float edge = step(0.5, dot(abs(step(0.5, around) - step(0.5, c.a)), float3(1.0, 1.0, 1.0)));
 
 	float3 sil = c.rgb * (C0.z + edge * C0.y);
 
@@ -47,6 +48,9 @@ float4 main(PS_INPUT frag) : COLOR {
 	float vignette = saturate(1.0 - length(frag.uv - 0.5) * C3.x);
 	float3 final = (glow + sil) * (C0.x * lines * vignette);
 
-	// no branch (model 2.0b has none): mode 0 gives `sil` alone, mode 1 the final result
-	return float4((C1.z < 0.5) ? sil : final, 1.0);
+	// the glow's source is the boundary alone (the original takes the fill out of its glow: it would turn the whole body milky), BOOST included
+	float3 rim = c.rgb * (edge * C0.y);
+
+	// no branch (model 2.0b has none): mode 0 gives the boundary alone, mode 1 the final result
+	return float4((C1.z < 0.5) ? rim : final, 1.0);
 }
