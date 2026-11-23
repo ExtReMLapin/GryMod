@@ -22,7 +22,8 @@ Settings.List = {
 	{name = "gry_zonemap", kind = "bool"},
 	{name = "gry_zonemap_navmesh", kind = "bool"},
 	{name = "gry_health_regen", kind = "bool"},
-	{name = "gry_infinite_armor", kind = "bool"}
+	{name = "gry_infinite_armor", kind = "bool"},
+	{name = "gry_objectives", kind = "bool"}
 }
 
 local byName = {}
