@@ -45,7 +45,7 @@ local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "
 local MalfunctionConVar = CreateClientConVar("gry_binoculars_malfunction", "1", true, false, "The binoculars' film follows the HUD while the suit is down: it fades to white on a malfunction and fades out when the HUD flickers, as the original film does (off: it stays as it is)")
 local NoFireConVar = CreateClientConVar("gry_binoculars_no_fire", "1", true, false, "No shooting while the binoculars are up: the original holds them as an item instead of a weapon (on by default, as in the original; off: the Half-Life 2 zoom lets you shoot)")
 local WalkConVar = CreateClientConVar("gry_binoculars_walk", "1", true, false, "No sprint while the binoculars are up, and the pace of a slow walk, as in the original (off: you move as usual)")
-local HoldZoomConVar = CreateClientConVar("gry_binoculars_hold_zoom", "1", true, false, "Holding the zoom key steps the zoom once, 0.25 s after it went down (2x, 4x, 8x) and, from the last stage, back to the first, as in the original (needs the zoom stages)")
+local HoldZoomConVar = CreateClientConVar("gry_binoculars_hold_zoom", "1", true, false, "Holding the right click steps the zoom once, 0.25 s after it went down (2x, 4x, 8x) and, from the last stage, back to the first, as in the original (needs the zoom stages)")
 local ThirdPersonConVar = CreateClientConVar("gry_binoculars_thirdperson", "1", true, false, "The binoculars' film is not drawn in third person, as the original does (off: it is drawn there too)")
 
 -- The stages are on with their own switch, and always while the own zoom has a key (gry_zoom_own, see cl_suit_zoom.lua): the wheel is
@@ -1536,6 +1536,12 @@ function Bino.KeyHeld(ply)
 	return held ~= nil and (held.key or held.bind) or false
 end
 
+-- Whether the key that steps the zoom is held: the SECONDARY button (the right click), not the key that holds the binoculars open (the owner: on that key
+-- the zoom jumped by itself while he only wanted them up). The mouse is read as it is (the firing is taken out of the command while they are up).
+function Bino.ZoomStepHeld(ply)
+	return input.IsMouseDown(MOUSE_RIGHT) and not vgui.CursorVisible() and not gui.IsGameUIVisible()
+end
+
 -- The engine's own scale of the mouse for a zoomed field of view (the Half-Life 2 client's zoom_sensitivity_ratio, 1 by default).
 function Bino.ZoomRatio()
 	local convar = GetConVar("zoom_sensitivity_ratio")
@@ -1989,7 +1995,7 @@ function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 
 		-- the key held steps the stage (before the step is worked out, so that the same frame starts the move)
 		if HoldZoomConVar:GetBool() then
-			local cue = Bino.ZoomHold(zoom, wanted and Bino.KeyHeld(ply), now)
+			local cue = Bino.ZoomHold(zoom, wanted and Bino.ZoomStepHeld(ply), now)
 
 			if cue then
 				Bino.PlayZoomSound(cue)

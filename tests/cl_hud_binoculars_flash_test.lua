@@ -2936,11 +2936,36 @@ return {
 			end
 		},
 		{
+			-- fails if the zoom is stepped by the key that holds the binoculars open (the owner: the zoom jumped from 2x to 4x by itself while he held the key to keep them up):
+			-- only the right click held steps it
+			name = "the zoom is stepped by the right click held, not by the zoom key",
+			func = function()
+				local M = GryMod.FlashBinoculars
+				local realMouse, realKey = input.IsMouseDown, M.KeyHeld
+				local down = false
+
+				input.IsMouseDown = function(button) return button == MOUSE_RIGHT and down end
+				M.KeyHeld = function() return true end
+
+				local ok, err = pcall(function()
+					expect(M.ZoomStepHeld({})).to.beFalse()
+					down = true
+					expect(M.ZoomStepHeld({})).to.beTrue()
+				end)
+
+				input.IsMouseDown, M.KeyHeld = realMouse, realKey
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails without the hold in Bino.CalcView: the field of view would stay at the first stage with the key held
 			name = "CalcView with the key held and gry_binoculars_hold_zoom on gives the next stage's field of view after the wait, and the option off does not step",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
-				local realWanted, realEnabled, realNow, realHeld, realSound = M.Wanted, M.Enabled, M.Now, M.KeyHeld, M.PlayZoomSound
+				local realWanted, realEnabled, realNow, realHeld, realSound = M.Wanted, M.Enabled, M.Now, M.ZoomStepHeld, M.PlayZoomSound
 				local now = 0
 				local sounds = {}
 				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
@@ -2948,7 +2973,7 @@ return {
 				M.Wanted = function() return true end
 				M.Enabled = function() return true end
 				M.Now = function() return now end
-				M.KeyHeld = function() return true end
+				M.ZoomStepHeld = function() return true end
 				M.PlayZoomSound = function(cue) sounds[#sounds + 1] = cue end
 
 				local ok, err = pcall(function()
@@ -2979,7 +3004,7 @@ return {
 					end)
 				end)
 
-				M.Wanted, M.Enabled, M.Now, M.KeyHeld, M.PlayZoomSound = realWanted, realEnabled, realNow, realHeld, realSound
+				M.Wanted, M.Enabled, M.Now, M.ZoomStepHeld, M.PlayZoomSound = realWanted, realEnabled, realNow, realHeld, realSound
 				pcall(M.Drop)
 
 				if not ok then
