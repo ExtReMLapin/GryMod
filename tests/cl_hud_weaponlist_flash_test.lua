@@ -8,6 +8,8 @@ local List = GryMod.FlashWeaponList
 local API = GryMod.API
 local Flash = GryMod.Flash
 
+local RealDrawTexts = List.DrawTexts -- the module's own, before a case replaces it
+
 local saved = {}
 local convarsSaved = {}
 local drawn
@@ -328,6 +330,37 @@ return {
 
 				run(0.1)
 				expect(textCalls > 0).to.beTrue() -- the texts are drawn with the movie, once per paint
+			end
+		},
+		{
+			-- fails when a text is drawn at a NEGATIVE place of the model matrix: the engine drops it (measured in game: under cam.PushModelMatrix a text at x < 0, which
+			-- is what a right-aligned text at 0 is, is not drawn at all, so the physgun's row, a text row, was missing from the list)
+			name = "the names of the text rows are drawn from the matrix's origin to the right and down (never right-aligned at 0, which the engine drops), turned and placed by the matrix",
+			func = function()
+				local calls = {}
+				local matrices = 0
+
+				stub(List, "DrawTexts", RealDrawTexts)
+				stub(draw, "SimpleText", function(text, font, x, y, colour, xalign, yalign)
+					calls[#calls + 1] = {text = text, x = x, y = y, xalign = xalign, yalign = yalign}
+
+					return 0, 0
+				end)
+				stub(cam, "PushModelMatrix", function() matrices = matrices + 1 end)
+				stub(cam, "PopModelMatrix", function() end)
+
+				API.RegisterWeapon("t_list_a", {listIcon = "SMG"})
+
+				local a, b = fakeWeapon("t_list_a", 1, 0), fakeWeapon("t_list_b", 2, 0, "physics gun")
+				expect(List.Show(fakePlayer({a, b}), a)).to.beTrue()
+				run(0.1)
+
+				expect(#calls > 0).to.beTrue()
+				expect(calls[1].text).to.equal("PHYSICS GUN")
+				expect(calls[1].x >= 0 and calls[1].y >= 0).to.beTrue()
+				expect(calls[1].xalign).to.equal(TEXT_ALIGN_LEFT)
+				expect(calls[1].yalign).to.equal(TEXT_ALIGN_TOP)
+				expect(matrices > 0).to.beTrue()
 			end
 		},
 		{

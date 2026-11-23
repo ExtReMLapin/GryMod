@@ -341,10 +341,17 @@ function List.DrawTexts(list, x, y, scale)
 			local stageX, stageY = List.TextAnchor(item.row)
 			local matrix = Matrix()
 
+			-- the text goes from the matrix's origin to the right and down: the engine drops a text at a NEGATIVE place of the matrix (a text right-aligned
+			-- at 0 is one), so the width and the half height are taken off the origin by the matrix itself, after the turn
+			surface.SetFont(font)
+
+			local width, height = surface.GetTextSize(item.text)
+
 			matrix:Translate(Vector(x + stageX * scale, y + stageY * scale, 0))
 			matrix:Rotate(Angle(0, ROOT_ANGLE, 0))
+			matrix:Translate(Vector(-width, -height / 2, 0))
 			cam.PushModelMatrix(matrix)
-			draw.SimpleText(item.text, font, 0, 0, Color(colour[1], colour[2], colour[3], math.floor(255 * alpha)), TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+			draw.SimpleText(item.text, font, 0, 0, Color(colour[1], colour[2], colour[3], math.floor(255 * alpha)), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 			cam.PopModelMatrix()
 		end
 	end
