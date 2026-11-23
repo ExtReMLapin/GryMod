@@ -150,6 +150,11 @@ objective status changed (`oldState` is the state before; a new position is not 
 `"entity_removed"`, `"map_changed"`). `obj` is a copy: `{id, title, description, primary, main, state, pos, ent, radar, marker}`. They are run inside
 a `pcall`: a listener that fails is shown on the console (five times at most per hook) and stops nothing. Nothing reads what a listener returns.
 
+### `GryMod_WeaponHeat(ply, wep, percent)`
+
+Client. Runs each time the weapon heat bar moves: `percent` is 0 to 100, and 0 when the bar is hidden (a weapon that declares no `heat`
+in the weapon registry, another weapon in hand, or the player turned the bar off). Run inside a `pcall`.
+
 ## What depends on the drawn HUD
 
 GryMod's HUD is drawn by one `HUDPaint` hook (`Module.Paint` of `cl_hud_flash.lua`). `Module.Apply` removes it when `gry_hud` is 0 or when

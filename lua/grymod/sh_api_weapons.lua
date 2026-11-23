@@ -43,6 +43,14 @@ API.WeaponIcons = set({"Single", "Burst", "Auto", "Grenade", "Incendiary", "Tran
 
 local ICONS = API.WeaponIcons
 
+-- The kinds of hand grenade of the HUD movie (the labels of its grenade icon). The hand grenades of Half-Life 2 are the first one.
+API.GrenadeKinds = set({"explosivegrenade", "flashbang", "smokegrenade", "empgrenade"})
+
+local GRENADES = API.GrenadeKinds
+
+-- The crosshairs of the HUD movie.
+API.CrosshairCount = 13
+
 local MAX_NAME, MAX_LABEL = 64, 24
 
 -- The valid value of the field `name` (what the field says, or a function for fire and counter), or nil when it is not valid.
@@ -58,10 +66,14 @@ local CHECK = {
 	altIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	icon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	slotIcon = function(v) if isstring(v) and ICONS[v] then return v end end,
-	crosshair = function(v) if isbool(v) then return v end end
+	-- false: no crosshair; true: the player's style; 1 to 13: the number of one of the movie's crosshairs, chosen by the weapon
+	crosshair = function(v) if isbool(v) or (isnumber(v) and v == math.floor(v) and v >= 1 and v <= API.CrosshairCount) then return v end end,
+	grenade = function(v) if isstring(v) and GRENADES[v] then return v end end,
+	-- function(wep) returning the heat of the weapon, 0 (cold) to 1 (overheated): the bar of the HUD shows it
+	heat = function(v) if isfunction(v) then return v end end
 }
 
-local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair"}
+local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade", "heat"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -104,6 +116,7 @@ function API.RegisterWeapon(class, def)
 	registry[class] = clean
 	API.SafeCallReset(functionId(class, "fire"))
 	API.SafeCallReset(functionId(class, "counter"))
+	API.SafeCallReset(functionId(class, "heat"))
 
 	return true
 end
@@ -397,7 +410,7 @@ resolveField = function(field, class, wep, source, entity, explicit)
 end
 
 -- The final description of a weapon, the one the HUD uses: a table with the fields of a definition (fire, burst, ammo, counter,
--- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
+-- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade, heat) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
 -- wep is the weapon entity, or its class name (then only what is declared or read from the stored SWEP counts). nil for an invalid
 -- weapon. explicit = true: only what is declared (registry, GryHUD, adapters), no defaults, no alt/altShoots/counter fallbacks.
 function API.ResolveWeapon(wep, explicit)

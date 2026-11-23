@@ -123,7 +123,7 @@ function HUD:_resolve()
 		local overheat = self.player:Child("OverheatBar")
 
 		if overheat then
-			overheat:SetVisible(false)
+			overheat:SetVisible(false) -- shown again by _applyHeat when a weapon gives a heat
 		end
 	end
 
@@ -168,6 +168,32 @@ function HUD:SetEnergy(value)
 	end
 end
 
+-- setOverheatBar: the bar above the weapon icon. frame: 1 to 100 (the heat in percent), 0 or nil hides it (the original hides it for 0).
+-- The movie's player HUD only; nothing is shown for a weapon that gives no heat.
+function HUD:SetHeat(frame)
+	self.heat = isnumber(frame) and number(frame, 0) or 0
+	self:_applyHeat()
+end
+
+function HUD:_applyHeat()
+	local bar = self.player and self.player:Child("OverheatBar")
+
+	if not bar then
+		return
+	end
+
+	local frame = math.Clamp(math.floor(self.heat or 0), 0, 100)
+
+	if frame == 0 then
+		bar:SetVisible(false)
+
+		return
+	end
+
+	bar:SetVisible(true)
+	bar:GotoAndStop(frame)
+end
+
 -- setMode: "Cloak", "Speed", "Strength" or "Armor" (anything else is ignored). While the suit is
 -- malfunctioning the new icon starts in its malfunction animation.
 function HUD:SetMode(mode)
@@ -197,13 +223,14 @@ function HUD:SetMode(mode)
 	end
 end
 
-local function setNumberClip(clip, value, colour)
+-- blinkAll: a real ammo update (setAmmo), where the original's updateColor plays the blink of every digit, changed or not.
+-- Without it (the values put back at a refresh) a digit only flashes when its value changes.
+local function setNumberClip(clip, value, colour, blinkAll)
 	if not clip then
 		return
 	end
 
-	-- the digit flashes when its value changes, not every time the clips are put back
-	local changed = clip.shownValue ~= value
+	local changed = blinkAll or clip.shownValue ~= value
 	clip.shownValue = value
 	clip:GotoAndStop(colour)
 
@@ -244,7 +271,7 @@ function HUD:SetAmmo(mag, reserve, size, grenades, grenadeType, fireMode, launch
 	ammo.grenades = number(grenades, 0)
 	ammo.grenadeType = grenadeType or ammo.grenadeType
 	ammo.fireMode = fireMode or ammo.fireMode
-	self:_applyAmmo()
+	self:_applyAmmo(true)
 	ammo.shown = true
 
 	-- after the icons are in place: a new icon frame rebuilds its clips, which would stop an animation started before
@@ -342,7 +369,7 @@ local function fillSlot(parent, name, id, frame, add)
 	end
 end
 
-function HUD:_applyAmmo()
+function HUD:_applyAmmo(blinkAll)
 	local player = self.player
 	local ammo = self.ammo
 
@@ -480,6 +507,7 @@ function HUD:_refresh()
 	end
 
 	self:_applyAmmo()
+	self:_applyHeat()
 end
 
 function HUD:Update(dt)
@@ -791,28 +819,86 @@ function Module.LauncherLookFor(weapon)
 	return weaponValue(weapon, "altIcon") or "Grenade", weaponValue(weapon, "altLabel")
 end
 
--- magazine, reserve, magazine size, grenades and fire mode icon of what the player holds. -1 = no ammo system.
+-- The kind of hand grenade the grenade slot shows while this weapon is in hand: what the weapon registry declares (`grenade`), else the
+-- explosive grenade, the one of Half-Life 2.
+function Module.GrenadeKindFor(weapon)
+	weapon = validWeapon(weapon)
+
+	return weapon and weaponValue(weapon, "grenade", true) or "explosivegrenade"
+end
+
+-- magazine, reserve, magazine size, grenades, fire mode icon and the kind of hand grenade of what the player holds. -1 = no ammo system.
+-- A weapon that declares its own kind of grenade (a flash grenade, a smoke grenade...) counts its own primary ammo in the grenade slot
+-- (the hand grenades of the player are the explosive ones).
 function Module.AmmoFor(ply, weapon)
 	weapon = validWeapon(weapon)
 
 	local grenades = ply:GetAmmoCount("Grenade")
 	local fireMode = Module.FireModeFor(weapon)
+	local kind = Module.GrenadeKindFor(weapon)
 
 	if not weapon or weapon:GetPrimaryAmmoType() < 0 then
-		return -1, 0, -1, grenades, fireMode
+		return -1, 0, -1, grenades, fireMode, kind
 	end
 
 	local type = weapon:GetPrimaryAmmoType()
 	local clip = weapon:Clip1()
 
+	if kind ~= "explosivegrenade" then
+		grenades = ply:GetAmmoCount(type)
+	end
+
 	if clip < 0 then
 		-- no magazine: the reserve is what is shown
 		local count = ply:GetAmmoCount(type)
 
-		return count, 0, count, grenades, fireMode
+		return count, 0, count, grenades, fireMode, kind
 	end
 
-	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode
+	return clip, ply:GetAmmoCount(type), math.max(weapon:GetMaxClip1(), clip), grenades, fireMode, kind
+end
+
+-- The frame of the overheat bar for a heat of 0 (cold) to 1 (overheated): 0 hides the bar, anything above 0 is at least the frame 1.
+-- Anything that is not a number is a cold weapon.
+function Module.HeatFrame(heat)
+	if not isnumber(heat) or heat ~= heat or heat <= 0 then
+		return 0
+	end
+
+	return math.Clamp(math.ceil(heat * 100 - 0.5), 1, 100)
+end
+
+-- What tells the heat of this weapon: the function the weapon registry declares (`heat`), or nil: the weapon has no heat source, no weapon
+-- in hand, or the player turned the bar off (gry_hud_overheat). Asked when the weapon changes, not at every frame.
+function Module.HeatSourceFor(weapon)
+	weapon = validWeapon(weapon)
+
+	if not weapon or (GryMod.HUDOptions and not GryMod.HUDOptions.Enabled("overheat")) then
+		return nil
+	end
+
+	local source = weaponValue(weapon, "heat", true)
+
+	return isfunction(source) and source or nil
+end
+
+local heatIds = setmetatable({}, {__index = function(ids, class)
+	ids[class] = "weapon:" .. class .. "/heat"
+
+	return ids[class]
+end})
+
+-- The frame of the bar for the weapon, from its heat source (HeatSourceFor): 0 when it has none or the source fails (it runs under
+-- GryMod.API.SafeCall, so a broken one never reaches the HUD).
+function Module.HeatOf(weapon, source)
+	if not source then
+		return 0
+	end
+
+	local class = weapon.GetClass and weapon:GetClass()
+	local ok, heat = GryMod.API.SafeCall(heatIds[isstring(class) and class or "?"], source, weapon)
+
+	return ok and Module.HeatFrame(heat) or 0
 end
 
 -- The energy (0 to 100) at which the suit stops under GryMod's old rule (gry_malfunction_empty): the HUD malfunctions
@@ -1015,7 +1101,7 @@ local function feed(ply)
 	end
 
 	local weapon = ply:GetActiveWeapon()
-	local mag, reserve, size, grenades, fireMode = Module.AmmoFor(ply, weapon)
+	local mag, reserve, size, grenades, fireMode, grenadeKind = Module.AmmoFor(ply, weapon)
 	local launcher = Module.LauncherFor(ply, weapon)
 	local launcherIcon, launcherLabel
 
@@ -1026,11 +1112,28 @@ local function feed(ply)
 	local weaponChanged = fed.weapon ~= weapon
 	fed.weapon = weapon
 
+	-- the heat bar: the source is looked up when the weapon (or the switch) changes, the weapon is asked at each frame. Nothing runs
+	-- for a weapon without a heat source.
+	local heatOn = not GryMod.HUDOptions or GryMod.HUDOptions.Enabled("overheat")
+
+	if weaponChanged or fed.heatOn ~= heatOn then
+		fed.heatOn = heatOn
+		fed.heatSource = Module.HeatSourceFor(weapon)
+	end
+
+	local heat = fed.heatSource and Module.HeatOf(weapon, fed.heatSource) or 0
+
+	if fed.heat ~= heat then
+		fed.heat = heat
+		hud:SetHeat(heat)
+		pcall(hook.Run, "GryMod_WeaponHeat", ply, weapon, heat) -- a broken listener must not stop the paint
+	end
+
 	if fed.mag ~= mag or fed.reserve ~= reserve or fed.size ~= size or fed.grenades ~= grenades or fed.fireMode ~= fireMode or fed.launcher ~= launcher
-		or fed.launcherIcon ~= launcherIcon or fed.launcherLabel ~= launcherLabel then
+		or fed.launcherIcon ~= launcherIcon or fed.launcherLabel ~= launcherLabel or fed.grenadeKind ~= grenadeKind then
 		fed.mag, fed.reserve, fed.size, fed.grenades, fed.fireMode, fed.launcher = mag, reserve, size, grenades, fireMode, launcher
-		fed.launcherIcon, fed.launcherLabel = launcherIcon, launcherLabel
-		hud:SetAmmo(mag, reserve, size, grenades, "explosivegrenade", fireMode, launcher, weaponChanged, launcherIcon, launcherLabel)
+		fed.launcherIcon, fed.launcherLabel, fed.grenadeKind = launcherIcon, launcherLabel, grenadeKind
+		hud:SetAmmo(mag, reserve, size, grenades, grenadeKind, fireMode, launcher, weaponChanged, launcherIcon, launcherLabel)
 	end
 end
 

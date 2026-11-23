@@ -25,8 +25,9 @@ register("weapon_shotgun", {fire = "semi", ammo = "Buckshot", alt = "doublebarre
 -- The crossbow: the secondary fire is a zoom, no counter.
 register("weapon_crossbow", {fire = "semi", ammo = "XBowBolt", alt = "zoom", altShoots = false})
 
--- The frag grenade: the secondary fire is the low throw, while there is a grenade.
-register("weapon_frag", {ammo = "Grenade", alt = "throwlow", altShoots = true, slotIcon = "HandGrenade"})
+-- The frag grenade: the secondary fire is the low throw, while there is a grenade. Its icon in the grenade slot is the explosive one
+-- (the only hand grenade of Half-Life 2; the other kinds of the HUD movie are for the weapons of other addons).
+register("weapon_frag", {ammo = "Grenade", alt = "throwlow", altShoots = true, slotIcon = "HandGrenade", grenade = "explosivegrenade"})
 
 register("weapon_pistol", {fire = "semi", ammo = "Pistol", alt = "none"})
 register("weapon_357", {fire = "semi", ammo = "357", alt = "none"})

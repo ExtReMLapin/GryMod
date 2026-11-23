@@ -230,6 +230,90 @@ return {
 			end
 		},
 		{
+			-- Fails without the `grenade` field in sh_api_weapons.lua (the field is dropped as unknown: nothing is stored)
+			name = "grenade: the kind of hand grenade of the weapon (one of the four kinds of the movie); an unknown kind is refused and keeps the previous entry",
+			func = function()
+				for _, kind in ipairs({"explosivegrenade", "flashbang", "smokegrenade", "empgrenade"}) do
+					expect(API.GrenadeKinds[kind]).to.beTrue()
+					expect((API.RegisterWeapon("t_wep_a", {grenade = kind}))).to.beTrue()
+					expect(API.GetWeapon("t_wep_a").grenade).to.equal(kind)
+					expect(API.WeaponValue("t_wep_a", "grenade", true)).to.equal(kind)
+					expect(API.ResolveWeapon(weapon("t_wep_a")).grenade).to.equal(kind)
+				end
+
+				local ok, reason = API.RegisterWeapon("t_wep_a", {grenade = "napalm"})
+				expect(ok).to.beFalse()
+				expect(string.find(reason, "grenade", 1, true) ~= nil).to.beTrue()
+				expect(API.GetWeapon("t_wep_a").grenade).to.equal("empgrenade")
+				expect((API.RegisterWeapon("t_wep_a", {grenade = 3}))).to.beFalse()
+
+				-- declared nowhere: nothing (the HUD takes the explosive grenade)
+				API.RegisterWeapon("t_wep_b", {fire = "auto"})
+				expect(API.WeaponValue("t_wep_b", "grenade", true)).to.beNil()
+			end
+		},
+		{
+			name = "grenade is read from SWEP.GryHUD and from the base class; the stock frag grenade is data: an explosive grenade",
+			func = function()
+				stored.t_wep_a = {GryHUD = {grenade = "smokegrenade"}}
+				expect(API.WeaponValue("t_wep_a", "grenade", true)).to.equal("smokegrenade")
+				stored.t_wep_b = {GryHUD = {grenade = "napalm"}}
+				expect(API.WeaponValue("t_wep_b", "grenade", true)).to.beNil()
+				API.RegisterWeapon("t_wep_base", {grenade = "flashbang"})
+				stored.t_wep_child = {Base = "t_wep_base"}
+				expect(API.WeaponValue("t_wep_child", "grenade", true)).to.equal("flashbang")
+				expect(API.WeaponValue("weapon_frag", "grenade", true)).to.equal("explosivegrenade")
+			end
+		},
+		{
+			-- Fails without the `heat` field in sh_api_weapons.lua (dropped as unknown: GetWeapon(...).heat is nil)
+			name = "heat: a function returning the heat of the weapon (0 to 1); anything else is refused and keeps the previous entry",
+			func = function()
+				local function read() return 0.5 end
+				expect((API.RegisterWeapon("t_wep_a", {heat = read}))).to.beTrue()
+				expect(API.GetWeapon("t_wep_a").heat).to.equal(read)
+				expect(API.WeaponValue("t_wep_a", "heat", true)).to.equal(read)
+				expect(API.ResolveWeapon(weapon("t_wep_a")).heat).to.equal(read)
+
+				for _, bad in ipairs({0.5, "heat", true}) do
+					local ok, reason = API.RegisterWeapon("t_wep_a", {heat = bad})
+					expect(ok).to.beFalse()
+					expect(string.find(reason, "heat", 1, true) ~= nil).to.beTrue()
+					expect(API.GetWeapon("t_wep_a").heat).to.equal(read)
+				end
+
+				-- SWEP.GryHUD and the adapters can give it too
+				stored.t_wep_b = {GryHUD = {heat = read}}
+				expect(API.WeaponValue("t_wep_b", "heat", true)).to.equal(read)
+				stored.t_wep_child = {GryHUD = {heat = 0.3}}
+				expect(API.WeaponValue("t_wep_child", "heat", true)).to.beNil()
+			end
+		},
+		{
+			-- Fails without the number case of CHECK.crosshair in sh_api_weapons.lua (a number is refused: "invalid crosshair")
+			name = "crosshair may also be the number of one of the 13 crosshairs of the movie (the weapon's own style); 0, 14, a fraction or text are refused",
+			func = function()
+				for _, style in ipairs({1, 6, 11, 12, 13}) do
+					expect((API.RegisterWeapon("t_wep_a", {crosshair = style}))).to.beTrue()
+					expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.equal(style)
+					expect(API.ResolveWeapon(weapon("t_wep_a")).crosshair).to.equal(style)
+				end
+
+				for _, bad in ipairs({0, 14, -1, 2.5, "11"}) do
+					local ok, reason = API.RegisterWeapon("t_wep_a", {crosshair = bad})
+					expect(ok).to.beFalse()
+					expect(string.find(reason, "crosshair", 1, true) ~= nil).to.beTrue()
+					expect(API.WeaponValue("t_wep_a", "crosshair", true)).to.equal(13)
+				end
+
+				-- from SWEP.GryHUD too, and an invalid one is ignored
+				stored.t_wep_b = {GryHUD = {crosshair = 12}}
+				expect(API.WeaponValue("t_wep_b", "crosshair", true)).to.equal(12)
+				stored.t_wep_child = {GryHUD = {crosshair = 40}}
+				expect(API.WeaponValue("t_wep_child", "crosshair", true)).to.beNil()
+			end
+		},
+		{
 			name = "the functions are accepted for fire and counter",
 			func = function()
 				local ok = API.RegisterWeapon("t_wep_a", {fire = function() return "auto" end, counter = function() return "12" end})

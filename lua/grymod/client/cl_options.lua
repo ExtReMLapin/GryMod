@@ -96,6 +96,7 @@ local function hudElements(Panel)
 	end
 
 	form:NumSlider("Crosshair style", "gry_hud_crosshair_style", 1, 13, 0)
+	GryMod.OptionBox(form, "Weapons choose their crosshair", "gry_hud_crosshair_weapon", "A weapon of an addon can ask for one of the 13 crosshairs. Off: always the style above.")
 	GryMod.OptionBox(form, "Energy bar at every frame", "gry_hud_energy_smooth", "The energy bar is predicted between the server's updates, so that it moves at every frame.")
 	form:Button("Switch every element back on", "gry_hud_reset")
 

@@ -2,7 +2,7 @@
 -- client realm. The original game has no such switches (its menu only has the colour sets and the crosshair
 -- style, see research-ui2/options.md), so these are GryMod's own and every element can be turned off.
 
-local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx", "messages", "usehint", "pickups"}
+local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx", "messages", "usehint", "pickups", "corners", "overheat"}
 
 local saved = {}
 

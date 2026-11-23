@@ -25,7 +25,8 @@ Options.List = {
 	{name = "messages", label = "Text lines", help = "The lines of text of the HUD: the suit's own messages and the ones other addons show (the objective banner, for one)"},
 	{name = "usehint", label = "Use prompt", help = "The icon and the text under the crosshair when you can use or take what you look at (TAKE, ENTER VEHICLE, CLIMB, USE)"},
 	{name = "pickups", label = "Pickup popups", help = "The small popup when you take ammo, a weapon or an item (the Half-Life 2 pickup list is hidden when it is on)"},
-	{name = "corners", label = "Corner marks", default = "0", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them; GryMod's HUD never did, so they are off until you ask for them)"}
+	{name = "corners", label = "Corner marks", default = "0", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them; GryMod's HUD never did, so they are off until you ask for them)"},
+	{name = "overheat", label = "Weapon heat bar", help = "The bar above the weapon icon, for the weapons that say how hot they are (an addon's energy weapon). The Half-Life 2 weapons have none"}
 }
 
 local byName = {}
