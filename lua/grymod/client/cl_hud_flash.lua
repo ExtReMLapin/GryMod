@@ -878,6 +878,31 @@ function Module.RestartHold(held, down, energy)
 	return held
 end
 
+-- The original's death handler puts the HUD down (the "lost" function): the HUD turns red, the emergency shutdown animation plays with the
+-- malfunction sound. Here the HUD used to vanish at the death; with this setting (on) it stays on the screen, red, with that screen and sound
+-- for as long as the player is dead, and a respawn starts it again from nothing (the start-up log of the spawn plays as it always did).
+local lostOnDeathConVar = CreateClientConVar("gry_hud_lost_on_death", "1", true, false, "1: when the player dies the HUD goes red with the emergency shutdown animation and sound until the respawn (the original); 0: the HUD just disappears", 0, 1)
+
+-- What the paint does about the life of the player, as one of: "start" (the player has just died with the HUD up: it goes down, red), "keep" (still dead, the
+-- red HUD stays), "respawn" (alive again after a death shown this way: a fresh HUD), "drop" (dead and nothing to show: the HUD is dropped, as it used
+-- to be), nil (alive, nothing special). alive and wasAlive: the state now and at the last paint; shown: the death is on the screen; built: there is
+-- a HUD to turn red; wanted: the setting.
+function Module.DeathPhase(alive, wasAlive, shown, built, wanted)
+	if alive then
+		return shown and "respawn" or nil
+	end
+
+	if shown then
+		return "keep"
+	end
+
+	if wanted and built and wasAlive then
+		return "start"
+	end
+
+	return "drop"
+end
+
 -- Whether the movie is there (the HUD and the other pieces need it).
 function Module.Available()
 	return Flash.Load(Module.MOVIE) ~= nil
@@ -929,6 +954,8 @@ end
 local hud, panel
 local lastTime
 local fed = {}
+local deathShown = false -- the player died with the HUD up and the setting on: the red HUD stays until the respawn
+local wasAlive = false -- the player was alive at the last paint
 -- what the damage effects look at each frame (one table, filled in again)
 local fxSample = {}
 
@@ -1057,15 +1084,71 @@ hook.Add("InitPostEntity", "GRYFLASHHUDRESTORE", function()
 	Module.ForgetPaintTime()
 end)
 
+-- The status of the HUD as the movie's destroy() left it (0 working, 1 malfunction, 2 flickering), nil when there is no HUD.
+function Module.Status()
+	return hud and hud.status or nil
+end
+
+-- Whether the HUD is on the screen only because the player is dead (the red HUD of gry_hud_lost_on_death).
+function Module.DeathShown()
+	return deathShown
+end
+
+-- The player has died with the HUD up: it goes down, as the movie's destroy(1) does it for the original's death handler. The report to the
+-- other pieces is the one of every HUD status change (the hook GryMod_HUDStatus, with the reason "death" as a second argument), so the
+-- emergency shutdown screen and its sound are the event "lost", by the same path as a suit that goes down. Nothing is fed to the HUD while the
+-- player is dead: it keeps what it showed.
+function Module.GoDown()
+	if not hud then
+		return
+	end
+
+	if hud.status ~= 1 then
+		hud:Destroy(1)
+
+		if panel then
+			panel:Destroy(1)
+		end
+
+		hook.Run("GryMod_HUDStatus", 1, "death")
+	end
+
+	if GryMod.FlashBoot then
+		GryMod.FlashBoot.HoldDeath(true)
+	end
+end
+
 function Module.Paint()
 	Module.CheckRestore(RealTime())
 
 	local ply = LocalPlayer()
 
-	if not IsValid(ply) or not ply:Alive() or not Module.SuitOn(ply) then
+	if not IsValid(ply) or not Module.SuitOn(ply) then
+		deathShown, wasAlive = false, false
 		Module.Reset()
 
 		return
+	end
+
+	local alive = ply:Alive()
+	local phase = Module.DeathPhase(alive, wasAlive, deathShown, hud ~= nil, lostOnDeathConVar:GetBool())
+	wasAlive = alive
+
+	if phase == "drop" then
+		Module.Reset()
+
+		return
+	elseif phase == "start" then
+		deathShown = true
+		Module.GoDown()
+	elseif phase == "respawn" then
+		-- alive again: the red HUD and its Lost screen end here, whatever order the pieces are painted in
+		deathShown = false
+		Module.Reset()
+
+		if GryMod.FlashBoot then
+			GryMod.FlashBoot.EndDeath()
+		end
 	end
 
 	if not hud then
@@ -1077,9 +1160,16 @@ function Module.Paint()
 		if not hud then
 			return
 		end
+
+		-- a HUD made again while the death is shown (a new colour) is red as well
+		if deathShown then
+			Module.GoDown()
+		end
 	end
 
-	feed(ply)
+	if alive then
+		feed(ply)
+	end
 
 	local now = RealTime()
 	local dt = math.min(now - (lastTime or now), 0.1)
@@ -1098,12 +1188,15 @@ function Module.Paint()
 	local damageFx = GryMod.DamageFx
 
 	if damageFx then
-		fxSample.health = ply:Health()
-		fxSample.max = ply:GetMaxHealth()
-		fxSample.energy = serverEnergy(ply)
-		fxSample.armor = Module.ModeName(ply.NanosuitMode) == "Armor"
-		fxSample.malfunction = ply:GetNW2Bool("GryMalfunction", false) -- the start of a malfunction empties the bar: not a hit
-		damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
+		-- (a dead player's health and energy are no hit)
+		if alive then
+			fxSample.health = ply:Health()
+			fxSample.max = ply:GetMaxHealth()
+			fxSample.energy = serverEnergy(ply)
+			fxSample.armor = Module.ModeName(ply.NanosuitMode) == "Armor"
+			fxSample.malfunction = ply:GetNW2Bool("GryMalfunction", false) -- the start of a malfunction empties the bar: not a hit
+			damageFx.Observe(damageFx.State, fxSample, now, damageFx.Options())
+		end
 
 		jumpX, jumpY = damageFx.HudOffset(damageFx.State, dt)
 		jumpX, jumpY = Module.JumpPixels(jumpX, scale), Module.JumpPixels(jumpY, scale)
@@ -1117,11 +1210,14 @@ function Module.Paint()
 
 	if panel then
 		local Radar = GryMod.FlashRadar
-		panel:SetHeading(Radar.BearingFromYaw(Flash.ViewYaw(ply)))
-		panel:SetFOV(Radar.FovFrame(Radar.ViewFov(ply)))
-		-- the contacts and the stealth bar (cl_hud_radar_units.lua); the radar still draws if that file did not load
-		if Radar.Feed then
-			Radar.Feed(panel, ply, dt)
+
+		if alive then
+			panel:SetHeading(Radar.BearingFromYaw(Flash.ViewYaw(ply)))
+			panel:SetFOV(Radar.FovFrame(Radar.ViewFov(ply)))
+			-- the contacts and the stealth bar (cl_hud_radar_units.lua); the radar still draws if that file did not load
+			if Radar.Feed then
+				Radar.Feed(panel, ply, dt)
+			end
 		end
 
 		panel:Update(dt)

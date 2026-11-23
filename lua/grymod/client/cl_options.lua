@@ -139,6 +139,8 @@ local function hudBehaviour(Panel)
 
 	-- client setting: the HUD also goes down (Lost, then Reboot) while the energy bar is empty, GryMod's old rule
 	GryMod.OptionBox(form, "HUD malfunction on empty energy", "gry_malfunction_empty", "The original: the HUD goes down only on an EMP, an electric attack or death.")
+	-- client setting: the HUD goes red with its emergency shutdown screen and sound when the player dies, until the respawn
+	GryMod.OptionBox(form, "Red HUD and shutdown screen at death", "gry_hud_lost_on_death", "When you die the HUD goes red with the emergency shutdown animation and sound until you respawn (the original). Off: the HUD just disappears.")
 	-- client setting: the quick menu icon that was chosen stays lit while the menu fades out
 	GryMod.OptionBox(form, "Quick menu: the chosen icon stays lit", "gry_menu_keep_highlight", "While the menu fades out (the original). Off: it goes plain at the release.")
 	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one

@@ -151,6 +151,7 @@ local sequences = {}
 local current -- the kind that is on, or nil
 local malfunctioning = false
 local shutdown = false -- the "disabled" event holds its shutdown animation over the hidden HUD
+local deathHeld = false -- the player is dead and the HUD shows it: the Lost screen stays (see HoldDeath)
 local hasSpawned = false -- the player has already spawned since this Lua state was made (a new map makes a new one)
 
 -- Switch: the log of the start at every spawn (the old behaviour) instead of the first one only.
@@ -197,6 +198,29 @@ end
 
 -- The player dies: whatever was on ends, and the malfunction of that life is forgotten.
 function Boot.Died()
+	current = nil
+	malfunctioning = false
+	deathHeld = false
+end
+
+-- The HUD shows the death (gry_hud_lost_on_death, cl_hud_flash.lua): the Lost screen that the "lost" event started stays while the player is dead
+-- instead of ending with the life.
+function Boot.HoldDeath(on)
+	deathHeld = on == true
+end
+
+function Boot.DeathHeld()
+	return deathHeld
+end
+
+-- The respawn: the Lost screen of the death ends, with no sound and no reboot sequence (the start-up log of the spawn is Spawned's business).
+-- Both the HUD and this file's paint call it, so the order they are painted in does not matter.
+function Boot.EndDeath()
+	if not deathHeld then
+		return
+	end
+
+	deathHeld = false
 	current = nil
 	malfunctioning = false
 end
@@ -306,6 +330,7 @@ function Boot.Reset()
 	current = nil
 	malfunctioning = false
 	shutdown = false
+	deathHeld = false
 end
 
 -- The pictures are rebuilt (a new colour): the sequence that is on starts again from its beginning with the new
@@ -363,6 +388,7 @@ function Boot.Stop()
 	current = nil
 	malfunctioning = false
 	shutdown = false
+	deathHeld = false
 end
 
 -- The suit is back after a "disabled": the reboot sequence (silent, as in the original game).
@@ -391,15 +417,21 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 		-- nothing stays on while the HUD is off: it would not be told when the suit comes back
 		current = nil
 		malfunctioning = false
+		deathHeld = false
 
 		return
 	end
 
 	if normal then
-		-- the first spawn starts the log (every spawn with gry_boot_every_spawn); dying ends whatever was on
+		-- the first spawn starts the log (every spawn with gry_boot_every_spawn); dying ends whatever was on, unless the HUD shows the death
+		-- (a life that is back ends the death screen on any paint, not only on the one where it came back)
+		if alive then
+			Boot.EndDeath()
+		end
+
 		if alive and not wasAlive then
 			Boot.Spawned()
-		elseif not alive then
+		elseif not alive and not deathHeld then
 			current = nil
 			malfunctioning = false
 		end

@@ -20,6 +20,65 @@ local function lastSound()
 	return played[#played]
 end
 
+-- The death of the player, without killing the real one: LocalPlayer answers a stand-in that is dead while `state.dead` is true (every other
+-- question goes to the real player), and the real one while it is not. `body(state)` runs with the stubs, the HUD and the sequences built from
+-- nothing; everything is put back after it, whatever it does (an error is raised again once the state is clean).
+local function withDeath(options, body)
+	local HUD = GryMod.FlashHUD
+	local real = LocalPlayer()
+
+	if not IsValid(real) or not real:Alive() then
+		return
+	end
+
+	local state = {dead = false}
+	local stand = setmetatable({
+		IsValid = function() return true end,
+		Alive = function() return not state.dead end
+	}, {__index = function(_, key)
+		local value = real[key]
+
+		if isfunction(value) then
+			return function(_, ...) return value(real, ...) end
+		end
+
+		return value
+	end})
+
+	local realLocalPlayer, realDraw = LocalPlayer, GryMod.Flash.Draw
+	local saved = {}
+
+	for name, value in pairs(options) do
+		saved[name] = GetConVar(name):GetString()
+	end
+
+	local ok, err = pcall(function()
+		for name, value in pairs(options) do
+			GetConVar(name):SetString(value)
+		end
+
+		LocalPlayer = function() return state.dead and stand or real end
+		GryMod.Flash.Draw = function() end
+		HUD.Reset()
+		Boot.Reset()
+		body(state, HUD)
+	end)
+
+	LocalPlayer = realLocalPlayer
+	GryMod.Flash.Draw = realDraw
+
+	for name, value in pairs(saved) do
+		pcall(function() GetConVar(name):SetString(value) end)
+	end
+
+	pcall(HUD.Reset)
+	pcall(Boot.Reset)
+
+	if not ok then
+		error(err, 0)
+	end
+end
+
 return {
 	groupName = "GryMod HUD boot sequences (Flash)",
 	beforeAll = function(state)
@@ -397,6 +456,189 @@ return {
 				HUD.Reset()
 
 				expect(lost).to.beFalse()
+			end
+		}		,
+		-- the Lost screen at the death (gry_hud_lost_on_death): the original's death handler puts the HUD down
+		{
+			-- needs: Module.DeathPhase (cl_hud_flash.lua)
+			name = "what the HUD paint does about a death: start when it dies with the HUD up and the setting on, keep while dead, respawn when alive again, drop otherwise",
+			func = function(state)
+				local P = GryMod.FlashHUD.DeathPhase
+				-- alive: nothing, unless a death was shown (the respawn)
+				expect(P(true, true, false, true, true)).to.beNil()
+				expect(P(true, false, false, false, true)).to.beNil()
+				expect(P(true, false, true, true, true)).to.equal("respawn")
+				-- dead: the first paint after the life is the start, with a HUD built and the setting on
+				expect(P(false, true, false, true, true)).to.equal("start")
+				expect(P(false, true, false, true, false)).to.equal("drop") -- setting off
+				expect(P(false, true, false, false, true)).to.equal("drop") -- no HUD to turn red
+				expect(P(false, false, false, true, true)).to.equal("drop") -- was already dead (arrived dead): nothing to start
+				expect(P(false, false, true, true, true)).to.equal("keep")
+				expect(P(false, true, true, false, false)).to.equal("keep") -- the setting turned off while the death is shown does not cut it
+			end
+		},
+		{
+			-- needs: HUD.GoDown (the paint's start phase), Boot.HoldDeath / EndDeath, the Boot paint hook keeping the Lost screen while the death is held
+			name = "dying with the HUD up: the HUD turns red, the Lost screen and its sound start once, they stay while the player is dead, and the respawn ends them",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					-- the life has begun: the spawn is behind (no start-up log in the way of what is checked here)
+					Boot.NoteSpawn()
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					Boot.Reset()
+					expect(HUD.Status()).to.equal(0)
+					expect(Boot.IsLost()).to.beFalse()
+					played = {}
+
+					life.dead = true
+					HUD.Paint()
+					expect(HUD.Status()).to.equal(1)
+					expect(HUD.DeathShown()).to.beTrue()
+					expect(Boot.IsLost()).to.beTrue()
+					expect(#played).to.equal(1)
+					expect(lastSound()).to.equal(Sound("grymod/hud/hud_malfunction_hit.wav"))
+
+					-- the paint of the sequences does not end the Lost screen of a life that is over, and nothing plays twice
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(Boot.IsLost()).to.beTrue()
+					expect(HUD.Status()).to.equal(1)
+					expect(#played).to.equal(1)
+
+					-- the respawn: the HUD is a new one (working), the Lost screen is over, with no sound
+					life.dead = false
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					HUD.Paint()
+					expect(HUD.DeathShown()).to.beFalse()
+					expect(HUD.Status()).to.equal(0)
+					expect(Boot.IsLost()).to.beFalse()
+					expect(Boot.Current()).to.beNil()
+					expect(#played).to.equal(1)
+				end)
+			end
+		},
+		{
+			-- needs: the respawn handled by the HUD paint alone too (the sequences' paint not run first), through Boot.EndDeath
+			name = "the Lost screen of a death ends at the respawn whichever of the two paints runs first, and the HUD's own paint ends it too",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					Boot.NoteSpawn()
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					life.dead = true
+					HUD.Paint()
+					expect(Boot.IsLost()).to.beTrue()
+					life.dead = false
+					HUD.Paint() -- the HUD first: it ends the Lost screen itself
+					expect(Boot.IsLost()).to.beFalse()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(Boot.IsLost()).to.beFalse()
+					expect(HUD.Status()).to.equal(0)
+
+					-- the sequences' paint first
+					HUD.Reset()
+					Boot.Reset()
+					Boot.NoteSpawn()
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					life.dead = true
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(Boot.IsLost()).to.beTrue()
+					life.dead = false
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(Boot.IsLost()).to.beFalse()
+					HUD.Paint()
+					expect(Boot.IsLost()).to.beFalse()
+					expect(HUD.Status()).to.equal(0)
+				end)
+			end
+		},
+		{
+			-- needs: the setting read by the paint; off gives the old behaviour (the HUD is dropped at the death)
+			name = "with gry_hud_lost_on_death 0 the HUD just goes at the death, as it did: no red HUD, no Lost screen, no sound",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "0", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					HUD.Paint()
+					played = {}
+					life.dead = true
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(HUD.Status()).to.beNil()
+					expect(HUD.DeathShown()).to.beFalse()
+					expect(Boot.IsLost()).to.beFalse()
+					expect(#played).to.equal(0)
+				end)
+			end
+		},
+		{
+			-- needs: the start phase only for a HUD that was up (built and alive at the last paint)
+			name = "a player who is dead when the HUD first paints gets no Lost screen (there was no life to end)",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					life.dead = true
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(HUD.Status()).to.beNil()
+					expect(Boot.IsLost()).to.beFalse()
+					expect(#played).to.equal(0)
+				end)
+			end
+		},
+		{
+			-- needs: an already down suit (status 1) kept as it is at the death: one Lost screen and one sound, not two
+			name = "dying while the suit is already down keeps the one Lost screen it had: no second sound, and it ends at the respawn",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					HUD.Paint()
+					Boot.OnStatus(1)
+					HUD.GoDown()
+					expect(#played).to.equal(1)
+					life.dead = true
+					HUD.Paint()
+					hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+					expect(#played).to.equal(1)
+					expect(Boot.IsLost()).to.beTrue()
+					life.dead = false
+					HUD.Paint()
+					expect(Boot.IsLost()).to.beFalse()
+				end)
+			end
+		},
+		{
+			-- needs: the setting and its check box
+			name = "gry_hud_lost_on_death exists (1 by default) and has a check box in the options",
+			func = function(state)
+				local convar = GetConVar("gry_hud_lost_on_death")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_hud_lost_on_death"]).to.beTrue()
 			end
 		}
 	}
