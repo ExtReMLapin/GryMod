@@ -125,6 +125,15 @@ it sends at most four a second). With a state under `4`, or `6`, the map the cli
 the message comes first and the file after it: `GryMod_InOutMapReady` follows. A message with a state outside 0 to 6 is ignored, no hook.
 A listener that fails is shown once in the console and does not stop the receiver.
 
+### `GryMod_ObjectiveAdded(id, obj)`, `GryMod_ObjectiveChanged(id, obj, oldState)`, `GryMod_ObjectiveRemoved(id, obj, reason)`
+
+An objective (docs/api.md, "Objectives") arrived on this client, changed, or went away. The server runs the same three hooks with the same
+arguments, so one listener file serves both realms. On a client they follow the messages of the server, for the objectives this player may
+see: `Added` when it arrives (also for each objective when the player joins), `Changed` when its state, title, description, primary flag or main
+objective status changed (`oldState` is the state before; a new position is not a change), `Removed` with a `reason` (`"removed"`, `"cleared"`,
+`"entity_removed"`, `"map_changed"`). `obj` is a copy: `{id, title, description, primary, main, state, pos, ent, radar, marker}`. They are run inside
+a `pcall`: a listener that fails is shown on the console (five times at most per hook) and stops nothing. Nothing reads what a listener returns.
+
 ## What depends on the drawn HUD
 
 GryMod's HUD is drawn by one `HUDPaint` hook (`Module.Paint` of `cl_hud_flash.lua`). `Module.Apply` removes it when `gry_hud` is 0 or when

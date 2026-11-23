@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`, `"tracked"`. New parts add a name here and never change the version number.
+  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`. New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -513,3 +513,147 @@ end
 
 On the server the entity is followed from its creation and `GryArmed` follows `ent.Armed`; on the client the warning shows `PROXIMITY MINE`
 and its distance while it is armed, within the player's range and 20 m. Nothing else to write: no hook, no net message.
+
+## Objectives
+
+Garry's Mod has no objectives, so GryMod brings a small system for addons and maps: a title, a description, a state, and a place in the
+world. GryMod only keeps them and tells everyone who is interested: the server holds the truth, each client gets a mirror, and both realms
+run the same three hooks. (The markers, the radar blips and the maps that show them are a separate step: this part is what they read.)
+
+An objective has:
+
+| field | meaning |
+|---|---|
+| `id` | the text you choose (1 to 64 characters); it names the objective in every call. `"my_addon.find_key"` is a good shape |
+| `title` | 1 to 128 characters (required) |
+| `description` | up to 512 characters, `""` by default |
+| `primary` | `true` (default): a primary objective; `false`: a secondary one |
+| `state` | `"active"` (default), `"done"` or `"failed"` |
+| `pos` **or** `ent` | where it is: a `Vector`, or an entity (or a function that returns one, asked now and again when the entity may have changed). Give one of them, not both |
+| `onRemove` | what happens when the entity it follows is removed: `"remove"` (default: the objective goes away), `"complete"` (it stays at the last place of the entity, `"done"`) or `"fail"` (same, `"failed"`) |
+| `radar`, `marker` | `true` (default): the displays may show it on the radar and on the screen. Stored and told; a display that is not there yet ignores them |
+| `filter` | `function(ply) return true end`: asked **on the server** for each player; only the players for whom it answers true receive the objective. An error in it, or no answer, hides the objective |
+
+The main objective is a separate choice (`SetMainObjective`): at most one, the one the displays stress.
+
+### Functions (server)
+
+All of them check their input and never raise: they return `true`, or `false` and a short reason.
+
+```lua
+GryMod.API.RegisterObjective(id, def)    -- new, or an update of the same id (it keeps its place in the list)
+GryMod.API.SetObjectiveState(id, state)  -- "active" | "done" | "failed"
+GryMod.API.RemoveObjective(id)
+GryMod.API.SetMainObjective(id)          -- nil: no main objective
+GryMod.API.ClearObjectives()             -- returns how many were removed
+GryMod.API.GetObjective(id)              -- a copy: {id, title, description, primary, main, state, pos, ent, radar, marker, onRemove}, or nil
+GryMod.API.GetObjectives()               -- copies of all of them, in the order they were registered
+GryMod.API.RefreshObjectives([ply])      -- asks the filters again and sends the list again (to one ready player, or to all)
+```
+
+`pos` in a copy is where the objective is now: the entity's position while it follows one. At most 256 objectives. A state that
+the objective already has is not an error (nothing is told). Re-registering an id replaces its definition; the main objective stays main.
+
+### Hooks (both realms)
+
+```lua
+hook.Add("GryMod_ObjectiveAdded",   "my_addon", function(id, obj) end)
+hook.Add("GryMod_ObjectiveChanged", "my_addon", function(id, obj, oldState) end)
+hook.Add("GryMod_ObjectiveRemoved", "my_addon", function(id, obj, reason) end)
+```
+
+They only report (nothing a handler returns is read) and they are run protected: a handler that throws is shown on the console, five times at most
+per hook, and stops nothing. `obj` is a copy with the fields of `GetObjective`.
+
+- `GryMod_ObjectiveAdded`: a new objective. On a client: it arrived (when the player joined, or when it was given).
+- `GryMod_ObjectiveChanged`: the `state`, the `title`, the `description`, the `primary` flag or the main objective changed. `oldState` is the state
+  before the change (the same as `obj.state` when the change is something else). A new position is not a change.
+- `GryMod_ObjectiveRemoved`: it is gone, and `reason` says why:
+
+| reason | meaning |
+|---|---|
+| `"removed"` | `RemoveObjective`; on a client, also: the player may not see it any more (filter) |
+| `"cleared"` | `ClearObjectives`, or the administrators switched `gry_objectives` off |
+| `"entity_removed"` | the entity it followed was removed and `onRemove` is `"remove"` |
+| `"map_changed"` | the map was cleaned up (`game.CleanUpMap`, "Cleanup" in a sandbox game): every objective is gone |
+
+On the server the hooks are not told while the switch `gry_objectives` is off (below).
+
+### Read them on the client
+
+```lua
+local list = GryMod.Objectives.List()   -- in the order they were registered
+for i = 1, #list do
+	local o = list[i]                   -- {id, title, description, primary, main, state, pos, ent, radar, marker}
+end
+GryMod.Objectives.Get("my_addon.find_key")   -- one of them, or nil
+GryMod.Objectives.Main()                     -- the main objective, or nil
+```
+
+`pos` is resolved when you ask. When the client has the entity the objective follows (it is in view), `pos` is the entity's position
+now and `ent` is the entity. Otherwise `pos` is the last position the server sent (it refreshes it twice a second while the entity
+moves more than 32 units) and `ent` is `nil`. The tables are reused at every call, so asking every frame costs no garbage: read them, do not
+keep or change them (the hooks give copies).
+
+### Example
+
+```lua
+-- lua/autorun/server/my_addon_objectives.lua
+hook.Add("InitPostEntity", "my_addon objectives", function()
+	if not (GRYMOD_INSTALLED and GryMod.API.Has("objectives")) then return end
+
+	-- 1. an objective at a place, the main one
+	GryMod.API.RegisterObjective("my_addon.reach_roof", {
+		title = "Reach the roof",
+		description = "The helicopter leaves in two minutes.",
+		pos = Vector(1200, -340, 512)
+	})
+	GryMod.API.SetMainObjective("my_addon.reach_roof")
+
+	-- 2. an objective that follows an entity and is completed when the entity is removed (an NPC that dies is removed)
+	local captain = ents.Create("npc_combine_s")
+	captain:SetPos(Vector(900, 100, 0))
+	captain:Spawn()
+
+	GryMod.API.RegisterObjective("my_addon.kill_captain", {
+		title = "Kill the captain",
+		primary = false,
+		ent = captain,
+		onRemove = "complete"
+	})
+end)
+
+-- 3. a listener, in a file both realms run (lua/autorun/my_addon_listener.lua)
+hook.Add("GryMod_ObjectiveChanged", "my_addon listener", function(id, obj, oldState)
+	if obj.state == "done" and oldState ~= "done" then
+		print("Objective done: " .. obj.title)
+	end
+end)
+```
+
+### A map entity: `gry_objective`
+
+A mapmaker places the point entity `gry_objective` in Hammer and needs no Lua. It calls the same functions.
+
+| keyvalue | meaning |
+|---|---|
+| `id` | the id of the objective; empty: the entity's name, else `gry_objective_` and its entity index |
+| `title`, `description` | the texts (the title is the id when empty) |
+| `primary`, `radar`, `marker` | `1` (default) or `0` |
+| `startactive` | `1`: the objective exists, active, when the map starts. `0` (default): it waits for `Activate` |
+| `follow` | the name of an entity to follow; empty (or not found): the objective sits where `gry_objective` is |
+| `removeaction` | `remove` (default), `complete` or `fail`: the `onRemove` of the entity it follows |
+
+Inputs: `Activate` (register it, active; also puts it back to active), `Complete`, `Fail` (register it first when it never was), `Remove`,
+`SetMain`. Outputs: `OnActivated`, `OnCompleted`, `OnFailed`, `OnRemoved`, triggered by the inputs above.
+
+### The switch and the rest of the rules
+
+- `gry_objectives` (administrators, default `1`): `0` stops the objectives being sent and the three hooks being run on the server. The functions keep
+  working and keep the objectives (so a switch turned off and on again loses nothing); clients drop their copy at once (reason `"cleared"`) and get
+  the full list again when it is turned on.
+- A client gets the full list when it says it is ready (when it joins), then each change as it happens. Nothing runs on a timer while no
+  objective follows an entity.
+- A map cleanup (`game.CleanUpMap`) is not the death of every entity: during it, `onRemove` does not run. After it every objective is gone
+  (reason `"map_changed"`) and the `gry_objective` entities of the map register themselves again if they start active.
+- `filter` is asked when something is sent, not all the time. If what a player may see changes, call `RefreshObjectives`.
