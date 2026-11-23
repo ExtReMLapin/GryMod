@@ -957,6 +957,14 @@ function Map.RemoveMarkerSource(key)
 	return Markers.RemoveSource(key)
 end
 
+-- The key goes down (true) or up (false). A press toggles the map, except right after a close: the key that closed the map may be read by two readers in
+-- one frame (the key factory's and the map's own poll), and it must not open the map again.
+function Map.KeyPress(down)
+	if down and RealTime() - S.lastClose > Map.CLOSE_GUARD then
+		Map.Toggle()
+	end
+end
+
 -- The player's key. The default is M; a `bind <key> gry_map` in the console works too.
 Map.Key = GryMod.KeyBinder.New{
 	convar = "gry_map_key",
@@ -972,10 +980,7 @@ Map.Key = GryMod.KeyBinder.New{
 		return (GryMod.MenuKey ~= nil and GryMod.MenuKey.Chosen() == code) or (GryMod.SuitZoom ~= nil and GryMod.SuitZoom.Key.Chosen() == code)
 	end,
 	press = function(down)
-		-- the key that just closed the map may be read by two readers in one frame: it does not open it again
-		if down and RealTime() - S.lastClose > Map.CLOSE_GUARD then
-			Map.Toggle()
-		end
+		Map.KeyPress(down)
 	end
 }
 
