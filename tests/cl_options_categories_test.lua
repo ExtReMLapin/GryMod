@@ -44,6 +44,7 @@ box:gry_hud_grenade
 box:gry_hud_grenade_edge
 box:gry_hud_hit
 box:gry_hud_messages
+box:gry_hud_objectives
 box:gry_hud_pickups
 box:gry_hud_lost_on_death
 box:gry_hud_overheat
