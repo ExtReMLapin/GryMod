@@ -344,9 +344,10 @@ from it: the big map never changes the definition the radar uses).
 - **A coarse picture at once.** A cell whose tile is not there yet shows the same place at a coarser level, scaled up: the map is never empty.
 - **Nearest to the mouse first.** The plan asks the coarse level of the window first, then the level the zoom needs with one tile around the window, each
   nearest to the mouse first. It is made again only when the tiles needed or the tile under the mouse change (or every 1.5 s).
-- **The minimap's tiles are reused, never touched.** A tile that the minimap's cache already has at that level, size and definition is drawn from there (the
-  map only asks `Cache.Has`, `Cache.IsEmpty` and `Cache.Path` and loads the material in a table of its own). Nothing of the big map is ever stored in that cache, so the
-  zoom (which changes the definition) never evicts or invalidates what the radar's circular preload made.
+- **The minimap's tiles are not reused by default, and never touched.** The radar's coarse tiles can hold black water (its render clears to a transparent
+  background), so the big map makes every tile itself. A developer can set `GryMod.Map.Tiles.USE_MINIMAP_CACHE = true` to draw a tile that the minimap's cache already has
+  at that level, size and definition (the map only asks `Cache.Has`, `Cache.IsEmpty` and `Cache.Path` and loads the material in a table of its own). Nothing of the big map is
+  ever stored in that cache, so the zoom (which changes the definition) never evicts or invalidates what the radar's circular preload made.
 - **The rest is made in memory.** A missing tile is rendered by the same code as the minimap's (`Capture.RenderTo`) into one of a pool of render targets (128 MB
   of tiles at most: 32 tiles of 1024 pixels), without compression and without a file. The least recently used tile makes room; a tile drawn in this very frame is
   never taken. The tiles are forgotten a minute after the map closes. The pool only exists once it was needed.

@@ -106,6 +106,7 @@ return {
 			Cache = Mini.Cache, Capture = Mini.Capture, Floors = Mini.Floors, Settings = Mini.Settings,
 			Engine = {},
 			IsButtonDown = input.IsButtonDown,
+			UseCache = Map.Tiles.USE_MINIMAP_CACHE,
 			List = GryMod.Objectives and GryMod.Objectives.List
 		}
 
@@ -140,6 +141,7 @@ return {
 			Map._state.lastClose = state.saved.lastClose
 			Mini.Cache, Mini.Capture, Mini.Floors, Mini.Settings = state.saved.Cache, state.saved.Capture, state.saved.Floors, state.saved.Settings
 			input.IsButtonDown = state.saved.IsButtonDown
+			Map.Tiles.USE_MINIMAP_CACHE = state.saved.UseCache
 
 			for k, v in pairs(state.saved.Engine) do
 				Map.Tiles.Engine[k] = v
@@ -740,6 +742,8 @@ return {
 				Map.Bounds.Compute = function() return boundsAround(2000) end
 
 				state.cache = {}
+				-- this case is about a coarse tile of the minimap's cache standing in for the tile that waits: the cache path is on for it
+				Tiles.USE_MINIMAP_CACHE = true
 				Mini.Cache = {
 					Has = function(tile) return tile.ppm == 2 and state.cache[cacheKey(tile.ppm, tile.tx, tile.ty)] ~= nil and tile.level == LEVEL.id end,
 					IsEmpty = function() return false end,

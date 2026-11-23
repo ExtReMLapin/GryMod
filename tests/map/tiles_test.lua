@@ -15,6 +15,9 @@ local function T()
 	return tiles
 end
 
+-- the module's own default, read before any case changes it
+local DEFAULT_USE_CACHE = GryMod and GryMod.Map and GryMod.Map.Tiles and GryMod.Map.Tiles.USE_MINIMAP_CACHE
+
 local function cacheKey(ppm, tx, ty)
 	return ppm .. ":" .. tx .. ":" .. ty
 end
@@ -24,7 +27,10 @@ local function install(state)
 	local Tiles = T()
 	local Engine = Tiles.Engine
 
-	state.saved = {Cache = M.Cache, Capture = M.Capture, Floors = M.Floors, Settings = M.Settings, Engine = {}}
+	state.saved = {Cache = M.Cache, Capture = M.Capture, Floors = M.Floors, Settings = M.Settings, Engine = {}, UseCache = Tiles.USE_MINIMAP_CACHE}
+
+	-- the cases below are about the cache path: it is on for them (the default is off, see the case about it)
+	Tiles.USE_MINIMAP_CACHE = true
 
 	for k, v in pairs(Engine) do
 		state.saved.Engine[k] = v
@@ -117,6 +123,8 @@ local function restore(state)
 		for k, v in pairs(state.saved.Engine) do
 			T().Engine[k] = v
 		end
+
+		T().USE_MINIMAP_CACHE = state.saved.UseCache
 	end
 
 	pcall(function() T().Reset() end)
@@ -158,6 +166,30 @@ return {
 				expect(Tiles.Has(PPM, 0, 0)).to.beFalse()
 				-- a definition that is not a level of the pyramid is no tile
 				expect(Tiles.Lookup(3, 0, 0)).to.beNil()
+			end
+		},
+		-- fails without Tiles.USE_MINIMAP_CACHE (default false): the minimap's cache holds black water at the coarse levels (made by Capture.Render, whose
+		-- alpha-0 clear turns the water black), so the big map must make its own tile with Capture.RenderTo instead of reading it
+		{
+			name = "by default the minimap's cache is not read: its tile is ignored (it may hold black water) and the map makes its own",
+			func = function(state)
+				local Tiles = T()
+
+				Tiles.USE_MINIMAP_CACHE = DEFAULT_USE_CACHE
+				state.cache[cacheKey(PPM, 2, 3)] = "file"
+				state.cache[cacheKey(PPM, 4, 4)] = "empty"
+				Tiles.Begin()
+
+				expect(Tiles.Lookup(PPM, 2, 3)).to.beNil()
+				expect(Tiles.Lookup(PPM, 4, 4)).to.beNil()
+				expect(Tiles.Has(PPM, 2, 3)).to.beFalse()
+				expect(#state.loaded).to.equal(0)
+
+				-- so the tile is made by the big map's own render
+				Tiles.SetPlan({{ppm = PPM, tx = 2, ty = 3, d = 0}}, state.clock)
+				Tiles.Step(state.clock)
+				expect(#state.renders).to.equal(1)
+				expect(state.renders[1].tile.tx).to.equal(2)
 			end
 		},
 		-- fails when a tile of the minimap's cache is not used (the owner: reuse a tile that already exists at the requested definition)

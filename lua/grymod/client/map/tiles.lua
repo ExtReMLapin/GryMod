@@ -2,7 +2,7 @@
 --
 -- THE TWO SOURCES. A tile of the map (a level, two indices, a size and a definition in pixels per metre) is found in this order:
 --   1. the map's OWN store (map/store.lua): a short-lived pool of render targets in memory, filled by this file. Nothing is written to the disk;
---   2. the minimap's cache, ONLY when a tile of that very level and definition is already there (Cache.Has): its file is read through a small table of
+--   2. the minimap's cache (OFF by default, see USE_MINIMAP_CACHE: its coarse tiles have black water), ONLY when a tile of that very level and definition is already there (Cache.Has): its file is read through a small table of
 --      materials of this file's own. The minimap's cache is only ASKED: nothing here stores, forgets, clears, trims or loads a material in it, so the big
 --      map's zoom (which changes the definition) can never evict or invalidate what the radar's preload made.
 -- A tile that is in neither is made by the SAME render as the minimap's (Capture.RenderTo, which shares everything with Capture.Render) into a slot of
@@ -24,6 +24,11 @@ Tiles.MAX_TRIES = 3 -- a tile that fails is asked again twice, then given up
 Tiles.REPLAN_SECONDS = 1.5 -- the plan is made again at least this often while the map is open (a tile of the store may have been evicted)
 Tiles.MAX_MATERIALS = 48 -- the materials of the minimap's tiles kept by this file
 Tiles.EMPTY = {empty = true}
+-- Whether a tile the minimap already cached may be drawn. OFF: the minimap's tiles of the coarse levels (2 and 4 pixels per metre) hold BLACK water (the
+-- minimap's render clears to alpha 0, and water drawn over that comes out black; at the finer levels it depended on what the player saw when the tile was
+-- made), so at zoom 1 a lake was a black hole. The big map's own render (Capture.RenderTo, opaque clear) draws water at every level, so it makes every tile
+-- itself. A developer may turn it on to reuse the radar's tiles.
+Tiles.USE_MINIMAP_CACHE = false
 
 -- the level used when the minimap's floors cannot say (no world bounds known): the whole height of a Source world
 Tiles.FALLBACK_LEVEL = {id = "open_map", open = true, zlo = -16384, zhi = 16384}
@@ -258,7 +263,7 @@ function Tiles.Lookup(ppm, tx, ty)
 	local M = GryMod.Minimap
 	local Cache = M and M.Cache
 
-	if not Cache or S.res == nil then
+	if Tiles.USE_MINIMAP_CACHE ~= true or not Cache or S.res == nil then
 		return nil
 	end
 
