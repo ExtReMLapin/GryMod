@@ -75,7 +75,7 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_EnergyEmpty(ply)` | the bar reached 0 (once, not again until it has been above 0) |
 | `GryMod_EnergyUsed(ply)` | energy was used (the new name of `GryUseEnergy`, which keeps firing too) |
 | `GryMod_SuitEnabled(ply)`, `GryMod_SuitDisabled(ply)` | `SetSuitEnabled` changed the state |
-| `GryMod_MalfunctionStart(ply, seconds, reason)`, `GryMod_MalfunctionEnd(ply)` | the suit went down, came back |
+| `GryMod_MalfunctionStart(ply, seconds, reason)`, `GryMod_MalfunctionEnd(ply)` | the suit went down, came back. The client has the same two hooks with only `(ply)`, for every player (see `docs/events.md`) |
 | `GryMod_EMP(pos, radius, seconds)` | you can run this hook yourself to fire an EMP (same as `API.EMP`) |
 | `GryMod_StrengthJump(ply)` | a strength jump was granted on the ground (once per key press). It is paid in energy, or free with the infinite armor. Not fired for the weak jump you get when the bar is too low |
 | `GryMod_Zoom(ply, fov)` | the field of view the server zoom asks of the engine for the player, in degrees; `fov = 0` when the zoom is over |
