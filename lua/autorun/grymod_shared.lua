@@ -297,6 +297,7 @@ if SERVER then
 	resource.AddFile( "sound/grymod/water/dive_in_fast_03.wav" )
 	resource.AddFile( "sound/grymod/water/dive_out.wav" )
 	resource.AddFile( "sound/grymod/water/ambience_underwater_loop_02.wav" )
+	resource.AddFile( "sound/grymod/hud/hud_cloak_feedback.wav" )
 	else
 		resource.AddWorkshop(tostring(GryMod.WSID))
 	end

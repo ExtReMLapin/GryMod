@@ -30,6 +30,7 @@ box:gry_cloak_transition
 box:gry_decloak_glitch
 box:gry_grenade_los
 box:gry_grenade_own_warn
+box:gry_hit_shake
 box:gry_hud
 box:gry_hud_binoculars
 box:gry_hud_boot
@@ -48,11 +49,14 @@ box:gry_menu_pointer_film
 box:gry_menu_ring_film
 box:gry_menu_show_refused
 box:gry_screenfx
+box:gry_sound_cloak_loop
+box:gry_sound_malfunction_loop
 box:gry_sound_regen
 box:gry_sounds
 box:gry_underwater_fx
 box:gry_zoom_cancel_weapon
 box:gry_zoom_follow_fov
+box:gry_zoom_hide_crosshair
 box:gry_zoom_own
 button:Open the effects test window
 button:Switch every element back on

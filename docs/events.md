@@ -15,15 +15,15 @@ option is off plays nothing for that half.
 | Event | Data | What it plays (picture + sound) | GryMod plays it when | Options |
 | --- | --- | --- | --- | --- |
 | `boot` | | the start-up log of the HUD + the reboot sound | the player spawns (once, see `gry_boot_every_spawn`) | `gry_hud_boot`, `gry_sounds` |
-| `lost` | | the emergency shutdown animation + the failure sound, until a `reboot` | the suit goes down (HUD status 1) | `gry_hud_boot`, `gry_sounds` |
+| `lost` | | the emergency shutdown animation + the failure sound, until a `reboot` (the sound repeats while the suit is down) | the suit goes down (HUD status 1) | `gry_hud_boot`, `gry_sounds`, `gry_sound_malfunction_loop` |
 | `reboot` | | the reboot sequence (silent, as in the original) | the suit comes back | `gry_hud_boot` |
-| `malfunction` | `seconds` (5; 0.1 to 60) | shutdown, then reboot after `seconds`, with the failure sound | never by itself: API and debug window | `gry_hud_boot`, `gry_sounds` |
-| `armor_hit` | `visual` (false: sound only), `sound` (false: picture only) | the flash, the shake and the jump of the HUD + one file of the impact sound (shuffled, rate limited) | the server says a bullet hit the armor (sound), and the bar loses 20 energy or more (picture) | `gry_screenfx`, `gry_hud_damagefx`, `gry_sounds` |
+| `malfunction` | `seconds` (5; 0.1 to 60) | shutdown, then reboot after `seconds`, with the failure sound (repeated until the reboot) | never by itself: API and debug window | `gry_hud_boot`, `gry_sounds`, `gry_sound_malfunction_loop` |
+| `armor_hit` | `visual` (false: sound only), `sound` (false: picture only), `small` (true: the small look of a light hit) | the flash, the shake and the jump of the HUD + one file of the impact sound (shuffled, rate limited); with `small`, only a short shake (0.35 s) | the server says a bullet hit the armor (sound), and the bar loses 20 energy or more (picture), or from 1 to under 20 (the small shake) | `gry_screenfx`, `gry_hud_damagefx`, `gry_hit_shake`, `gry_sounds` |
 | `decloak` | | the glitch of leaving the camouflage (and the emptied bar is not read as a hit) | the player fires out of the camouflage | `gry_decloak_glitch`, `gry_screenfx`, `gry_hud_damagefx` |
 | `low_health` | `level` (1: under 25 %, 2: under 20 %) | the red tint and the blur, a shake at level 2 | the health falls through a low zone | `gry_screenfx` |
 | `jam` | `seconds` (2; 0.1 to 60) | the interface trembles (12 px), then settles | never by itself | `gry_hud_damagefx` |
 | `radar_exposure` | `level` (100; 0 to 100), `seconds` (3; 0.1 to 60) | the hexagon of the radar shows at least `level` for `seconds` (no sound: the original has none), then goes back to what the vehicles say | never by itself: the radar's contacts drive the hexagon (see below), this is for addons and the debug window | `gry_hud_radarhex`, `gry_hud_radar` |
-| `mode` | `mode` (`"armor"`, `"speed"`, `"strength"`, `"cloak"` or the number), `tint` (false), `sound` (false) | the colour tint of the mode (none for the camouflage) + its activation sound + its voice half a second later | the suit changes mode | `gry_screenfx`, `gry_sounds` |
+| `mode` | `mode` (`"armor"`, `"speed"`, `"strength"`, `"cloak"` or the number), `tint` (false), `sound` (false) | the colour tint of the mode (none for the camouflage) + its activation sound + its voice half a second later | the suit changes mode (the camouflage also plays its own loop while it lasts, `gry_sound_cloak_loop`) | `gry_screenfx`, `gry_sounds` |
 | `energy_critical` | | the "energy critical" voice | the energy falls under 25 % (at most every 30 s) | `gry_sounds` |
 | `regen_start`, `regen_stop` | | the repair sound from its start / its fade out (1 s) | the server starts / stops the health regeneration | `gry_sound_regen`, `gry_sounds` |
 | `dive_in` | `fall` (the fall speed, 0) | the splash, slow or fast | the head goes under water | `gry_underwater_fx`, `gry_sounds` |

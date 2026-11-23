@@ -108,7 +108,8 @@ def decode_ima(h):
 
 VALID_RATES = (11025, 22050, 44100)
 # the loops are resampled as periodic signals
-LOOPS = ("servo_speed_loop_01c", "servo_speed_loop_01_underwater", "ambience_underwater_loop_02", "binocular_ambience")
+LOOPS = ("servo_speed_loop_01c", "servo_speed_loop_01_underwater", "ambience_underwater_loop_02", "binocular_ambience",
+         "hud_cloak_feedback")
 
 
 def valid_rate(rate):
@@ -170,6 +171,7 @@ VOICES = ("suit_maximum_armor", "suit_maximum_speed", "suit_maximum_strength", "
 HUD = [
     ("hud_activate_01", "interface_bank00", "hud_activate_01.wav"),
     ("hud_malfunction_hit", "interface_bank00", "hud_malfunction_hit.wav"),
+    ("hud_cloak_feedback", "interface_bank00", "hud_cloak_feedback.wav"),
 ]
 MENU = [
     ("modification_menu_appear", "interface_suit", "modification_menu_appear.WAV"),

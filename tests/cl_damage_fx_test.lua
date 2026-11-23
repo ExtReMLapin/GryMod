@@ -623,6 +623,192 @@ return {
 					error(err, 0)
 				end
 			end
+		},
+		{
+			-- fails without FX.SmallHitShake
+			name = "SmallHitShake: 0.35 s for a hit that costs from 1 up to (not including) a fifth of the bar, nothing otherwise",
+			func = function(state)
+				expect(FX.SmallHitShake(10)).to.equal(0.35)
+				expect(FX.SmallHitShake(1)).to.equal(0.35)
+				expect(FX.SmallHitShake(19.9)).to.equal(0.35)
+				expect(FX.SmallHitShake(0.5)).to.equal(0)
+				expect(FX.SmallHitShake(20)).to.equal(0) -- a heavy hit has its own effect
+				expect(FX.SmallHitShake(0)).to.equal(0)
+				expect(FX.SmallHitShake(nil)).to.equal(0)
+				expect(FX.SmallHitShake(0 / 0)).to.equal(0)
+			end
+		},
+		{
+			-- fails without the small hit branch of Observe (nothing shakes) or if it also plays the flash / the jump of a heavy hit
+			name = "a light armor hit (10 energy) gives the small shake only: no flash, no jump of the HUD; a heavy one gives the heavy effect and not both",
+			func = function(state)
+				local shakes = {}
+				FX.Shake = function(amplitude, frequency, seconds) shakes[#shakes + 1] = {amplitude, frequency, seconds} end
+				local options = {hud = true, screen = true, hit = true}
+
+				local s = seen(100, 80)
+				FX.Observe(s, sample(100, 70), 1, options)
+				expect(#shakes).to.equal(1)
+				expect(shakes[1][3]).to.equal(FX.SMALL_SECONDS)
+				expect(s.armorAt).to.beNil()
+				expect(s.jolt).to.equal(0)
+
+				-- 25 lost: the heavy effect, one shake of 0.5 s (not the small one besides)
+				shakes = {}
+				s = seen(100, 80)
+				FX.Observe(s, sample(100, 55), 1, options)
+				expect(#shakes).to.equal(1)
+				expect(shakes[1][3]).to.equal(FX.ARMOR_SECONDS)
+				expect(s.armorAt).to.equal(1)
+			end
+		},
+		{
+			-- fails if the small shake ignores its own switch or the screen switch
+			name = "the small shake follows its own switch and the screen switch; without the switch given nothing changes (the old behaviour)",
+			func = function(state)
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+
+				local s = seen(100, 80)
+				FX.Observe(s, sample(100, 70), 1, {hud = true, screen = true, hit = false})
+				expect(shakes).to.equal(0)
+
+				s = seen(100, 80)
+				FX.Observe(s, sample(100, 70), 1, {hud = true, screen = false, hit = true})
+				expect(shakes).to.equal(0)
+
+				s = seen(100, 80)
+				FX.Observe(s, sample(100, 70), 1, ON)
+				expect(shakes).to.equal(0)
+			end
+		},
+		{
+			-- fails if the small shake is played for what is not a hit
+			name = "no small shake outside armor mode, for a rise, a drop under 1, a malfunction, the emptied bar of a decloak, or the first sample",
+			func = function(state)
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+				local options = {hud = true, screen = true, hit = true}
+
+				local s = seen(100, 80, false)
+				FX.Observe(s, sample(100, 70, false), 1, options)
+
+				s = seen(100, 70)
+				FX.Observe(s, sample(100, 80), 1, options)
+
+				s = seen(100, 70)
+				FX.Observe(s, sample(100, 69.5), 1, options)
+
+				s = seen(100, 70)
+				local down = sample(100, 60)
+				down.malfunction = true
+				FX.Observe(s, down, 1, options)
+
+				s = FX.NewState()
+				FX.Observe(s, sample(100, 5), 1, options)
+
+				GetConVar("gry_decloak_glitch"):SetString("0")
+				s = seen(100, 5)
+				FX.Decloak(s, 1, options)
+				FX.Observe(s, sample(100, 0), 1.05, options)
+
+				expect(shakes).to.equal(0)
+			end
+		},
+		{
+			-- fails without the small branch of the armor_hit event (data.small)
+			name = "the armor_hit event with small = true shakes and nothing else; with the screen or the hit switch off, or visual = false, it shakes nothing",
+			func = function(state)
+				local shakes = 0
+				FX.Shake = function() shakes = shakes + 1 end
+				local s = FX.NewState()
+
+				FX.Events.armor_hit(s, 1, {small = true, sound = false}, {hud = true, screen = true, hit = true})
+				expect(shakes).to.equal(1)
+				expect(s.armorAt).to.beNil()
+				expect(s.jolt).to.equal(0)
+
+				FX.Events.armor_hit(s, 1, {small = true, sound = false}, {hud = true, screen = false, hit = true})
+				FX.Events.armor_hit(s, 1, {small = true, sound = false}, {hud = true, screen = true, hit = false})
+				FX.Events.armor_hit(s, 1, {small = true, sound = false, visual = false}, {hud = true, screen = true, hit = true})
+				expect(shakes).to.equal(1)
+			end
+		},
+		{
+			-- fails without gry_hit_shake in FX.Options and a check box for it
+			name = "gry_hit_shake is a saved setting, on by default, read by FX.Options, with a check box in the options",
+			func = function(state)
+				local convar = GetConVar("gry_hit_shake")
+				expect(convar ~= nil).to.beTrue()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(convar:GetFlags()).to.equal(GetConVar("gry_screenfx"):GetFlags())
+
+				local saved = convar:GetString()
+				convar:SetString("0")
+				local off = FX.Options().hit
+				convar:SetString("1")
+				local on = FX.Options().hit
+				convar:SetString(saved)
+				expect(off).to.beFalse()
+				expect(on).to.beTrue()
+
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.SuitOptions(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_hit_shake"]).to.beTrue()
+			end
+		},
+		{
+			-- fails without the listener GRYDAMAGEFXCLEAR
+			name = "the HUD going down (status 1) clears the arcs of the damage direction around the crosshair, once; other statuses do not; no crosshair is no error",
+			func = function(state)
+				local listener = hook.GetTable().GryMod_HUDStatus and hook.GetTable().GryMod_HUDStatus["GRYDAMAGEFXCLEAR"]
+				expect(listener).to.beA("function")
+				local Cross = GryMod.FlashCrosshair
+				local real = Cross.Current
+				local cleared = 0
+				local fake = {ClearDamageDirection = function() cleared = cleared + 1 end}
+				Cross.Current = function() return fake end
+
+				local ok, err = pcall(function()
+					listener(1)
+					expect(cleared).to.equal(1)
+					listener(0)
+					listener(2)
+					expect(cleared).to.equal(1)
+
+					Cross.Current = function() return nil end
+					listener(1)
+					expect(cleared).to.equal(1)
+				end)
+
+				Cross.Current = real
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }
