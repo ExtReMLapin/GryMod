@@ -332,7 +332,13 @@ function Drawer.Slice(pic, x, y, w, h, f0, f1, dx, r, g, b, a, additive)
 	local height = y + ceil(h * f1) - top
 
 	surface.SetMaterial((a < 255 or additive) and picture.fade or picture.mat)
-	surface.SetDrawColor(r, g, b, a)
+
+	if additive then
+		surface.SetDrawColor(r, g, b, a)
+	else
+		-- the plain bands wear the same tint as the plain tiles (a tinted copy, red or cyan, is added as it is)
+		surface.SetDrawColor(floor(r * TILE_TINT.r / 255), floor(g * TILE_TINT.g / 255), floor(b * TILE_TINT.b / 255), a)
+	end
 
 	if additive then
 		render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE, BLENDFUNC_ADD)
@@ -693,9 +699,14 @@ end
 
 -- A failure while painting closes the map and says why once: a broken map must never keep the cursor or the game.
 local function paintPanel(panel)
+	if S.paintFailed then
+		return -- the close is on its way: no second report
+	end
+
 	local ok, err = pcall(drawMap, panel)
 
 	if not ok then
+		S.paintFailed = true
 		ErrorNoHalt("[GryMod] the big map stopped: " .. tostring(err) .. "\n")
 		timer.Simple(0, function()
 			Map.Close()
@@ -783,6 +794,7 @@ function Map._open()
 	S.screenW, S.screenH = ScrW(), ScrH()
 	S.keyDown = Map.Key and Map.Key.Effective() > 0 and input.IsButtonDown(Map.Key.Effective()) or false
 	S.lastReason = nil
+	S.paintFailed = false
 
 	timer.Remove("GryMod big map trim")
 
