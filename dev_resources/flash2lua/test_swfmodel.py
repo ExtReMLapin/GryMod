@@ -385,5 +385,113 @@ class MorphMaskPolygonsTest(unittest.TestCase):
         self.assertGreater(len(morph.mask_polygons[0]), 4)
 
 
+class MorphLayersTest(unittest.TestCase):
+    """_morph_layers: the visible parts of a morph shape (fills, strokes) with their colours (no FFDec needed)."""
+
+    @staticmethod
+    def records(start, *edges, moves=()):
+        """A shape: (style words of the first record) then edges, an edge being (dx, dy), and `moves` a list of
+        (edge number, x, y) records put before the edge with that number."""
+        out = '<item type="StyleChangeRecord" %s/>' % start
+        for number, (dx, dy) in enumerate(edges):
+            for at, x, y in moves:
+                if at == number:
+                    out += '<item type="StyleChangeRecord" stateMoveTo="true" moveDeltaX="%d" moveDeltaY="%d"/>' % (x, y)
+            out += '<item type="StraightEdgeRecord" deltaX="%d" deltaY="%d"/>' % (dx, dy)
+        return "<shapeRecords>%s</shapeRecords>" % out
+
+    @staticmethod
+    def fill(start, end):
+        return ('<morphFillStyles><fillStyles><item type="MORPHFILLSTYLE" fillStyleType="0"><startColor red="%d" green="%d" blue="%d" alpha="%d"/>'
+                '<endColor red="%d" green="%d" blue="%d" alpha="%d"/></item></fillStyles></morphFillStyles>' % (start + end))
+
+    @staticmethod
+    def line(width, end_width, color=(255, 255, 255, 255), cap=2):
+        return ('<morphLineStyles><lineStyles2><item type="MORPHLINESTYLE2" startWidth="%d" endWidth="%d" startCapStyle="%d" joinStyle="2">'
+                '<startColor red="%d" green="%d" blue="%d" alpha="%d"/><endColor red="%d" green="%d" blue="%d" alpha="%d"/></item></lineStyles2></morphLineStyles>'
+                % ((width, end_width, cap) + color + color))
+
+    NO_LINE = '<morphLineStyles><lineStyles><item type="MORPHLINESTYLE" startWidth="0" endWidth="0"><startColor red="0" green="0" blue="0" alpha="0"/><endColor red="0" green="0" blue="0" alpha="0"/></item></lineStyles></morphLineStyles>'
+    SQUARE = [(400, 0), (0, 400), (-400, 0), (0, -400)]  # 20 pixels
+
+    def layers(self, fills, lines, start, end):
+        xml = ET.fromstring("<morph>%s%s<startEdges>%s</startEdges><endEdges>%s</endEdges></morph>" % (fills, lines, start, end))
+        return swfmodel._morph_layers(xml)
+
+    def test_a_fill_gives_one_layer_with_its_two_colours_and_outlines(self):
+        start = self.records('fillStyle0="1" lineStyle="1" stateFillStyle0="true" stateLineStyle="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', *self.SQUARE)
+        end = self.records('stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (800, 0), (0, 400), (-800, 0), (0, -400))
+        layers = self.layers(self.fill((0, 0, 0, 115), (10, 20, 30, 255)), self.NO_LINE, start, end)
+        self.assertEqual(len(layers), 1)
+        self.assertEqual((layers[0]["color"], layers[0]["end_color"]), ((0, 0, 0, 115), (10, 20, 30, 255)))
+        self.assertEqual(layers[0]["starts"], [[(0, 0), (20, 0), (20, 20), (0, 20)]])
+        self.assertEqual(layers[0]["ends"], [[(0, 0), (40, 0), (40, 20), (0, 20)]])
+
+    def test_a_line_gives_one_rectangle_per_segment_with_square_ends(self):
+        # a horizontal line of 20 pixels, 2 pixels thick, becoming 40 pixels and 4 thick
+        start = self.records('lineStyle="1" stateLineStyle="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (400, 0))
+        end = self.records('stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (800, 0))
+        layers = self.layers("<morphFillStyles><fillStyles/></morphFillStyles>", self.line(40, 80), start, end)
+        self.assertEqual(len(layers), 1)
+        self.assertEqual(layers[0]["starts"], [[(-1.0, 1.0), (21.0, 1.0), (21.0, -1.0), (-1.0, -1.0)]])
+        self.assertEqual(layers[0]["ends"], [[(-2.0, 2.0), (42.0, 2.0), (42.0, -2.0), (-2.0, -2.0)]])
+
+    def test_a_cap_of_none_does_not_run_past_the_ends(self):
+        start = self.records('lineStyle="1" stateLineStyle="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (400, 0))
+        layers = self.layers("<morphFillStyles><fillStyles/></morphFillStyles>", self.line(40, 40, cap=1), start, start)
+        self.assertEqual(layers[0]["starts"], [[(0.0, 1.0), (20.0, 1.0), (20.0, -1.0), (0.0, -1.0)]])
+
+    def test_a_right_angle_corner_is_filled_by_the_two_rectangles(self):
+        start = self.records('lineStyle="1" stateLineStyle="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (400, 0), (0, 400))
+        layers = self.layers("<morphFillStyles><fillStyles/></morphFillStyles>", self.line(40, 40), start, start)
+        first, second = layers[0]["starts"]
+        # the first runs 1 pixel past the corner (20, 0), the second starts 1 pixel before it
+        self.assertEqual(max(x for x, _ in first), 21.0)
+        self.assertEqual(min(y for _, y in second), -1.0)
+
+    def test_a_stroke_with_no_width_or_no_alpha_gives_no_layer(self):
+        start = self.records('lineStyle="1" stateLineStyle="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (400, 0))
+        self.assertEqual(self.layers("<morphFillStyles><fillStyles/></morphFillStyles>", self.line(0, 0), start, start), [])
+        self.assertEqual(self.layers("<morphFillStyles><fillStyles/></morphFillStyles>", self.line(40, 40, (255, 255, 255, 0)), start, start), [])
+
+    def test_a_segment_with_no_length_at_one_end_still_pairs(self):
+        start = self.records('lineStyle="1" stateLineStyle="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (0, 0))
+        end = self.records('stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (400, 0))
+        layers = self.layers("<morphFillStyles><fillStyles/></morphFillStyles>", self.line(40, 40), start, end)
+        self.assertEqual((len(layers[0]["starts"]), len(layers[0]["ends"])), (1, 1))
+        # the start has a direction (that of the end): a rectangle 2 pixels thick and 2 long (the ends past the point)
+        xs = sorted(x for x, _ in layers[0]["starts"][0])
+        self.assertEqual((xs[0], xs[-1]), (-1.0, 1.0))
+
+    def test_the_end_of_a_shape_that_collapsed_has_no_moves_and_still_pairs(self):
+        # two contours at the start (two moves), the end keeps one move: the edges pair up
+        start = self.records('fillStyle0="1" stateFillStyle0="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', *self.SQUARE,
+                             (400, 0), (0, 400), (-400, 0), (0, -400), moves=[(4, 2000, 0)])
+        end = self.records('stateMoveTo="true" moveDeltaX="500" moveDeltaY="500"', *([(20, 0), (0, 20), (-20, 0), (0, -20)] * 2))
+        layers = self.layers(self.fill((0, 0, 0, 255), (0, 0, 0, 255)), self.NO_LINE, start, end)
+        self.assertEqual(len(layers), 1)
+        self.assertEqual(len(layers[0]["starts"]), 2)
+        self.assertEqual(layers[0]["ends"][1][0], (25.0, 25.0))  # the second contour starts where the pen is
+
+    def test_ends_that_do_not_pair_up_give_nothing(self):
+        start = self.records('fillStyle0="1" stateFillStyle0="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', *self.SQUARE)
+        end = self.records('stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', (400, 0), (0, 400), (-400, 0))
+        self.assertEqual(self.layers(self.fill((0, 0, 0, 255), (0, 0, 0, 255)), self.NO_LINE, start, end), [])
+
+    def test_a_fully_transparent_fill_gives_no_layer(self):
+        start = self.records('fillStyle0="1" stateFillStyle0="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', *self.SQUARE)
+        self.assertEqual(self.layers(self.fill((0, 0, 0, 0), (9, 9, 9, 0)), self.NO_LINE, start, start), [])
+
+    def test_a_morph_character_carries_its_layers(self):
+        bounds = '<%s Xmin="0" Ymin="0" Xmax="800" Ymax="400"/>'
+        start = self.records('fillStyle0="1" stateFillStyle0="true" stateMoveTo="true" moveDeltaX="0" moveDeltaY="0"', *self.SQUARE)
+        xml = ('<item type="DefineMorphShapeTag" characterId="8">' + bounds % "startBounds" + bounds % "endBounds"
+               + self.fill((1, 2, 3, 255), (1, 2, 3, 255)) + self.NO_LINE
+               + "<startEdges>%s</startEdges><endEdges>%s</endEdges></item>" % (start, start))
+        movie = swfmodel.Movie()
+        swfmodel._read_character(ET.fromstring(xml), movie)
+        self.assertEqual(len(movie.characters[8].layers), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

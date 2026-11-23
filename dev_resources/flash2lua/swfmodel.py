@@ -62,6 +62,8 @@ class Character:
     end_bounds: Optional[tuple] = None
     end_polygon: Optional[list] = None
     end_mask_polygons: Optional[list] = None
+    # a morph that is seen (not a clip layer): its visible layers, see _morph_layers
+    layers: Optional[list] = None
     # fonts
     name: Optional[str] = None
 
@@ -347,6 +349,237 @@ def _morph_mask_polygons(start_parent, end_parent):
     return starts, ends
 
 
+def _styled_contours(records_parent):
+    """_outline_contours with the styles in force on every edge: [(start, edges, styles)] where styles[i] is the
+    (fill0, fill1, line) of edge i (0 = none). The splitting into contours is the same."""
+    if records_parent is None:
+        return None
+    records = records_parent.find("shapeRecords")
+    if records is None:
+        return None
+    x = y = 0
+    fill0 = fill1 = line = 0
+    contours = []
+
+    def pen_down():
+        if not contours or (contours[-1][1] and contours[-1][0] == contours[-1][1][-1][1]):
+            contours.append(((x, y), [], []))
+
+    for rec in records:
+        kind = rec.get("type")
+        if kind == "StyleChangeRecord":
+            if rec.get("stateFillStyle0") == "true":
+                fill0 = int(rec.get("fillStyle0", 0))
+            if rec.get("stateFillStyle1") == "true":
+                fill1 = int(rec.get("fillStyle1", 0))
+            if rec.get("stateLineStyle") == "true":
+                line = int(rec.get("lineStyle", 0))
+            if rec.get("stateMoveTo") == "true":
+                x, y = int(rec.get("moveDeltaX")), int(rec.get("moveDeltaY"))
+                contours.append(((x, y), [], []))
+        elif kind == "StraightEdgeRecord":
+            pen_down()
+            x += int(rec.get("deltaX", 0))
+            y += int(rec.get("deltaY", 0))
+            contours[-1][1].append((None, (x, y)))
+            contours[-1][2].append((fill0, fill1, line))
+        elif kind == "CurvedEdgeRecord":
+            pen_down()
+            cx, cy = x + int(rec.get("controlDeltaX", 0)), y + int(rec.get("controlDeltaY", 0))
+            x, y = cx + int(rec.get("anchorDeltaX", 0)), cy + int(rec.get("anchorDeltaY", 0))
+            contours[-1][1].append(((cx, cy), (x, y)))
+            contours[-1][2].append((fill0, fill1, line))
+    return contours
+
+
+def _end_contours(records_parent, sizes):
+    """The end of a morph cut into contours of the given numbers of edges (the ones of its start): the end of a morph
+    shape does not always repeat the moves of the start (a shape that collapses to a point has none), so it is
+    the edges that pair up, a contour starting at its move when it has one, else at the pen. [(start, edges)], or
+    None when the edges do not pair up (another number of them, a move in the middle of a contour)."""
+    records = records_parent.find("shapeRecords") if records_parent is not None else None
+    if records is None:
+        return None
+    x = y = 0
+    events = []
+    for rec in records:
+        kind = rec.get("type")
+        if kind == "StyleChangeRecord" and rec.get("stateMoveTo") == "true":
+            x, y = int(rec.get("moveDeltaX")), int(rec.get("moveDeltaY"))
+            events.append(("move", (x, y)))
+        elif kind == "StraightEdgeRecord":
+            x += int(rec.get("deltaX", 0))
+            y += int(rec.get("deltaY", 0))
+            events.append(("edge", None, (x, y)))
+        elif kind == "CurvedEdgeRecord":
+            cx, cy = x + int(rec.get("controlDeltaX", 0)), y + int(rec.get("controlDeltaY", 0))
+            x, y = cx + int(rec.get("anchorDeltaX", 0)), cy + int(rec.get("anchorDeltaY", 0))
+            events.append(("edge", (cx, cy), (x, y)))
+    contours = []
+    pen = (0, 0)
+    index = 0
+    for size in sizes:
+        start = pen
+        if index < len(events) and events[index][0] == "move":
+            start = events[index][1]
+            index += 1
+        edges = []
+        while len(edges) < size:
+            if index >= len(events) or events[index][0] != "edge":
+                return None
+            edges.append((events[index][1], events[index][2]))
+            index += 1
+        pen = edges[-1][1] if edges else start
+        contours.append((start, edges))
+    if any(event[0] == "edge" for event in events[index:]):
+        return None
+    return contours
+
+
+def _rgba(elem):
+    return (int(elem.get("red")), int(elem.get("green")), int(elem.get("blue")), int(elem.get("alpha", 255)))
+
+
+def _morph_fill_styles(parent):
+    """[(start colour, end colour)] of the solid fill styles of a morph shape, None in the place of any other kind
+    (gradient, bitmap): the styles are numbered from 1 by the records."""
+    result = []
+    fills = parent.find("fillStyles") if parent is not None else None
+    for item in (fills if fills is not None else []):
+        if item.get("fillStyleType") == "0" and item.find("startColor") is not None and item.find("endColor") is not None:
+            result.append((_rgba(item.find("startColor")), _rgba(item.find("endColor"))))
+        else:
+            result.append(None)
+    return result
+
+
+def _morph_line_styles(parent):
+    """[{"widths": (start, end) in pixels, "colors": (start, end), "cap": 0 round | 1 none | 2 square}] of the line
+    styles of a morph shape, None in the place of a style that is filled with a gradient or a bitmap."""
+    result = []
+    if parent is None:
+        return result
+    lines = parent.find("lineStyles2")
+    if lines is None:
+        lines = parent.find("lineStyles")
+    for item in (lines if lines is not None else []):
+        if item.get("hasFillFlag") == "true" or item.find("startColor") is None or item.find("endColor") is None:
+            result.append(None)
+            continue
+        result.append({"widths": (int(item.get("startWidth", 0)) / TWIPS, int(item.get("endWidth", 0)) / TWIPS),
+                       "colors": (_rgba(item.find("startColor")), _rgba(item.find("endColor"))),
+                       "cap": int(item.get("startCapStyle", 0))})
+    return result
+
+
+def _unit(dx, dy):
+    length = math.hypot(dx, dy)
+    return (dx / length, dy / length) if length > 1e-9 else None
+
+
+def _joint(before, after, half):
+    """How far the two segments that meet at a joint must run past it so that the corner is filled: half the width
+    times tan(turn / 2), at most half the width (a smooth curve cut into short pieces adds almost nothing)."""
+    cosine = max(-1.0, min(1.0, before[0] * after[0] + before[1] * after[1]))
+    turn = math.acos(cosine)
+    if turn >= math.pi / 2 - 1e-6:
+        return half
+    return half * math.tan(turn / 2)
+
+
+def _stroke_quads(points, directions, width, cap, closed):
+    """A stroke as one rectangle per segment (pixels), in the order of the segments, None for a segment that has
+    no direction (no length at either end of the morph). `directions[i]` is the unit direction of segment i, from
+    point i to point i + 1. A rectangle runs past the end it shares with a neighbour so that the corner is filled;
+    a free end of the stroke gets half the width when the cap is not "none"."""
+    half = width / 2
+    count = len(directions)
+    quads = []
+    for i in range(count):
+        if directions[i] is None:
+            continue
+        before = directions[i - 1] if (i > 0 or closed) else None
+        after = directions[(i + 1) % count] if (i < count - 1 or closed) else None
+        run_in = _joint(before, directions[i], half) if before else (half if cap != 1 else 0)
+        run_out = _joint(directions[i], after, half) if after else (half if cap != 1 else 0)
+        (ax, ay), (bx, by) = points[i], points[i + 1]
+        dx, dy = directions[i]
+        nx, ny = -dy * half, dx * half
+        ax, ay, bx, by = ax - dx * run_in, ay - dy * run_in, bx + dx * run_out, by + dy * run_out
+        quads.append([(ax + nx, ay + ny), (bx + nx, by + ny), (bx - nx, by - ny), (ax - nx, ay - ny)])
+    return quads
+
+
+def _stroke_pair(start_points, end_points, widths, cap):
+    """The rectangles of a stroke at the two ends of a morph: ([start quads], [end quads]) with the same count (a
+    segment with no length at one end takes the direction of the other; one with none at both is dropped)."""
+    count = len(start_points) - 1
+    first = [_unit(start_points[i + 1][0] - start_points[i][0], start_points[i + 1][1] - start_points[i][1]) for i in range(count)]
+    last = [_unit(end_points[i + 1][0] - end_points[i][0], end_points[i + 1][1] - end_points[i][1]) for i in range(count)]
+    closed = count > 2 and start_points[0] == start_points[-1] and end_points[0] == end_points[-1]
+    sides = []
+    for points, own, other, width in ((start_points, first, last, widths[0]), (end_points, last, first, widths[1])):
+        directions = [own[i] or other[i] for i in range(count)]
+        sides.append(_stroke_quads(points, directions, width, cap, closed))
+    return sides[0], sides[1]
+
+
+def _morph_layers(item):
+    """The visible parts of a morph shape that is not a clip layer, as a list of layers drawn in this order, the
+    fills (by style number) then the strokes: {"color": (r, g, b, a) at the start, "end_color": at the end, "starts":
+    [polygon, ...], "ends": [polygon, ...]} with polygons in pixels pairing up point by point (curves are cut into
+    straight pieces, a stroke becomes one rectangle per segment). [] when the two ends do not pair up."""
+    start = _styled_contours(item.find("startEdges"))
+    end = _end_contours(item.find("endEdges"), [len(c[1]) for c in start]) if start else None
+    if not start or not end:
+        return []
+    fills = _morph_fill_styles(item.find("morphFillStyles"))
+    lines = _morph_line_styles(item.find("morphLineStyles"))
+    filled, stroked = {}, {}
+    for (s_point, s_edges, styles), (e_point, e_edges) in zip(start, end):
+        if not s_edges:
+            continue
+        cut = [ca is not None or cb is not None for (ca, _), (cb, _) in zip(s_edges, e_edges)]
+        index = next((f for style in styles for f in (style[0], style[1]) if f), 0)
+        if index and index <= len(fills) and fills[index - 1]:
+            pa, pb = _flatten((s_point, s_edges), cut), _flatten((e_point, e_edges), cut)
+            if pa[0] == pa[-1]:
+                pa, pb = pa[:-1], pb[:-1]
+            if len(pa) >= 3 and max(_contour_area(pa), _contour_area(pb)) >= SPECK_AREA * TWIPS * TWIPS:
+                polygons = filled.setdefault(index, ([], []))
+                polygons[0].append([(px / TWIPS, py / TWIPS) for px, py in pa])
+                polygons[1].append([(px / TWIPS, py / TWIPS) for px, py in pb])
+        position = 0
+        while position < len(styles):
+            line = styles[position][2]
+            stop = position
+            while stop < len(styles) and styles[stop][2] == line:
+                stop += 1
+            if line and line <= len(lines) and lines[line - 1] and max(lines[line - 1]["widths"]) > 0:
+                run = slice(position, stop)
+                s_from = s_edges[position - 1][1] if position else s_point
+                e_from = e_edges[position - 1][1] if position else e_point
+                pa = _flatten((s_from, s_edges[run]), cut[run])
+                pb = _flatten((e_from, e_edges[run]), cut[run])
+                pa = [(x / TWIPS, y / TWIPS) for x, y in pa]
+                pb = [(x / TWIPS, y / TWIPS) for x, y in pb]
+                quads_a, quads_b = _stroke_pair(pa, pb, lines[line - 1]["widths"], lines[line - 1]["cap"])
+                if quads_a:
+                    polygons = stroked.setdefault(line, ([], []))
+                    polygons[0].extend(quads_a)
+                    polygons[1].extend(quads_b)
+            position = stop
+    layers = []
+    for kind, groups, styles in (("fill", filled, fills), ("stroke", stroked, lines)):
+        for index in sorted(groups):
+            style = styles[index - 1]
+            colors = style if kind == "fill" else style["colors"]
+            if colors[0][3] == 0 and colors[1][3] == 0:
+                continue
+            layers.append({"color": colors[0], "end_color": colors[1], "starts": groups[index][0], "ends": groups[index][1]})
+    return layers
+
+
 def _place_op(item):
     has_char = item.get("placeFlagHasCharacter") == "true"
     blend = item.get("blendMode") if item.get("placeFlagHasBlendMode") == "true" else None
@@ -459,7 +692,8 @@ def _read_character(item, movie, scripts_dir=None):
                                           end_bounds=_rect(item.find("endBounds")),
                                           polygon=_polygon(item.find("startEdges")),
                                           end_polygon=_polygon(item.find("endEdges")),
-                                          mask_polygons=mask_starts, end_mask_polygons=mask_ends)
+                                          mask_polygons=mask_starts, end_mask_polygons=mask_ends,
+                                          layers=_morph_layers(item))
     elif kind in ("DefineFont3Tag", "DefineFont2Tag"):
         cid = int(item.get("fontID"))
         movie.characters[cid] = Character(cid, "font", name=(item.get("fontName") or "").strip("\0"))
