@@ -646,10 +646,16 @@ return {
 				expect(API.EMP(p:GetPos() + Vector(100000, 0, 0), 300, 5)).to.equal(0)
 				expect(GryMod.Malfunction.IsActive(p)).to.beFalse()
 
-				expect(API.EMP(p:GetPos(), 300, 5)).to.equal(1)
+				-- a bot spawned next to the player is in range too: count every player the EMP can reach
+				local inRange = 0
+				for _, other in ipairs(player.GetAll()) do
+					if other:GetPos():Distance(p:GetPos()) <= 300 then inRange = inRange + 1 end
+				end
+
+				expect(API.EMP(p:GetPos(), 300, 5)).to.equal(inRange)
 				expect(GryMod.Malfunction.IsActive(p)).to.beTrue()
 
-				GryMod.Malfunction.Clear(p)
+				for _, other in ipairs(player.GetAll()) do GryMod.Malfunction.Clear(other) end
 				local count, reason = API.EMP("here", 300, 5)
 				expect(count).to.equal(0)
 				expect(isstring(reason)).to.beTrue()
