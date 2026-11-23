@@ -62,13 +62,17 @@ local function withDeath(body)
 	end})
 
 	local realLocalPlayer = LocalPlayer
+	-- the stand-in is a table, not an entity: the real IsSuitEnabled says "no" to it, and the paint would drop the HUD instead of showing the death
+	local realEnabled = GryMod.API.IsSuitEnabled
 	local ok, err = pcall(function()
 		LocalPlayer = function() return life.dead and stand or real end
+		GryMod.API.IsSuitEnabled = function(ply) return ply == stand or realEnabled(ply) end
 		HUD.Reset()
 		body(life, HUD)
 	end)
 
 	LocalPlayer = realLocalPlayer
+	GryMod.API.IsSuitEnabled = realEnabled
 	pcall(HUD.Reset)
 
 	if not ok then
