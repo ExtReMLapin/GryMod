@@ -1003,6 +1003,112 @@ return {
 				c:SetOpacity(0.5)
 				expect(near(c.root:Child("Root").entry.cx[4], 0.5)).to.beTrue()
 			end
+		},
+		{
+			-- fails without Cross.DwellStep: the prompt would show at the first scan that finds the thing
+			name = "the dwell: the same thing for the delay shows it, a different thing starts the wait again, nothing shows nothing at once",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local s = {ent = nil, since = 0}
+				local a, b = {}, {}
+
+				expect(C.DwellStep(s, nil, 0, 0.2)).to.beNil()
+				expect(C.DwellStep(s, a, 1, 0.2)).to.beNil()
+				expect(C.DwellStep(s, a, 1.1, 0.2)).to.beNil()
+				expect(C.DwellStep(s, a, 1.2, 0.2)).to.equal(a)
+				expect(C.DwellStep(s, a, 3, 0.2)).to.equal(a)
+
+				-- another thing: the wait starts again, and the first one is gone at once
+				expect(C.DwellStep(s, b, 3.1, 0.2)).to.beNil()
+				expect(C.DwellStep(s, b, 3.2, 0.2)).to.beNil()
+				expect(C.DwellStep(s, b, 3.3, 0.2)).to.equal(b)
+
+				-- looking away: gone at once, and back on it the wait starts over
+				expect(C.DwellStep(s, nil, 3.4, 0.2)).to.beNil()
+				expect(C.DwellStep(s, b, 3.5, 0.2)).to.beNil()
+				expect(C.DwellStep(s, b, 3.7, 0.2)).to.equal(b)
+
+				-- no delay: at once
+				local z = {ent = nil, since = 0}
+				expect(C.DwellStep(z, a, 10, 0)).to.equal(a)
+			end
+		},
+		{
+			-- fails without the convar gry_usehint_delay (default 0.2) and Cross.DwellDelay
+			name = "gry_usehint_delay is saved, 0.2 s by default, held between 0 and 2",
+			func = function(state)
+				local convar = GetConVar("gry_usehint_delay")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0.2")
+				expect(bit.band(convar:GetFlags(), FCVAR_ARCHIVE)).to.equal(FCVAR_ARCHIVE)
+
+				local saved = convar:GetString()
+				local ok, err = pcall(function()
+					convar:SetString("0.5")
+					expect(GryMod.FlashCrosshair.DwellDelay()).to.aboutEqual(0.5, 1e-6)
+					convar:SetString("0")
+					expect(GryMod.FlashCrosshair.DwellDelay()).to.equal(0)
+					convar:SetString("99")
+					expect(GryMod.FlashCrosshair.DwellDelay()).to.equal(2)
+				end)
+
+				convar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without Cross.ReportDwelled in the scan: the hook would run at the first scan, or at every one
+			name = "the scan's report: nothing before the delay, the hook once when the thing has been under the crosshair for the delay, once when it goes; with the delay at 0 it is at once",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local convar = GetConVar("gry_usehint_delay")
+				local saved = convar:GetString()
+				local realReport = C.ReportUsable
+				local told = {}
+				local ent = {}
+
+				C.ResetDwell()
+				C.ReportUsable = function(e, mode) told[#told + 1] = {e, mode} end
+
+				local ok, err = pcall(function()
+					convar:SetString("0.2")
+					C.ReportDwelled(ent, 1, nil, 10)
+					C.ReportDwelled(ent, 1, nil, 10.1)
+					expect(#told).to.equal(0)
+					C.ReportDwelled(ent, 1, nil, 10.2)
+					expect(#told).to.equal(1)
+					expect(told[1][1]).to.equal(ent)
+					expect(told[1][2]).to.equal(1)
+					C.ReportDwelled(ent, 1, nil, 10.3)
+					expect(#told).to.equal(1)
+
+					C.ReportDwelled(nil, 0, nil, 10.4)
+					expect(#told).to.equal(2)
+					expect(told[2][1]).to.beNil()
+					expect(told[2][2]).to.equal(0)
+
+					-- a thing passed over for less than the delay is never reported, neither its coming nor its going
+					C.ReportDwelled(ent, 1, nil, 11)
+					C.ReportDwelled(nil, 0, nil, 11.1)
+					expect(#told).to.equal(2)
+
+					convar:SetString("0")
+					C.ReportDwelled(ent, 1, nil, 12)
+					expect(#told).to.equal(3)
+					expect(told[3][1]).to.equal(ent)
+				end)
+
+				C.ReportUsable = realReport
+				convar:SetString(saved)
+				C.ResetDwell()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
 		}
 	}
 }

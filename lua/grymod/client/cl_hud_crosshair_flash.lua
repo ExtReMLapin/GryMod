@@ -698,6 +698,60 @@ local lastTime
 local spread, kick, lastNextFire = 0, 0, 0
 local usableMode, friendlyShown = 0, false
 local usableEnt -- the entity that can be used and was last reported (nil: none)
+local reportedMode = 0 -- the mode that was last reported with it
+
+-- How long the crosshair must stay on the same usable thing before the use prompt shows (seconds): the original's prompt does not flash up
+-- when the crosshair only passes over a thing. 0: at once. The crosshair's own usable state is not delayed.
+local DELAY_CONVAR = CreateClientConVar("gry_usehint_delay", "0.2", true, false, "Seconds the crosshair must stay on the same usable thing before the use prompt shows (0.2 is the original's; 0: at once). The prompt goes at once when the thing changes", 0, 2)
+Cross.DWELL_DEFAULT = 0.2
+
+function Cross.DwellDelay()
+	local delay = DELAY_CONVAR:GetFloat()
+
+	if delay ~= delay then
+		return Cross.DWELL_DEFAULT
+	end
+
+	return math.Clamp(delay, 0, 2)
+end
+
+-- The dwell: state {ent, since}. Given the thing under the crosshair now (nil for none) it says which thing may be shown now: the same one for `delay` seconds
+-- gives it, a different one starts the wait again and nothing is shown for it meanwhile, nothing gives nothing at once. Pure.
+function Cross.DwellStep(state, ent, now, delay)
+	if ent ~= state.ent then
+		state.ent, state.since = ent, now
+	end
+
+	if ent == nil then
+		return nil
+	end
+
+	-- (a hair of tolerance for the clock's floating point)
+	if now - state.since >= delay - 1e-9 then
+		return ent
+	end
+
+	return nil
+end
+
+local dwell = {ent = nil, since = 0}
+
+function Cross.ResetDwell()
+	dwell.ent, dwell.since = nil, 0
+	usableEnt, reportedMode = nil, 0
+end
+
+-- The scan's report: the thing that can be used under the crosshair (nil, mode 0 when none), delayed by the dwell. The hook is run once at each change of what is
+-- SHOWN (the entity or its mode), as before; with the delay at 0 that is what it always was.
+function Cross.ReportDwelled(usable, mode, ply, now)
+	local shown = Cross.DwellStep(dwell, usable, now, Cross.DwellDelay())
+	local shownMode = shown ~= nil and mode or 0
+
+	if shown ~= usableEnt or shownMode ~= reportedMode then
+		usableEnt, reportedMode = shown, shownMode
+		Cross.ReportUsable(shown, shownMode, ply)
+	end
+end
 local nextScan = 0
 local failed = false -- the movie could not make a crosshair: not tried again until Reset
 
@@ -826,18 +880,14 @@ local function scan(ply)
 	end
 
 	local usable = mode ~= 0 and aimedAt or nil
-	local changed = mode ~= usableMode or usable ~= usableEnt
 
 	if mode ~= usableMode then
 		usableMode = mode
 		instance:SetUsable(mode)
 	end
 
-	-- the same test says WHAT can be used: the report is made once at each change of the entity or of the mode, not at each look
-	if changed then
-		usableEnt = usable
-		Cross.ReportUsable(usable, mode, ply)
-	end
+	-- the same test says WHAT can be used: the report is made once at each change of the entity or of the mode (after the dwell), not at each look
+	Cross.ReportDwelled(usable, mode, ply, now)
 
 	local far = util.TraceLine({
 		start = ply:EyePos(),
@@ -924,6 +974,7 @@ function Cross.Paint()
 		instance:SetCrosshair(index)
 		-- a crosshair that is just shown has its usable state said again
 		usableMode = 0
+		reportedMode = 0
 		nextScan = 0
 	end
 
@@ -957,6 +1008,7 @@ function Cross.Reset()
 	instance, friendly = nil, nil
 	lastTime, spread, kick, usableMode, friendlyShown = nil, 0, 0, 0, false
 	nextScan, failed = 0, false
+	Cross.ResetDwell()
 	Cross.ForgetRelations()
 end
 
