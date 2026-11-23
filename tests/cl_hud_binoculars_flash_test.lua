@@ -2891,8 +2891,9 @@ return {
 			end
 		},
 		{
-			-- fails without Bino.ZoomHold: a held key would never step the zoom
-			name = "holding the zoom key steps the stage after 0.7 s and every 0.7 s after, and at the last stage the next step goes back to the first (sound zoom_out, the others zoom_in)",
+			-- fails without Bino.ZoomHold: a held key would never step the zoom; and fails with a repeat: the zoom went up and wrapped back in a loop while the key stayed
+			-- down (the owner's report), whereas in the original the hold event comes ONCE, 0.25 s after the key went down, with no repeat
+			name = "holding the zoom key steps the stage ONCE after 0.25 s (no repeat while it stays down); at the last stage that step goes back to the first (zoom_out, else zoom_in)",
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local z = M.NewZoom()
@@ -2903,28 +2904,29 @@ return {
 
 				-- the key goes down: nothing yet
 				expect(M.ZoomHold(z, true, 10)).to.beNil()
-				expect(M.ZoomHold(z, true, 10.69)).to.beNil()
+				expect(M.ZoomHold(z, true, 10.24)).to.beNil()
 				expect(z.stage).to.equal(1)
 
-				-- 0.7 s later: the second stage
-				expect(M.ZoomHold(z, true, 10.7)).to.equal("zoom_in")
+				-- 0.25 s later: the second stage, ONCE (nothing more however long the key stays down)
+				expect(M.ZoomHold(z, true, 10.25)).to.equal("zoom_in")
 				expect(z.stage).to.equal(2)
 				expect(M.ZoomHold(z, true, 11.0)).to.beNil()
-				expect(M.ZoomHold(z, true, 11.4)).to.equal("zoom_in")
-				expect(z.stage).to.equal(3)
-
-				-- at the maximum the next step wraps to the minimum
-				expect(M.ZoomHold(z, true, 12.1)).to.equal("zoom_out")
-				expect(z.stage).to.equal(1)
-				expect(M.ZoomHold(z, true, 12.8)).to.equal("zoom_in")
+				expect(M.ZoomHold(z, true, 15.0)).to.beNil()
 				expect(z.stage).to.equal(2)
 
-				-- a release starts the wait again; a key that is not held never steps
-				expect(M.ZoomHold(z, false, 13)).to.beNil()
-				expect(M.ZoomHold(z, true, 13.1)).to.beNil()
-				expect(M.ZoomHold(z, true, 13.7)).to.beNil()
-				expect(M.ZoomHold(z, true, 13.8)).to.equal("zoom_in")
+				-- a release and a new hold: the next stage
+				expect(M.ZoomHold(z, false, 16)).to.beNil()
+				expect(M.ZoomHold(z, true, 16.1)).to.beNil()
+				expect(M.ZoomHold(z, true, 16.35)).to.equal("zoom_in")
 				expect(z.stage).to.equal(3)
+
+				-- at the maximum the next hold wraps to the minimum, once
+				expect(M.ZoomHold(z, false, 17)).to.beNil()
+				expect(M.ZoomHold(z, true, 17.1)).to.beNil()
+				expect(M.ZoomHold(z, true, 17.35)).to.equal("zoom_out")
+				expect(z.stage).to.equal(1)
+				expect(M.ZoomHold(z, true, 19)).to.beNil()
+				expect(z.stage).to.equal(1)
 
 				-- no stage up (the binoculars down): nothing, whatever the key says
 				local down = M.NewZoom()

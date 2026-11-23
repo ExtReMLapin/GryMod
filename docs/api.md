@@ -204,7 +204,7 @@ While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD fo
 (the Binoculars category of the options, all saved client convars):
 
 - **Pace and shot.** No sprint, and the slow walk instead of the jog (`gry_binoculars_walk`, 1); no shooting (`gry_binoculars_no_fire`, 1). Both work on the buttons of
-  the player's move, only while the binoculars are up. Holding the zoom key steps the zoom (2x, 4x, 8x, then back to 2x) (`gry_binoculars_hold_zoom`, 1).
+  the player's move, only while the binoculars are up. Holding the zoom key steps the zoom ONCE, 0.25 s after the key went down (2x, 4x, 8x, then back to 2x; let go and hold again to step again) (`gry_binoculars_hold_zoom`, 1).
 - **The hologram** (`gry_binoculars_hologram`, 1; needs `gry_binoculars_silhouette`). What the binoculars spot is drawn with a thin outline and its whole body
   filled with scan lines. A **hostile** NPC in view is lit from the start (`gry_binoculars_baseline`, 1; with 0 only what the scan reaches), in
   the colour of its alert level, as in the original: dark green when it is idle, amber when it is alerted (`NPC_STATE_ALERT`), dark red when it fights

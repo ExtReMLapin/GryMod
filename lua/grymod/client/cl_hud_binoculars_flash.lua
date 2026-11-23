@@ -45,7 +45,7 @@ local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "
 local MalfunctionConVar = CreateClientConVar("gry_binoculars_malfunction", "1", true, false, "The binoculars' film follows the HUD while the suit is down: it fades to white on a malfunction and fades out when the HUD flickers, as the original film does (off: it stays as it is)")
 local NoFireConVar = CreateClientConVar("gry_binoculars_no_fire", "1", true, false, "No shooting while the binoculars are up: the original holds them as an item instead of a weapon (on by default, as in the original; off: the Half-Life 2 zoom lets you shoot)")
 local WalkConVar = CreateClientConVar("gry_binoculars_walk", "1", true, false, "No sprint while the binoculars are up, and the pace of a slow walk, as in the original (off: you move as usual)")
-local HoldZoomConVar = CreateClientConVar("gry_binoculars_hold_zoom", "1", true, false, "Holding the zoom key steps the zoom up (2x, 4x, 8x) and, after the last stage, back to the first, as in the original (needs the zoom stages)")
+local HoldZoomConVar = CreateClientConVar("gry_binoculars_hold_zoom", "1", true, false, "Holding the zoom key steps the zoom once, 0.25 s after it went down (2x, 4x, 8x) and, from the last stage, back to the first, as in the original (needs the zoom stages)")
 local ThirdPersonConVar = CreateClientConVar("gry_binoculars_thirdperson", "1", true, false, "The binoculars' film is not drawn in third person, as the original does (off: it is drawn there too)")
 
 -- The stages are on with their own switch, and always while the own zoom has a key (gry_zoom_own, see cl_suit_zoom.lua): the wheel is
@@ -863,11 +863,10 @@ function Bino.ZoomReset(z)
 	z.stage, z.active, z.fov, z.from, z.to, z.start, z.duration, z.closeStart, z.lastStage, z.holdNext = 0, false, nil, 0, 0, 0, 0, nil, 0, nil
 end
 
--- Holding the zoom key (the original: the key held steps the zoom, and after the last stage it starts again from the first). The key must
--- be held HOLD_DELAY before the first step, then a step comes every HOLD_REPEAT. Pure: z is the zoom state, held whether the key is down,
--- now the clock. Moves z.stage and gives the sound cue ("zoom_in" for a step up, "zoom_out" for the wrap back to the first), or nil.
-Bino.ZOOM_HOLD_DELAY = 0.7
-Bino.ZOOM_HOLD_REPEAT = 0.7
+-- Holding the zoom key (the original: a "held" event comes ONCE, 0.25 s after the key went down, with no repeat: it steps the zoom, and from the last
+-- stage it goes back to the first; to step again the key is let go and held again). Pure: z is the zoom state, held whether the key is down, now the clock.
+-- Moves z.stage and gives the sound cue ("zoom_in" for a step up, "zoom_out" for the wrap back to the first), or nil.
+Bino.ZOOM_HOLD_DELAY = 0.25
 
 function Bino.ZoomHold(z, held, now)
 	if not held or z.stage == 0 then
@@ -887,7 +886,8 @@ function Bino.ZoomHold(z, held, now)
 		return nil
 	end
 
-	z.holdNext = now + Bino.ZOOM_HOLD_REPEAT
+	-- (once per press: nothing more until the key has been let go, which clears holdNext)
+	z.holdNext = math.huge
 
 	if z.stage >= #Bino.ZOOM_STAGES then
 		z.stage = 1
