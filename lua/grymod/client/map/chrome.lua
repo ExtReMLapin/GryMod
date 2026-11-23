@@ -32,6 +32,8 @@ Chrome.MOVIE = "hud_pda_map"
 
 -- the part of the stage the panel fills (stage pixels): the outline x 572 to 1001, y 49 to 599, and the DONE button under it down to 609, with a margin
 Chrome.PANEL = {x0 = 570, y0 = 47, x1 = 1003, y1 = 612}
+-- the free right half of the movie's text strip under the window (the left half holds OBJECTIVE: and the cell of the main objective): the map's hint goes there
+Chrome.STRIP = {x0 = 745, y0 = 501, x1 = 993, y1 = 530}
 Chrome.FILL_HEIGHT = 0.92
 Chrome.FILL_WIDTH = 0.96
 

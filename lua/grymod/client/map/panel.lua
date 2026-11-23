@@ -11,6 +11,10 @@
 -- smooth zoom. At the first opening of a map the zoom is automatic; later openings keep the last zoom (the convar gry_map_zoom); the map opens centred on the
 -- player each time.
 --
+-- THE FRAME. By default (gry_map_chrome 1) the map is a host of the real Crysis PDA movie (chrome.lua): the movie draws the panel, the title, the status strip, the
+-- DONE button and the opening and closing, and the tiles, grid, markers and arrow are drawn INSIDE its map window by a hook of the Flash player. With the convar
+-- at 0, or when the movie cannot be drawn, the plain panel of before is used (the title, the hint and the DONE button drawn here). Everything else is the same.
+--
 -- COST. Nothing runs while the map is closed: no hook, no timer but one that forgets the tiles a minute after it closed. While it is open one Think hook polls
 -- its close conditions and the tiles are made by a PostRender hook that exists only while tiles are missing (tiles.lua).
 
@@ -19,11 +23,11 @@ GryMod.Map = GryMod.Map or {}
 
 local Map = GryMod.Map
 
-local Zoom, Frame, Bounds, Pyramid, Fx, Markers, Tiles, Settings
+local Zoom, Frame, Bounds, Pyramid, Fx, Markers, Tiles, Settings, Chrome
 
 local function modules()
 	Zoom, Frame, Bounds, Pyramid = Map.Zoom, Map.Frame, Map.Bounds, Map.Pyramid
-	Fx, Markers, Tiles, Settings = Map.Fx, Map.Markers, Map.Tiles, Map.Settings
+	Fx, Markers, Tiles, Settings, Chrome = Map.Fx, Map.Markers, Map.Tiles, Map.Settings, Map.Chrome
 end
 
 modules()
@@ -48,9 +52,23 @@ local ACCENT = Color(154, 214, 90)
 local SHADOW = Color(0, 0, 0, 200)
 local WINDOW_BACK = Color(8, 12, 10)
 local DIM = Color(0, 0, 0, 160)
+local CHROME_DIM = Color(0, 0, 0, 110) -- the movie has its own dark backdrop under the window: the screen is dimmed less around it
 local TILE_TINT = Color(215, 230, 240)
 local GREY = Color(170, 170, 170)
 local dotColour = Color(255, 255, 255, 255)
+
+local DEFAULT_THEME = {Line = {96, 112, 80}, Over = {216, 139, 50}, Text = {181, 214, 142}}
+
+-- The frame of the movie wears the HUD's theme colours (the same Line, Over and Text the other films wear), so the grid, the letters and the markers match it; the
+-- plain panel keeps the original's own colours.
+local function applyTheme(chromeOn)
+	local theme = chromeOn and GryMod.FlashHUD and GryMod.FlashHUD.Theme or DEFAULT_THEME
+	local line, over, text = theme.Line or DEFAULT_THEME.Line, theme.Over or DEFAULT_THEME.Over, theme.Text or DEFAULT_THEME.Text
+
+	LINE.r, LINE.g, LINE.b = line[1], line[2], line[3]
+	OVER.r, OVER.g, OVER.b = over[1], over[2], over[3]
+	TEXT.r, TEXT.g, TEXT.b = text[1], text[2], text[3]
+end
 
 local TITLE_FONT, LABEL_FONT, SMALL_FONT = "GryMapTitle", "GryMapLabel", "GryMapSmall"
 
@@ -73,6 +91,10 @@ S.open = S.open or false
 S.opened = S.opened or false -- a map was opened in this session already (the first opening is automatic, the others keep the last zoom)
 S.lastClose = S.lastClose or -math.huge
 S.lastReason = S.lastReason or nil
+S.hudStatus = S.hudStatus or 0 -- the status of the HUD (GryMod_HUDStatus): 0 working, 1 malfunction, 2 flicker
+
+S.frame = S.frame or {} -- what the content function of the chrome needs from the frame being drawn
+S.closing = S.closing or false -- the chrome's closing animation is playing (the map itself is closed)
 
 -- the markers of one frame, reused
 local sourceBuffer, objectiveBuffer = {}, {}
@@ -177,8 +199,25 @@ end
 
 -- the window ---------------------------------------------------------------------------------------------------------------------------------------------
 
+-- The movie's placement on the screen for the chrome in use (the stage origin and the scale), kept in S.
+local function placeChrome()
+	S.ox, S.oy, S.scale = Chrome.Placement(ScrW(), ScrH())
+end
+
 local function layout(bounds)
 	local sw, sh = ScrW(), ScrH()
+
+	-- with the chrome: the window of the bounds' shape inside the movie's own map window
+	if S.chrome then
+		placeChrome()
+
+		local area = Chrome.ToScreen(S.ox, S.oy, S.scale, S.chrome.window)
+
+		area.x, area.y, area.w, area.h = floor(area.x + 0.5), floor(area.y + 0.5), floor(area.w), floor(area.h)
+
+		return Chrome.FitWindow(area, bounds)
+	end
+
 	local w, h = Frame.WindowSize(sw * 0.84, sh * 0.74, bounds)
 
 	return {x = floor((sw - w) / 2), y = floor((sh - h) / 2), w = w, h = h}
@@ -628,8 +667,19 @@ local function drawContent(view, level, res, target, now, ply, uiScale)
 
 	local sources, nSources, objectives, nObjectives = Map.CollectMarkers()
 
+	S.mainCell = nil
+
 	for i = 1, nObjectives do
-		drawMarker(view, objectives[i], uiScale)
+		local o = objectives[i]
+
+		drawMarker(view, o, uiScale)
+
+		-- the cell of the main objective goes to the movie's OBJECTIVE: strip
+		if o.main and S.mainCell == nil and (type(o.pos) == "table" or isvector(o.pos)) then
+			local _, _, cell = Markers.GridRef(view, o.pos.x, o.pos.y)
+
+			S.mainCell = cell
+		end
 	end
 
 	for i = 1, nSources do
@@ -646,6 +696,188 @@ local function drawContent(view, level, res, target, now, ply, uiScale)
 		rimRect.x, rimRect.y, rimRect.w, rimRect.h = view.x, view.y, view.w, view.h
 		look.finish(Drawer, rimRect, p)
 	end
+end
+
+-- the frame of the movie ----------------------------------------------------------------------------------------------------------------------------
+
+-- Puts the translation (dx, dy) on the model matrix: the shake of a lost uplink.
+local function pushShake(dx, dy)
+	local m = Matrix()
+
+	m:Translate(Vector(dx, dy, 0))
+	cam.PushModelMatrix(m)
+end
+
+-- The zoom and the cell of the player at the bottom right of the window (the movie has no field for them).
+local function drawCornerLabel(view, ply)
+	local pos = ply:GetPos()
+	local _, _, cell = Markers.GridRef(view, pos.x, pos.y)
+	local label = string.format("%s    x%.1f", cell or "--", view.zoom)
+	local x, y = view.x + view.w - 8, view.y + view.h - 6
+
+	draw.SimpleText(label, LABEL_FONT, x + 1, y + 1, SHADOW, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+	draw.SimpleText(label, LABEL_FONT, x, y, TEXT, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+end
+
+-- What the movie's window shows. The movie's drawing calls this from inside, in MapArea (chrome.lua), with the screen rectangle of the window that its opening mask
+-- reveals now. An error is kept and raised by drawMap after the movie's drawing (the movie only prints a failure of its hook once and goes on).
+local function chromeContent(x0, y0, x1, y1, alpha)
+	local view, f = S.view, S.frame
+
+	if not view or S.contentError or not f.ply then
+		return
+	end
+
+	local cx0, cy0 = math.max(x0, view.x), math.max(y0, view.y)
+	local cx1, cy1 = math.min(x1, view.x + view.w), math.min(y1, view.y + view.h)
+
+	if cx1 <= cx0 or cy1 <= cy0 then
+		return
+	end
+
+	local sx, sy = S.chrome:ShakeOffset()
+	local pushed = false
+
+	render.SetScissorRect(cx0, cy0, cx1, cy1, true)
+
+	if sx ~= 0 or sy ~= 0 then
+		pushed = pcall(pushShake, sx, sy)
+	end
+
+	local ok, err = pcall(drawContent, view, f.level, f.res, f.target, f.now, f.ply, f.uiScale)
+
+	if ok then
+		ok, err = pcall(drawCornerLabel, view, f.ply)
+	end
+
+	if pushed then
+		cam.PopModelMatrix()
+	end
+
+	render.SetScissorRect(0, 0, 0, 0, false)
+	render.OverrideBlend(false)
+
+	-- the lost uplink dims the map (the original's 35 percent)
+	if ok and alpha < 1 then
+		surface.SetDrawColor(0, 0, 0, floor((1 - alpha) * 255))
+		surface.DrawRect(cx0, cy0, cx1 - cx0, cy1 - cy0)
+	end
+
+	if not ok then
+		S.contentError = err
+	end
+end
+
+-- The first of the texts that fits in `width` pixels with this font.
+local function fitText(variants, font, width)
+	surface.SetFont(font)
+
+	for i = 1, #variants do
+		local w = surface.GetTextSize(variants[i])
+
+		if w <= width then
+			return variants[i]
+		end
+	end
+
+	return variants[#variants]
+end
+
+-- What the map adds over the movie once the movie is drawn: the picture's own edge when its window is smaller than the movie's (a long map), and the hint on the
+-- movie's text strip (the strip holds the OBJECTIVE: cell on its left, the right half is free).
+local function drawChromeOverlay(view)
+	local area = S.area
+
+	if area and (view.w < area.w - 2 or view.h < area.h - 2) then
+		surface.SetDrawColor(LINE.r, LINE.g, LINE.b, 255)
+		surface.DrawOutlinedRect(view.x - 1, view.y - 1, view.w + 2, view.h + 2, 2)
+	end
+
+	if S.closing or S.chrome:Phase() ~= "on" then
+		return
+	end
+
+	local key = Map.Key and Map.Key.KeyName(Map.Key.Effective()) or "M"
+	local left, right = S.ox + Chrome.STRIP.x0 * S.scale, S.ox + Chrome.STRIP.x1 * S.scale
+	local text = fitText({
+		"WHEEL: ZOOM   DRAG: MOVE   MIDDLE BUTTON: SMOOTH ZOOM   " .. key .. ": CLOSE",
+		"WHEEL: ZOOM   DRAG: MOVE   " .. key .. ": CLOSE",
+		key .. ": CLOSE"
+	}, SMALL_FONT, right - left)
+
+	draw.SimpleText(text, SMALL_FONT, right, S.oy + (Chrome.STRIP.y0 + Chrome.STRIP.y1) / 2 * S.scale, LINE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+end
+
+-- The movie's DONE button follows the mouse (its own over, press and out frames); its rectangle is the movie's.
+local function doneFromMouse(chrome)
+	local rect = chrome:DoneRect(S.ox, S.oy, S.scale)
+
+	S.doneRect = rect
+
+	if not rect or S.closing then
+		return
+	end
+
+	local mx, my = gui.MousePos()
+	local over = mx >= rect.x and mx <= rect.x + rect.w and my >= rect.y and my <= rect.y + rect.h
+
+	chrome:SetDone(over and (S.drag == "done" and "press" or "over") or "off")
+end
+
+-- The plain panel is used from now on (the movie could not be drawn).
+local function dropChrome()
+	local chrome = S.chrome
+
+	S.chrome = nil
+	applyTheme(false)
+
+	if chrome then
+		pcall(chrome.Release, chrome)
+	end
+
+	if S.view then
+		Frame.SetRect(S.view, layout(S.view))
+	end
+
+	ErrorNoHalt("[GryMod] the big map's frame (HUD_PDA_Map) could not be drawn: the plain panel is used\n")
+end
+
+-- One frame with the chrome: the movie advances, the DONE button follows the mouse, the movie draws (the content inside it), then the overlay.
+local function drawChromeFrame(view, level, res, target, now, ply, uiScale)
+	local chrome = S.chrome
+	local dt = now - (S.lastDraw or now)
+
+	S.lastDraw = now
+
+	local f = S.frame
+
+	f.level, f.res, f.target, f.now, f.ply, f.uiScale = level, res, target, now, ply, uiScale
+	S.contentError = nil
+
+	chrome:SetObjectiveCell(S.mainCell)
+	chrome:Update(dt)
+	doneFromMouse(chrome)
+
+	local drew = chrome:Draw(S.ox, S.oy, S.scale)
+
+	f.ply = nil
+
+	if S.contentError then
+		error(S.contentError, 0)
+	end
+
+	-- not drawn although it should have been (neither hidden by a flicker nor finished): the plain panel takes over
+	if not drew and not chrome:IsHidden() and not chrome:IsFinished() then
+		dropChrome()
+
+		return false
+	end
+
+	if drew then
+		drawChromeOverlay(view)
+	end
+
+	return true
 end
 
 -- The whole map, one frame. Runs under pcall (see paintPanel).
@@ -666,50 +898,67 @@ local function drawMap(panel)
 	if S.screenW ~= ScrW() or S.screenH ~= ScrH() then
 		S.screenW, S.screenH = ScrW(), ScrH()
 		Frame.SetRect(view, layout(view))
+
+		if S.chrome then
+			S.area = Chrome.ToScreen(S.ox, S.oy, S.scale, S.chrome.window)
+			S.area.x, S.area.y, S.area.w, S.area.h = floor(S.area.x + 0.5), floor(S.area.y + 0.5), floor(S.area.w), floor(S.area.h)
+		end
+
 		makeFonts()
 	end
 
 	-- the dimmed screen behind the map
-	surface.SetDrawColor(DIM.r, DIM.g, DIM.b, DIM.a)
+	local dim = S.chrome and CHROME_DIM or DIM
+
+	surface.SetDrawColor(dim.r, dim.g, dim.b, dim.a)
 	surface.DrawRect(0, 0, ScrW(), ScrH())
 
 	local level, res = Tiles.Begin()
-
-	-- the definition the zoom needs, and the plan of the tiles (made again only when it changes)
-	local mx, my = gui.MousePos()
-	local mouseX, mouseY
-
-	if inWindow(view, mx, my) then
-		mouseX, mouseY = Frame.ToWorld(view, mx, my)
-	else
-		mouseX, mouseY = view.cx, view.cy
-	end
-
 	local target = Pyramid.Target(Frame.Scale(view), S.target)
 
 	S.target = target
 
-	local levels = Pyramid.Levels()
-	local minx, maxx, miny, maxy = Frame.View(view)
+	-- the definition the zoom needs, and the plan of the tiles (made again only when it changes): not while the chrome closes (nothing new is asked)
+	if not S.closing then
+		local mx, my = gui.MousePos()
+		local mouseX, mouseY
 
-	planSpec.res, planSpec.mpu, planSpec.target, planSpec.coarse = res, metresPerUnit(), target, levels[1]
-	planSpec.view.minx, planSpec.view.maxx, planSpec.view.miny, planSpec.view.maxy = minx, maxx, miny, maxy
-	planSpec.bounds.x0, planSpec.bounds.x1, planSpec.bounds.y0, planSpec.bounds.y1 = view.x0, view.x1, view.y0, view.y1
-	planSpec.mouse.x, planSpec.mouse.y = mouseX, mouseY
-	Tiles.Update(planSpec, now)
+		if inWindow(view, mx, my) then
+			mouseX, mouseY = Frame.ToWorld(view, mx, my)
+		else
+			mouseX, mouseY = view.cx, view.cy
+		end
 
-	render.SetScissorRect(view.x, view.y, view.x + view.w, view.y + view.h, true)
+		local levels = Pyramid.Levels()
+		local minx, maxx, miny, maxy = Frame.View(view)
 
-	local ok, err = pcall(drawContent, view, level, res, target, now, ply, uiScale)
-
-	render.SetScissorRect(0, 0, 0, 0, false)
-	render.OverrideBlend(false)
-
-	if not ok then
-		error(err, 0)
+		planSpec.res, planSpec.mpu, planSpec.target, planSpec.coarse = res, metresPerUnit(), target, levels[1]
+		planSpec.view.minx, planSpec.view.maxx, planSpec.view.miny, planSpec.view.maxy = minx, maxx, miny, maxy
+		planSpec.bounds.x0, planSpec.bounds.x1, planSpec.bounds.y0, planSpec.bounds.y1 = view.x0, view.x1, view.y0, view.y1
+		planSpec.mouse.x, planSpec.mouse.y = mouseX, mouseY
+		Tiles.Update(planSpec, now)
 	end
 
-	drawFrameAndTexts(view, ply)
+	local drawn = false
+
+	if S.chrome then
+		drawn = drawChromeFrame(view, level, res, target, now, ply, uiScale)
+	end
+
+	if not drawn and not S.chrome and not S.closing then
+		render.SetScissorRect(view.x, view.y, view.x + view.w, view.y + view.h, true)
+
+		local ok, err = pcall(drawContent, view, level, res, target, now, ply, uiScale)
+
+		render.SetScissorRect(0, 0, 0, 0, false)
+		render.OverrideBlend(false)
+
+		if not ok then
+			error(err, 0)
+		end
+
+		drawFrameAndTexts(view, ply)
+	end
 
 	if now - (S.prunedAt or 0) > 1 then
 		S.prunedAt = now
@@ -732,6 +981,51 @@ local function paintPanel(panel)
 			Map.Close()
 		end)
 	end
+end
+
+-- The closing animation of the movie plays after the map is closed, on a panel that only paints (no mouse, no keyboard: the cursor and the game are free at once).
+local function clearGhost()
+	if IsValid(S.ghost) then
+		S.ghost:Remove()
+	end
+
+	S.ghost, S.ghostLeaving, S.closing = nil, false, false
+
+	if S.chrome and not S.open then
+		pcall(S.chrome.Release, S.chrome)
+		S.chrome = nil
+	end
+end
+
+local function paintGhost(panel)
+	local chrome = S.chrome
+
+	if S.paintFailed or not chrome or chrome:IsFinished() then
+		if not S.ghostLeaving then
+			S.ghostLeaving = true
+			timer.Simple(0, clearGhost)
+		end
+
+		return
+	end
+
+	local ok, err = pcall(drawMap, panel)
+
+	if not ok then
+		S.paintFailed = true
+		ErrorNoHalt("[GryMod] the big map's closing animation stopped: " .. tostring(err) .. "\n")
+	end
+end
+
+local function makeGhost()
+	local ghost = vgui.Create("Panel")
+
+	ghost:SetSize(ScrW(), ScrH())
+	ghost:SetPos(0, 0)
+	ghost:SetMouseInputEnabled(false)
+	ghost:SetKeyboardInputEnabled(false)
+	ghost.Paint = paintGhost
+	S.ghost = ghost
 end
 
 -- opening and closing -----------------------------------------------------------------------------------------------------------------------------------
@@ -791,6 +1085,19 @@ function Map._open()
 		return false, S.lastReason
 	end
 
+	-- an earlier closing animation that is still playing gives way
+	clearGhost()
+
+	-- the frame of the movie, when it is wanted and can be drawn
+	local chrome = nil
+
+	if Chrome and Settings.Chrome() and Chrome.Available() then
+		chrome = Chrome.New(GryMod.Flash.Load(Chrome.MOVIE))
+	end
+
+	S.chrome, S.mainCell, S.lastDraw = chrome, nil, nil
+	applyTheme(chrome ~= nil)
+
 	local bounds = computeBounds(ply)
 	local rect = layout(bounds)
 	local view = Frame.New(rect, bounds)
@@ -815,6 +1122,16 @@ function Map._open()
 	S.keyDown = Map.Key and Map.Key.Effective() > 0 and input.IsButtonDown(Map.Key.Effective()) or false
 	S.lastReason = nil
 	S.paintFailed = false
+	S.area = chrome and Chrome.ToScreen(S.ox, S.oy, S.scale, chrome.window) or nil
+
+	if S.area then
+		S.area.x, S.area.y, S.area.w, S.area.h = floor(S.area.x + 0.5), floor(S.area.y + 0.5), floor(S.area.w), floor(S.area.h)
+	end
+
+	if chrome then
+		chrome:SetContent(chromeContent)
+		chrome:Open(S.hudStatus)
+	end
 
 	timer.Remove("GryMod big map trim")
 
@@ -890,6 +1207,16 @@ function Map._close()
 
 	if S.view then
 		Settings.SaveZoom(S.view.zoom)
+	end
+
+	-- the movie's closing animation plays on after the map is closed; a movie that never drew has nothing to play
+	if S.chrome and S.chrome.started and not S.paintFailed then
+		S.closing = true
+		S.chrome:Close()
+		makeGhost()
+	elseif S.chrome then
+		pcall(S.chrome.Release, S.chrome)
+		S.chrome = nil
 	end
 
 	local Capture = GryMod.Minimap and GryMod.Minimap.Capture
@@ -1044,9 +1371,24 @@ if API and API.AddFeature then
 	API.AddFeature("bigmap")
 end
 
+-- The HUD's status (GryMod_HUDStatus: 0 working, 1 malfunction, 2 flicker) drives the movie's jammed look. It is remembered while the map is closed: a map that opens
+-- while the suit is down opens on the malfunction frame, as the original's destroy(status) after showPDA.
+hook.Add("GryMod_HUDStatus", "GRYMAPCHROME", function(status)
+	S.hudStatus = (status == 1 or status == 2) and status or 0
+
+	if S.open and S.chrome then
+		S.chrome:SetStatus(S.hudStatus)
+	end
+end)
+
 -- a map that is still open when this file loads again (a reload in the game) closes: its panel belongs to the old code
 if IsValid(S.panel) then
 	S.panel:Remove()
 	S.panel, S.open = nil, false
 	hook.Remove("Think", POLL_HOOK)
+end
+
+if IsValid(S.ghost) then
+	S.ghost:Remove()
+	S.ghost, S.closing = nil, false
 end

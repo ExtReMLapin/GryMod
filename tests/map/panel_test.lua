@@ -6,7 +6,7 @@
 -- The real map panel is created (a popup); a case that opens it closes it before it ends.
 
 local LEVEL = {id = "open_t256", open = true, zlo = -100, zhi = 256}
-local CONVARS = {"gry_map_enable", "gry_map_zoom", "gry_map_loading_fx", "gry_map_finished", "gry_map_grid"}
+local CONVARS = {"gry_map_enable", "gry_map_zoom", "gry_map_loading_fx", "gry_map_finished", "gry_map_grid", "gry_map_chrome"}
 local PPM_LEVELS = {2, 4, 8, 16, 32, 64}
 
 local function M()
@@ -98,6 +98,9 @@ return {
 		GetConVar("gry_map_loading_fx"):SetString("glitch")
 		GetConVar("gry_map_finished"):SetString("0")
 		GetConVar("gry_map_grid"):SetString("1")
+		-- these cases are about the plain panel (the title, the hint and the DONE button are drawn by the map itself, a frame is drawn at once); the frame of the
+		-- movie has its own cases in chrome_panel_test.lua
+		GetConVar("gry_map_chrome"):SetString("0")
 
 		state.saved = {
 			Compute = Map.Bounds.Compute,
