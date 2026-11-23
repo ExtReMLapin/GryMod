@@ -30,6 +30,7 @@ box:gry_grenade_own_warn
 box:gry_hud
 box:gry_hud_binoculars
 box:gry_hud_boot
+box:gry_hud_corners
 box:gry_hud_crosshair
 box:gry_hud_damage
 box:gry_hud_damagefx

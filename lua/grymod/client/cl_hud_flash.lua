@@ -1149,6 +1149,10 @@ function Module.Paint()
 		if GryMod.FlashBoot then
 			GryMod.FlashBoot.EndDeath()
 		end
+
+		if GryMod.FlashCorners then
+			GryMod.FlashCorners.SetStatus(0)
+		end
 	end
 
 	if not hud then
@@ -1226,6 +1230,11 @@ function Module.Paint()
 			panel:Draw(left + jumpX, ScrH() - 768 * scale + jumpY, scale)
 		end
 	end
+
+	-- the corner marks (cl_hud_corners_flash.lua), their own setting
+	if GryMod.FlashCorners then
+		GryMod.FlashCorners.Paint(dt)
+	end
 end
 
 -- Drops the HUD so that the next frame builds a new one (a new theme, a respawn...): the render targets of its
@@ -1240,6 +1249,10 @@ function Module.Reset()
 	end
 
 	hud, panel = nil, nil
+
+	if GryMod.FlashCorners then
+		GryMod.FlashCorners.Reset()
+	end
 
 	-- the energy bar starts on the real value (a respawn)
 	if GryMod.EnergySmooth then
@@ -1271,7 +1284,7 @@ end
 function Module.ResetAll()
 	Module.Reset()
 
-	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot}) do
+	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashCorners}) do
 		-- a piece that has a state to keep (the boot sequences) rebuilds its pictures instead of starting over
 		local rebuild = module and (module.Rebuild or module.Reset)
 
