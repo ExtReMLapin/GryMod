@@ -15,8 +15,9 @@ local Store = GryMod.Map.Store
 
 local floor = math.floor
 
--- The memory the pool may use for its tiles (4 bytes a pixel): 160 MB.
-Store.BYTES = 160 * 1024 * 1024
+-- The memory the pool may use for its tiles (4 bytes a pixel): 128 MB. A window shows one to three tiles across at the level its zoom needs, so 32 tiles of 1024
+-- pixels hold the window with a tile of margin and the tiles that were just left.
+Store.BYTES = 128 * 1024 * 1024
 Store.MIN_CAPACITY = 4
 Store.MAX_CAPACITY = 64
 

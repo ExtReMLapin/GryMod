@@ -214,12 +214,12 @@ return {
 		},
 		-- fails when the capacity does not follow the tile size
 		{
-			name = "the capacity follows the size of a tile: 160 megabytes of tiles, at least 4, at most 64",
+			name = "the capacity follows the size of a tile: 128 megabytes of tiles, at least 4, at most 64",
 			func = function()
 				local store = S()
 
-				expect(store.CapacityFor(1024)).to.equal(40)
-				expect(store.CapacityFor(2048)).to.equal(10)
+				expect(store.CapacityFor(1024)).to.equal(32)
+				expect(store.CapacityFor(2048)).to.equal(8)
 				expect(store.CapacityFor(512)).to.equal(64)
 				expect(store.CapacityFor(4096)).to.equal(4)
 				expect(store.CapacityFor("x")).to.equal(4)
