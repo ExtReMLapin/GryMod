@@ -312,6 +312,39 @@ function Cross.UsableFor(ent, ply)
 	return 0
 end
 
+-- The thing the eye trace cannot hit because it is not solid (a ladder), when the aim ray goes through its box: `maxDist` is how far the ray may
+-- go (the use range, or the distance of what the trace hit if that is nearer: a wall in front hides it). Only the classes the registry marks nonsolid
+-- are looked at (GryMod.API.UsableNonSolidClasses, a ladder for the stock ones), so this costs one list per class, at the scan's ten a second, and only
+-- when the trace found nothing usable. Returns the entity or nil.
+local PAD = 6 -- units added around the box: the aim need not be exact
+
+function Cross.NonSolidAimed(ply, maxDist)
+	local API = GryMod.API
+	local classes = API and API.UsableNonSolidClasses and API.UsableNonSolidClasses()
+
+	if not classes or #classes == 0 then
+		return nil
+	end
+
+	local eye = ply:EyePos()
+	local delta = ply:GetAimVector() * maxDist
+	local pad = Vector(PAD, PAD, PAD)
+
+	for i = 1, #classes do
+		local list = ents.FindByClass(classes[i])
+
+		for j = 1, #list do
+			local ent = list[j]
+
+			if IsValid(ent) and util.IntersectRayWithOBB(eye, delta, ent:GetPos(), ent:GetAngles(), ent:OBBMins() - pad, ent:OBBMaxs() + pad) then
+				return ent
+			end
+		end
+	end
+
+	return nil
+end
+
 -- Whether what the player aims at is an ally: a player of the same team (when the game has teams), or an NPC that the
 -- SERVER says likes the player (D_LI, see sv_friendly.lua): the attitude of an NPC is what counts, not its class (the
 -- "Enemy Rebel" of the NPC menu is an npc_citizen that hates the player). `known` is the server's answer for an NPC
@@ -694,8 +727,21 @@ local function scan(ply)
 		endpos = ply:EyePos() + ply:GetAimVector() * 110,
 		filter = ply
 	})
-	local mode = trace.Entity and Cross.UsableFor(trace.Entity, ply) or 0
-	local usable = mode ~= 0 and trace.Entity or nil
+	local aimedAt = trace.Entity
+	local mode = aimedAt and Cross.UsableFor(aimedAt, ply) or 0
+
+	-- nothing usable was hit: a non-solid thing (a ladder) in front, nearer than what the trace hit, may be
+	if mode == 0 then
+		local reach = trace.Hit and ply:EyePos():Distance(trace.HitPos) or 110
+		local ghost = Cross.NonSolidAimed(ply, reach)
+
+		if ghost then
+			aimedAt = ghost
+			mode = Cross.UsableFor(ghost, ply)
+		end
+	end
+
+	local usable = mode ~= 0 and aimedAt or nil
 	local changed = mode ~= usableMode or usable ~= usableEnt
 
 	if mode ~= usableMode then

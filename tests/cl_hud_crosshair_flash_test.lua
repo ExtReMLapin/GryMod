@@ -422,6 +422,59 @@ return {
 			end
 		},
 		{
+			-- fails without Cross.NonSolidAimed: a ladder is not solid, so the eye trace never hits it and the prompt CLIMB never showed
+			name = "usable, non-solid things (a ladder): found by the aim ray against their box, only within reach, not behind a wall, only for the classes the registry marks nonsolid",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local savedFind = ents.FindByClass
+
+				-- a ladder box in front of the player: x -16..16, y -40..-8 of its origin (0, 0, 0), z 0..160 (the stock ladder's shape)
+				local ladder = {
+					IsValid = function() return true end, GetClass = function() return "func_useableladder" end,
+					GetPos = function() return Vector(0, 0, 0) end, GetAngles = function() return Angle(0, 0, 0) end,
+					OBBMins = function() return Vector(-16, -40, 0) end, OBBMaxs = function() return Vector(16, -8, 160) end,
+					WorldSpaceCenter = function() return Vector(0, -24, 80) end
+				}
+				local other = {
+					IsValid = function() return true end, GetClass = function() return "func_brush" end,
+					GetPos = function() return Vector(0, 0, 0) end, GetAngles = function() return Angle(0, 0, 0) end,
+					OBBMins = function() return Vector(-16, -40, 0) end, OBBMaxs = function() return Vector(16, -8, 160) end,
+					WorldSpaceCenter = function() return Vector(0, -24, 80) end
+				}
+				local function player(eye, aim)
+					return {EyePos = function() return eye end, GetAimVector = function() return aim end}
+				end
+
+				local ok, err = pcall(function()
+					ents.FindByClass = function(class)
+						if class == "func_useableladder" then return {ladder} end
+						if class == "func_brush" then return {other} end
+
+						return {}
+					end
+
+					expect(isfunction(C.NonSolidAimed)).to.beTrue()
+
+					-- looking at it from 50 units away, level with its middle: found
+					expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 110) == ladder).to.beTrue()
+					-- looking beside it: nothing
+					expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(1, 0, 0)), 110)).to.beNil()
+					-- too far (the reach is the use range)
+					expect(C.NonSolidAimed(player(Vector(0, 300, 80), Vector(0, -1, 0)), 110)).to.beNil()
+					-- a wall nearer than the ladder (the trace hit it at 30 units): the ladder is behind it
+					expect(C.NonSolidAimed(player(Vector(0, 50, 80), Vector(0, -1, 0)), 30)).to.beNil()
+					-- a class the registry does not mark nonsolid is never looked for
+					expect(GryMod.API.UsableNonSolidClasses()[1] ~= "func_brush").to.beTrue()
+				end)
+
+				ents.FindByClass = savedFind
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "friendly: a player of the same team (when there are teams), an NPC only when the server confirmed it likes the player (never by its class), never the player itself",
 			func = function(state)
 				local C = GryMod.FlashCrosshair

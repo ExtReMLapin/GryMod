@@ -68,10 +68,12 @@ local CHECK = {
 	icon = function(v) if isstring(v) and ICONS[v] then return v end end,
 	text = function(v) if isfunction(v) or (isstring(v) and #v >= 1 and #v <= MAX_TEXT) then return v end end,
 	name = function(v) if isfunction(v) or (isstring(v) and #v >= 1 and #v <= MAX_NAME) then return v end end,
-	priority = function(v) if isnumber(v) and v >= -MAX_PRIORITY and v <= MAX_PRIORITY then return v end end
+	priority = function(v) if isnumber(v) and v >= -MAX_PRIORITY and v <= MAX_PRIORITY then return v end end,
+	-- the thing is not solid (a ladder): the eye trace never hits it, so the crosshair looks for its classes along the aim ray (needs `class`)
+	nonsolid = function(v) if isbool(v) then return v end end
 }
 
-local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority"}
+local FIELDS = {"class", "base", "match", "icon", "text", "name", "priority", "nonsolid"}
 
 -- The entries by priority, then in the order of registration; they live through a reload of this file.
 local order = API._usableOrder or {}
@@ -79,9 +81,11 @@ API._usableOrder = order
 
 -- [class] = the entries that can match an entity of that class (and .static[entry] = the class or base matched), or false when none can.
 local cache = {}
+local nonSolidList -- the classes of the entries marked nonsolid (made when asked, forgotten at each change)
 
 local function changed()
 	cache = {}
+	nonSolidList = nil
 end
 
 local function priorityOf(entry)
@@ -133,6 +137,10 @@ function API.RegisterUsable(key, def)
 
 	if not entry.class and not entry.base and not entry.match then
 		return false, "nothing to match on: give a class, a base or a match function"
+	end
+
+	if entry.nonsolid and not entry.class then
+		return false, "nonsolid needs a class: the crosshair looks for the entities of those classes"
 	end
 
 	if entry.class then
@@ -266,6 +274,31 @@ function API.GetUsable(ent)
 	end
 
 	return nil
+end
+
+-- The classes of the entries marked `nonsolid`, in the order of the entries (a stored list: read it, do not change it). The crosshair looks for the
+-- entities of these classes along the aim ray, since the eye trace passes through them.
+function API.UsableNonSolidClasses()
+	if not nonSolidList then
+		nonSolidList = {}
+
+		local seen = {}
+
+		for i = 1, #order do
+			local entry = order[i]
+
+			if entry.nonsolid and entry.class then
+				for _, class in ipairs(entry.class) do
+					if not seen[class] then
+						seen[class] = true
+						nonSolidList[#nonSolidList + 1] = class
+					end
+				end
+			end
+		end
+	end
+
+	return nonSolidList
 end
 
 -- What the entity is called: the entry's name, else the name the weapon carries (its PrintName, translated when it is a "#" key), else
@@ -403,7 +436,8 @@ register("hl2_chargers", {class = {"item_healthcharger", "item_suitcharger", "fu
 register("hl2_vehicles", {match = function(ent) return ask(ent, "IsVehicle") == true end, icon = "enter", text = "ENTER VEHICLE"})
 
 -- The ladder: func_useableladder, +use gets on (func_ladder.h). d1_canals_01 (once), d1_canals_03 (five), gm_construct (once).
-register("hl2_ladders", {class = "func_useableladder", icon = "ladder", text = "CLIMB"})
+-- It is not solid: the eye trace never hits it, so the entry is marked nonsolid and the crosshair finds it with the aim ray against its box.
+register("hl2_ladders", {class = "func_useableladder", icon = "ladder", text = "CLIMB", nonsolid = true})
 
 -- What the player lifts: CPhysicsProp::ObjectCaps (props.cpp) and CPhysBox::ObjectCaps (physobj.cpp) give FCAP_IMPULSE_USE when
 -- CBasePlayer::CanPickupObject(this, 35, 128) is true: at most 35 kg and 128 units on every side (the crosshair applies those limits to a

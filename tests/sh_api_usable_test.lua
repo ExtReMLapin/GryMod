@@ -261,6 +261,50 @@ return {
 			end
 		},
 		{
+			-- fails without the nonsolid field and API.UsableNonSolidClasses (a ladder is not solid: the eye trace cannot find it, the crosshair looks for these classes)
+			name = "an entry can be marked nonsolid (it needs a class): its classes are listed for the crosshair to look for, the stock ladder is one",
+			func = function()
+				expect(isfunction(API.UsableNonSolidClasses)).to.beTrue()
+
+				local list = API.UsableNonSolidClasses()
+				local found = false
+
+				for _, class in ipairs(list) do
+					found = found or class == "func_useableladder"
+				end
+
+				expect(found).to.beTrue()
+
+				expect(register("test_nonsolid", {class = {"test_ghost_a", "test_ghost_b"}, nonsolid = true, icon = "use", text = "USE"})).to.beTrue()
+
+				local seen = {}
+
+				for _, class in ipairs(API.UsableNonSolidClasses()) do
+					seen[class] = true
+				end
+
+				expect(seen.test_ghost_a and seen.test_ghost_b).to.beTrue()
+				expect(API.GetUsable(fake("test_ghost_a")).nonsolid).to.equal(true)
+
+				-- removing the entry removes its classes
+				API.UnregisterUsable("test_nonsolid")
+				seen = {}
+
+				for _, class in ipairs(API.UsableNonSolidClasses()) do
+					seen[class] = true
+				end
+
+				expect(seen.test_ghost_a).to.beNil()
+
+				-- nonsolid needs a class, and must be a boolean
+				local ok, why = register("test_nonsolid_match", {match = function() return true end, nonsolid = true})
+
+				expect(ok).to.beFalse()
+				expect(isstring(why)).to.beTrue()
+				expect((register("test_nonsolid_bad", {class = "test_ghost_c", nonsolid = "yes"}))).to.beFalse()
+			end
+		},
+		{
 			-- fails if the five icons were not the ones of the movie
 			name = "the icons are the five frames of the movie: use, enter, pickup, grab, ladder",
 			func = function()

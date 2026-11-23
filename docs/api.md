@@ -259,6 +259,7 @@ GryMod.API.RegisterUsable("my_addon_terminal", {
 	text = "HACK %1",                   -- %1 is the name; a function(ent, ply) -> string works too. The text is shown in capitals
 	name = "terminal",                  -- optional: a string or function(ent) -> string; else the weapon's print name, else the class
 	priority = 10,                      -- optional: the higher first (the stock entries are at -100)
+	nonsolid = false,                   -- optional: true for a thing the player's aim passes through (a ladder); needs a class
 })
 
 GryMod.API.UnregisterUsable("my_addon_terminal")
@@ -269,7 +270,9 @@ GryMod.API.UsableText(ent, ply)         -- the text the prompt shows for it, or 
 The crosshair asks this registry what can be used: **registering an entity makes it usable** (the crosshair's "usable" state opens on it, and the
 prompt shows), and an entity no entry names is not. Two rules apply on top: an entry with the `"grab"` icon only counts while the player can lift the
 entity (the Source rule: at most 35 kg and 128 units on every side; the client reads the size, and the mass when it has a physics object for it), and
-an entry with the `"enter"` icon does not count while the player sits in a vehicle. A weapon the player already has is shown as "can not be used" by the
+an entry with the `"enter"` icon does not count while the player sits in a vehicle. An entry with `nonsolid = true` (it needs a `class`) is for things that are
+not solid, like the ladder: the eye trace passes through them, so the crosshair also looks for the entities of those classes along the aim ray, up to the use
+range and not behind a wall (`GryMod.API.UsableNonSolidClasses()` lists them). A weapon the player already has is shown as "can not be used" by the
 crosshair and gets no prompt. To react when the usable thing changes, listen to the client hook `GryMod_UsableChanged(ent, mode, ply)` (see
 [events.md](events.md)).
 
