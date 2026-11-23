@@ -8,7 +8,7 @@
 local HOOK_NAME = "GryMod minimap capture"
 local EVENTS = {"PreDrawHalos", "PreDrawEffects", "PrePlayerDraw", "PreDrawViewModel", "PreDrawSkyBox", "SetupWorldFog"}
 local MODEL = "models/props_junk/PopCan01a.mdl"
-local RENDER_CALLS = {"PushRenderTarget", "Clear", "RenderView", "Capture", "PopRenderTarget", "SetLightingMode", "FogMode", "SetWriteDepthToDestAlpha", "CopyRenderTargetToTexture"}
+local RENDER_CALLS = {"PushRenderTarget", "Clear", "RenderView", "Capture", "PopRenderTarget", "SetLightingMode", "FogMode", "SetWriteDepthToDestAlpha", "CopyRenderTargetToTexture", "OverrideAlphaWriteEnable"}
 local OTHER_HOOK = "GryMod minimap capture test other addon"
 
 local savedRender = {}   -- render.<name> originals, saved by stubRender
@@ -1423,6 +1423,78 @@ return {
 				expect(noDrawOf(a)).to.equal(false)
 				expect(countHooks()).to.equal(0)
 				expect(capture().IsCapturing()).to.equal(false)
+			end
+		},
+		{
+			-- fails if the big map's picture keeps the minimap's void alpha (its tiles would fade into nothing) or the alpha override is left on
+			name = "RenderTo makes an opaque picture: the target is cleared to black with alpha 255, the view may not write the alpha, and the override is switched off again before the copy",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local seq, args = {}, {}
+				local overrides = {}
+
+				stubRender(seq, args, {
+					OverrideAlphaWriteEnable = function(enable, write) overrides[#overrides + 1] = {enable, write, #seq} end
+				})
+
+				expect(RenderTo(validTile(), validLevel(), {})).to.equal(true)
+				expect(args.Clear[1]).to.equal(0)
+				expect(args.Clear[2]).to.equal(0)
+				expect(args.Clear[3]).to.equal(0)
+				expect(args.Clear[4]).to.equal(255)
+				expect(#overrides).to.equal(2)
+				expect(overrides[1][1]).to.equal(true)
+				expect(overrides[1][2]).to.equal(false)
+				expect(overrides[2][1]).to.equal(false)
+				expect(overrides[2][2]).to.equal(true)
+
+				local at = {}
+
+				for i = 1, #seq do
+					at[seq[i]] = at[seq[i]] or i
+				end
+
+				-- on, then the view, then off, then the copy
+				expect(overrides[1][3] < at.RenderView).to.beTrue()
+				expect(overrides[2][3] > at.RenderView).to.beTrue()
+				expect(overrides[2][3] < at.CopyRenderTargetToTexture).to.beTrue()
+			end
+		},
+		{
+			-- fails if a view that raises leaves the alpha override on for the rest of the game
+			name = "RenderTo with a RenderView that raises: the alpha override is switched off again",
+			func = function()
+				local RenderTo = need("RenderTo")
+				local seq, args = {}, {}
+				local overrides = {}
+
+				stubRender(seq, args, {
+					OverrideAlphaWriteEnable = function(enable, write) overrides[#overrides + 1] = {enable, write} end,
+					RenderView = function() error("view exploded", 0) end
+				})
+
+				local ok, r1 = pcall(RenderTo, validTile(), validLevel(), {})
+
+				expect(ok).to.beTrue()
+				expect(r1).to.beNil()
+				expect(overrides[#overrides][1]).to.equal(false)
+				expect(overrides[#overrides][2]).to.equal(true)
+			end
+		},
+		{
+			-- fails if the minimap's own render starts to touch the alpha override (its void rule needs the alpha it has)
+			name = "Render (the minimap's) never touches the alpha override and clears to (0, 0, 0, 0) as before",
+			func = function()
+				local seq, args = {}, {}
+
+				stubRender(seq, args, {Capture = function() return pixels(64) end})
+				expect(capture().Render(validTile(), validLevel()) ~= nil).to.beTrue()
+
+				for i = 1, #seq do
+					expect(seq[i] == "OverrideAlphaWriteEnable").to.beFalse()
+				end
+
+				expect(args.Clear[4]).to.equal(0)
 			end
 		},
 		{

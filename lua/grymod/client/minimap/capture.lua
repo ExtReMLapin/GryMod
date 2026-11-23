@@ -39,7 +39,7 @@ local MIN_RES, MAX_RES = 4, 4096
 
 -- one capture at a time; `state` holds what the clean-up must undo, whatever the capture did
 local capturing = false
-local state = {hidden = nil, pushed = false, depthAlphaOff = false}
+local state = {hidden = nil, pushed = false, depthAlphaOff = false, alphaOverride = false}
 local targets = {}
 
 local function isFinite(n)
@@ -473,8 +473,17 @@ local function run(tile, level, dest)
 
 	render.PushRenderTarget(rt)
 	state.pushed = true
-	-- transparent black: what no geometry draws keeps alpha 0 (the void rule, see the header)
-	render.Clear(0, 0, 0, 0, true, true)
+	if dest ~= nil then
+		-- for the big map: an opaque picture. The target is cleared to black with alpha 255 and the view may not write the alpha, so the whole picture is
+		-- opaque and a material that fades by its vertex alpha shows it (the void rule is the minimap's: its tiles are compressed with a bit of alpha)
+		render.Clear(0, 0, 0, 255, true, true)
+		render.OverrideAlphaWriteEnable(true, false)
+		state.alphaOverride = true
+	else
+		-- transparent black: what no geometry draws keeps alpha 0 (the void rule, see the header)
+		render.Clear(0, 0, 0, 0, true, true)
+	end
+
 	render.SetLightingMode(0)
 
 	-- the depth is not written to the alpha while the view renders: the geometry then gets alpha 1 (0 or 1 only), the void stays 0
@@ -498,6 +507,11 @@ local function run(tile, level, dest)
 
 	state.depthAlphaOff = false
 	render.SetWriteDepthToDestAlpha(true)
+
+	if state.alphaOverride then
+		state.alphaOverride = false
+		render.OverrideAlphaWriteEnable(false, true)
+	end
 
 	if dest ~= nil then
 		-- the picture goes to the caller's target BEFORE the shared one is popped
@@ -531,6 +545,11 @@ local function cleanup()
 	if state.depthAlphaOff then
 		state.depthAlphaOff = false
 		pcall(render.SetWriteDepthToDestAlpha, true)
+	end
+
+	if state.alphaOverride then
+		state.alphaOverride = false
+		pcall(render.OverrideAlphaWriteEnable, false, true)
 	end
 
 	if state.pushed then
@@ -598,6 +617,7 @@ local function execute(tile, level, dest)
 	state.hidden = {}
 	state.pushed = false
 	state.depthAlphaOff = false
+	state.alphaOverride = false
 
 	local ok, result, reason = pcall(run, tile, level, dest)
 
