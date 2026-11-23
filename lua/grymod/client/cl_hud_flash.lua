@@ -420,9 +420,9 @@ function HUD:_applyAmmo(blinkAll)
 			end
 
 			local hundreds, tens, ones = digits(value)
-			setNumberClip(one, hundreds, (value > 100 and "" or "low") .. colour)
-			setNumberClip(two, tens, (value > 9 and "" or "low") .. colour)
-			setNumberClip(three, ones, colour)
+			setNumberClip(one, hundreds, (value > 100 and "" or "low") .. colour, blinkAll)
+			setNumberClip(two, tens, (value > 9 and "" or "low") .. colour, blinkAll)
+			setNumberClip(three, ones, colour, blinkAll)
 
 			if one then one:SetVisible(ammo.size > 100) end
 			if two then two:SetVisible(ammo.size > 9) end
