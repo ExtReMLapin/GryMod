@@ -14,7 +14,9 @@ local madeHooks, madeEnts
 
 -- a player of the tests
 local function fakePly(label)
-	return {isFake = true, label = label, IsValid = function() return true end, IsPlayer = function() return true end}
+	-- Alive and GetNW2Bool: the answer to a ready client also sends the quick menu mask (sv_mode_states.lua), which asks them
+	return {isFake = true, label = label, IsValid = function() return true end, IsPlayer = function() return true end,
+		Alive = function() return true end, GetNW2Bool = function(_, _, default) return default end}
 end
 
 -- a real point entity at `pos`
@@ -345,13 +347,13 @@ return {
 		},
 		{
 			-- breaks if: the hooks are not told on this realm, the arguments are not (id, obj), or a returned value changes what happens
-			name = "Added(id, obj) and Removed(id, obj, \"removed\") are told with a copy of the objective; the values the listeners return change nothing",
+			name = "Added(id, obj) and Removed(id, obj, \"removed\") are told with a copy of the objective",
 			func = scene(function()
 				local added = listen("GryMod_ObjectiveAdded")
 				local removed = listen("GryMod_ObjectiveRemoved")
 
-				hook.Add("GryMod_ObjectiveAdded", "gry_sv_objectives_test_returns", function() return false end)
-				madeHooks[#madeHooks + 1] = {"GryMod_ObjectiveAdded", "gry_sv_objectives_test_returns"}
+				-- (no listener that returns a value here: hook.Call stops at the first one that does, and the recorders above might never run.
+				-- That the hooks return nothing is checked in sh_objectives_test.lua)
 
 				expect(API.RegisterObjective("a", {title = "Alpha", pos = pos(1, 1, 1)})).to.beTrue()
 				expect(#added).to.equal(1)
