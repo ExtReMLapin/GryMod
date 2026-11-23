@@ -304,7 +304,7 @@ were that case. Not measured: the automatic zoom modes (the walks stayed at the 
 
 ## The big map
 
-A map of the whole level, opened by a key (**M** by default), drawn in a window with the screen clicker. It is the same picture as the minimap (the tiles are
+A map of the whole level, opened by a key (**M** by default), drawn in the frame of the original game's PDA map with the screen clicker. It is the same picture as the minimap (the tiles are
 made by the same render, from straight above, outside view: terrain, rocks and roofs) at the size of the screen. Everything is client side and optional:
 `gry_map_enable 0` turns it off.
 
@@ -327,6 +327,29 @@ made by the same render, from straight above, outside view: terrain, rocks and r
   main one; an objective with `radar = false` is left out; one that is done or failed is hidden, or greyed with `gry_map_finished 1`), the markers of the
   sources of third parties, and an 8 x 8 grid with the letters A to H (down the left side) and the numbers 1 to 8 (along the top); A1 is the top left. Icons grow
   slowly with the zoom, as in the original (`(zoom + 2) * 0.25` times their size). A marker outside the window is pinned to its edge.
+
+### The frame: the Crysis PDA
+
+By default the map is drawn in the frame of the original game's own PDA map. The frame is the original Scaleform movie (`HUD_PDA_Map`, converted like the other movies of
+the HUD): the outline with its corner brackets, the title "STRATEGIC MAP ONLINE", the uplink status, the dark backdrop, the DONE button and the opening and closing.
+The movie's own picture of the map is not used: the tiles, the grid, the markers and the arrow are drawn inside the movie's map window.
+
+- **Where it goes.** The movie's stage is 4:3, but its panel only fills the right part of it. The panel (not the empty left of the stage) is centred on the screen and
+  made 92 percent of the screen's height (96 percent of its width on a narrow screen), whatever the ratio. On a 16:9 screen the map window of the movie is a square of
+  about two thirds of the screen's height (730 pixels at 1080p, 1470 at 4K). The window of the bounds' shape (1:2 to 2:1) sits inside that square, centred: a long map
+  is letterboxed in it, keeps its shape, and gets a thin outline of its own.
+- **Opening and closing.** The movie plays its opening (about one second: the screen opens from the top of the panel downwards, and the map shows where the opening has
+  reached) and its closing (0.8 s). The closing goes on after the map is closed, on a panel that takes neither the mouse nor the keys, so the cursor and the game are
+  free at once. Opening the map again ends it.
+- **The suit.** While the HUD malfunctions the movie goes to its red malfunction frame, shows "Satellite Uplink disconnected", and the map is dimmed to 35 percent and
+  shakes by a few pixels, as in the original. A flicker of the HUD blanks the map for its duration. The end of the malfunction reboots the frame. A map opened while the
+  suit is down opens in that state. It all follows `GryMod_HUDStatus` (see `docs/events.md`).
+- **Texts.** The title, the status and the DONE button are the movie's (English). The strip under the window shows `OBJECTIVE:` and the grid cell of the main objective
+  when there is one; the free half of the strip holds the controls hint. The cell of the player and the zoom are at the bottom right of the window. The letters A to H
+  and the numbers 1 to 8 stay the map's own drawing: the movie writes them as static text, which the player of the movies does not draw.
+- **Colours.** The frame, the grid and the markers wear the HUD's theme (`gry_hud_theme`).
+- **Plain panel.** `gry_map_chrome 0` draws the plain panel the map had before (a title, a hint line and a DONE button drawn by the map itself, a dimmed screen). The map also
+  falls back on it by itself, with a line in the console, when the movie cannot be drawn. The setting is read at each opening.
 
 ### The bounds
 
@@ -396,6 +419,7 @@ The base of a cell (the coarse picture, or the plain tile) is drawn by the map; 
 | `gry_map_loading_fx` | glitch | a name | The loading look (see above). A name nobody registered uses the glitch. |
 | `gry_map_finished` | 0 | 0 or 1 | Also show the objectives that are done or failed, greyed. |
 | `gry_map_grid` | 1 | 0 or 1 | The 8 x 8 grid with its letters and numbers. |
+| `gry_map_chrome` | 1 | 0 or 1 | Draw the map in the frame of the original Crysis PDA map (1), or in the plain panel (0). Read at each opening. |
 
 All of them are saved client convars, and in the options menu of the GryMod category, on the page "Big map". The tile size and the generator's time are the
 minimap's (`gry_minimap_tile`, `gry_minimap_budget_ms`).
