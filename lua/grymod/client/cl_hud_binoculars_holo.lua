@@ -4,8 +4,8 @@
 --   * a hostile NPC in view (within the scan range) is green from the start (option gry_binoculars_baseline), even before it is spotted;
 --   * the NPC the binoculars scan turns WHITE for the last Holo.WHITE_SECONDS (0.3 s) of its scan, the same strength, only the colour changes;
 --     when the scan ends it is SPOTTED (the server is told, the radar shows it) and goes back to green;
---   * an ally (or a neutral NPC) is not drawn at the start; when it is scanned it pulses from white to blue once, and nothing stays; while the
---     player aims at it a marker with its NAME and its DISTANCE stays (yellow corner brackets);
+--   * an ally (or a neutral NPC) is not drawn at the start; when it is scanned it pulses from white to blue once, and nothing stays (no label: the
+--     original's "name and distance" box belongs to the objective markers);
 --   * a weapon lying on the ground (nobody holds it) within 10 m is blue at baseline and white while the player aims at it; a carried weapon is never lit on its own: it is part of its holder's silhouette (a lit hostile) or nothing (an ally);
 -- What the server says about the side of an NPC (ally, neutral, hostile) comes in a batch (sh_relations.lua), at most three questions a second.
 --
@@ -73,9 +73,6 @@ Holo.Colours = {
 	white = {255, 255, 255},
 	blue = {50, 90, 255}
 }
-
--- The marker of an aimed ally (yellow, as the original's).
-Holo.MARK_COLOUR = Color(255, 240, 90)
 
 function Holo.Enabled()
 	return HologramConVar:GetBool() and Bino.SilhouetteEnabled()
@@ -275,23 +272,6 @@ function Holo.Pending(indices, cache, now, max)
 	end
 
 	return out
-end
-
--- The box of a set of screen points: left, top, right, bottom.
-function Holo.BoxOf(xs, ys, count)
-	local l, t, r, b = math.huge, math.huge, -math.huge, -math.huge
-
-	for i = 1, count do
-		l, r = math.min(l, xs[i]), math.max(r, xs[i])
-		t, b = math.min(t, ys[i]), math.max(b, ys[i])
-	end
-
-	return l, t, r, b
-end
-
--- The text of a distance: whole metres and an M, like the original's.
-function Holo.DistanceText(units)
-	return math.floor(units / Bino.UNITS_PER_METRE + 0.5) .. "M"
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -553,7 +533,7 @@ function Holo.DrawFill(depth, skybox)
 		return
 	end
 
-	-- (the material is built by the HUD hook, see PaintMarker: painting a render target does not belong in the middle of the 3D scene)
+	-- (the material is built by the HUD hook, see PrepareHud: painting a render target does not belong in the middle of the 3D scene)
 	if not lines.material then
 		return
 	end
@@ -615,13 +595,13 @@ local V = Holo.Crysis or {}
 Holo.Crysis = V
 
 -- The shader's numbers. The original's own values of FILL, BOOST, STRENGTH and the neighbours' distance are set in its program, which could not be read
--- (see the research notes): these are tuned on the owner's captures of the Remastered, and each can be changed in the running game from the console
+-- (see the research notes): these were tuned in the running game on the owner's captures 03 and 11 (thin boundary of 2 px on 1080 with a soft glow, a dim body with scan lines; the Remaster's flat colours are dark, so a stronger BOOST turns every hue to white: 1.3 keeps red red) and each can be changed from the console
 -- (lua_run GryMod.BinocularsHolo.Crysis.FILL = 0.15), they are read again at every frame.
 V.STRENGTH = 1			-- the whole result's level
-V.FILL = 0.1			-- the share of its colour the body is filled with
-V.BOOST = 0.9			-- what the boundary adds to the fill (boundary = FILL + BOOST)
+V.FILL = 0.12		-- the share of its colour the body is filled with
+V.BOOST = 1.3			-- what the boundary adds to the fill (boundary = FILL + BOOST)
 V.TAP_1080 = 2			-- how far (pixels, on a 1080 high screen; it follows the height) the three neighbours are that find the boundary
-V.GLOW_GAIN = 0.5		-- the level of the blurred glow added round the shape
+V.GLOW_GAIN = 0.7		-- the level of the blurred glow added round the shape
 V.GLOW_DIV = 4			-- the glow's buffer is this fraction of the screen
 V.BLUR = 2				-- the game's blur of the glow's buffer (amount, passes)
 V.BLUR_PASSES = 2
@@ -642,6 +622,23 @@ V.PROBE_SIZE = 8
 -- What the probe must see: the shader (final mode, no glow) fills a uniform green with half of it, times the scan lines; a missing shader gives white, magenta or black.
 V.PROBE_FILL = 0.5
 V.PROBE_GREEN_MIN, V.PROBE_GREEN_MAX, V.PROBE_OTHER_MAX = 40, 250, 24
+
+-- The factor (0 to 1) that keeps a colour's boundary under FIT_PEAK at the brightest scan row: the boundary is the colour times (FILL + BOOST) times the bright row,
+-- and a bright colour (amber, white, blue) would pass 255 in every channel and come out white, more so on a bright background (the boundary is added to it).
+-- Dark colours are left as they are.
+V.FIT_PEAK = 220
+
+function V.Fit(r, g, b)
+	local top = math.max(r, g, b)
+
+	if top <= 0 then
+		return 1
+	end
+
+	local peak = top * (V.FILL + V.BOOST) * V.SCAN_HI * V.STRENGTH
+
+	return peak > V.FIT_PEAK and V.FIT_PEAK / peak or 1
+end
 
 -- The distance (pixels) of the three neighbours that find the boundary, for a screen of this height.
 function V.TapPixels(height)
@@ -861,7 +858,9 @@ local function drawEntities(ply, count, traceWalls)
 		local d = drawn[i]
 
 		if IsValid(d.ent) and not (traceWalls and V.Hidden(ply, d.ent)) then
-			render.SetColorModulation(d.r / 255, d.g / 255, d.b / 255)
+			local k = V.Fit(d.r, d.g, d.b) / 255
+
+			render.SetColorModulation(d.r * k, d.g * k, d.b * k)
 			d.ent:DrawModel()
 
 			if IsValid(d.weapon) then
@@ -994,71 +993,11 @@ function Holo.DrawScene(depth, skybox)
 	end
 end
 
--- The name of an entity for the marker: the NPC's menu name, else its class' phrase.
-function Holo.NameOf(ent)
-	if ent:IsPlayer() then
-		return ent:Nick()
-	end
-
-	local class = ent:GetClass()
-	local known = list.Get("NPC")[class]
-
-	if known and known.Name then
-		return known.Name
-	end
-
-	if isstring(ent.PrintName) and ent.PrintName ~= "" then
-		return ent.PrintName
-	end
-
-	return language.GetPhrase(class)
-end
-
-local corners = {}
-local xs, ys = {}, {}
-
--- The screen box of an entity (left, top, right, bottom), or nil when a corner of it is behind the camera.
-function Holo.ScreenBox(ent)
-	local mins, maxs = ent:OBBMins(), ent:OBBMaxs()
-	local n = 0
-
-	for i = 0, 7 do
-		corners.x = (i % 2 == 0) and mins.x or maxs.x
-		corners.y = (math.floor(i / 2) % 2 == 0) and mins.y or maxs.y
-		corners.z = (i >= 4) and maxs.z or mins.z
-
-		local s = ent:LocalToWorld(Vector(corners.x, corners.y, corners.z)):ToScreen()
-
-		if not s.visible then
-			return nil
-		end
-
-		n = n + 1
-		xs[n], ys[n] = s.x, s.y
-	end
-
-	return Holo.BoxOf(xs, ys, n)
-end
-
-local fontHeight
-
-local function markFont()
-	local h = math.max(14, math.floor(ScrH() * 0.026))
-
-	if fontHeight ~= h then
-		fontHeight = h
-		surface.CreateFont("GryBinoMark", {font = "Trebuchet MS", size = h, weight = 700, antialias = true})
-	end
-
-	return "GryBinoMark"
-end
-
--- Also the first thing the HUD hook does is to build the hologram's material (once). The marker of an ally (or a neutral NPC) aimed at: two yellow corner brackets round it, its name at the top left and its distance at the
--- bottom right (the original's box). It stays as long as the player aims at it.
-function Holo.PaintMarker()
-	local ply = LocalPlayer()
-
-	if not wanted() or not IsValid(ply) then
+-- The HUD hook: builds what the hologram draws with, once (the material of the simple style, the buffers and the probe of the crysis style): a render target is
+-- painted in 2D, not in the middle of the 3D scene. An aimed ally has no label (the original's "name and distance" box is the objective marker's own, see
+-- cl_hud_objectives_flash.lua): it only gets the one pulse from white to blue.
+function Holo.PrepareHud()
+	if not wanted() or not IsValid(LocalPlayer()) then
 		return
 	end
 
@@ -1067,44 +1006,6 @@ function Holo.PaintMarker()
 	if Holo.Style() == "crysis" then
 		V.Build()
 	end
-
-	local ent = Bino.Aimed
-
-	if not IsValid(ent) or not ent:IsNPC() or ent:Health() <= 0 then
-		return
-	end
-
-	local relation = Holo.RelationOf(ent)
-
-	if relation == nil or relation == "hostile" then
-		return
-	end
-
-	local l, t, r, b = Holo.ScreenBox(ent)
-
-	if not l then
-		return
-	end
-
-	local arm = math.max(8, ScrH() * 0.012)
-	local c = Holo.MARK_COLOUR
-
-	surface.SetDrawColor(c.r, c.g, c.b, 255)
-	surface.DrawRect(l, t, arm, 2)
-	surface.DrawRect(l, t, 2, arm)
-	surface.DrawRect(r - arm, b - 2, arm, 2)
-	surface.DrawRect(r - 2, b - arm, 2, arm)
-
-	surface.SetFont(markFont())
-	surface.SetTextColor(c.r, c.g, c.b, 255)
-	surface.SetTextPos(l + 4, t + 2)
-	surface.DrawText(Holo.NameOf(ent))
-
-	local text = Holo.DistanceText(ply:EyePos():Distance(ent:GetPos()))
-	local w, h = surface.GetTextSize(text)
-
-	surface.SetTextPos(r - w - 4, b - h - 2)
-	surface.DrawText(text)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -1122,7 +1023,7 @@ function Holo.Attach()
 	nextRefresh = 0
 	hook.Add("PostDrawTranslucentRenderables", "GRYBINOCULARSHOLO", Holo.DrawScene)
 	hook.Add("PreDrawHalos", "GRYBINOCULARSHOLO", Holo.DrawOutline)
-	hook.Add("HUDPaint", "GRYBINOCULARSHOLO", Holo.PaintMarker)
+	hook.Add("HUDPaint", "GRYBINOCULARSHOLO", Holo.PrepareHud)
 	hook.Add("RenderScreenspaceEffects", "GRYBINOCULARSHOLO", V.Compose)
 end
 

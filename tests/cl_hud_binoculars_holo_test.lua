@@ -300,8 +300,8 @@ return {
 			end
 		},
 		{
-			-- fails without Holo.ConeCos / Holo.BoxOf / Holo.DistanceText
-			name = "the helpers: the cone is wider than the field of view, a box holds its points, a distance reads whole metres and an M",
+			-- fails without Holo.ConeCos
+			name = "the helpers: the cone is wider than the field of view",
 			func = function()
 				local Holo = H()
 
@@ -309,15 +309,21 @@ return {
 				expect(Holo.ConeCos(nil)).to.equal(Holo.ConeCos(75))
 				expect(Holo.ConeCos(0 / 0)).to.equal(Holo.ConeCos(75))
 				expect(Holo.ConeCos(170) > 0).to.beTrue()
+			end
+		},
+		{
+			-- fails while the yellow name + distance marker of an aimed ally is still there (owner's correction: the capture's "Jester 118M" box is the OBJECTIVE marker's own
+			-- description box, not an ally label; an aimed ally gets only the one white-to-blue pulse and nothing stays)
+			name = "no label marker for an aimed ally: the bracket / name / distance helpers and the colour are gone",
+			func = function()
+				local Holo = H()
 
-				local l, t, r, b = Holo.BoxOf({10, 50, 30}, {5, 20, 90}, 3)
-				expect(l).to.equal(10)
-				expect(t).to.equal(5)
-				expect(r).to.equal(50)
-				expect(b).to.equal(90)
+				for _, name in ipairs({"ScreenBox", "NameOf", "DistanceText", "BoxOf", "PaintMarker", "MARK_COLOUR"}) do
+					expect(Holo[name]).to.beNil()
+				end
 
-				expect(Holo.DistanceText(B().UNITS_PER_METRE * 118)).to.equal("118M")
-				expect(Holo.DistanceText(B().UNITS_PER_METRE * 7.4)).to.equal("7M")
+				-- the HUD hook that builds the materials stays
+				expect(isfunction(Holo.PrepareHud)).to.beTrue()
 			end
 		},
 		{
@@ -657,6 +663,27 @@ return {
 
 				if not ok then
 					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without V.Fit: a bright colour (amber, white, blue) times the boundary's boost passes 255 and every hue turns white (seen in the game: the alerted hostile came out white)
+			name = "a colour is scaled down so that its boundary at the brightest scan row stays under FIT_PEAK (the hue is kept), and a dark one is left as it is",
+			func = function()
+				local V = H().Crysis
+				local Holo = H()
+				local peak = (V.FILL + V.BOOST) * V.SCAN_HI * V.STRENGTH
+
+				expect(V.Fit(68, 99, 62)).to.equal(1)
+				expect(V.Fit(127, 49, 45)).to.equal(1)
+				expect(V.Fit(0, 0, 0)).to.equal(1)
+
+				for _, name in ipairs({"amber", "white", "blue"}) do
+					local r, g, b = Holo.Rgb(name)
+					local k = V.Fit(r, g, b)
+
+					expect(k < 1 and k > 0).to.beTrue()
+					expect(math.max(r, g, b) * k * peak).to.aboutEqual(V.FIT_PEAK, 0.01)
 				end
 			end
 		}

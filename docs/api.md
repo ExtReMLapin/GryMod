@@ -206,11 +206,14 @@ While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD fo
 - **Pace and shot.** No sprint, and the slow walk instead of the jog (`gry_binoculars_walk`, 1); no shooting (`gry_binoculars_no_fire`, 1). Both work on the buttons of
   the player's move, only while the binoculars are up. Holding the zoom key steps the zoom (2x, 4x, 8x, then back to 2x) (`gry_binoculars_hold_zoom`, 1).
 - **The hologram** (`gry_binoculars_hologram`, 1; needs `gry_binoculars_silhouette`). What the binoculars spot is drawn with a thin outline and its whole body
-  filled with scan lines. A **hostile** NPC in view is green from the start (`gry_binoculars_baseline`, 1; with 0 only what the scan reaches). The NPC the
-  binoculars are scanning turns **white** for the last 0.3 s of its scan, then it is **spotted**: the server is told, the radar shows it, and it goes back to
-  green. An **ally** (or a neutral NPC) is not drawn; when it is scanned it pulses once from white to blue, and while the player aims at it a marker with its name
-  and its distance stays. A weapon on the ground is drawn white while the player aims at it, and blue while an ally holds it. At most 16 things are drawn, the nearest
-  ones; the colours come from the relation chain (`GryMod.API.Relation`), asked in one batch of questions (three a second at most).
+  filled with scan lines. A **hostile** NPC in view is lit from the start (`gry_binoculars_baseline`, 1; with 0 only what the scan reaches), in
+  the colour of its alert level, as in the original: dark green when it is idle, amber when it is alerted (`NPC_STATE_ALERT`), dark red when it fights
+  (`NPC_STATE_COMBAT`, or when it has the player as its enemy). The NPC the binoculars are scanning turns **white** for the last 0.3 s of its scan, then it is
+  **spotted**: the server is told, the radar shows it, and it goes back to its colour. An **ally** (or a neutral NPC) is not drawn; when it is scanned it pulses
+  once from white to blue and nothing stays (no label: the box with a name and a distance belongs to the objective markers). A **weapon lying on the ground**
+  (nobody holds it) within 10 m is blue, and white while the player aims at it; a weapon in someone's hand is never lit on its own: it is part of the silhouette
+  of its holder (a lit hostile) or nothing (an ally). At most 16 things are drawn, the nearest ones; the sides and the alert levels come from the relation chain
+  (`GryMod.API.Relation`) and the radar's rule, asked in one batch of questions (three a second at most, each answer worth one second).
 - **The hologram's style** (`gry_binoculars_holo_style`, `crysis` by default). `crysis` draws it the way the original does, with a pixel shader: the things are drawn
   flat, in their colour, into a buffer the size of the screen (only where they are not behind a wall); a full-screen pass finds the boundary of the shapes, fills
   every body with a share of its colour, brightens the boundary, puts a bright and a dim pixel row on all of it (the scan lines) and a vignette, and adds a blurred
