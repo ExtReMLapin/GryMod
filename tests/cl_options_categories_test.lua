@@ -30,14 +30,17 @@ box:gry_grenade_own_warn
 box:gry_hud
 box:gry_hud_binoculars
 box:gry_hud_boot
+box:gry_hud_corners
 box:gry_hud_crosshair
 box:gry_hud_damage
 box:gry_hud_damagefx
 box:gry_hud_energy_smooth
 box:gry_hud_grenade
+box:gry_hud_grenade_edge
 box:gry_hud_hit
 box:gry_hud_messages
 box:gry_hud_pickups
+box:gry_hud_lost_on_death
 box:gry_hud_quickmenu
 box:gry_hud_status
 box:gry_hud_usehint

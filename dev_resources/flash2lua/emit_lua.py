@@ -15,6 +15,9 @@ Format (`return {...}`):
                              attributes that are on or non-zero are written; a field that is not auto size clips its text}
                      stext  {k="stext", ox,oy,w,h}   (static text, not drawn yet)
                      morph  {k="morph", ox,oy,w,h, ex,ey,ew,eh, p, pe = start / end outline}
+                            or, for a morph that is seen (placed without a clip depth): ly = { {c, ce = colour {r,g,b,a} at the start /
+                            end, ps, pes = lists of start / end outlines, one per contour or stroke segment}, ... } drawn in order
+                            (the fills, then the strokes, each segment of a stroke a rectangle)
                      (shape and morph `p` = outline polygon {x1,y1,x2,y2,...} in stage px, only for one-contour
                       shapes: straight edges, or curves cut into pieces when the shape serves as a clip layer (mask);
                       a clip layer made of several separate contours has `ps` = { outline, outline, ... } instead and
@@ -121,6 +124,13 @@ def _font(font, atlas_index):
         atlas_index, font["em"], _num(font["asc"]), _num(font["desc"]), ",".join(glyphs))
 
 
+def _layer(layer):
+    """One visible layer of a morph shape: colour at the start (c) and at the end (ce) as r, g, b, a (0 to 255), the
+    outlines at the start (ps) and at the end (pes), each one {x1, y1, x2, y2, ...} in stage pixels."""
+    flat = lambda polygons: "{" + ",".join(_list([v for point in polygon for v in point]) for polygon in polygons) + "}"
+    return "{c=%s,ce=%s,ps=%s,pes=%s}" % (_list(layer["color"]), _list(layer["end_color"]), flat(layer["starts"]), flat(layer["ends"]))
+
+
 def mask_characters(movie):
     """Ids of the characters that serve as clip layers: the ones placed with a clip depth, and what a clip among
     them places (the drawing code takes the first outline it finds in a clip used as a mask)."""
@@ -189,7 +199,10 @@ def emit_lua(movie, rects, material_dir, fonts=None):
                 starts, ends = c.mask_polygons or [], c.end_mask_polygons or []
             else:
                 starts, ends = [], []
-            if len(starts) == len(ends) and all(len(a) == len(b) for a, b in zip(starts, ends)):
+            if c.layers and cid not in masks:
+                # a morph that is seen: its fill and stroke layers (the outlines above are for the clip layers and the one-outline fills)
+                body += ",ly={" + ",".join(_layer(layer) for layer in c.layers) + "}"
+            elif len(starts) == len(ends) and all(len(a) == len(b) for a, b in zip(starts, ends)):
                 body += _outlines("p", "ps", starts) + _outlines("pe", "pes", ends)
         else:
             continue

@@ -246,5 +246,37 @@ class EmitSeveralContoursTest(unittest.TestCase):
         self.assertNotIn("pes", morph)
 
 
+class EmitMorphLayersTest(unittest.TestCase):
+    """A morph that is seen (not a clip layer) is written with its fill and stroke layers `ly`; one that is a clip layer
+    keeps its outlines only (no FFDec needed)."""
+    SQUARE = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    WIDE = [(0.0, 0.0), (30.0, 0.0), (30.0, 10.0), (0.0, 10.0)]
+    LAYER = {"color": (204, 102, 0, 255), "end_color": (204, 102, 0, 0), "starts": [SQUARE], "ends": [WIDE]}
+
+    def chars(self):
+        movie = swfmodel.Movie(width_px=100, height_px=100, frame_rate=30)
+        place = EmitMaskPolygonTest.place
+        for cid in (1, 2):
+            movie.characters[cid] = swfmodel.Character(cid, "morph", bounds=(0, 0, 1, 1), end_bounds=(0, 0, 1, 1), layers=[self.LAYER],
+                                                       mask_polygons=[self.SQUARE], end_mask_polygons=[self.WIDE])
+        movie.root = swfmodel.Timeline([swfmodel.Frame(ops=[place(1, 1, 5), place(6, 2)])])  # morph 1 is a mask, morph 2 is seen
+        return lua_literal.parse(emit_lua.emit_lua(movie, {}, "grymod/flash"))["chars"]
+
+    def test_a_morph_that_is_seen_gets_its_layers_and_no_outline(self):
+        morph = self.chars()[2]
+        self.assertNotIn("p", morph)
+        self.assertNotIn("ps", morph)
+        layer = morph["ly"][1]
+        self.assertEqual([layer["c"][i] for i in range(1, 5)], [204, 102, 0, 255])
+        self.assertEqual([layer["ce"][i] for i in range(1, 5)], [204, 102, 0, 0])
+        self.assertEqual([layer["ps"][1][i] for i in range(1, 9)], [0, 0, 10, 0, 10, 10, 0, 10])
+        self.assertEqual([layer["pes"][1][i] for i in range(1, 9)], [0, 0, 30, 0, 30, 10, 0, 10])
+
+    def test_a_morph_that_is_a_mask_keeps_its_outlines_and_gets_no_layers(self):
+        morph = self.chars()[1]
+        self.assertNotIn("ly", morph)
+        self.assertEqual((len(morph["p"]), len(morph["pe"])), (8, 8))
+
+
 if __name__ == "__main__":
     unittest.main()

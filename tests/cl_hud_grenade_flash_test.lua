@@ -273,6 +273,142 @@ return {
 				expect(near(right, heldRight)).to.beTrue()
 			end
 		},
+		-- the alert at the edge of the screen (gry_hud_grenade_edge): the original keeps the icon on the screen while the grenade is in front of the player
+		{
+			-- needs: Grenade.EdgePoint (new)
+			name = "a point inside the screen stays where it is; one outside goes to the edge in its direction, 3 percent in, the corner for a diagonal one",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local w, h = 1920, 1080
+				local x, y, moved = G.EdgePoint(900, 500, w, h)
+				expect(x).to.equal(900)
+				expect(y).to.equal(500)
+				expect(moved).to.beFalse()
+
+				-- far to the right at mid height: the right edge, same height
+				x, y, moved = G.EdgePoint(9000, h / 2, w, h)
+				expect(near(x, 0.97 * w)).to.beTrue()
+				expect(near(y, h / 2)).to.beTrue()
+				expect(moved).to.beTrue()
+
+				-- above the screen, over the left half: the top edge, to the left of the middle
+				x, y = G.EdgePoint(400, -3000, w, h)
+				expect(near(y, 0.03 * h)).to.beTrue()
+				expect(x < w / 2).to.beTrue()
+				expect(x > 0.03 * w).to.beTrue()
+
+				-- the corner: a point far down to the right
+				x, y = G.EdgePoint(w * 3, h * 3, w, h)
+				expect(near(x, 0.97 * w)).to.beTrue()
+				expect(near(y, 0.97 * h)).to.beTrue()
+
+				-- the direction from the centre is kept
+				local px, py = 2500, 1700
+				x, y = G.EdgePoint(px, py, w, h)
+				expect(near((x - w / 2) * (py - h / 2), (y - h / 2) * (px - w / 2))).to.beTrue()
+			end
+		},
+		{
+			-- needs: Grenade.StagePosition taking the edge flag (the hexagon's centre lands on the point held at the edge, y included)
+			name = "the stage position with the edge on holds a grenade above the screen at the top edge; with it off, y is not held",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local w, h, metres = 1920, 1080, 20
+				local scale = h / 768
+				local s = math.max(45, 100 - metres * 1.5) / 100
+				local x, y = G.StagePosition(w / 2, -800, w, h, metres, true)
+				expect(near((y + 18 * s) * scale, 0.03 * h)).to.beTrue()
+				expect(near((w - 1366 * scale) / 2 + (x + 18 * s) * scale, w / 2)).to.beTrue()
+				local _, yOff = G.StagePosition(w / 2, -800, w, h, metres)
+				expect(near((yOff + 18 * s) * scale, -800)).to.beTrue()
+			end
+		},
+		{
+			-- needs: Warns reading opts.edge and c.front
+			name = "with the edge on a grenade in front of the player warns even when it is off the screen; one behind never does; with it off, off the screen is silent as before",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local function grenade(onScreen, front) return {class = "npc_grenade_frag", metres = 10, onScreen = onScreen, front = front, own = false, armed = true} end
+
+				expect(G.Warns(grenade(false, true), true, {edge = true})).to.beTrue()
+				expect(G.Warns(grenade(false, false), true, {edge = true})).to.beFalse()
+				expect(G.Warns(grenade(true, true), true, {edge = true})).to.beTrue()
+				-- a candidate made without the side (nil): the screen says it, as before
+				expect(G.Warns(grenade(false, nil), true, {edge = true})).to.beFalse()
+				expect(G.Warns(grenade(true, nil), true, {edge = true})).to.beTrue()
+				-- the setting off: only what is on the screen
+				expect(G.Warns(grenade(false, true), true, {edge = false})).to.beFalse()
+				expect(G.Warns(grenade(false, true), true, {})).to.beFalse()
+				expect(G.Warns(grenade(true, false), true, {})).to.beTrue()
+				-- the other rules still apply at the edge: range and armed
+				expect(G.Warns({class = "npc_grenade_frag", metres = 300, onScreen = false, front = true, own = false, armed = true}, true, {edge = true})).to.beFalse()
+				expect(G.Warns({class = "npc_grenade_frag", metres = 10, onScreen = false, front = true, own = false, armed = false}, true, {edge = true})).to.beFalse()
+			end
+		},
+		{
+			-- needs: Candidate carrying the `front` it is given, Candidates computing it from the eye direction
+			name = "a candidate carries whether the grenade is in front of the eye, read from the direction the player looks (not from the screen point)",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local ent = fakeEntity("npc_grenade_frag")
+				local ply = {EyePos = function() return Vector(0, 0, 0) end, IsValid = function() return true end}
+				expect(G.Candidate(ent, ply, {x = 0, y = 0, visible = false}, nil, true).front).to.beTrue()
+				expect(G.Candidate(ent, ply, {x = 0, y = 0, visible = false}, nil, false).front).to.beFalse()
+				expect(G.Candidate(ent, ply, {x = 0, y = 0, visible = false}).front).to.beNil()
+
+				-- the grenade is at (100, 0, 0): in front of an eye that looks along +x, behind one that looks along -x
+				stub(ents, "FindByClass", function() return {} end)
+				stub(_G, "EyeVector", function() return Vector(1, 0, 0) end)
+				created(ent)
+				local list = mine(G.Candidates(ply, {}))
+				expect(#list).to.equal(1)
+				expect(list[1].front).to.beTrue()
+				_G.EyeVector = function() return Vector(-1, 0, 0) end
+				list = mine(G.Candidates(ply, {}))
+				expect(list[1].front).to.beFalse()
+			end
+		},
+		{
+			-- needs: the setting gry_hud_grenade_edge (1 by default) read by Options
+			name = "gry_hud_grenade_edge exists (1 by default), Options reads it, and it has its check box in the options",
+			func = function(state)
+				local G = GryMod.FlashGrenade
+				local convar = GetConVar("gry_hud_grenade_edge")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				local saved = convar:GetString()
+				local found = {}
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					convar:SetString("0")
+					expect(G.Options().edge).to.beFalse()
+					convar:SetString("1")
+					expect(G.Options().edge).to.beTrue()
+					GryMod.GryOptionschute(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button then
+								found[child.Button.m_strConVar or "?"] = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				pcall(function() convar:SetString(saved) end)
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found["gry_hud_grenade_edge"]).to.beTrue()
+			end
+		},
 		{
 			name = "the grenade classes have their names, an unknown one has none",
 			func = function(state)

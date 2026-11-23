@@ -331,62 +331,6 @@ local function flat()
 	return flatMaterial
 end
 
--- A morph shape marked `fill` (a field of its definition, set by the code that owns the clip: the radar's view cone), drawn as a flat white triangle
--- (the colour transform tints it) between its start outline p (ratio 0) and its end outline pe (ratio 65535). The converter only keeps the outlines of the
--- morphs, which serve as masks (beginMask); one that is a fill was never drawn. Only a triangle (one contour of three points, convex).
-local function drawMorph(definition, ratio, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
-	local p, pe = definition.p, definition.pe
-
-	if not p or not pe or #p ~= 6 or #pe ~= 6 then
-		return
-	end
-
-	local t = ratio and ratio / 65535 or 0
-
-	if t < 0 then
-		t = 0
-	elseif t > 1 then
-		t = 1
-	end
-
-	local x1, y1 = p[1] + (pe[1] - p[1]) * t, p[2] + (pe[2] - p[2]) * t
-	local x2, y2 = p[3] + (pe[3] - p[3]) * t, p[4] + (pe[4] - p[4]) * t
-	local x3, y3 = p[5] + (pe[5] - p[5]) * t, p[6] + (pe[6] - p[6]) * t
-	local ax, ay = a * x1 + c * y1 + tx, b * x1 + d * y1 + ty
-	local bx, by = a * x2 + c * y2 + tx, b * x2 + d * y2 + ty
-	local cx, cy = a * x3 + c * y3 + tx, b * x3 + d * y3 + ty
-
-	if measuring then
-		minX, maxX = math.min(minX, ax, bx, cx), math.max(maxX, ax, bx, cx)
-		minY, maxY = math.min(minY, ay, by, cy), math.max(maxY, ay, by, cy)
-
-		return
-	end
-
-	local material = flat()
-
-	if material ~= batchMaterial or blend ~= batchBlend then
-		flush()
-		batchMaterial = material
-		batchBlend = blend
-	end
-
-	local r, g, bl, al = clamp255(mr + ar / 255), clamp255(mg + ag / 255), clamp255(mb + ab / 255), clamp255(ma + aa / 255)
-
-	if maskCount > 0 then
-		polyA[1], polyA[2], polyA[3], polyA[4] = ax, ay, 0.5, 0.5
-		polyA[5], polyA[6], polyA[7], polyA[8] = bx, by, 0.5, 0.5
-		polyA[9], polyA[10], polyA[11], polyA[12] = cx, cy, 0.5, 0.5
-		emitClipped(3, r, g, bl, al)
-
-		return
-	end
-
-	vertex(ax, ay, 0.5, 0.5, r, g, bl, al)
-	vertex(bx, by, 0.5, 0.5, r, g, bl, al)
-	vertex(cx, cy, 0.5, 0.5, r, g, bl, al)
-end
-
 -- One glyph of a text field at (gx, gy) (local coordinates): the quad is cut to the field's rectangle
 -- (cx0, cy0)-(cx1, cy1) when the field clips its text, the part of the bitmap cut with it. clips = false: no cut.
 local function drawGlyph(movie, font, glyph, gx, gy, scale, clips, cx0, cy0, cx1, cy1, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
@@ -714,10 +658,10 @@ end
 -- ratios per shape (the ratios come from the movie, a few dozen at most), then the shape starts again.
 local MORPH_CACHE_LIMIT = 512
 
--- The contours of one mask shape at the given ratio (a morph only): nil when it has no outline, false when it has
--- one that cannot be cut.
+-- The contours of one mask shape at the given ratio (a morph only: the shape, or a fill layer of a morph, see drawMorph): nil when it has no
+-- outline, false when it has one that cannot be cut.
 local function shapeContours(definition, ratio)
-	if ratio and definition.k == "morph" and (definition.pe or definition.pes) then
+	if ratio and (definition.pe or definition.pes) then
 		local cache = definition.maskMorph
 
 		if not cache then
@@ -778,6 +722,111 @@ end
 -- How many ratios of a morph mask have their contours kept: tests.
 function Flash.MaskMorphCached(definition)
 	return definition.maskMorph and definition.maskMorph.count or 0
+end
+
+-- Appends the polygon in polyA (n vertices of x, y, u, v) to the batch as triangles, cut to the active mask.
+local function emitPolygon(n, r, g, b, a)
+	if maskCount > 0 then
+		emitClipped(n, r, g, b, a)
+
+		return
+	end
+
+	for i = 2, n - 1 do
+		vertex(polyA[1], polyA[2], polyA[3], polyA[4], r, g, b, a)
+		vertex(polyA[i * 4 - 3], polyA[i * 4 - 2], polyA[i * 4 - 1], polyA[i * 4], r, g, b, a)
+		vertex(polyA[i * 4 + 1], polyA[i * 4 + 2], polyA[i * 4 + 3], polyA[i * 4 + 4], r, g, b, a)
+	end
+end
+
+-- One fill layer of a morph shape at the ratio of its entry (nil: the start): a flat polygon between its start outline (p, or ps for several
+-- contours, ratio 0) and its end outline (pe, pes, ratio 65535), cut into convex pieces like a mask outline is. `layer.c` is its colour at
+-- the start and `layer.ce` at the end ({r, g, b, a}, 0 to 255, both moving with the ratio); without one the layer is white, which the colour
+-- transform of the placement then tints (the radar's view cone). The colour transform applies as it does to a shape.
+local function drawMorphLayer(layer, ratio, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	local contours = shapeContours(layer, ratio)
+
+	if not contours then
+		return
+	end
+
+	local cr, cg, cb, ca = 1, 1, 1, 1
+	local from = layer.c
+
+	if from then
+		local to = layer.ce or from
+		local t = ratio and ratio / 65535 or 0
+
+		if t < 0 then
+			t = 0
+		elseif t > 1 then
+			t = 1
+		end
+
+		cr, cg, cb, ca = (from[1] + (to[1] - from[1]) * t) / 255, (from[2] + (to[2] - from[2]) * t) / 255,
+			(from[3] + (to[3] - from[3]) * t) / 255, (from[4] + (to[4] - from[4]) * t) / 255
+	end
+
+	local r, g, bl, al = clamp255(mr * cr + ar / 255), clamp255(mg * cg + ag / 255), clamp255(mb * cb + ab / 255), clamp255(ma * ca + aa / 255)
+
+	if al <= 0 then
+		return -- nothing to see (and nothing to measure: a group's image is not made bigger by it)
+	end
+
+	if not measuring then
+		local material = flat()
+
+		if material ~= batchMaterial or blend ~= batchBlend then
+			flush()
+			batchMaterial = material
+			batchBlend = blend
+		end
+	end
+
+	for contourIndex = 1, #contours do
+		local contour = contours[contourIndex]
+		local outline, pieces = contour.outline, contour.pieces
+
+		for k = 1, #pieces do
+			local piece = pieces[k]
+			local points = #piece
+
+			for i = 1, points do
+				local o = piece[i]
+				local x, y = outline[o * 2 - 1], outline[o * 2]
+				local sx, sy = a * x + c * y + tx, b * x + d * y + ty
+
+				if measuring then
+					if sx < minX then minX = sx end
+					if sx > maxX then maxX = sx end
+					if sy < minY then minY = sy end
+					if sy > maxY then maxY = sy end
+				else
+					local slot = i * 4
+					polyA[slot - 3], polyA[slot - 2], polyA[slot - 1], polyA[slot] = sx, sy, 0.5, 0.5
+				end
+			end
+
+			if not measuring then
+				emitPolygon(points, r, g, bl, al)
+			end
+		end
+	end
+end
+
+-- A morph shape that is seen (placed without a clip depth: a morph with one is a mask, see beginMask): the layers the converter wrote in
+-- `ly` (the Lost screen's bar, the panels and lines of the reboot, the strokes of the grenade alert), or the one outline of a morph marked
+-- `fill` by the code that owns the clip (the radar's view cone). The converter keeps no layers for the morphs that only serve as masks.
+local function drawMorph(definition, ratio, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	local layers = definition.ly
+
+	if layers then
+		for i = 1, #layers do
+			drawMorphLayer(layers[i], ratio, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+		end
+	elseif definition.fill then
+		drawMorphLayer(definition, ratio, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, blend)
+	end
 end
 
 -- The contours of a mask entry (see shapeContours; nil when it has no outline), and the matrix of the shape inside
@@ -1177,6 +1226,7 @@ end
 function Flash.ClearGroupCache()
 	targetPool = {}
 	groupMaterials = {}
+	flatMaterial = nil -- a test that replaced CreateMaterial made it; the next drawing makes it again (by name: the engine gives back the same one)
 end
 
 -- Something outside the movie may draw in the middle of a clip: with `clip.drawBefore = fn` and `clip.drawBeforeDepth = depth` the function is called
@@ -1266,11 +1316,7 @@ function drawEntries(clip, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
 			elseif entry.kind == "shape" then
 				drawShape(movie, movie.chars[entry.id], ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
 			elseif entry.kind == "morph" then
-				local definition = movie.chars[entry.id]
-
-				if definition.fill then
-					drawMorph(definition, entry.ratio, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
-				end
+				drawMorph(movie.chars[entry.id], entry.ratio, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
 			elseif entry.kind == "text" then
 				drawText(movie, entry.field or movie.chars[entry.id], entry.text, ea, eb, ec, ed, etx, ety, nmr, nmg, nmb, nma, nar, nag, nab, naa, blend or 1)
 			end

@@ -139,6 +139,8 @@ local function hudBehaviour(Panel)
 
 	-- client setting: the HUD also goes down (Lost, then Reboot) while the energy bar is empty, GryMod's old rule
 	GryMod.OptionBox(form, "HUD malfunction on empty energy", "gry_malfunction_empty", "The original: the HUD goes down only on an EMP, an electric attack or death.")
+	-- client setting: the HUD goes red with its emergency shutdown screen and sound when the player dies, until the respawn
+	GryMod.OptionBox(form, "Red HUD and shutdown screen at death", "gry_hud_lost_on_death", "When you die the HUD goes red with the emergency shutdown animation and sound until you respawn (the original). Off: the HUD just disappears.")
 	-- client setting: the quick menu icon that was chosen stays lit while the menu fades out
 	GryMod.OptionBox(form, "Quick menu: the chosen icon stays lit", "gry_menu_keep_highlight", "While the menu fades out (the original). Off: it goes plain at the release.")
 	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one
@@ -158,6 +160,7 @@ local function grenadeWarning(Panel)
 	form:NumSlider("Warning range (metres)", "gry_grenade_range", 5, 200, 0)
 	GryMod.OptionBox(form, "Also for a grenade you threw", "gry_grenade_own_warn", "Only within 15 m. Off: a grenade you threw never warns; your own missiles never do.")
 	GryMod.OptionBox(form, "Only what you can see", "gry_grenade_los", "Off: also through walls, as in the original game.")
+	GryMod.OptionBox(form, "Warning stays at the screen edge", "gry_hud_grenade_edge", "A grenade off the screen to the side, above or below keeps its warning at the edge it is on (the original). Off: the warning goes away.")
 end
 
 -- The HUD settings: the colours (the four sets of the original game, or your own), one switch for each element of the interface, the quick menu and the

@@ -24,7 +24,8 @@ Options.List = {
 	{name = "damagefx", label = "HUD jump on a heavy armor hit", help = "The panels shake for a moment when the armor takes a hit of a fifth of the bar or more, as in the original"},
 	{name = "messages", label = "Text lines", help = "The lines of text of the HUD: the suit's own messages and the ones other addons show (the objective banner, for one)"},
 	{name = "usehint", label = "Use prompt", help = "The icon and the text under the crosshair when you can use or take what you look at (TAKE, ENTER VEHICLE, CLIMB, USE)"},
-	{name = "pickups", label = "Pickup popups", help = "The small popup when you take ammo, a weapon or an item (the Half-Life 2 pickup list is hidden when it is on)"}
+	{name = "pickups", label = "Pickup popups", help = "The small popup when you take ammo, a weapon or an item (the Half-Life 2 pickup list is hidden when it is on)"},
+	{name = "corners", label = "Corner marks", default = "0", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them; GryMod's HUD never did, so they are off until you ask for them)"}
 }
 
 local byName = {}
@@ -32,7 +33,8 @@ local convars = {}
 
 for _, option in ipairs(Options.List) do
 	byName[option.name] = option
-	convars[option.name] = CreateClientConVar("gry_hud_" .. option.name, "1", true, false, option.help)
+	-- every element is on by default, except the ones that say otherwise (`default`)
+	convars[option.name] = CreateClientConVar("gry_hud_" .. option.name, option.default or "1", true, false, option.help)
 end
 
 function Options.Find(name)
@@ -46,7 +48,7 @@ function Options.Enabled(name)
 	return not convar or convar:GetBool()
 end
 
--- Switches every element back on.
+-- Puts every switch back to its default (on, but for the elements that are off by default).
 function Options.Reset()
 	for _, convar in pairs(convars) do
 		convar:SetString(convar:GetDefault())
