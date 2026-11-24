@@ -2,10 +2,12 @@
 -- cl_hud_radar_pings.lua). The server decides where and how big, and tells the players within the reach of the original's explosion event (250 m).
 --   * GryMod.API.ReportRadarPing(pos, kind): an addon reports an explosion, a gunshot, anything that should ping the radar. `kind`: nothing (an explosion),
 --     "small" / "explosion" / "big", or a size in metres (0.5 to 8).
---   * automatic pings: every env_explosion that is made pings the radar at its place. The engine makes one for each Half-Life 2 explosion (a grenade, a rocket,
---     a barrel, a mine, an energy ball), so this one hook covers them all, and an addon's own env_explosion too. Nothing runs by itself: the hook only
---     looks at the class of each new entity, and a ping is made on the tick after the explosion, when its place and its size are set. gry_radar_pings (the
---     administrators' option) turns the automatic ones off; the API call always works.
+--   * automatic pings: every env_explosion that is made pings the radar at its place. The engine makes one for a rocket, a barrel, a mine, a helicopter bomb,
+--     a tripmine, a scanner, a roller mine (MEASURED), and an addon's own env_explosion too. Nothing runs by itself: the hook only looks at the class of each
+--     new entity, and a ping is made on the tick after the explosion, when its place and its size are set.
+--   * the things that explode WITHOUT an env_explosion (the hand grenade, the SMG grenade, the satchel, the AR2 ball, a destroyed manhack: MEASURED, the engine
+--     draws their blast as an effect) ping when they are removed (Radar.ExplosiveClasses, below).
+--     gry_radar_pings (the administrators' option) turns the automatic ones off; the API call always works.
 -- The hook GryMod_RadarPing(pos, size, automatic) tells that a ping was accepted (its return value is not read).
 
 util.AddNetworkString("gry_radar_ping")
@@ -140,3 +142,37 @@ function Radar.OnEntityCreated(ent)
 end
 
 hook.Add("OnEntityCreated", "GryMod radar pings", Radar.OnEntityCreated)
+
+-- The things that explode WITHOUT an env_explosion (MEASURED on 2026-11-24: the engine draws their blast as an effect, so the hook above never sees them): the
+-- hand grenade, the SMG grenade, the satchel, the AR2 energy ball and the manhack that is destroyed. They ping when they are removed, at the place they were.
+--   radius: the blast's radius in units (the same rule as an env_explosion's, held between the smallest and the biggest ring), or kind: a ring size name;
+--   dead: the entity only pings when it is destroyed (a manhack removed alive, by a cleanup or an addon, did not explode).
+-- A field of Radar: an addon may add the class of its own explosive (Radar.ExplosiveClasses.my_grenade = {radius = 300}).
+Radar.ExplosiveClasses = Radar.ExplosiveClasses or {
+	npc_grenade_frag = {radius = 250},
+	grenade_ar2 = {radius = 250},
+	npc_satchel = {radius = 150},
+	prop_combine_ball = {radius = 150},
+	npc_manhack = {kind = "small", dead = true}
+}
+
+-- An explosive that is removed: it went off. `fullUpdate` is the engine's: the removal is part of a cleanup of the map, nothing exploded.
+function Radar.OnEntityRemoved(ent, fullUpdate)
+	if fullUpdate or not IsValid(ent) then
+		return
+	end
+
+	local def = Radar.ExplosiveClasses[ent:GetClass()]
+
+	if not def or not automatic:GetBool() then
+		return
+	end
+
+	if def.dead and ent:Health() > 0 then
+		return
+	end
+
+	Radar.ReportPing(ent:GetPos(), def.kind or S.PingSizeOfRadius(def.radius), true)
+end
+
+hook.Add("EntityRemoved", "GryMod radar pings", Radar.OnEntityRemoved)

@@ -403,6 +403,7 @@ A weapon is described by a **definition**, a table of optional fields. A field y
 | `icon` | an icon key | the icon of the weapon slot (it wins over `fire`) |
 | `slotIcon` | an icon key | the stock icon of the weapon slot, when `icon` is not given |
 | `crosshair` | boolean, or a number 1 to 13 | `false`: the HUD draws no crosshair while the weapon is in hand (the stock fists and RPG). `true` or no field: the player's crosshair style. A number: the weapon shows that one of the 13 crosshairs of the HUD movie (11, 12 and 13 are the ones the original game forces by weapon), unless the player turned off `gry_hud_crosshair_weapon` |
+| `zoomCrosshair` | boolean | with `alt = "zoom"`: `true` keeps the HUD's crosshair while the weapon's zoom is up, for a weapon that draws no scope aim of its own (the stock crossbow). Without it, a zoomed weapon hides the crosshair, as a scope has its own |
 | `heat` | `function(wep)` returning a number, 0 (cold) to 1 (overheated) | how hot the weapon is: the HUD shows the heat bar above the weapon icon, only for a weapon that declares this. Asked at each frame while the weapon is in hand, under `SafeCall`. The player can turn the bar off (`gry_hud_overheat`) |
 | `listIcon` | a silhouette of the weapon list (`GryMod.API.WeaponListIcons`: `SOCOM`, `SMG`, `Shotgun`, `SCAR`, `FY71`, `Hurricane`, `LAW`, `TACGun`, `GaussRifle`, `DSG1`, `Grenade_Explosive`, `Grenade_Flashbang`, `Grenade_Smoke`, `C4`, `LockpickKit`, `RadarKit`, `RepairKit`, `AVMine`, `Claymore`, `MOARAttach`, `AlienMount`, `Grenade_EMP`, `NightVision`, `Binoculars`, `Fists`) | the picture of the weapon in the weapon list that shows when the player changes weapon. Without it the list uses the kind of the weapon's `grenade`, and else writes the weapon's name |
 | `grenade` | `"explosivegrenade"`, `"flashbang"`, `"smokegrenade"`, `"empgrenade"` (`GryMod.API.GrenadeKinds`) | the kind of hand grenade the grenade slot shows while the weapon is in hand. A weapon that declares it counts **its own primary ammo** there (the player's hand grenades are the explosive ones). Default: `"explosivegrenade"` and the hand grenades' count |
@@ -469,6 +470,7 @@ entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
 | `altShoots` | client | the camouflage: a right click that shoots ends it (the HUD tells the server) |
 | `icon`, `slotIcon` | client | the icon of the weapon slot |
 | `crosshair` | client | the HUD's crosshair is hidden while the weapon is in hand, or the weapon's own style is shown |
+| `zoomCrosshair` | client | with `alt = "zoom"`: `true` keeps the HUD's crosshair while the zoom is up (the weapon has no scope aim of its own: the stock crossbow); without it a zoomed weapon hides the crosshair |
 | `heat` | client | the heat bar above the weapon icon; also reported to the hook `GryMod_WeaponHeat(ply, wep, percent)` (client, each time the bar moves, 0 when it is hidden) |
 | `grenade` | client | the icon of the grenade slot, and its blink when the kind changes (a weapon change from one kind to another) |
 | `listIcon` | client | the silhouette of the weapon in the weapon list shown at each weapon change; reported to the hook `GryMod_WeaponListShown(ply, wep)` (client) |
@@ -547,8 +549,11 @@ The radar zoom (`gry_radar_range`, and the automatic zoom) applies to the marker
 ### Explosion rings: `GryMod.API.ReportRadarPing(pos, kind)` (server)
 
 An explosion shows on the radar as a ring that opens and fades in two seconds (the original game's icon type 6). The server tells the players that are
-within 250 m of it. Every `env_explosion` does it by itself, so the Half-Life 2 grenades, rockets, barrels and energy balls ring the radar with no
-code from you, and so does an addon's own `env_explosion`. For anything else (your own blast, a gunshot, an alarm), report it:
+within 250 m of it. Every `env_explosion` does it by itself, so the Half-Life 2 rockets, barrels, mines, helicopter bombs, tripmines, scanners and roller
+mines ring the radar with no code from you, and so does an addon's own `env_explosion`. Some things explode with no `env_explosion` (the engine draws
+their blast as an effect): the hand grenade, the SMG grenade, the satchel, the AR2 energy ball and a destroyed manhack. They ring the radar when they are
+removed, from the table `GryMod.Radar.ExplosiveClasses` (server; `{radius = units}` or `{kind = "small"}`, `dead = true` for an entity that only counts when it is
+destroyed): add the class of your own explosive there if it works the same way. For anything else (your own blast, a gunshot, an alarm), report it:
 
 ```lua
 -- server side

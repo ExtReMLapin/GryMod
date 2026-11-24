@@ -209,6 +209,75 @@ return {
 			func = function(state)
 				expect(hook.GetTable().OnEntityCreated["GryMod radar pings"]).toNot.beNil()
 			end
+		},
+		-- fails without Radar.OnEntityRemoved / ExplosiveClasses: measured on 2026-11-24, the frag grenade, the SMG grenade, the satchel and the AR2 ball explode with
+		-- NO env_explosion (the engine draws their blast as an effect), so the radar never pinged for them; only the RPG, barrels, mines... made one
+		{
+			name = "a grenade, an SMG grenade, a satchel and an AR2 ball that go off (they are removed) ping the radar at the place where they were, with no env_explosion; any other entity does not, and neither does a removal that is only a cleanup",
+			func = function(state)
+				R.PingPlayers = function() return {} end
+				local seen = {}
+				hook.Add("GryMod_RadarPing", "test_radar_ping", function(pos, size, automatic) seen[#seen + 1] = {pos = pos, size = size, automatic = automatic} end)
+
+				local function entity(class, health)
+					return {
+						IsValid = function() return true end,
+						GetClass = function() return class end,
+						GetPos = function() return Vector(10, 20, 30) end,
+						Health = function() return health or 0 end
+					}
+				end
+
+				for _, class in ipairs({"npc_grenade_frag", "grenade_ar2", "npc_satchel", "prop_combine_ball"}) do
+					seen = {}
+					R.ResetPingRate()
+					R.OnEntityRemoved(entity(class), false)
+					expect(#seen).to.equal(1)
+					expect(seen[1].pos.z).to.equal(30)
+					expect(seen[1].automatic).to.beTrue()
+					expect(seen[1].size > 1).to.beTrue()
+				end
+
+				seen = {}
+				R.ResetPingRate()
+				R.OnEntityRemoved(entity("prop_physics"), false)
+				R.OnEntityRemoved(entity("crossbow_bolt"), false)
+				R.OnEntityRemoved(entity("npc_grenade_frag"), true) -- the map is being cleaned
+				expect(#seen).to.equal(0)
+
+				GetConVar("gry_radar_pings"):SetString("0")
+				R.OnEntityRemoved(entity("npc_grenade_frag"), false)
+				expect(#seen).to.equal(0)
+			end
+		},
+		-- fails if a manhack pings when it is only removed, or never pings when it dies
+		{
+			name = "a manhack pings (small) when it is destroyed, not when it is removed alive",
+			func = function(state)
+				R.PingPlayers = function() return {} end
+				local seen = {}
+				hook.Add("GryMod_RadarPing", "test_radar_ping", function(pos, size, automatic) seen[#seen + 1] = size end)
+				local function manhack(health)
+					return {
+						IsValid = function() return true end,
+						GetClass = function() return "npc_manhack" end,
+						GetPos = function() return Vector(0, 0, 0) end,
+						Health = function() return health end
+					}
+				end
+
+				R.OnEntityRemoved(manhack(25), false)
+				expect(#seen).to.equal(0)
+				R.OnEntityRemoved(manhack(0), false)
+				expect(#seen).to.equal(1)
+				expect(seen[1]).to.equal(2)
+			end
+		},
+		{
+			name = "EntityRemoved has the handler of the radar pings",
+			func = function(state)
+				expect(hook.GetTable().EntityRemoved["GryMod radar pings"]).toNot.beNil()
+			end
 		}
 	}
 }
