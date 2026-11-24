@@ -318,10 +318,52 @@ local function localise(text)
 	return (text:gsub("^@ui_", ""))
 end
 
-function Panel:_refresh()
-	if self.strip then
-		self.strip:MapText(localise)
+-- gry_compass_intercardinals: the strip shows NE, SE, SW and NW between the four main letters (the demo and the movie do), or only N, E, S and W
+-- (the remaster). The letters are still in the strip when they are off, with an empty text, so nothing moves.
+local Intercardinals = CreateClientConVar("gry_compass_intercardinals", "0", true, false,
+	"Show NE, SE, SW and NW on the compass strip as well as N, E, S and W (1), or only the four main letters (0)")
+
+local INTERCARDINAL = {NE = true, SE = true, SW = true, NW = true}
+
+-- Writes the letter names in the strip's fields (the "@ui_" keys become the names; the name stays in entry.compassName so that the option
+-- can bring a hidden letter back), and empties the four intercardinal ones when `shown` is false. Returns whether a text changed.
+local function writeLetters(clip, shown)
+	local changed = false
+
+	for _, entry in pairs(clip.list) do
+		if entry.kind == "text" then
+			entry.compassName = entry.compassName or localise(entry.text)
+
+			local text = (shown or not INTERCARDINAL[entry.compassName]) and entry.compassName or ""
+
+			if text ~= entry.text then
+				entry.text = text
+				changed = true
+			end
+		elseif entry.clip then
+			changed = writeLetters(entry.clip, shown) or changed
+		end
 	end
+
+	if changed then
+		clip:_touch()
+	end
+
+	return changed
+end
+
+function Panel:_applyIntercardinals()
+	local shown = Intercardinals:GetBool()
+
+	self.intercardinals = shown
+
+	if self.strip then
+		writeLetters(self.strip, shown)
+	end
+end
+
+function Panel:_refresh()
+	self:_applyIntercardinals()
 
 	self:SetHeading(self.heading)
 	self:SetFOV(self.fov)
@@ -341,6 +383,8 @@ function Panel:Update(dt)
 	if self.main:CurrentFrame() ~= self.mainFrame then
 		self:_resolve()
 		self:_refresh()
+	elseif self.intercardinals ~= Intercardinals:GetBool() then
+		self:_applyIntercardinals()
 	end
 end
 

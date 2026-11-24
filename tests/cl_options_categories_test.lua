@@ -93,11 +93,13 @@ slider:gry_grenade_range
 slider:gry_hud_crosshair_style
 slider:gry_sound_volume
 slider:gry_usehint_delay
+slider:gry_usehint_hold
 slider:gry_xadd
 slider:gry_xdist
 slider:gry_zoom_tap_ms]]
 
-local RADAR = [[box:gry_hud_radar
+local RADAR = [[box:gry_compass_intercardinals
+box:gry_hud_radar
 box:gry_hud_radarhex
 box:gry_hud_radarmarkers
 box:gry_hud_radarobjectives

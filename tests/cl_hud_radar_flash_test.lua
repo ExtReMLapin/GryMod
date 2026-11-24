@@ -31,6 +31,35 @@ local function alphaOf(clip)
 	return cx and cx[4] or 1
 end
 
+-- runs fn with gry_compass_intercardinals at value, and puts the player's own value back (even when fn fails)
+local function withIntercardinals(value, fn)
+	local convar = GetConVar("gry_compass_intercardinals")
+	local old = convar and convar:GetString()
+
+	convar:SetString(tostring(value))
+
+	local ok, err = pcall(fn)
+
+	if old then
+		convar:SetString(old)
+	end
+
+	if not ok then
+		error(err, 0)
+	end
+end
+
+-- which letters the strip writes
+local function letters(clip)
+	local names = {}
+
+	for _, text in ipairs(texts(clip)) do
+		names[text] = true
+	end
+
+	return names
+end
+
 return {
 	groupName = "GryMod compass and radar (Flash)",
 	cases = {
@@ -49,19 +78,90 @@ return {
 		{
 			name = "the compass letters are the names, not the @ui_ keys",
 			func = function(state)
-				local panel = newPanel()
-				local found = texts(panel.strip)
-				expect(#found).to.beGreaterThan(20)
-				local names = {}
+				withIntercardinals(1, function()
+					local panel = newPanel()
+					local found = texts(panel.strip)
+					expect(#found).to.beGreaterThan(20)
+					local names = {}
 
-				for _, text in ipairs(found) do
-					expect(text:sub(1, 4)).toNot.equal("@ui_")
-					names[text] = true
-				end
+					for _, text in ipairs(found) do
+						expect(text:sub(1, 4)).toNot.equal("@ui_")
+						names[text] = true
+					end
 
-				for _, name in ipairs({"N", "NE", "E", "SE", "S", "SW", "W", "NW"}) do
-					expect(names[name]).to.beTrue()
-				end
+					for _, name in ipairs({"N", "NE", "E", "SE", "S", "SW", "W", "NW"}) do
+						expect(names[name]).to.beTrue()
+					end
+				end)
+			end
+		},
+		{
+			name = "gry_compass_intercardinals is a saved setting, off by default",
+			func = function(state)
+				local convar = GetConVar("gry_compass_intercardinals")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0")
+				-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: same flags as a saved sibling)
+				expect(convar:GetFlags()).to.equal(GetConVar("gry_hud_radarpings"):GetFlags())
+			end
+		},
+		{
+			name = "with the option off the strip shows N, E, S and W only",
+			func = function(state)
+				withIntercardinals(0, function()
+					local names = letters(newPanel().strip)
+
+					for _, name in ipairs({"N", "E", "S", "W"}) do
+						expect(names[name]).to.beTrue()
+					end
+
+					for _, name in ipairs({"NE", "SE", "SW", "NW"}) do
+						expect(names[name]).toNot.beTrue()
+					end
+				end)
+			end
+		},
+		{
+			name = "with the option on the strip shows the eight letters",
+			func = function(state)
+				withIntercardinals(1, function()
+					local names = letters(newPanel().strip)
+
+					for _, name in ipairs({"N", "NE", "E", "SE", "S", "SW", "W", "NW"}) do
+						expect(names[name]).to.beTrue()
+					end
+				end)
+			end
+		},
+		{
+			name = "the letters follow the option while the panel lives, and the strip keeps its place",
+			func = function(state)
+				withIntercardinals(1, function()
+					local panel = newPanel()
+					panel:SetHeading(45)
+					local x = panel.strip.entry.m[5]
+					GetConVar("gry_compass_intercardinals"):SetString("0")
+					panel:Update(0)
+					expect(letters(panel.strip)["NE"]).toNot.beTrue()
+					expect(letters(panel.strip)["N"]).to.beTrue()
+					expect(panel.strip.entry.m[5]).to.equal(x)
+					GetConVar("gry_compass_intercardinals"):SetString("1")
+					panel:Update(0)
+					expect(letters(panel.strip)["NE"]).to.beTrue()
+					expect(letters(panel.strip)["SW"]).to.beTrue()
+				end)
+			end
+		},
+		{
+			name = "a rebuilt strip hides the intercardinals again when the option is off",
+			func = function(state)
+				withIntercardinals(0, function()
+					local panel = newPanel()
+					panel.main:GotoAndStop("normal") -- the clips are rebuilt
+					panel:Update(0)
+					expect(letters(panel.strip)["SE"]).toNot.beTrue()
+					expect(letters(panel.strip)["S"]).to.beTrue()
+				end)
 			end
 		},
 		{
