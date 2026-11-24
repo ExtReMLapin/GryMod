@@ -39,6 +39,7 @@ end
 
 local S = FX.State or {}
 FX.State = S
+S.res = nil -- (a reload makes the sized resources again: the list of them may have changed)
 S.cost = S.cost or {} -- (the measures: FX.State.profile = true records the time each hook body takes, in milliseconds)
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -157,6 +158,35 @@ function FX.LampScale(hdr)
 	end
 
 	return hdr and 1 or FX.LIGHT.ldr
+end
+
+-- The engine's exposure (the HDR auto exposure: a scale the engine moves from 0.5 to 2 as the picture gets brighter or darker, 1 when there is no HDR) is
+-- divided out of the picture before the amplifier, so that the picture is the one of an exposure of 1, the one the look was made with, whatever the player's
+-- game does. The screen is in gamma space (about a power of 1/2.2 of the light), so a picture exposed s times is taken back by s^(-1/2.2).
+FX.EXPOSURE = {gamma = 2.2, min = 0.25, max = 4, dead = 0.01}
+
+function FX.ExposureFactor(scale)
+	local e = FX.EXPOSURE
+
+	if scale == nil then
+		return 1
+	end
+
+	return math.Clamp(scale, e.min, e.max) ^ (-1 / e.gamma)
+end
+
+-- How a factor is drawn over the screen: ("multiply", factor) under 1, ("boost", factor - 1) above 1 (a colour is at most 1, so a boost reaches a factor
+-- of 2), nothing within 1 % of 1.
+function FX.ExposurePass(factor)
+	if math.abs(factor - 1) < FX.EXPOSURE.dead then
+		return nil
+	end
+
+	if factor < 1 then
+		return "multiply", factor
+	end
+
+	return "boost", math.min(factor - 1, 1)
 end
 
 -- The luminance of a pixel (0 to 1) from its channels (0 to 255).
@@ -481,6 +511,10 @@ local function build(w, h)
 	r.rtL1, r.rtL2, r.rtL3 = rt("l1", w, h), rt("l2", w, h), rt("l3", w, h)
 	r.matL1, r.matL2, r.matL3 = mat("l1m", "gry_nv_l1_" .. tag), mat("l2m", "gry_nv_l2_" .. tag), mat("l3m", "gry_nv_l3_" .. tag)
 
+	-- a flat white quad (the exposure pass multiplies or boosts the screen by its colour)
+	r.matFlat = materialOf("gry_nv_flat_" .. tag, "color/white")
+	r.count = r.count + 1
+
 	-- the picture the engine drew, kept while the night vision fades in or out
 	r.rtOrig = rt("orig", w, h)
 	r.matOrig = mat("origm", "gry_nv_orig_" .. tag, {["$translucent"] = 1, ["$alpha"] = 1})
@@ -803,6 +837,20 @@ local function chain(mix, dt)
 	-- 1. the starlight floor
 	if c.star > 0 and flag("gry_nightvision_star") then
 		starlight(c.star)
+	end
+
+	-- the engine's exposure divided out (HDR only: without HDR the scale is 1)
+	if not S.exposureOff and render.GetHDREnabled() then
+		local v = render.GetToneMappingScaleLinear()
+		local kind, amount = FX.ExposurePass(FX.ExposureFactor(v and v.x))
+
+		S.exposure = v and v.x
+
+		if kind == "multiply" then
+			drawmat(R.matFlat, amount, amount, amount, BLEND_DST_COLOR, BLEND_ZERO)
+		elseif kind == "boost" then
+			drawmat(R.matFlat, amount, amount, amount, BLEND_DST_COLOR, BLEND_ONE)
+		end
 	end
 
 	if stage <= 1 then return end

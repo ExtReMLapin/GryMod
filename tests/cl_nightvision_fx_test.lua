@@ -301,6 +301,46 @@ return {
 			end
 		},
 		{
+			name = "the engine's exposure is divided out: the picture of exposure s is taken back to exposure 1 by s^(-1/2.2) (the screen is in gamma space), nothing to do at 1",
+			func = function(state)
+				local FX = GryMod.NightVisionFX
+
+				expect(FX.ExposureFactor(1)).to.equal(1)
+				expect(FX.ExposureFactor(2)).to.aboutEqual(2 ^ (-1 / 2.2), 1e-9)
+				expect(FX.ExposureFactor(0.5)).to.aboutEqual(0.5 ^ (-1 / 2.2), 1e-9)
+				expect(FX.ExposureFactor(2) < 1).to.beTrue()
+				expect(FX.ExposureFactor(0.5) > 1).to.beTrue()
+
+				-- the engine's scale lies in 0.5 .. 2 in play; anything wild is held (a scale of 0 or of 100 must not blank or burn the picture)
+				expect(FX.ExposureFactor(0)).to.equal(FX.ExposureFactor(0.25))
+				expect(FX.ExposureFactor(100)).to.equal(FX.ExposureFactor(4))
+				expect(FX.ExposureFactor(nil)).to.equal(1)
+			end
+		},
+		{
+			name = "the exposure pass: a factor under 1 is a multiply, a factor over 1 a boost by (factor - 1) (a colour cannot be above 1), no pass when it is within 1 %",
+			func = function(state)
+				local FX = GryMod.NightVisionFX
+
+				local kind, amount = FX.ExposurePass(0.8)
+				expect(kind).to.equal("multiply")
+				expect(amount).to.aboutEqual(0.8, 1e-9)
+
+				kind, amount = FX.ExposurePass(1.3)
+				expect(kind).to.equal("boost")
+				expect(amount).to.aboutEqual(0.3, 1e-9)
+
+				-- the boost is held at what a colour can carry (a factor of 2)
+				kind, amount = FX.ExposurePass(3)
+				expect(kind).to.equal("boost")
+				expect(amount).to.equal(1)
+
+				expect(FX.ExposurePass(1)).to.beNil()
+				expect(FX.ExposurePass(1.005)).to.beNil()
+				expect(FX.ExposurePass(0.995)).to.beNil()
+			end
+		},
+		{
 			name = "the lamp: far Z follows the fog (at least 3000, the fog's end and 500 more), a square 140 degree frustum",
 			func = function(state)
 				local FX = GryMod.NightVisionFX
