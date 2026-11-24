@@ -175,6 +175,26 @@ the one veto.)
 - `GryMod_StrengthJump` is fired right after the jump is granted and the energy is paid. With the infinite armor the jump is free but it is
   reported too.
 
+## Cloak level (server and client)
+
+`GryMod.API.Has("cloaklevel")` is true. The camouflage is a switch for the player, but an AI that watches him needs to know how far it has
+faded: right after the switch the player is still half visible, and right after the end he is still half hidden.
+
+```lua
+local level = GryMod.API.CloakLevel(ply) -- 0 = not cloaked, 1 = fully cloaked
+```
+
+- The level moves toward 1 while the camouflage is on and toward 0 when it is off, at `1 / gry_cloak_fade_seconds` per second. The server
+  setting `gry_cloak_fade_seconds` is 2 by default, from 0 (an instant switch) to 10.
+- A camouflage switched on again during the fade-out goes on from the level it had.
+- A dead player is 0, and a respawn starts at 0 at once.
+- Nothing runs between two switches: the server writes two networked stamps on the player at each switch (`GryCloakLvl0`, the level at that
+  moment, and `GryCloakT0`, the time), and the level is computed when you ask. So it costs nothing to ask it often, on the server or on the
+  client.
+- `GryMod.CloakLevelFrom(on, level0, t0, now, rate)` is the formula itself, and `GryMod.CloakFadeRate()` the rate of the server setting.
+
+The camouflage still sets `FL_NOTARGET` for the Half-Life 2 NPCs, as before: the level is for AIs that make their own perception.
+
 ## Relation: ally, neutral or hostile (server)
 
 `GryMod.API.Relation(ply, ent)` returns `"ally"`, `"neutral"` or `"hostile"`. It is the only place that decides it for the radar and for

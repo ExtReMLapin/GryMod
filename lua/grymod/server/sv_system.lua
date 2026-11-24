@@ -187,12 +187,21 @@ function meta:SetNanosuitMode(mode, networked, reason)
 		-- F.StartAmount). It is kept while the switch stays on: a second request for the camouflage is not a new activation.
 		if not self:GetNW2Bool("GryCloak", false) then
 			self:SetNW2Float("GryCloakSince", CurTime())
+			-- the stamps of the cloak level (sh_cloak_level.lua), written before the switch: the level of this moment and the time
+			self:SetNW2Float("GryCloakLvl0", GryMod.API.CloakLevel(self))
+			self:SetNW2Float("GryCloakT0", CurTime())
 		end
 
 		self:SetNW2Bool("GryCloak", true)
 		self:SetNoTarget(true)
 		self:DrawWorldModel(false)
 	else
+		if self:GetNW2Bool("GryCloak", false) then
+			-- leaving the cloak: the level fades out from where it is, except at a respawn, where the new life starts uncloaked at once
+			self:SetNW2Float("GryCloakLvl0", reason == GryMod.ModeReasons.SPAWN and 0 or GryMod.API.CloakLevel(self))
+			self:SetNW2Float("GryCloakT0", CurTime())
+		end
+
 		self:SetNW2Bool("GryCloak", false)
 		self:SetMaterial("")
 

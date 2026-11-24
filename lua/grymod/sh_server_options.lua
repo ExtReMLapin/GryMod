@@ -16,6 +16,8 @@ Settings.List = {
 	{name = "gry_energy_net", kind = "bool"},
 	{name = "gry_mechanics", kind = "choice", values = {"crysis", "classic"}},
 	{name = "gry_cloak_ai", kind = "bool"},
+	-- seconds of the cloak level's fade for the AI (sh_cloak_level.lua); the console takes any value from 0 to 10, the panel these
+	{name = "gry_cloak_fade_seconds", kind = "choice", values = {"0", "0.5", "1", "2", "3", "5"}},
 	{name = "gry_radar_allies_always", kind = "bool"},
 	{name = "gry_movement", kind = "choice", values = {"0", "1", "2"}},
 	{name = "gry_radar_objects", kind = "bool"},

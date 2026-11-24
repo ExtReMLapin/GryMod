@@ -470,6 +470,18 @@ function GryMod.AdminOptions(Panel)
 		}
 	})
 	GryMod.AdminOption(Panel, "Camouflage: enemies forget you", "gry_cloak_ai", "bool", {into = form, help = "Striders, hunters and manhacks forget you."})
+	GryMod.AdminOption(Panel, "Camouflage fade for the AI", "gry_cloak_fade_seconds", "choice", {
+		into = form,
+		help = "How long you stay half visible to addon AIs when the camouflage starts or ends.",
+		choices = {
+			{"Instant", "0"},
+			{"0.5 s", "0.5"},
+			{"1 s", "1"},
+			{"2 s (default)", "2"},
+			{"3 s", "3"},
+			{"5 s", "5"}
+		}
+	})
 	GryMod.AdminOption(Panel, "Movement speeds", "gry_movement", "choice", {
 		into = form,
 		choices = {
