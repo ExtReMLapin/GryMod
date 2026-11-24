@@ -19,7 +19,9 @@ Settings.DEFAULT_CHROME = true
 local EnableConVar = GetConVar("gry_map_enable") or CreateClientConVar("gry_map_enable", "1", true, false,
 	"The big map, opened by its key (M by default): 1 on, 0 off", 0, 1)
 local ZoomConVar = GetConVar("gry_map_zoom") or CreateClientConVar("gry_map_zoom", "1", true, false,
-	"The zoom the big map had when it was closed (1 to 8): the next opening of a map session starts there. The first opening of a map is automatic", 1, 8)
+	"The zoom the big map had when it was closed (1 to 1024, the map puts it inside its own limit): the next opening of a map session starts there. The first opening of a map is automatic", 1, 1024)
+local ZoomCmConVar = GetConVar("gry_map_zoom_cm") or CreateClientConVar("gry_map_zoom_cm", "7", true, false,
+	"How closely the big map zooms: what a pixel of the screen covers in the world at the closest zoom, in centimetres (7 by default, 1 to 100). A small map always keeps x8", 1, 100)
 local FxConVar = GetConVar("gry_map_loading_fx") or CreateClientConVar("gry_map_loading_fx", "glitch", true, false,
 	"The look of the big map's tiles while they load (a name registered with GryMod.Map.Fx.Register; glitch by default)")
 local FinishedConVar = GetConVar("gry_map_finished") or CreateClientConVar("gry_map_finished", "0", true, false,
@@ -51,7 +53,7 @@ function Settings.ParseSwitch(text, default)
 	return n >= 1 or n <= -1
 end
 
--- The zoom, from 1 to 8; a text that is no number gives 1.
+-- The zoom, from 1 to Zoom.ABSOLUTE_MAX (the view's own limit is applied when it is set); a text that is no number gives 1.
 function Settings.ParseZoom(text)
 	local Zoom = GryMod.Map.Zoom
 
@@ -61,7 +63,20 @@ function Settings.ParseZoom(text)
 
 	local n = number(text) or 1
 
-	return n < 1 and 1 or (n > 8 and 8 or n)
+	return n < 1 and 1 or (n > 1024 and 1024 or n)
+end
+
+-- The centimetres a screen pixel covers at the closest zoom, from any text: 1 to 100, 7 by default.
+function Settings.ParseZoomCentimetres(text)
+	local Zoom = GryMod.Map.Zoom
+
+	if Zoom then
+		return Zoom.ParseCentimetres(text)
+	end
+
+	local n = number(text) or 7
+
+	return n < 1 and 1 or (n > 100 and 100 or n)
 end
 
 -- The name of a loading look: letters, digits and underscore, at most 32. Anything else gives the default look.
@@ -79,6 +94,11 @@ end
 
 function Settings.Zoom()
 	return Settings.ParseZoom(ZoomConVar:GetString())
+end
+
+-- What a pixel of the screen covers in the world at the closest zoom, in centimetres (the setting gry_map_zoom_cm).
+function Settings.ZoomCentimetres()
+	return Settings.ParseZoomCentimetres(ZoomCmConVar:GetString())
 end
 
 -- Saves the zoom the map had when it was closed.

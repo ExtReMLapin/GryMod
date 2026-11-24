@@ -17,6 +17,9 @@ Markers.FINISHED_ALPHA = 0.45
 
 local floor = math.floor
 
+-- the zoom over which an icon is no bigger
+local ICON_ZOOM_MAX = 8
+
 local function finite(n)
 	return type(n) == "number" and n - n == 0
 end
@@ -227,10 +230,15 @@ end
 -- icons ----------------------------------------------------------------------------------------------------------------------------------------
 
 -- The size in pixels of an icon whose own size is `base`, at `zoom`: the original's (zoom + 2) * 0.25, so an icon grows slowly while the map grows fast;
--- `scale` is the percent a source asks for (100 when it asks for none).
+-- `scale` is the percent a source asks for (100 when it asks for none). The icon stops growing at zoom 8 (the original's closest): the map now zooms much
+-- further on a big map, and an icon that went on growing would cover it.
 function Markers.IconSize(zoom, base, scale)
 	if not finite(scale) or scale <= 0 then
 		scale = 100
+	end
+
+	if zoom > ICON_ZOOM_MAX then
+		zoom = ICON_ZOOM_MAX
 	end
 
 	return (zoom + 2) * 0.25 * base * scale / 100

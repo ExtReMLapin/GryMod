@@ -313,8 +313,11 @@ made by the same render, from straight above, outside view: terrain, rocks and r
   switch is turned off.
 - **Controls.** The mouse wheel zooms toward the mouse: the point of the map under the cursor stays under it. A drag with the left or the right button moves
   the map. The middle button held while the mouse goes up and down is a smooth zoom (up zooms in). The "DONE" button closes it. The zoom goes from 1 (the
-  whole map fills the window) to 8; a wheel notch is `z * 1.35 - 0.25` in and `z / (1.35 - 0.25 / z)` out, which is the original game's rule (eleven notches
-  from 1 to 8).
+  whole map fills the window) to a closest zoom that depends on the map: the one where a pixel of the screen covers 7 cm of the world (`gry_map_zoom_cm`), and
+  never less than 8. The original's fixed 8 is a fraction of the map, so on a 4 km map it left 25 cm a pixel; now such a map zooms to about x57 in a 1000 pixel
+  window (a bigger window or a smaller map reaches it at a different number, the pixel size is the same). A small map keeps x8. A wheel notch is `z * 1.35 - 0.25`
+  in and `z / (1.35 - 0.25 / z)` out, which is the original game's rule (eleven notches from 1 to 8); over 8 the smooth zoom of the middle button goes faster
+  in proportion, and the icons stop growing at 8.
 - **The hard limit.** The map never shows anything outside its bounds: the picture always fills the window, there is no empty margin at any zoom. At zoom 1
   there is no pan (the window has the shape of the bounds, from 1:2 to 2:1; a very long map can still be moved along its long side).
 - **Zoom and place.** The first opening of a map session uses the automatic zoom: the whole bounds when their long side is up to 1000 m, else a window of about
@@ -415,7 +418,8 @@ The base of a cell (the coarse picture, or the plain tile) is drawn by the map; 
 | --- | --- | --- | --- |
 | `gry_map_enable` | 1 | 0 or 1 | The big map. 0: the key and `GryMod.Map.Open()` do nothing. |
 | `gry_map_key` | 0 (M) | a button code | The key that opens and closes it; 0 uses the default, M. A `bind <key> gry_map` in the console works too. |
-| `gry_map_zoom` | 1 | 1 to 8 | The zoom the map had when it was closed; the next opening of the session starts there. Written by the map. |
+| `gry_map_zoom` | 1 | 1 to 1024 | The zoom the map had when it was closed; the next opening of the session starts there (the map puts it inside the limit of its own). Written by the map. |
+| `gry_map_zoom_cm` | 7 | 1 to 100 | How closely the map zooms: what a pixel of the screen covers in the world at the closest zoom, in centimetres. A small map keeps x8 whatever this is. Takes effect at the next opening. |
 | `gry_map_loading_fx` | glitch | a name | The loading look (see above). A name nobody registered uses the glitch. |
 | `gry_map_finished` | 0 | 0 or 1 | Also show the objectives that are done or failed, greyed. |
 | `gry_map_grid` | 1 | 0 or 1 | The 8 x 8 grid with its letters and numbers. |

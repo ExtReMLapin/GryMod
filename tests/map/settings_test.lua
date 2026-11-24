@@ -97,7 +97,9 @@ return {
 
 				expect(type(settings.Enabled())).to.equal("boolean")
 				expect(type(settings.Zoom())).to.equal("number")
-				expect(settings.Zoom() >= 1 and settings.Zoom() <= 8).to.beTrue()
+				expect(settings.Zoom() >= 1 and settings.Zoom() <= 1024).to.beTrue()
+				expect(type(settings.ZoomCentimetres())).to.equal("number")
+				expect(settings.ZoomCentimetres() >= 1 and settings.ZoomCentimetres() <= 100).to.beTrue()
 				expect(type(settings.LoadingFx())).to.equal("string")
 				expect(type(settings.ShowFinished())).to.equal("boolean")
 				expect(type(settings.ShowGrid())).to.equal("boolean")

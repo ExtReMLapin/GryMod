@@ -233,6 +233,9 @@ return {
 
 				expect(m.IconSize(1, 20, 100)).to.aboutEqual(15, 1e-9)
 				expect(m.IconSize(8, 20, 100)).to.aboutEqual(50, 1e-9)
+				-- an icon stops growing at zoom 8, whatever the zoom of a big map
+				expect(m.IconSize(60, 20, 100)).to.aboutEqual(50, 1e-9)
+				expect(m.IconSize(1000, 20, 50)).to.aboutEqual(25, 1e-9)
 				expect(m.IconSize(2, 20, 50)).to.aboutEqual(10, 1e-9)
 				-- a scale that is no number is 100 percent
 				expect(m.IconSize(2, 20, nil)).to.aboutEqual(20, 1e-9)

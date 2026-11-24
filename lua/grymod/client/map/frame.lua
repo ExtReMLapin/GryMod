@@ -9,7 +9,9 @@
 --   x, y, w, h        the window on the screen, in pixels
 --   x0, x1, y0, y1    the bounds of the map in world units (x0 < x1, y0 < y1); the picture never leaves them
 --   k1                pixels per world unit at zoom 1
---   zoom              1 to 8 (Zoom.MIN, Zoom.MAX)
+--   zoom              1 to zoomMax
+--   zoomMax           the closest zoom of this view: the one where a screen pixel covers the centimetres of the setting (7 by default), never under 8
+--                     (Zoom.MaxFor); it follows the window and the bounds
 --   cx, cy            the world point in the middle of the window
 -- The scale is k1 * zoom. The scale at zoom 1 COVERS the window (the larger of the two ratios), so the picture always fills it: there is never an
 -- empty margin, at any zoom. A window of the shape of the bounds (see WindowSize) is covered exactly, and then there is no pan at zoom 1.
@@ -26,15 +28,27 @@ Frame.ASPECT_MAX = 2
 
 local floor = math.floor
 
-local function zoomLimits()
+local function zoomLimits(v)
 	local Zoom = GryMod.Map.Zoom
 
 	if Zoom then
-		return Zoom.MIN, Zoom.MAX
+		return Zoom.MIN, v and v.zoomMax or Zoom.MAX
 	end
 
-	return 1, 8
+	return 1, v and v.zoomMax or 8
 end
+
+-- What a screen pixel covers at the closest zoom, in centimetres of the world: the setting when its module is there, else the default.
+local function centimetres()
+	local Settings = GryMod.Map.Settings
+
+	if Settings and Settings.ZoomCentimetres then
+		return Settings.ZoomCentimetres()
+	end
+
+	return 7
+end
+
 
 -- The size of the window inside a room of availW x availH pixels, for bounds: the shape of the bounds (the screen's horizontal axis is world Y, the
 -- vertical one is world X), kept from 1:2 to 2:1, as large as the room allows. Whole pixels.
@@ -76,13 +90,21 @@ local function fitScale(w, h, bounds)
 	return a > b and a or b
 end
 
+-- The scale at zoom 1 and, from it, the closest zoom.
+local function refit(v, bounds)
+	local Zoom = GryMod.Map.Zoom
+
+	v.k1 = fitScale(v.w, v.h, bounds)
+	v.zoomMax = Zoom and Zoom.MaxFor(v.k1, centimetres()) or 8
+end
+
 function Frame.Scale(v)
 	return v.k1 * v.zoom
 end
 
 -- The centre pushed back so that the window stays inside the bounds (on an axis where the window is larger than the bounds, it stays on the middle).
 function Frame.Clamp(v)
-	local low, high = zoomLimits()
+	local low, high = zoomLimits(v)
 
 	if v.zoom < low then
 		v.zoom = low
@@ -123,7 +145,7 @@ function Frame.New(rect, bounds)
 		zoom = 1, cx = (bounds.x0 + bounds.x1) / 2, cy = (bounds.y0 + bounds.y1) / 2
 	}
 
-	v.k1 = fitScale(v.w, v.h, bounds)
+	refit(v, bounds)
 
 	return Frame.Clamp(v)
 end
@@ -131,7 +153,7 @@ end
 -- Other bounds (the map knows more of itself): the zoom and the centre stay as far as they fit.
 function Frame.SetBounds(v, bounds)
 	v.x0, v.x1, v.y0, v.y1 = bounds.x0, bounds.x1, bounds.y0, bounds.y1
-	v.k1 = fitScale(v.w, v.h, bounds)
+	refit(v, bounds)
 
 	return Frame.Clamp(v)
 end
@@ -139,7 +161,7 @@ end
 -- The window moves or changes size (the screen changed): the world point in the middle stays.
 function Frame.SetRect(v, rect)
 	v.x, v.y, v.w, v.h = rect.x, rect.y, rect.w, rect.h
-	v.k1 = fitScale(v.w, v.h, v)
+	refit(v, v)
 
 	return Frame.Clamp(v)
 end
@@ -171,7 +193,7 @@ function Frame.ZoomAt(v, zoom, sx, sy)
 
 	v.zoom = zoom
 
-	local low, high = zoomLimits()
+	local low, high = zoomLimits(v)
 
 	if v.zoom < low then
 		v.zoom = low

@@ -217,6 +217,65 @@ return {
 				expect(maxy2 < maxy).to.beTrue()
 			end
 		},
+		-- fails when a view keeps the original's x8 on a big map (a pixel of a 4 km map at x8 covers 25 cm) or when its limit does not follow the window
+		{
+			name = "the closest zoom of a view is where a screen pixel covers 7 cm (the setting), at least 8, and follows the window and the bounds",
+			func = function()
+				local frame = F()
+				-- 4 km square (units of 0.01905 m) in a 1000 pixel window
+				local units = 4000 / 0.01905
+				local v = frame.New({x = 0, y = 0, w = 1000, h = 1000}, {x0 = 0, x1 = units, y0 = 0, y1 = units})
+				local cm = GryMod.Map.Settings and GryMod.Map.Settings.ZoomCentimetres and GryMod.Map.Settings.ZoomCentimetres() or 7
+
+				expect(v.zoomMax > 8).to.beTrue()
+				expect(v.zoomMax).to.aboutEqual(GryMod.Map.Zoom.MaxFor(v.k1, cm), 1e-9)
+
+				-- at the closest zoom a pixel covers the centimetres of the setting
+				frame.SetZoom(v, 100000)
+				expect(v.zoom).to.aboutEqual(v.zoomMax, 1e-9)
+				expect(0.01905 / frame.Scale(v) * 100).to.aboutEqual(cm, 1e-6)
+
+				-- the window is twice as large (a 4K screen): the same pixel size is reached at half the zoom
+				local big = frame.New({x = 0, y = 0, w = 2000, h = 2000}, {x0 = 0, x1 = units, y0 = 0, y1 = units})
+
+				expect(big.zoomMax).to.aboutEqual(v.zoomMax / 2, 1e-9)
+
+				-- smaller bounds: the limit follows them (SetBounds), and a small map keeps 8
+				frame.SetBounds(v, {x0 = 0, x1 = 1000, y0 = 0, y1 = 1000})
+				expect(v.zoomMax).to.equal(8)
+				expect(v.zoom).to.equal(8)
+
+				-- the window changes size: the limit follows it (SetRect)
+				frame.SetBounds(v, {x0 = 0, x1 = units, y0 = 0, y1 = units})
+				local before = v.zoomMax
+
+				-- half the window: the map is half as many pixels at zoom 1, so the same pixel size takes twice the zoom
+				frame.SetRect(v, {x = 0, y = 0, w = 500, h = 500})
+				expect(v.zoomMax).to.aboutEqual(before * 2, 1e-9)
+			end
+		},
+		-- fails when ZoomAt or the wheel clamp to 8 instead of the view's limit, or lose the point under the cursor at a high zoom
+		{
+			name = "the wheel keeps the point under the cursor at a zoom over 8 on a big map",
+			func = function()
+				local frame = F()
+				local units = 4000 / 0.01905
+				local v = frame.New({x = 0, y = 0, w = 1000, h = 1000}, {x0 = 0, x1 = units, y0 = 0, y1 = units})
+
+				frame.CentreOn(v, units / 2, units / 2)
+
+				local mx, my = 700, 300
+				local wx, wy = frame.ToWorld(v, mx, my)
+
+				frame.ZoomAt(v, 30, mx, my)
+				expect(v.zoom).to.equal(30)
+
+				local sx, sy = frame.ToScreen(v, wx, wy)
+
+				expect(sx).to.aboutEqual(mx, 1e-6)
+				expect(sy).to.aboutEqual(my, 1e-6)
+			end
+		},
 		-- fails when the zoom is not clamped to 1..8
 		{
 			name = "the zoom is kept from 1 to 8",

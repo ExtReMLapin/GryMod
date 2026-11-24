@@ -82,7 +82,7 @@ suit that is down at that moment gives `1` at once, and the end of a malfunction
 
 ### `GryMod_MapOpened()`, `GryMod_MapClosed()`, `GryMod_MapZoomed(zoom)`
 
-The big map (see `docs/minimap.md`) opened, closed, or changed its zoom (`zoom`, from 1 to 8, after a wheel notch or a middle-button drag; not at opening). Run inside a
+The big map (see `docs/minimap.md`) opened, closed, or changed its zoom (`zoom`, from 1 up to the closest zoom of the map, 8 at least, after a wheel notch or a middle-button drag; not at opening). Run inside a
 `pcall`: a listener that fails is shown once in the console and stops nothing.
 
 ```lua

@@ -247,7 +247,7 @@ function Map.Wheel(x, y, delta)
 		return false
 	end
 
-	local zoom = Zoom.Step(view.zoom, delta)
+	local zoom = Zoom.Step(view.zoom, delta, view.zoomMax)
 
 	if zoom == view.zoom then
 		return false
@@ -321,7 +321,7 @@ function Map.DragMove(x, y)
 	end
 
 	if S.drag == "zoom" then
-		local zoom = Zoom.Analog(view.zoom, dy)
+		local zoom = Zoom.Analog(view.zoom, dy, view.zoomMax)
 
 		if zoom ~= view.zoom then
 			if inWindow(view, S.anchorX, S.anchorY) then
@@ -1121,7 +1121,7 @@ function Map._open()
 	if S.opened then
 		zoom = Settings.Zoom() -- the last zoom
 	else
-		zoom = Zoom.Auto(Bounds.SpanMetres(bounds)) -- the first opening of a map: automatic
+		zoom = Zoom.Auto(Bounds.SpanMetres(bounds), view.zoomMax) -- the first opening of a map: automatic
 	end
 
 	Frame.SetZoom(view, zoom)
