@@ -196,9 +196,13 @@ function meta:SetNanosuitMode(mode, networked, reason)
 		self:SetNoTarget(true)
 		self:DrawWorldModel(false)
 	else
-		if self:GetNW2Bool("GryCloak", false) then
-			-- leaving the cloak: the level fades out from where it is, except at a respawn, where the new life starts uncloaked at once
-			self:SetNW2Float("GryCloakLvl0", reason == GryMod.ModeReasons.SPAWN and 0 or GryMod.API.CloakLevel(self))
+		if reason == GryMod.ModeReasons.SPAWN then
+			-- a respawn: the new life starts uncloaked at once, also when the old one died during a fade-out (the switch already off)
+			self:SetNW2Float("GryCloakLvl0", 0)
+			self:SetNW2Float("GryCloakT0", CurTime())
+		elseif self:GetNW2Bool("GryCloak", false) then
+			-- leaving the cloak: the level fades out from where it is
+			self:SetNW2Float("GryCloakLvl0", GryMod.API.CloakLevel(self))
 			self:SetNW2Float("GryCloakT0", CurTime())
 		end
 

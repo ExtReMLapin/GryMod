@@ -100,6 +100,22 @@ return {
 			end
 		},
 		{
+			name = "a respawn during the fade-out of a cloak already switched off starts at 0 (final review, item 1)",
+			func = function()
+				local p = ply()
+
+				p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
+				p:SetNW2Float("GryCloakT0", CurTime() - 5)
+				p:SetNanosuitMode(GryMod.Modes.ARMOR, false)
+				p:SetNW2Float("GryCloakT0", CurTime() - 0.1)
+				expect(GryMod.API.CloakLevel(p) > 0.5).to.beTrue()
+				p:KillSilent()
+				p:Spawn()
+
+				expect(GryMod.API.CloakLevel(p)).to.equal(0)
+			end
+		},
+		{
 			name = "after a respawn the level is 0 at once (no fade-out from the old life)",
 			func = function()
 				local p = ply()

@@ -120,6 +120,16 @@ return {
 			end
 		},
 		{
+			name = "Describe turns a NaN level and a NaN exposure into 0 (final review, item 2)",
+			func = function()
+				local bot = spawnBot(function() return 0 / 0, 0 / 0, false, false end)
+				local d = R.Describe(bot, ply())
+
+				expect(d.awareLevel).to.equal(0)
+				expect(d.exposure).to.equal(0)
+			end
+		},
+		{
 			name = "a GetGryAwareness that throws leaves the description as today's, and Describe does not throw",
 			func = function()
 				local bot = spawnBot(function() error("broken bot") end)

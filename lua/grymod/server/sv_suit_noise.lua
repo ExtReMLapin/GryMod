@@ -38,7 +38,9 @@ function GryMod.EmitSuitNoise(ply, kind)
 		return false
 	end
 
-	hook.Run("GryMod_SuitNoise", ply, ply:GetPos(), radius, kind)
+	-- a listener of another addon that throws must not break the caller (an EntityFireBullets handler: the other handlers of that bullet,
+	-- GryMod's own decloak among them, would not run): its error is printed and the noise goes on
+	ProtectedCall(hook.Run, "GryMod_SuitNoise", ply, ply:GetPos(), radius, kind)
 
 	return true
 end

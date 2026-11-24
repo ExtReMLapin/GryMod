@@ -134,6 +134,22 @@ return {
 			end
 		},
 		{
+			name = "a GryMod_SuitNoise listener that throws does not break the bullet hook (final review, item 6)",
+			func = function()
+				local p = ply()
+				local fn = bullets()
+				local ok
+
+				p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
+				p:SetNW2Float("GryCloakT0", CurTime() - 3)
+				hook.Add("GryMod_SuitNoise", "GryMod test throwing listener", function() error("a broken addon") end)
+				ok = pcall(fn, p, {})
+				hook.Remove("GryMod_SuitNoise", "GryMod test throwing listener")
+
+				expect(ok).to.beTrue()
+			end
+		},
+		{
 			name = "EmitSuitNoise refuses an unknown kind and an invalid player",
 			func = function()
 				expect(GryMod.EmitSuitNoise(ply(), "nope")).to.beFalse()
