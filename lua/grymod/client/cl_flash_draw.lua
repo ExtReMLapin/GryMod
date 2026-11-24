@@ -1001,6 +1001,13 @@ function Flash.ReleaseEntry(entry)
 		entry.cache = nil
 	end
 
+	cache = entry.cacheB
+
+	if cache then
+		releaseTarget(cache)
+		entry.cacheB = nil
+	end
+
 	if entry.clip then
 		for _, child in pairs(entry.clip.list) do
 			Flash.ReleaseEntry(child)
@@ -1049,7 +1056,9 @@ local MAX_GROUP = 4096
 
 -- The image of a group on the screen: the colours in it are already multiplied by their alpha, so "add" adds
 -- them and any other mode is a normal "over".
-local function compositeGroup(cache, blend, shiftX, shiftY)
+-- xMin and xMax (screen x, either may be nil) cut the image: only what is at or past xMin and before xMax is drawn (a smooth bar shows the images of two
+-- frames, each on its side of a line: sh_flash_bar.lua). The quad is made narrower and its texture coordinates follow, so the pixels are the image's own.
+local function compositeGroup(cache, blend, shiftX, shiftY, xMin, xMax)
 	render.SetMaterial(groupMaterial(cache.target))
 
 	if blend == BLEND_ADD then
@@ -1062,11 +1071,27 @@ local function compositeGroup(cache, blend, shiftX, shiftY)
 
 	local x0, y0, width, height = cache.x0 + shiftX, cache.y0 + shiftY, cache.width, cache.height
 	local u1, v1 = width / cache.textureW, height / cache.textureH
+	local xLeft, xRight, uLeft, uRight = x0, x0 + width, 0, u1
 
-	polyA[1], polyA[2], polyA[3], polyA[4] = x0, y0, 0, 0
-	polyA[5], polyA[6], polyA[7], polyA[8] = x0 + width, y0, u1, 0
-	polyA[9], polyA[10], polyA[11], polyA[12] = x0 + width, y0 + height, u1, v1
-	polyA[13], polyA[14], polyA[15], polyA[16] = x0, y0 + height, 0, v1
+	if xMin and xMin > xLeft then
+		xLeft, uLeft = xMin, (xMin - x0) / width * u1
+	end
+
+	if xMax and xMax < xRight then
+		xRight, uRight = xMax, (xMax - x0) / width * u1
+	end
+
+	if not (xLeft < xRight) then
+		blendOverridden = false
+		render.OverrideBlend(false)
+
+		return
+	end
+
+	polyA[1], polyA[2], polyA[3], polyA[4] = xLeft, y0, uLeft, 0
+	polyA[5], polyA[6], polyA[7], polyA[8] = xRight, y0, uRight, 0
+	polyA[9], polyA[10], polyA[11], polyA[12] = xRight, y0 + height, uRight, v1
+	polyA[13], polyA[14], polyA[15], polyA[16] = xLeft, y0 + height, uLeft, v1
 
 	local pieces = maskCount > 0 and maskCount or 1
 
@@ -1147,16 +1172,17 @@ end
 
 -- Draws the clip of `entry` as one image composed with `blend` (see the header). The image is kept with the
 -- entry and drawn again as long as the clip and where it is drawn do not change.
-local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
-	local clip = entry.clip
-	local cache = entry.cache
+-- `holder[field]` is where the image is kept (the entry's `cache`; a smooth bar's second image is the entry's `cacheB`), `clip` the clip it shows (the
+-- entry's, or the clone of it kept at the next frame), xMin and xMax the cut of the composite (see compositeGroup).
+local function drawGroupOf(holder, field, clip, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, xMin, xMax)
+	local cache = holder[field]
 
 	if cache and cache.version == clip.version and sameKey(cache, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa) then
 		Flash.Stats.groupReuses = Flash.Stats.groupReuses + 1
 
 		if cache.target then
 			flush()
-			compositeGroup(cache, blend, shiftX, shiftY)
+			compositeGroup(cache, blend, shiftX, shiftY, xMin, xMax)
 		end
 
 		return
@@ -1182,7 +1208,7 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 
 	if not cache then
 		cache = {}
-		entry.cache = cache
+		holder[field] = cache
 	end
 
 	cache.version, cache.blend = clip.version, blend
@@ -1220,7 +1246,31 @@ local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, a
 	render.PopRenderTarget()
 	maskCount, maskFirst = outerMask, outerFirst
 
-	compositeGroup(cache, blend, 0, 0)
+	compositeGroup(cache, blend, 0, 0, xMin, xMax)
+end
+
+-- Draws the clip of `entry` as one image (see drawGroupOf). A clip that has a cut line (Clip:SetCut, a smooth bar) is drawn as two: its own image on one
+-- side of the line and the image of its clone, at the next frame, on the other; the line is where the fill is between the two frames' edges, so the fill
+-- ends at the exact fraction. Both images are the cached ones (the clone's is made when its frame changes, as the clip's own is): a paint draws two quads and
+-- allocates nothing.
+local function drawGroup(entry, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa)
+	local clip = entry.clip
+	local clone = clip.cutClone
+
+	if not clone then
+		return drawGroupOf(entry, "cache", clip, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, nil, nil)
+	end
+
+	local line = a * clip.cutX + c * clip.cutY + tx
+
+	if clip.cutSide > 0 then
+		-- the fill is on the larger x side: the frame's own image keeps the track on the smaller side, the next frame's the fill
+		drawGroupOf(entry, "cache", clip, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, nil, line)
+		drawGroupOf(entry, "cacheB", clone, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, line, nil)
+	else
+		drawGroupOf(entry, "cache", clip, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, line, nil)
+		drawGroupOf(entry, "cacheB", clone, blend, a, b, c, d, tx, ty, mr, mg, mb, ma, ar, ag, ab, aa, nil, line)
+	end
 end
 
 function Flash.ClearGroupCache()

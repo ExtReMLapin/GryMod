@@ -168,6 +168,30 @@ function HUD:SetEnergy(value)
 	end
 end
 
+-- The suit's energy bar at the exact value, not at whole percents (cl_hud_bar_smooth.lua): `energy` is the float the bar shows, 0 to 100, the one SetEnergy was
+-- given before its rounding. The bar is at its integer frame as SetEnergy put it, and the fraction is the cut line and the clone at the next frame. Nothing
+-- is done (the bar is as the original draws it) when a step is a pixel or less or the setting gry_hud_bar_smooth is off. The digits stay whole numbers.
+function HUD:SetEnergyExact(energy)
+	local clip = self.energyBar
+	local Smooth = GryMod.FlashBarSmooth
+
+	if not clip or not Smooth then
+		return
+	end
+
+	local bar = self.energySmooth
+
+	-- the clip is another one when the HUD made its panel again (the movie's restart)
+	if bar == nil or (bar and bar.mask ~= clip) then
+		bar = Smooth.ForClip(clip, 0)
+		self.energySmooth = bar or false
+	end
+
+	if bar then
+		Smooth.Apply(bar, energy)
+	end
+end
+
 -- setOverheatBar: the bar above the weapon icon. frame: 1 to 100 (the heat in percent), 0 or nil hides it (the original hides it for 0).
 -- The movie's player HUD only; nothing is shown for a weapon that gives no heat.
 function HUD:SetHeat(frame)
@@ -1069,12 +1093,16 @@ local function feed(ply)
 	-- the original gives its HUD the energy as a float at every frame (setEnergy); here it is predicted between
 	-- the server's updates (cl_energy_smooth.lua)
 	local smooth = GryMod.EnergySmooth
-	local energy = Module.EnergyValue(smooth and smooth.Shown(ply, CurTime()) or ply:GetNW2Float("GryEnergy"))
+	local exactEnergy = smooth and smooth.Shown(ply, CurTime()) or ply:GetNW2Float("GryEnergy")
+	local energy = Module.EnergyValue(exactEnergy)
 
 	if fed.energy ~= energy then
 		fed.energy = energy
 		hud:SetEnergy(energy)
 	end
+
+	-- and the bar at the exact value (the cut line: cl_hud_bar_smooth.lua)
+	hud:SetEnergyExact(exactEnergy)
 
 	-- the server says when the suit is down (an EMP, an electric hit) and when a light shock flickers the HUD
 	local down = ply:GetNW2Bool("GryMalfunction", false)

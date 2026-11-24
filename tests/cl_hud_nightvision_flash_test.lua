@@ -55,6 +55,7 @@ return {
 		savedConVar("gry_hud_nightvision")
 		savedConVar("gry_hud")
 		savedConVar("gry_nightvision_energy")
+		savedConVar("gry_hud_bar_smooth")
 		state_now = nil
 		NightBar.Reset()
 		NightBar.SetStatus(0)
@@ -140,8 +141,9 @@ return {
 		},
 		{
 			-- needs: Instance:SetBar going to the frame of the bar's clip
-			name = "SetBar puts the bar at the frame of the value: 0 is the first frame, 25 the 26th, 50 the 51st, 100 the 101st",
+			name = "SetBar puts the bar at the frame of the value: 0 is the first frame, 25 the 26th, 50 the 51st, 100 the 101st (12.9 the 13th: the original's whole steps, the smooth bars are off here; they are tested in cl_hud_bar_smooth_test.lua)",
 			func = function(state)
+				GetConVar("gry_hud_bar_smooth"):SetString("0")
 				local bar = NightBar.New(GryMod.Flash.Load(NightBar.MOVIE))
 
 				for _, pair in ipairs({{0, 1}, {25, 26}, {50, 51}, {100, 101}, {12.9, 13}}) do

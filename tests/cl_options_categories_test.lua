@@ -38,6 +38,7 @@ box:gry_grenade_los
 box:gry_grenade_own_warn
 box:gry_hit_shake
 box:gry_hud
+box:gry_hud_bar_smooth
 box:gry_hud_binoculars
 box:gry_hud_boot
 box:gry_hud_corners

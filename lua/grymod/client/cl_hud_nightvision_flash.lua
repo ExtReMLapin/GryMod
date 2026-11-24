@@ -70,6 +70,14 @@ function NightBar.Placement(w, h)
 	return w - STAGE_W * scale, 0, scale
 end
 
+-- The 102-frame clip of a root of the movie (NightBar.PATH), by plain lookups: Clip:Find splits a path into strings, which makes garbage, and this is asked at every paint.
+local function barClipOf(root)
+	local states = root:Child("Root")
+	local opening = states and states:Child("Bar")
+
+	return opening and opening:Child("Bar") or nil
+end
+
 local Instance = {}
 Instance.__index = Instance
 
@@ -79,7 +87,9 @@ function NightBar.New(movie, theme)
 		return nil
 	end
 
-	local root = Flash.NewRoot(movie, theme or (GryMod.FlashHUD and GryMod.FlashHUD.Theme))
+	theme = theme or (GryMod.FlashHUD and GryMod.FlashHUD.Theme)
+
+	local root = Flash.NewRoot(movie, theme)
 	local states = root:Child("Root")
 
 	if not states or not root:Find(NightBar.PATH) then
@@ -95,17 +105,49 @@ function NightBar.New(movie, theme)
 		end
 	end
 
-	return setmetatable({root = root, clip = states, value = 100, status = 0}, Instance)
+	-- a second copy of the movie, never drawn by itself: it is kept at the next frame of the bar, and its image is what the fill side of the cut line shows (the
+	-- smooth bar, cl_hud_bar_smooth.lua). It plays the same time as the first one, so that the two are the same picture but for the bar's frame.
+	local copy = Flash.NewRoot(movie, theme)
+
+	for _, name in ipairs({"Line", "Over", "Text"}) do
+		local source = copy:Child(name)
+
+		if source then
+			source:SetVisible(false)
+		end
+	end
+
+	return setmetatable({root = root, clip = states, copy = copy, copyClip = copy:Child("Root"), value = 100, status = 0}, Instance)
 end
 
 -- setNightVisionBar(value): the bar's frame. The clip is looked for every time: the movie's restart after a flicker makes the bar again, at its first frame.
 function Instance:SetBar(value)
 	self.value = value
 
-	local bar = self.root:Find(NightBar.PATH)
+	local bar = barClipOf(self.root)
 
 	if not bar then
 		return
+	end
+
+	-- the bar at the exact value (the cut line, the second copy at the next frame: cl_hud_bar_smooth.lua), or at its whole frame when a step is a pixel or less
+	-- or the setting is off. The frames are the movie's: floor(value) + 1 (offset 1 on 102 frames).
+	local Smooth = GryMod.FlashBarSmooth
+
+	if Smooth then
+		local mask = barClipOf(self.copy)
+		local smooth = self.smooth
+
+		if smooth == nil or (smooth and (smooth.mask ~= bar or smooth.cloneMask ~= mask)) then
+			smooth = Smooth.New(self.clip, bar, 1, self.copyClip, mask)
+			self.smooth = smooth or false
+		end
+
+		if smooth then
+			Smooth.Apply(smooth, value)
+
+			return
+		end
 	end
 
 	local frame = NightBar.FrameFor(value)
@@ -120,11 +162,13 @@ function Instance:Destroy(status)
 	local label = status == 1 and "malfunction" or status == 2 and "flickering" or "normal"
 
 	self.clip:GotoAndPlay(label)
+	self.copyClip:GotoAndPlay(label)
 	self.status = status
 end
 
 function Instance:Update(dt)
 	self.root:Advance(dt)
+	self.copy:Advance(dt)
 end
 
 function Instance:Draw(w, h)

@@ -300,6 +300,56 @@ function Clip:_touch()
 	end
 end
 
+-- A smooth bar (sh_flash_bar.lua, cl_hud_bar_smooth.lua): this clip is drawn as a group (it has a blend mode), and its cached image is cut by a vertical line at
+-- x (in this clip's own coordinates, at height y): on the side of the line that `side` says (+1: the larger x) the image of `clone`, a clip of the same
+-- kind kept at the next frame, is drawn instead (cl_flash_draw.lua, drawGroup). Numbers and one reference: setting them allocates nothing.
+function Clip:SetCut(x, y, side, clone)
+	self.cutX, self.cutY, self.cutSide, self.cutClone = x, y, side, clone
+end
+
+function Clip:ClearCut()
+	self.cutX, self.cutY, self.cutSide, self.cutClone = nil, nil, nil, nil
+end
+
+-- The point (x, y) of this clip's own coordinates, in the coordinates of its ancestor `ancestor` (the entry matrices of the clips between them are
+-- applied). Returns x and y; the point itself when `ancestor` is this clip or is not above it.
+function Clip:PointIn(ancestor, x, y)
+	local clip = self
+
+	while clip and clip ~= ancestor do
+		local entry = clip.entry
+
+		if not entry then
+			return x, y
+		end
+
+		local m = entry.m
+		x, y = m[1] * x + m[3] * y + m[5], m[2] * x + m[4] * y + m[6]
+		clip = clip.parent
+	end
+
+	return x, y
+end
+
+-- The horizontal scale of this clip's coordinates on the stage: the product of the entry matrices' a up to the root (a rotation of a few degrees
+-- changes it by a thousandth). 1 for a clip that is not in a display list.
+function Clip:ScaleX()
+	local scale = 1
+	local clip = self
+
+	while clip do
+		local entry = clip.entry
+
+		if entry then
+			scale = scale * entry.m[1]
+		end
+
+		clip = clip.parent
+	end
+
+	return scale
+end
+
 -- Flash's _x: moves this clip horizontally (replaces the x of its placement matrix).
 function Clip:SetX(x)
 	local entry = self.entry
