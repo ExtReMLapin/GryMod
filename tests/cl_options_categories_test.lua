@@ -3,7 +3,7 @@
 -- wrapped text. None of the settings was lost on the way, and opening a menu writes nothing.
 
 -- the controls of a panel as "kind:convar" (sorted): what the menus held before they were put in categories (listed by hand from the game, 2026-11-22),
--- and the movement speeds choice of the server section (a third combo box, 2026-11-22)
+-- and the movement speeds choice of the server section (a third combo box, 2026-11-22), and the cloak fade for the AI (a fourth, 2026-11-24)
 local CONFIG = [[binder
 binder
 binder
@@ -91,6 +91,7 @@ box:gry_zoom_hide_crosshair
 box:gry_zoom_own
 button:Open the effects test window
 button:Switch every element back on
+combo:?
 combo:?
 combo:?
 combo:?
