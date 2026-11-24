@@ -118,9 +118,24 @@ S.DETECT_TARGETS = {[0] = 0, [1] = 0.5, [2] = 1}
 -- The icon types that are machines for the AI (the hexagon's): 2 flying, 3 machines and vehicles. The client's Hex.VEHICLE_TYPES says the same.
 S.VEHICLE_TYPES = {[2] = true, [3] = true}
 
-function S.WriteDetect(puppet, vehicle)
+-- The exposure an entity reports (0 to 1, the stealth bar's own scale) travels as a step of 1 / 63 in 6 bits, after the two numbers.
+S.EXPOSURE_BITS = 6
+S.EXPOSURE_STEPS = 2 ^ S.EXPOSURE_BITS - 1
+
+function S.ExposureStep(exposure)
+	exposure = tonumber(exposure) or 0
+
+	if exposure ~= exposure then
+		return 0
+	end
+
+	return math.Clamp(math.floor(exposure * S.EXPOSURE_STEPS + 0.5), 0, S.EXPOSURE_STEPS)
+end
+
+function S.WriteDetect(puppet, vehicle, exposure)
 	net.WriteUInt(math.Clamp(puppet, 0, 2), 2)
 	net.WriteUInt(math.Clamp(vehicle, 0, 2), 2)
+	net.WriteUInt(S.ExposureStep(exposure), S.EXPOSURE_BITS)
 end
 
 local POS_LIMIT = 2 ^ (S.POS_BITS - 1)

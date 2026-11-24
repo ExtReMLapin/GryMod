@@ -779,6 +779,30 @@ no NPC state and no enemy: it is calm, and `radar = "always"` or a scan lists it
 accepted by the registry and ignored by the radar. The `label` does not travel to the client: the radar's message has no room for text and the movies have
 no field for a name; it is there for a later part.
 
+### Nextbots that report their awareness
+
+`GryMod.API.Has("awareness")` is true. A nextbot that makes its own perception (it has no NPC state for the radar to read) can tell the radar
+what it knows of each player with one method:
+
+```lua
+-- server side, on your entity
+function ENT:GetGryAwareness(ply)
+	return level, exposure, seen, heard
+	-- level: 0 calm, 1 alerted (it heard something, it searches), 2 fighting
+	-- exposure: 0 to 1, how aware it is of THIS player right now
+	-- seen, heard: whether it sees or hears this player at this moment
+end
+```
+
+- The radar asks it instead of reading an NPC state: the colour of the contact (calm, yellow, red), the binoculars' hologram and the danger
+  bar follow your level.
+- The **stealth bar** goes to the exact `exposure` (the highest of the hostiles that report one, contact or not), instead of the steps the radar
+  gives other NPCs (alerted = half, fighting = full). It travels in steps of 1/63.
+- The values are clamped (a level outside 0 to 2, an exposure outside 0 to 1). The method runs under `GryMod.API.SafeCall`: one that throws is
+  ignored for that call, and five errors in a row disable it, with one console line.
+- Your class must still be a radar contact: register it with `GryMod.API.RegisterTracked("my_addon_soldier", {class = "my_soldier", radar = "hostile"})`.
+- Every other entity keeps exactly today's rule.
+
 ### Dangers: the grenade warning
 
 An entry with a `danger` table makes the entity a danger: the HUD warns the player about it with the grenade-detect icon (its label,

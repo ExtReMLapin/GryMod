@@ -555,17 +555,19 @@ end
 
 -- What the server says the hostiles that are NOT contacts see and hear (sv_radar.lua, Radar.Detect): 0 to 2 for the soldiers, 0 to 2 for the machines.
 -- It is what lets the bar and the hexagon rise for a hostile that has noticed the player from beyond the 26 m of the contacts.
-Radar.Detected = Radar.Detected or {puppet = 0, vehicle = 0}
+Radar.Detected = Radar.Detected or {puppet = 0, vehicle = 0, exposure = 0}
 
 function Radar.ReadDetect()
 	Radar.Detected.puppet = net.ReadUInt(2)
 	Radar.Detected.vehicle = net.ReadUInt(2)
+	-- the highest exposure an entity reports of the player (its own perception, a nextbot of another addon): 0 to 1
+	Radar.Detected.exposure = net.ReadUInt(S.EXPOSURE_BITS) / S.EXPOSURE_STEPS
 end
 
 net.Receive("gry_radar_detect", Radar.ReadDetect)
 
 function Radar.ResetDetect()
-	Radar.Detected.puppet, Radar.Detected.vehicle = 0, 0
+	Radar.Detected.puppet, Radar.Detected.vehicle, Radar.Detected.exposure = 0, 0, 0
 end
 
 -- The targets (0 to 1) of the bar and of the hexagon for the server's two numbers.
@@ -650,6 +652,9 @@ function Radar.Feed(panel, ply, dt)
 		-- no hexagon: the bar follows every hostile, the machines' number too
 		bar = math.max(Radar.StealthTarget(Radar.Snapshot), detectBar, detectHexagon)
 	end
+
+	-- an entity that reports its own exposure of the player (a soldier of another addon): the bar goes to that exact level
+	bar = math.max(bar, Radar.Detected.exposure or 0)
 
 	Radar.Stealth = Radar.StealthStep(Radar.Stealth, bar, dt)
 	panel:SetStealth(Radar.Stealth)
