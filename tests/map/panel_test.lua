@@ -502,6 +502,40 @@ return {
 				expect(Map.IsOpen()).to.beFalse()
 			end
 		},
+		-- fails when a move with the button of DONE held raises an error (the press of DONE keeps no start point: S.dragX was nil, reported 2026-11-24, four
+		-- errors a drag in the owner's game)
+		{
+			name = "moving the mouse with the DONE button held does nothing and raises no error (the press keeps no start point); letting go off the button closes nothing",
+			func = function(state)
+				local Map = M()
+
+				stubDrawing(state)
+				Map.Open()
+				Map._state.panel:Paint(ScrW(), ScrH())
+
+				local rect = Map._state.doneRect
+				local view = Map._state.view
+				local viewX, viewY = view.x, view.y
+				local centre = view.zoom
+
+				-- a first interaction: no drag has ever started in this game (the state of an earlier test would hide the error)
+				Map._state.dragX, Map._state.dragY = nil, nil
+
+				expect(Map.PressStart(MOUSE_LEFT, rect.x + 2, rect.y + 2)).to.equal("done")
+
+				local ok, moved = pcall(Map.DragMove, rect.x + 40, rect.y + 25)
+				expect(ok).to.beTrue()
+				expect(moved).to.beFalse()
+				expect(view.zoom).to.equal(centre)
+				expect(view.x).to.equal(viewX)
+				expect(view.y).to.equal(viewY)
+
+				-- the button goes up away from DONE: nothing is closed
+				Map.PressEnd(MOUSE_LEFT, 1, 1)
+				expect(Map.IsOpen()).to.beTrue()
+				Map.Close()
+			end
+		},
 		-- fails when the close conditions are not polled (the switch, the key)
 		{
 			name = "the Think hook closes the map when the switch goes off, and when the key goes down again (not when it was already down at the opening)",

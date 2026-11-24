@@ -304,7 +304,8 @@ end
 function Map.DragMove(x, y)
 	local view = S.view
 
-	if not S.open or not view or not S.drag then
+	-- only a pan or a zoom keeps a start point: the press of DONE ("done") has none (a move with that button held raised an error at each frame)
+	if not S.open or not view or (S.drag ~= "pan" and S.drag ~= "zoom") then
 		return false
 	end
 
