@@ -65,7 +65,7 @@ FX.GAIN = {target = 0.27, min = 1.5, max = 25, tau = 0.5, start = 3, lumCap = 0.
 FX.LOCAL = {w = 32, h = 18, alpha = 0.7, amin = 0.25, tau = 0.4, floor = 0.004}
 
 -- The rest of the amplifier chain.
-FX.CHAIN = {star = 0.03, pregainMin = 1, glow = 0.8, noise = 0.05, contrast = 1.25, colour = 0.65, ampPasses = 2}
+FX.CHAIN = {star = 0.03, starDiv = 4, pregainMin = 1, glow = 0.8, noise = 0.05, contrast = 1.25, colour = 0.65, ampPasses = 2}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The pure parts
@@ -187,6 +187,11 @@ function FX.ExposurePass(factor)
 	end
 
 	return "boost", math.min(factor - 1, 1)
+end
+
+-- The size of the starlight picture for a screen of w x h and a divisor: rounded up, at least one pixel.
+function FX.StarSize(w, h, div)
+	return math.max(math.ceil(w / div), 1), math.max(math.ceil(h / div), 1)
 end
 
 -- The luminance of a pixel (0 to 1) from its channels (0 to 255).
@@ -504,12 +509,10 @@ local function build(w, h)
 	r.rtQ = rt("q", math.max(math.floor(w / 4), 1), math.max(math.floor(h / 4), 1))
 	r.matQ = mat("qm", "gry_nv_q_" .. tag)
 
-	-- the glow's target, which is also the scratch of the S curve (they never hold anything at the same time)
-	r.rtG = rt("g", w, h)
-	r.matG = mat("gm", "gry_nv_g_" .. tag)
-
-	r.rtL1, r.rtL2, r.rtL3 = rt("l1", w, h), rt("l2", w, h), rt("l3", w, h)
-	r.matL1, r.matL2, r.matL3 = mat("l1m", "gry_nv_l1_" .. tag), mat("l2m", "gry_nv_l2_" .. tag), mat("l3m", "gry_nv_l3_" .. tag)
+	-- the three full size targets (the glow's picture uses the first, which is free until the S curve): the luminance L and L^2 of the S curve and of the palette,
+	-- and the picture the engine drew (below)
+	r.rtL1, r.rtL2 = rt("l1", w, h), rt("l2", w, h)
+	r.matL1, r.matL2 = mat("l1m", "gry_nv_l1_" .. tag), mat("l2m", "gry_nv_l2_" .. tag)
 
 	-- a flat white quad (the exposure pass multiplies or boosts the screen by its colour)
 	r.matFlat = materialOf("gry_nv_flat_" .. tag, "color/white")
@@ -525,9 +528,8 @@ local function build(w, h)
 	r.rtMap = rt("map", FX.LOCAL.w, FX.LOCAL.h)
 	r.matMap = mat("mapm", "gry_nv_map_" .. tag)
 
-	-- the starlight's picture (the world without lighting, same size as the screen)
-	r.rtStar = GetRenderTargetEx("gry_nv_star_" .. tag, w, h, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_SEPARATE, 0, 0, IMAGE_FORMAT_RGBA8888)
-	r.matStar = mat("starm", "gry_nv_star_" .. tag)
+	-- the starlight's picture (the world without lighting) is made when it is first wanted, by starTarget, at its own size
+	r.stars = {}
 
 	staticTargets()
 	r.rtNoise = FX.NoiseTarget
@@ -778,14 +780,37 @@ end
 
 local viewTable = {origin = Vector(), angles = Angle(), fov = 90, x = 0, y = 0, w = 0, h = 0, drawviewmodel = false, drawmonitors = false, dopostprocess = false, drawhud = false}
 
+-- The starlight's render target: the world is drawn into a picture 1/div of the screen's width and height and stretched (bilinear) when it is added. It is a faint
+-- floor (3 %), and what it shows is the layout of the place without any lighting, which needs no detail. One target for each divisor asked for (the game asks for
+-- FX.CHAIN.starDiv, the measures for others), with a depth buffer of its own.
+local function starTarget(div)
+	local star = R.stars[div]
+
+	if star == nil then
+		local w, h = FX.StarSize(R.w, R.h, div)
+		local name = "gry_nv_star_" .. R.w .. "x" .. R.h .. "_" .. div
+
+		star = {
+			w = w, h = h,
+			rt = GetRenderTargetEx(name, w, h, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_SEPARATE, 0, 0, IMAGE_FORMAT_RGBA8888),
+			mat = materialOf(name .. "_m", name)
+		}
+		R.stars[div] = star
+		R.count = R.count + 2
+	end
+
+	return star
+end
+
 local function starlight(weight)
 	local view = render.GetViewSetup()
+	local star = starTarget(S.starDiv or FX.CHAIN.starDiv)
 
 	S.inStar = true
 	viewTable.origin, viewTable.angles, viewTable.fov = view.origin, view.angles, view.fov
-	viewTable.w, viewTable.h = R.w, R.h
+	viewTable.w, viewTable.h = star.w, star.h
 
-	pushRT(R.rtStar)
+	pushRT(star.rt)
 	render.SetLightingMode(1)
 
 	local ok, err = pcall(render.RenderView, viewTable)
@@ -798,7 +823,7 @@ local function starlight(weight)
 		error(err, 0)
 	end
 
-	drawmat(R.matStar, weight, weight, weight, BLEND_ONE, BLEND_ONE)
+	drawmat(star.mat, weight, weight, weight, BLEND_ONE, BLEND_ONE)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -875,7 +900,7 @@ local function chain(mix, dt)
 	-- 3. the glow: the screen at quarter size, bilinear, times the scan lines, added
 	screenToTarget(R.rtQ)
 
-	pushRT(R.rtG)
+	pushRT(R.rtL1)
 	R.vec.x, R.vec.y, R.vec.z = 1, 1, 1
 	R.matQ:SetVector("$color2", R.vec)
 	render.SetMaterial(R.matQ)
@@ -886,7 +911,7 @@ local function chain(mix, dt)
 	render.OverrideBlend(false)
 	popRT()
 
-	drawmat(R.matG, c.glow, c.glow, c.glow, BLEND_ONE, BLEND_ONE)
+	drawmat(R.matL1, c.glow, c.glow, c.glow, BLEND_ONE, BLEND_ONE)
 
 	if stage <= 4 then return end
 
@@ -899,32 +924,30 @@ local function chain(mix, dt)
 
 	if stage <= 5 then return end
 
-	-- 5. the S curve on the luminance: smoothstep 3L^2 - 2L^3 = L^2 + 2 (L^2 - L^3)
+	-- 5. the S curve on the luminance: smoothstep 3L^2 - 2L^3 = L^2 + 2 (L^2 - L^3). The screen is made L^3, then L^2 - L^3, which is copied into the first
+	-- target (L is not needed any more) and added twice with L^2
 	desaturate()
 	render.CopyRenderTargetToTexture(R.rtL1)
 	drawmat(R.matL1, 1, 1, 1, BLEND_DST_COLOR, BLEND_ZERO)
 	render.CopyRenderTargetToTexture(R.rtL2)
 	drawmat(R.matL1, 1, 1, 1, BLEND_DST_COLOR, BLEND_ZERO)
-	render.CopyRenderTargetToTexture(R.rtL3)
-	drawmat(R.matL2, 1, 1, 1, BLEND_ONE, BLEND_ZERO)
-	drawmat(R.matL3, 1, 1, 1, BLEND_ONE, BLEND_ONE, BLENDFUNC_REVERSE_SUBTRACT)
-	render.CopyRenderTargetToTexture(R.rtG)
+	drawmat(R.matL2, 1, 1, 1, BLEND_ONE, BLEND_ONE, BLENDFUNC_SUBTRACT)
+	render.CopyRenderTargetToTexture(R.rtL1)
 	drawmat(R.matL2, 1, 1, 1, BLEND_ONE, BLEND_ONE)
-	drawmat(R.matG, 1, 1, 1, BLEND_ONE, BLEND_ONE)
+	drawmat(R.matL1, 1, 1, 1, BLEND_ONE, BLEND_ONE)
 
 	if stage <= 6 then return end
 
-	-- 6. the palette: luminance to green, R = 0.68 L + 0.32 L^3, G = 1.7 L - 0.7 L^2, B = L^3, from three copies of the screen
+	-- 6. the palette: luminance to green, R = 0.68 L + 0.32 L^3, G = 1.7 L - 0.7 L^2, B = L^3. The screen is made L^3 (from L and L^2, two copies), turned to
+	-- (0.32 L^3, 0, L^3) by a multiply, and the other terms are added to it
 	desaturate()
 	render.CopyRenderTargetToTexture(R.rtL1)
 	drawmat(R.matL1, 1, 1, 1, BLEND_DST_COLOR, BLEND_ZERO)
 	render.CopyRenderTargetToTexture(R.rtL2)
 	drawmat(R.matL1, 1, 1, 1, BLEND_DST_COLOR, BLEND_ZERO)
-	render.CopyRenderTargetToTexture(R.rtL3)
-	render.Clear(0, 0, 0, 255)
+	drawmat(R.matFlat, 0.32, 0, 1, BLEND_DST_COLOR, BLEND_ZERO)
 	drawmat(R.matL1, 0.68, 1.7, 0, BLEND_ONE, BLEND_ONE)
 	drawmat(R.matL2, 0, 0.7, 0, BLEND_ONE, BLEND_ONE, BLENDFUNC_REVERSE_SUBTRACT)
-	drawmat(R.matL3, 0.32, 0, 1, BLEND_ONE, BLEND_ONE)
 
 	if stage <= 7 then return end
 

@@ -341,6 +341,30 @@ return {
 			end
 		},
 		{
+			name = "the starlight picture is a part of the screen: 1/4 of the width and height by default, rounded up, never under one pixel",
+			func = function(state)
+				local FX = GryMod.NightVisionFX
+
+				expect(FX.CHAIN.starDiv).to.equal(4)
+
+				local w, h = FX.StarSize(1920, 1080, 4)
+				expect(w).to.equal(480)
+				expect(h).to.equal(270)
+
+				w, h = FX.StarSize(1366, 768, 4)
+				expect(w).to.equal(342)
+				expect(h).to.equal(192)
+
+				w, h = FX.StarSize(1280, 720, 1)
+				expect(w).to.equal(1280)
+				expect(h).to.equal(720)
+
+				w, h = FX.StarSize(2, 2, 4)
+				expect(w).to.equal(1)
+				expect(h).to.equal(1)
+			end
+		},
+		{
 			name = "the lamp: far Z follows the fog (at least 3000, the fog's end and 500 more), a square 140 degree frustum",
 			func = function(state)
 				local FX = GryMod.NightVisionFX
