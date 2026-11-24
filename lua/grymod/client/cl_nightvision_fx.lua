@@ -915,18 +915,20 @@ local function guarded(key, fn)
 
 	hook.Add(EVENT[key], ID[key], function(...)
 		local started = S.profile and SysTime()
+		local memory = started and collectgarbage("count")
 		local ok, result = pcall(fn, ...)
 
 		if started then
 			local cost = S.cost[key]
 
 			if cost == nil then
-				cost = {last = 0, max = 0, sum = 0, n = 0}
+				cost = {last = 0, max = 0, sum = 0, n = 0, kb = 0}
 				S.cost[key] = cost
 			end
 
 			cost.last = (SysTime() - started) * 1000
 			cost.max, cost.sum, cost.n = math.max(cost.max, cost.last), cost.sum + cost.last, cost.n + 1
+			cost.kb = cost.kb + (collectgarbage("count") - memory) -- (meaningful with the collector stopped)
 		end
 
 		if ok then
