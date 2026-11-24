@@ -230,6 +230,52 @@ While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD fo
   and goes `gry_usehint_hold` seconds after the crosshair left the thing (0.2 by default as in the original, 0 for at once);
   looking at another usable thing ends the hold at once, and looking back at the same thing keeps the prompt without a break. `GryMod_UsableChanged` (docs/events.md) is run when the prompt appears or goes.
 
+## Night vision (client)
+
+The suit has the night vision of the original game: a light amplifier with an energy of its own (30 units, 0.5 used a second, so 60 s of use; 2 recovered a
+second while it is off, so 15 s to refill; it switches itself off when it is empty and cannot be switched on then). The key is **N** by default (only when nothing
+else is bound on it; pick another one in Options > GryMod > Keys, or `bind <key> +gry_nightvision`). The sounds are the original's (switch on, a loop while it
+lasts, switch off), the energy bar is the original's movie, and the screen effect is GryMod's own: a green amplifier with an automatic gain, a soft light
+behind the player (with shadows), a long grey fog and a faint starlight floor. Nothing about the AI changes: the night vision does not make the player more or less
+visible.
+
+Everything is a setting of the player (client, saved) and each piece is optional:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `gry_nightvision` | 1 | 0: the night vision cannot be switched on |
+| `gry_nightvision_key` | 0 (N when free) | the key (a button code, 0 = the default) |
+| `gry_nightvision_hold` | 0 | 1: the key is held (on while it is down); 0: press to switch on and again to switch off |
+| `gry_nightvision_energy` | 1 | 0: no energy limit and no bar |
+| `gry_nightvision_drain`, `gry_nightvision_recharge` | 0.5, 2 | energy used a second while on, recovered a second while off |
+| `gry_nightvision_fx` | 1 | 0: no screen effect (the sounds and the bar stay) |
+| `gry_nightvision_light` | 1 | the light behind the player |
+| `gry_nightvision_star` | 1 | the starlight pass (a second, cheap render of the world) |
+| `gry_nightvision_localgain` | 1 | each dark area of the screen is brightened on its own; 0: one gain for the screen |
+| `gry_hud_nightvision` | 1 | the energy bar of the HUD |
+| `gry_sv_nightvision` (server) | 1 | 0: nobody can use it (administrators' menu) |
+
+`gry_sounds 0` mutes its sounds. The effect costs nothing while the night vision is off (its hooks exist only while it is on and for the quarter second of the fade).
+
+```lua
+-- run on the client, once at each change; the return is not read
+hook.Add("GryMod_NightVision", "my_addon", function(on, reason)
+	-- reason: "key" (the player), "energy" (empty), "death", "dead", "suit" or "malfunction" (the suit is down), "disabled" (the suit flag is off),
+	-- "option" (the player turned the setting off), "server" (the server switch), "shutdown" / "init" (map change, silent), or the reason of the caller
+end)
+
+GryMod.NightVision.IsOn()            -- the wanted state
+GryMod.NightVision.Energy()          -- 0 to 30
+GryMod.NightVision.Bar()             -- 0 to 100, what the HUD bar shows
+GryMod.NightVision.CanTurnOn()       -- false plus the reason when it would be refused
+GryMod.NightVision.Set(true, "my_addon")   -- the same rules as the key; true, or false plus the reason ("same" when nothing changes)
+GryMod.NightVision.Toggle("my_addon")
+```
+
+Switching it through `Set` (or the HUD event `night_vision`, see docs/events.md) plays the sounds and runs the hook; it never comes back by itself after it went off.
+There is no veto hook (the return of `GryMod_NightVision` is not read): an addon that wants to take it away (an area without light amplification, say) switches it
+off with `Set(false, "my_addon")` when its own condition holds, from that same hook for example. The energy bar is raised by the hook and goes by itself when the energy is full again.
+
 ## HUD events
 
 A HUD event is a named effect the HUD plays, picture and sound together; GryMod's own triggers call the same events. The full list

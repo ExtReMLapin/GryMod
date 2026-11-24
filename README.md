@@ -34,6 +34,10 @@ box, press the key). Or choose it in Options > GryMod, or in the console:
 
 Hold the key, point at a mode with the mouse (the view stays where it is), release to switch. The binoculars are
 the Half-Life 2 suit zoom (the zoom key). A grenade coming at you gets the red warning of the original game.
+
+The night vision is on **N** (or the key you pick in Options > GryMod > Keys): a green light amplifier with a soft light behind you, an energy of its own
+(60 s of use, 15 s to refill, it switches itself off when empty) and the sounds and energy bar of the original. It is best in dark places. Every piece
+(screen effect, light, starlight, hold or press, energy) can be turned off in the options, see `docs/api.md`.
     
          
          
@@ -63,7 +67,7 @@ All of them are saved between sessions (Options > GryMod in the spawn menu, or t
 * `gry_hud 0` : hide the HUD (health, energy, ammo, radar, compass). The quick menu and the suit abilities keep working.
 * `gry_sounds 0` : mute the suit sounds.
 * `gry_hud_theme` : the colours of the HUD: `blue` (the original's "Ice blue"), `default` ("Military green"), `orange` ("Amber"), `white`, the four sets the original game offers, or `custom`, which uses the three colours `gry_hud_color_line` (outlines and icons), `gry_hud_color_over` (active indicators) and `gry_hud_color_text` (digits and letters), each written `r g b` (0 to 255). The options panel has a colour mixer for each.
-* One switch for each element of the interface, all on by default (`gry_hud_reset` puts them back): `gry_hud_status` (health, energy and ammo panel), `gry_hud_radar` (compass and radar panel), `gry_hud_radarhex` (the alert hexagon of the radar: it warns when a vehicle or a machine has noticed you, and the danger bar then follows the soldiers only), `gry_hud_crosshair`, `gry_hud_damage` (damage direction arcs), `gry_hud_hit` (hit marker), `gry_hud_grenade` (grenade warning), `gry_hud_binoculars`, `gry_hud_quickmenu`, `gry_hud_boot` (start-up log, shutdown animation and reboot sequence, with their sounds). The original game has no such switches, only the four colour sets and a crosshair style.
+* One switch for each element of the interface, all on by default (`gry_hud_reset` puts them back): `gry_hud_status` (health, energy and ammo panel), `gry_hud_radar` (compass and radar panel), `gry_hud_radarhex` (the alert hexagon of the radar: it warns when a vehicle or a machine has noticed you, and the danger bar then follows the soldiers only), `gry_hud_crosshair`, `gry_hud_damage` (damage direction arcs), `gry_hud_hit` (hit marker), `gry_hud_grenade` (grenade warning), `gry_hud_binoculars`, `gry_hud_quickmenu`, `gry_hud_nightvision` (the night vision energy bar), `gry_hud_boot` (start-up log, shutdown animation and reboot sequence, with their sounds). The original game has no such switches, only the four colour sets and a crosshair style.
 * `gry_compass_intercardinals` : `0` (default) shows only N, E, S and W on the compass strip, as the Crysis remaster does; `1` also shows NE, SE, SW and NW, as the original demo does. It is in the Radar and compass category of the Radar and map options.
 * `gry_hud_prewarm` : when the pictures of the interface are loaded. Each big one takes 0.6 to 1.3 s to decode, so the first use of the quick menu or the binoculars used to freeze the game. `1` (default): at the loading screen, for the elements that are switched on (the map takes about ten seconds longer to open); `2`: the panels of the spawn at the loading screen, the rest in short steps over the first seconds of play; `0`: when first used.
 * `gry_hud_crosshair_style` : the crosshair, 1 to 13 (the original's profile uses 6).
