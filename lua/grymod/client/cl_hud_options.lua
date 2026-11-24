@@ -57,8 +57,6 @@ function Options.MigrateCorners()
 	cornersMigrated:SetString("1")
 end
 
-Options.MigrateCorners()
-
 -- Whether this element is switched on (an element that has no switch is on).
 function Options.Enabled(name)
 	local convar = convars[name]
@@ -77,3 +75,7 @@ end
 concommand.Add("gry_hud_reset", function()
 	Options.Reset()
 end)
+
+-- Last, once every function above exists: changing the switch runs the listeners of the other pieces (cl_flash_prewarm.lua asks Options.Enabled), which
+-- failed when the migration ran in the middle of this file after a reload.
+Options.MigrateCorners()
