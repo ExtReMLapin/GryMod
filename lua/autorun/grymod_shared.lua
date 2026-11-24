@@ -181,6 +181,7 @@ if SERVER then
 	include("grymod/server/sv_malfunction.lua")
 	include("grymod/server/sv_underwater.lua")
 	include("grymod/server/sv_cloak_ai.lua")
+	include("grymod/server/sv_suit_noise.lua")
 	include("grymod/server/sv_nightvision.lua")
 	include("grymod/sh_ain.lua")
 	include("grymod/sh_zonemap.lua")

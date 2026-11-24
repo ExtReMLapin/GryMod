@@ -81,6 +81,7 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_Zoom(ply, fov)` | the field of view the server zoom asks of the engine for the player, in degrees; `fov = 0` when the zoom is over |
 | `GryMod_ArmorAbsorbed(ply, absorbed, passed)` | a hit was taken by the armor: `absorbed` points went to the armor, `passed` points went on to the health (`absorbed + passed` is the hit). Only when `absorbed > 0` |
 | `GryMod_SprintStart(ply)`, `GryMod_SprintEnd(ply)` | the speed-mode sprint began, ended |
+| `GryMod_SuitNoise(ply, pos, radius, kind)` | the suit made a noise that an AI could hear (see "Suit noises" below) |
 | `GryMod_TargetSpotted(ply, ent, relation)` | the player's binoculars spotted `ent` (the scan ended on it and the radar shows it from now on). Once, the first time the entity is tagged for this player. `relation` is `"ally"`, `"neutral"` or `"hostile"` (the relation chain below) |
 
 The other hooks of this table run on the server only. `GryMod_ModeChanged` also runs on the client, for the local player. The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire (on the server).
@@ -194,6 +195,21 @@ local level = GryMod.API.CloakLevel(ply) -- 0 = not cloaked, 1 = fully cloaked
 - `GryMod.CloakLevelFrom(on, level0, t0, now, rate)` is the formula itself, and `GryMod.CloakFadeRate()` the rate of the server setting.
 
 The camouflage still sets `FL_NOTARGET` for the Half-Life 2 NPCs, as before: the level is for AIs that make their own perception.
+
+## Suit noises (server)
+
+`GryMod.API.Has("suitnoise")` is true. The hook `GryMod_SuitNoise(ply, pos, radius, kind)` tells an AI's hearing about the noises only the
+suit knows of. `pos` is where the player stands, `radius` is how far it carries in units, `kind` is one of:
+
+| `kind` | When | Radius |
+| --- | --- | --- |
+| `cloak_fire` | the player fires while his cloak level is above 0 (at most once a quarter second) | 2000 |
+| `strength_jump` | a strength jump (the same moment as `GryMod_StrengthJump`) | 1000 |
+| `speed_sprint` | a speed sprint starts (the same moment as `GryMod_SprintStart`) | 800 |
+| `cloak_on`, `cloak_off` | the camouflage switches on or off (not at a respawn) | 300 |
+
+The radii are in `GryMod.SuitNoiseRadius`, which you may change. Footsteps, landings and the weapons' own sounds are not suit noises: hear them
+yourself (`PlayerFootstep`, `OnPlayerHitGround`, `EntityFireBullets`). `GryMod.EmitSuitNoise(ply, kind)` fires the hook by hand.
 
 ## Relation: ally, neutral or hostile (server)
 
