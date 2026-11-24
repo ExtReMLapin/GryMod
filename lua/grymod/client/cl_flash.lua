@@ -266,18 +266,336 @@ function Clip:_clear()
 	self.sorted = nil
 end
 
+-- ---------------------------------------------------------------------------------------------------------
+-- Going back to an earlier frame without making everything again.
+--
+-- Going back rebuilds the display list from the first frame, as Flash does: every object is made again, with every clip inside it (about 10 KB for one step
+-- of the energy bar, a bar that is emptied makes that at each step, more for the sprites that place something at each frame). Most of the time the objects
+-- are the same at both frames and only their matrix, colour, morph ratio and blend mode differ: this path keeps them and puts those four back to what the
+-- first frame's replay would give. It is only taken when its result cannot be told from the rebuild's, otherwise `_rebuild` runs (the fallback):
+--   * no frame after the target, up to the current one, places or removes anything (the objects are then the same ones),
+--   * the display list is what the movie made (nothing added by other files, no text, only the fields this file and the drawing write),
+--   * every clip inside is still exactly as a new one of its sprite (it never moved, no change was made inside it): then keeping it is making it again.
+-- Flash.NoFastRewind = true forces the rebuild (tests). Flash.RewindStats counts both paths.
+-- ---------------------------------------------------------------------------------------------------------
+
+Flash.RewindStats = Flash.RewindStats or {fast = 0, slow = 0}
+
+-- the fields of a display list entry and of a clip that are made by this file (the drawing adds `cache` and `cacheB`: images derived from the state)
+local ENTRY_FIELDS = {depth = true, id = true, kind = true, m = true, cx = true, name = true, blend = true, clipDepth = true, ratio = true, clip = true, text = true, cache = true, cacheB = true}
+local CLIP_FIELDS = {movie = true, id = true, n = true, labels = true, frames = true, frame = true, frac = true, pos = true, playing = true, visible = true, list = true, names = true, count = true, sorted = true, jumps = true, theme = true, version = true, parent = true, entry = true}
+
+-- what the replay of the frames from the first to the target gives for each depth: the id and the four properties a move changes (reused tables). A depth
+-- with nothing, or a property that is nil, holds false and never nil: a table that gets keys removed and added again at each call grows and shrinks (the collector
+-- forgets the removed keys), which allocates.
+local shadowId, shadowM, shadowCx, shadowBlend, shadowRatio = {}, {}, {}, {}, {}
+
+local function shadowDrop(depth)
+	shadowId[depth], shadowM[depth], shadowCx[depth], shadowBlend[depth], shadowRatio[depth] = false, false, false, false, false
+end
+
+-- Replays frames 1..target on the shadow with the rules of _place and _remove. Returns how many objects are there.
+local function shadowReplay(frames, chars, target)
+	for depth in next, shadowId do
+		shadowDrop(depth)
+	end
+
+	local shown = 0
+
+	for index = 1, target do
+		local frame = frames[index]
+
+		if frame then
+			for i = 1, #frame do
+				local op = frame[i]
+				local depth = op.rm
+
+				if depth then
+					if shadowId[depth] then
+						shadowDrop(depth)
+						shown = shown - 1
+					end
+				else
+					depth = op.d
+					local id = op.c
+					local current = shadowId[depth]
+
+					if id and not (op.mv and current == id) then
+						local m, cx, blend, ratio = shadowM[depth], shadowCx[depth], shadowBlend[depth], shadowRatio[depth]
+
+						if current then
+							shadowDrop(depth)
+							shown = shown - 1
+						end
+
+						if chars[id] then
+							shadowId[depth] = id
+							shadowM[depth] = op.m or m or IDENTITY
+							shadowCx[depth] = op.cx or cx or false
+							shadowBlend[depth] = op.bl or blend or false
+							shadowRatio[depth] = op.r or ratio or false
+							shown = shown + 1
+						end
+					elseif current then
+						if op.m then shadowM[depth] = op.m end
+						if op.cx then shadowCx[depth] = op.cx end
+						if op.r then shadowRatio[depth] = op.r end
+						if op.bl then shadowBlend[depth] = op.bl end
+					end
+				end
+			end
+		end
+	end
+
+	return shown
+end
+
+local function sameNumbers(a, b)
+	if a == b then
+		return true
+	end
+
+	if not a or not b then
+		return false
+	end
+
+	local count = #a
+
+	if count ~= #b then
+		return false
+	end
+
+	for i = 1, count do
+		if a[i] ~= b[i] then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function sameTheme(copy, theme)
+	if not theme or not copy then
+		return theme == copy
+	end
+
+	local count = 0
+
+	for name, rgb in next, theme do
+		local saved = copy[name]
+		count = count + 1
+
+		if not saved or saved[1] ~= rgb[1] or saved[2] ~= rgb[2] or saved[3] ~= rgb[3] then
+			return false
+		end
+	end
+
+	for _ in next, copy do
+		count = count - 1
+	end
+
+	return count == 0
+end
+
+local function copyTheme(theme)
+	if not theme then
+		return nil
+	end
+
+	local copy = {}
+
+	for name, rgb in next, theme do
+		copy[name] = {rgb[1], rgb[2], rgb[3]}
+	end
+
+	return copy
+end
+
+-- A new clip of each sprite that was asked about, to compare the clips that stay with (made once per sprite and colour theme: the movies' data does not change).
+local templates = setmetatable({}, {__mode = "k"})
+
+local function templateOf(clip, theme)
+	local definition = clip.movie.chars[clip.id]
+
+	if not definition or definition.k ~= "sprite" or definition.frames ~= clip.frames then
+		return nil
+	end
+
+	local slot = templates[definition]
+
+	if slot and slot.theme == theme and slot.movie == clip.movie and sameTheme(slot.copy, theme) then
+		return slot.clip
+	end
+
+	slot = {theme = theme, movie = clip.movie, copy = copyTheme(theme), clip = newClip(clip.movie, definition, clip.id, theme)}
+	templates[definition] = slot
+
+	return slot.clip
+end
+
+local function plainEntry(entry)
+	for key in next, entry do
+		if not ENTRY_FIELDS[key] then
+			return false
+		end
+	end
+
+	return entry.kind ~= "text"
+end
+
+-- Whether `live`, a clip inside the one that goes back, is in the state of a new clip `made` (same sprite, same theme): everything this file keeps for a clip,
+-- its display list with every property, its names, its clock. Then making it again would give what it is.
+local function asNew(live, made)
+	if live.version ~= made.version or live.frame ~= made.frame or live.frac ~= made.frac or live.pos ~= made.pos or live.playing ~= made.playing
+		or live.visible ~= made.visible or live.jumps ~= made.jumps or live.theme ~= made.theme or live.count ~= made.count then
+		return false
+	end
+
+	for key in next, live do
+		if not CLIP_FIELDS[key] then
+			return false
+		end
+	end
+
+	local seen = 0
+
+	for depth, entry in next, live.list do
+		local other = made.list[depth]
+		seen = seen + 1
+
+		if not other or entry.depth ~= depth or entry.id ~= other.id or entry.kind ~= other.kind or entry.name ~= other.name or entry.blend ~= other.blend
+			or entry.clipDepth ~= other.clipDepth or entry.ratio ~= other.ratio or entry.text ~= other.text
+			or not sameNumbers(entry.m, other.m) or not sameNumbers(entry.cx, other.cx) then
+			return false
+		end
+
+		for key in next, entry do
+			if not ENTRY_FIELDS[key] then
+				return false
+			end
+		end
+
+		local child = entry.clip
+
+		if child or other.clip then
+			if not child or not other.clip or child.parent ~= live or child.entry ~= entry or not asNew(child, other.clip) then
+				return false
+			end
+		end
+	end
+
+	if seen ~= made.count then
+		return false
+	end
+
+	local named = 0
+
+	for name, entry in next, live.names do
+		local other = made.names[name]
+		named = named + 1
+
+		if not other or other.depth ~= entry.depth or live.list[entry.depth] ~= entry then
+			return false
+		end
+	end
+
+	for _ in next, made.names do
+		named = named - 1
+	end
+
+	return named == 0
+end
+
+-- Goes back to `target` (< the current frame) keeping the objects; false, with nothing changed, when the result could differ from `_rebuild`'s.
+function Clip:_rewind(target)
+	if Flash.NoFastRewind then
+		return false
+	end
+
+	local frames = self.frames
+
+	for index = target + 1, self.frame do
+		local frame = frames[index]
+
+		if frame then
+			for i = 1, #frame do
+				local op = frame[i]
+
+				if op.rm or op.c then
+					return false
+				end
+			end
+		end
+	end
+
+	local list = self.list
+
+	if shadowReplay(frames, self.movie.chars, target) ~= self.count then
+		return false
+	end
+
+	local theme = self.theme
+	local seen = 0
+
+	for depth, entry in next, list do
+		seen = seen + 1
+
+		if shadowId[depth] ~= entry.id or entry.depth ~= depth or not plainEntry(entry) then
+			return false
+		end
+
+		local child = entry.clip
+
+		if child then
+			local made = child.parent == self and child.entry == entry and templateOf(child, theme)
+
+			if not made or not asNew(child, made) then
+				return false
+			end
+		end
+	end
+
+	if seen ~= self.count then
+		return false
+	end
+
+	for _, entry in next, self.names do
+		if list[entry.depth] ~= entry then
+			return false
+		end
+	end
+
+	for depth, entry in next, list do
+		entry.m, entry.cx, entry.blend, entry.ratio = shadowM[depth], shadowCx[depth] or nil, shadowBlend[depth] or nil, shadowRatio[depth] or nil
+	end
+
+	return true
+end
+
+-- The rebuild of Flash: the display list is emptied and the frames from the first one to the target are replayed.
+function Clip:_rebuild(target)
+	self:_clear()
+
+	for index = 1, target do
+		self:_applyOps(index)
+	end
+end
+
 -- Makes the display list that of `target` (already clamped). Going forward replays the frames in between
--- (children keep their state); going back rebuilds from the first frame, as Flash does.
+-- (children keep their state); going back keeps what stays (see _rewind) or else rebuilds from the first frame, as Flash does.
 function Clip:_goto(target)
 	if target == self.frame then
 		return
 	end
 
 	if target < self.frame then
-		self:_clear()
+		local stats = Flash.RewindStats
 
-		for index = 1, target do
-			self:_applyOps(index)
+		if self:_rewind(target) then
+			stats.fast = stats.fast + 1
+		else
+			stats.slow = stats.slow + 1
+			self:_rebuild(target)
 		end
 	else
 		for index = self.frame + 1, target do
