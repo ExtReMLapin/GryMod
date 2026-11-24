@@ -64,16 +64,30 @@ return {
 				expect(settings.ParseSwitch(nil, false)).to.beFalse()
 			end
 		},
-		-- fails when the saved zoom is not read inside 1 to 8
+		-- fails when the saved zoom is not read inside 1 to 1024 (the view puts it inside its own limit, which is over 8 on a big map)
 		{
-			name = "the zoom text is read inside 1 to 8",
+			name = "the zoom text is read inside 1 to 1024",
 			func = function()
 				local settings = S()
 
 				expect(settings.ParseZoom("2.5")).to.equal(2.5)
 				expect(settings.ParseZoom("0")).to.equal(1)
-				expect(settings.ParseZoom("40")).to.equal(8)
+				expect(settings.ParseZoom("40")).to.equal(40)
+				expect(settings.ParseZoom("99999")).to.equal(1024)
 				expect(settings.ParseZoom("x")).to.equal(1)
+			end
+		},
+		-- fails when the closest-zoom setting is not read inside 1 to 100 centimetres with 7 by default
+		{
+			name = "the centimetres a pixel covers at the closest zoom are read inside 1 to 100, 7 for a text that is no number",
+			func = function()
+				local settings = S()
+
+				expect(settings.ParseZoomCentimetres("7")).to.equal(7)
+				expect(settings.ParseZoomCentimetres("0")).to.equal(1)
+				expect(settings.ParseZoomCentimetres("900")).to.equal(100)
+				expect(settings.ParseZoomCentimetres("abc")).to.equal(7)
+				expect(settings.ParseZoomCentimetres(nil)).to.equal(7)
 			end
 		},
 		-- fails when a look name with a bad character is accepted
