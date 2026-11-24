@@ -346,7 +346,15 @@ function Inst:Close()
 	end
 
 	self.closing = true
+
+	local before = self:_snapshot()
+
 	self.area:GotoAndPlay("closeSinglePlayer")
+
+	-- the forward jump replays the malfunction frame, which paints the frame, the strip and the DONE glow red (see _undoMalfunction)
+	if self.status ~= 1 then
+		self:_undoMalfunction(before)
+	end
 
 	local mask = self.area:Child("mask_02")
 
@@ -355,6 +363,56 @@ function Inst:Close()
 	end
 
 	self.alpha:GotoAndPlay("close")
+end
+
+-- What the PDAArea clip shows by depth: {matrix, colour transform} of each entry (the tables are replaced, not changed, by the movie's moves, so the references keep).
+function Inst:_snapshot()
+	local list = {}
+
+	for _, entry in ipairs(self.area:Entries()) do
+		list[entry.depth] = {m = entry.m, cx = entry.cx}
+	end
+
+	return list
+end
+
+-- WHY THE PANEL WENT RED WHEN IT CLOSED. The timeline of PDAArea is on, malfunction (red: a colour transform that adds 255 red to the frame's outline, the strip under the
+-- window and the DONE glow, and a second copy of that glow), then closeSinglePlayer, which only puts three of those clips back. Like Flash does, the player replays
+-- the frames in between on a forward jump, so closing a panel that works passed through the malfunction frame and flashed the whole frame red for the length of the
+-- closing. The original's own script jumps the same way (the red is in its timeline: it is only meant for a closing during a malfunction). Here a closing of a panel that
+-- works puts back what the jump has painted red (its matrix and colour from before the jump) and drops what only the malfunction frame adds.
+function Inst:_undoMalfunction(before)
+	local area = self.area
+	local drop, fix = {}, {}
+
+	for _, entry in ipairs(area:Entries()) do
+		local cx = entry.cx
+		local old = before[entry.depth]
+
+		if not old then
+			-- a clip that only exists in the malfunction look (the second glow)
+			if cx and cx[5] > 0 and cx[6] == 0 and cx[7] == 0 then
+				drop[#drop + 1] = entry.depth
+			end
+		elseif cx and cx ~= old.cx and cx[5] > 0 and cx[6] == 0 and cx[7] == 0 then
+			fix[#fix + 1] = entry
+		end
+	end
+
+	for i = 1, #drop do
+		area:_remove(drop[i])
+	end
+
+	for i = 1, #fix do
+		local entry = fix[i]
+		local old = before[entry.depth]
+
+		entry.cx, entry.m = old.cx, old.m
+	end
+
+	if #drop > 0 or #fix > 0 then
+		area:_touch()
+	end
 end
 
 -- Whether the panel is in a state where the suit's malfunction changes its look (opening or on).

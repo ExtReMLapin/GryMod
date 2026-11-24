@@ -411,6 +411,48 @@ return {
 				expect(korean ~= nil and korean.visible == false).to.beTrue()
 			end
 		},
+		-- fails without the repair at the start of the closing: the forward jump to closeSinglePlayer replays the malfunction frame, which paints the frame, the strip and
+		-- the DONE glow red, and the closing frame only puts three of those clips right
+		{
+			name = "closing a panel that works does not turn it red: no clip of the PDAArea keeps the malfunction's red colour transform while it closes, but a closing during a malfunction stays red",
+			func = function()
+				local function reds(inst)
+					local count = 0
+
+					for _, entry in ipairs(inst.area:Entries()) do
+						local cx = entry.cx
+
+						if cx and (cx[5] > 0 and cx[6] == 0 and cx[7] == 0) then
+							count = count + 1
+						end
+					end
+
+					return count
+				end
+
+				local inst = fresh()
+
+				inst:Open(0)
+				run(inst, 2)
+				expect(reds(inst)).to.equal(0)
+				inst:Close()
+				expect(reds(inst)).to.equal(0)
+
+				for _ = 1, 30 do
+					inst:Update(STEP)
+					expect(reds(inst)).to.equal(0)
+				end
+
+				-- the malfunction look is the movie's own and stays when the suit is down while it closes
+				local down = fresh()
+
+				down:Open(1)
+				run(down, 2)
+				expect(reds(down) > 0).to.beTrue()
+				down:Close()
+				expect(reds(down) > 0).to.beTrue()
+			end
+		},
 		-- fails when the rebuild of the clips (a reboot goes back to an earlier frame) loses what was hidden
 		{
 			name = "what is hidden stays hidden after a malfunction and its reboot rebuilt the clips",
