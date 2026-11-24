@@ -218,6 +218,7 @@ return {
 					"box:gry_hud_radar",
 					"box:gry_hud_radarunits",
 					"box:gry_hud_radarhex",
+					"box:gry_compass_intercardinals", -- the compass option (b5d3af8) was added to the menu without this list (red since then)
 					"box:gry_hud_radarmarkers",
 					"box:gry_hud_radarobjectives",
 					"box:gry_hud_radarpings",

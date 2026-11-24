@@ -308,7 +308,9 @@ return {
 				local secondBinder = find("binder", firstBinder + 1)
 				expect(firstBinder).toNot.beNil()
 				expect(secondBinder).toNot.beNil()
-				expect(find("binder", secondBinder + 1)).to.beNil() -- the two keys of the mod, nothing else asks for one
+				local thirdBinder = find("binder", secondBinder + 1)
+				expect(thirdBinder).toNot.beNil() -- the night vision key (cl_nightvision.lua)
+				expect(find("binder", thirdBinder + 1)).to.beNil() -- the three keys of the mod, nothing else asks for one
 				expect(keys < firstBinder).to.beTrue()
 
 				-- the line under the zoom key picker (the default key, or a warning), then the zoom key behaviour (its label, then the threshold
