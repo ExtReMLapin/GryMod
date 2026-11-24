@@ -711,9 +711,25 @@ local usableEnt -- the entity that can be used and was last reported (nil: none)
 local reportedMode = 0 -- the mode that was last reported with it
 
 -- How long the crosshair must stay on the same usable thing before the use prompt shows (seconds): the original's prompt does not flash up
--- when the crosshair only passes over a thing. 0: at once. The crosshair's own usable state is not delayed.
-local DELAY_CONVAR = CreateClientConVar("gry_usehint_delay", "0.2", true, false, "Seconds the crosshair must stay on the same usable thing before the use prompt shows (0.2 is the original's; 0: at once). The prompt goes at once when the thing changes", 0, 2)
-Cross.DWELL_DEFAULT = 0.2
+-- when the crosshair only passes over a thing. 0: at once. The crosshair's own usable state is not delayed. 0.10 s is the original's: the aim must stay
+-- 0.05 s on the thing to select it, and the text comes 0.05 s after the selection (CryAction's interactor, see docs/superpowers/plans/2026-11-23-crysis-timings-catalogue.md U1).
+local DELAY_CONVAR = CreateClientConVar("gry_usehint_delay", "0.1", true, false, "Seconds the crosshair must stay on the same usable thing before the use prompt shows (0.1 is the original's: 0.05 to select + 0.05 to the text; 0: at once). The prompt goes at once when the thing changes", 0, 2)
+Cross.DWELL_DEFAULT = 0.1
+
+-- How long the prompt stays after the crosshair leaves the thing (seconds): the original keeps the selection 0.2 s. 0: it goes at once. Another usable thing under
+-- the crosshair ends the hold at once.
+local HOLD_CONVAR = CreateClientConVar("gry_usehint_hold", "0.2", true, false, "Seconds the use prompt stays after the crosshair leaves the usable thing (0.2 is the original's; 0: it goes at once). Another usable thing replaces it at once", 0, 2)
+Cross.HOLD_DEFAULT = 0.2
+
+function Cross.HoldDuration()
+	local hold = HOLD_CONVAR:GetFloat()
+
+	if hold ~= hold then
+		return Cross.HOLD_DEFAULT
+	end
+
+	return math.Clamp(hold, 0, 2)
+end
 
 function Cross.DwellDelay()
 	local delay = DELAY_CONVAR:GetFloat()
@@ -746,15 +762,69 @@ end
 
 local dwell = {ent = nil, since = 0}
 
+-- The hold: set while the prompt stays after the aim left its thing (holdUntil: when it ends, holdPly: the player the end is told for). Its timer exists only
+-- for that time; nothing runs otherwise (the scan, which runs anyway, also ends it, whichever comes first).
+local HOLD_TIMER = "GryMod_UsableHold"
+local holdUntil, holdPly
+
+function Cross.Holding()
+	return holdUntil ~= nil
+end
+
+local function endHold()
+	holdUntil, holdPly = nil, nil
+	timer.Remove(HOLD_TIMER)
+end
+
+-- The hold is over: the thing is told gone (once; nothing when there is no hold).
+function Cross.ExpireHold()
+	if not holdUntil then
+		return
+	end
+
+	local ply = holdPly
+
+	endHold()
+	usableEnt, reportedMode = nil, 0
+	Cross.ReportUsable(nil, 0, ply)
+end
+
 function Cross.ResetDwell()
 	dwell.ent, dwell.since = nil, 0
 	usableEnt, reportedMode = nil, 0
+	endHold()
 end
 
--- The scan's report: the thing that can be used under the crosshair (nil, mode 0 when none), delayed by the dwell. The hook is run once at each change of what is
--- SHOWN (the entity or its mode), as before; with the delay at 0 that is what it always was.
+-- The scan's report: the thing that can be used under the crosshair (nil, mode 0 when none), delayed by the dwell and held after the aim leaves. The hook is run
+-- once at each change of what is SHOWN (the entity or its mode), as before; with the delay and the hold at 0 that is what it always was.
 function Cross.ReportDwelled(usable, mode, ply, now)
 	local shown = Cross.DwellStep(dwell, usable, now, Cross.DwellDelay())
+
+	-- something is on show and the dwell gives nothing now: the hold decides
+	if shown == nil and usableEnt ~= nil then
+		if holdUntil then
+			if now >= holdUntil - 1e-6 then
+				Cross.ExpireHold()
+			elseif usable == usableEnt then
+				-- the aim came back to the thing: it never went
+				endHold()
+				shown = usable
+			elseif usable ~= nil then
+				-- another usable thing: this one goes at once, the other comes after its own delay
+				Cross.ExpireHold()
+			else
+				return
+			end
+		elseif usable == nil and Cross.HoldDuration() > 0 then
+			holdUntil, holdPly = now + Cross.HoldDuration(), ply
+			timer.Create(HOLD_TIMER, Cross.HoldDuration(), 1, Cross.ExpireHold)
+
+			return
+		end
+	elseif holdUntil then
+		endHold()
+	end
+
 	local shownMode = shown ~= nil and mode or 0
 
 	if shown ~= usableEnt or shownMode ~= reportedMode then

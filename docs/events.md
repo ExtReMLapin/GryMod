@@ -109,7 +109,7 @@ console and does not break GryMod (the listeners after it are not run).
 ### `GryMod_UsableChanged(ent, mode, ply)`
 
 What the player aims at and can use or take changed. It is the test that opens the crosshair's "usable" state, looked at ten times a second,
-and the hook is run once at each change, not at each look. The use prompt (and so this hook) only comes after the crosshair stayed `gry_usehint_delay` seconds (0.2 by default, 0 for at once) on the same thing, and goes at once when the thing changes; the crosshair's own usable state is not delayed. `ent` is the entity (`nil` when there is none), `mode` is `1` (it can be used or
+and the hook is run once at each change, not at each look. The use prompt (and so this hook) only comes after the crosshair stayed `gry_usehint_delay` seconds (0.1 by default, 0 for at once) on the same thing, and goes `gry_usehint_hold` seconds (0.2 by default, 0 for at once) after the crosshair leaves it, or at once when another usable thing is aimed; the crosshair's own usable state is not delayed. `ent` is the entity (`nil` when there is none), `mode` is `1` (it can be used or
 taken) or `0` (nothing; `2`, "it can not", is not used any more: what is taken by walking over it is no usable thing). It is run while the crosshair is drawn, so not when the crosshair is off
 or the player is dead. The use prompt hangs on it. A listener that fails is shown in the console and does not break GryMod (the listeners after it are not run).
 

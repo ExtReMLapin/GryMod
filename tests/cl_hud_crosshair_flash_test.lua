@@ -1034,12 +1034,13 @@ return {
 			end
 		},
 		{
-			-- fails without the convar gry_usehint_delay (default 0.2) and Cross.DwellDelay
-			name = "gry_usehint_delay is saved, 0.2 s by default, held between 0 and 2",
+			-- fails without the original's timing (0.05 s to select + 0.05 s to the text = 0.10 s) as the default of gry_usehint_delay
+			name = "gry_usehint_delay is saved, 0.1 s by default (the original's 0.05 + 0.05), held between 0 and 2",
 			func = function(state)
 				local convar = GetConVar("gry_usehint_delay")
 				expect(convar).toNot.beNil()
-				expect(convar:GetDefault()).to.equal("0.2")
+				expect(convar:GetDefault()).to.equal("0.1")
+				expect(GryMod.FlashCrosshair.DWELL_DEFAULT).to.equal(0.1)
 				-- (GetFlags does not report FCVAR_ARCHIVE for Lua-created convars in this build: same flags as a saved sibling)
 				expect(convar:GetFlags()).to.equal(GetConVar("gry_hud_status"):GetFlags())
 
@@ -1066,7 +1067,9 @@ return {
 			func = function(state)
 				local C = GryMod.FlashCrosshair
 				local convar = GetConVar("gry_usehint_delay")
+				local holdVar = GetConVar("gry_usehint_hold")
 				local saved = convar:GetString()
+				local savedHold = holdVar and holdVar:GetString()
 				local realReport = C.ReportUsable
 				local told = {}
 				local ent = {}
@@ -1075,6 +1078,11 @@ return {
 				C.ReportUsable = function(e, mode) told[#told + 1] = {e, mode} end
 
 				local ok, err = pcall(function()
+					-- (no hold here: this test is about the delay before the prompt)
+					if holdVar then
+						holdVar:SetString("0")
+					end
+
 					convar:SetString("0.2")
 					C.ReportDwelled(ent, 1, nil, 10)
 					C.ReportDwelled(ent, 1, nil, 10.1)
@@ -1104,6 +1112,176 @@ return {
 
 				C.ReportUsable = realReport
 				convar:SetString(saved)
+
+				if holdVar then
+					holdVar:SetString(savedHold)
+				end
+
+				C.ResetDwell()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the convar gry_usehint_hold and Cross.HoldDuration
+			name = "gry_usehint_hold is saved, 0.2 s by default (the original keeps the selection 0.2 s), held between 0 and 2",
+			func = function(state)
+				local convar = GetConVar("gry_usehint_hold")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0.2")
+				expect(GryMod.FlashCrosshair.HOLD_DEFAULT).to.equal(0.2)
+				expect(convar:GetFlags()).to.equal(GetConVar("gry_hud_status"):GetFlags())
+
+				local saved = convar:GetString()
+				local ok, err = pcall(function()
+					convar:SetString("0.5")
+					expect(GryMod.FlashCrosshair.HoldDuration()).to.aboutEqual(0.5, 1e-6)
+					convar:SetString("0")
+					expect(GryMod.FlashCrosshair.HoldDuration()).to.equal(0)
+					convar:SetString("99")
+					expect(GryMod.FlashCrosshair.HoldDuration()).to.equal(2)
+				end)
+
+				convar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the hold in ReportDwelled: the prompt would go at the first scan that no longer finds the thing
+			name = "the hold: the prompt stays 0.2 s after the aim leaves, goes once at the end (by the next scan or by the on-demand timer), and no timer is left running",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local delay, hold = GetConVar("gry_usehint_delay"), GetConVar("gry_usehint_hold")
+				local savedDelay, savedHold = delay:GetString(), hold:GetString()
+				local realReport = C.ReportUsable
+				local told = {}
+				local ent = {}
+
+				C.ResetDwell()
+				C.ReportUsable = function(e, mode) told[#told + 1] = {e, mode} end
+
+				local ok, err = pcall(function()
+					delay:SetString("0.1")
+					hold:SetString("0.2")
+
+					expect(C.Holding()).to.beFalse()
+					C.ReportDwelled(ent, 1, nil, 10)
+					C.ReportDwelled(ent, 1, nil, 10.1)
+					expect(#told).to.equal(1)
+
+					-- the aim leaves: nothing is told while the hold runs, and only for this one hold there is a timer
+					C.ReportDwelled(nil, 0, nil, 10.2)
+					expect(#told).to.equal(1)
+					expect(C.Holding()).to.beTrue()
+					expect(timer.Exists("GryMod_UsableHold")).to.beTrue()
+					C.ReportDwelled(nil, 0, nil, 10.3)
+					expect(#told).to.equal(1)
+
+					-- the scan after the end says it
+					C.ReportDwelled(nil, 0, nil, 10.4)
+					expect(#told).to.equal(2)
+					expect(told[2][1]).to.beNil()
+					expect(told[2][2]).to.equal(0)
+					expect(C.Holding()).to.beFalse()
+					expect(timer.Exists("GryMod_UsableHold")).to.beFalse()
+					C.ReportDwelled(nil, 0, nil, 10.5)
+					expect(#told).to.equal(2)
+
+					-- the timer says it when no scan comes
+					C.ReportDwelled(ent, 1, nil, 11)
+					C.ReportDwelled(ent, 1, nil, 11.1)
+					expect(#told).to.equal(3)
+					C.ReportDwelled(nil, 0, nil, 11.2)
+					expect(#told).to.equal(3)
+					C.ExpireHold()
+					expect(#told).to.equal(4)
+					expect(told[4][1]).to.beNil()
+					expect(C.Holding()).to.beFalse()
+					expect(timer.Exists("GryMod_UsableHold")).to.beFalse()
+					C.ExpireHold()
+					expect(#told).to.equal(4)
+
+					-- hold 0: gone at once, as before
+					hold:SetString("0")
+					C.ReportDwelled(ent, 1, nil, 12)
+					C.ReportDwelled(ent, 1, nil, 12.1)
+					expect(#told).to.equal(5)
+					C.ReportDwelled(nil, 0, nil, 12.2)
+					expect(#told).to.equal(6)
+					expect(C.Holding()).to.beFalse()
+				end)
+
+				C.ReportUsable = realReport
+				delay:SetString(savedDelay)
+				hold:SetString(savedHold)
+				C.ResetDwell()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the cases of the hold: looking back would flicker, another thing would keep the first one's prompt
+			name = "the hold ends at once when the aim comes back to the same thing (no flicker, nothing told) or falls on another usable thing (the first is told gone at once)",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+				local delay, hold = GetConVar("gry_usehint_delay"), GetConVar("gry_usehint_hold")
+				local savedDelay, savedHold = delay:GetString(), hold:GetString()
+				local realReport = C.ReportUsable
+				local told = {}
+				local a, b = {}, {}
+
+				C.ResetDwell()
+				C.ReportUsable = function(e, mode) told[#told + 1] = {e, mode} end
+
+				local ok, err = pcall(function()
+					delay:SetString("0.1")
+					hold:SetString("0.2")
+
+					C.ReportDwelled(a, 1, nil, 10)
+					C.ReportDwelled(a, 1, nil, 10.1)
+					expect(#told).to.equal(1)
+
+					-- the aim leaves and comes back inside the hold: nothing is told, the hold is over
+					C.ReportDwelled(nil, 0, nil, 10.2)
+					expect(C.Holding()).to.beTrue()
+					C.ReportDwelled(a, 1, nil, 10.3)
+					expect(#told).to.equal(1)
+					expect(C.Holding()).to.beFalse()
+					expect(timer.Exists("GryMod_UsableHold")).to.beFalse()
+					C.ReportDwelled(a, 1, nil, 10.5)
+					expect(#told).to.equal(1)
+
+					-- the aim leaves, then falls on another usable thing: the first prompt is gone at once, the second comes after the delay
+					C.ReportDwelled(nil, 0, nil, 11)
+					expect(C.Holding()).to.beTrue()
+					C.ReportDwelled(b, 1, nil, 11.1)
+					expect(#told).to.equal(2)
+					expect(told[2][1]).to.beNil()
+					expect(C.Holding()).to.beFalse()
+					expect(timer.Exists("GryMod_UsableHold")).to.beFalse()
+					C.ReportDwelled(b, 1, nil, 11.2)
+					expect(#told).to.equal(3)
+					expect(told[3][1]).to.equal(b)
+
+					-- a reset (a new life) drops a hold with its timer
+					C.ReportDwelled(nil, 0, nil, 12)
+					expect(C.Holding()).to.beTrue()
+					C.ResetDwell()
+					expect(C.Holding()).to.beFalse()
+					expect(timer.Exists("GryMod_UsableHold")).to.beFalse()
+					expect(#told).to.equal(3)
+				end)
+
+				C.ReportUsable = realReport
+				delay:SetString(savedDelay)
+				hold:SetString(savedHold)
 				C.ResetDwell()
 
 				if not ok then

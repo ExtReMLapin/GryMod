@@ -226,8 +226,9 @@ While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD fo
   (server, in the table of the hooks above) tells your addon when a target is spotted.
 - **The objectives** (`gry_objectives_marker_mode`): `binoculars` (the default, as in the original) shows the objective markers on the screen only while the
   binoculars are up, `always` shows them all the time. The radar and the maps are not affected.
-- **The use prompt** (`gry_usehint_delay`, 0.2 seconds by default, 0 for at once): the prompt shows after the crosshair stayed that long on the same usable thing,
-  and goes at once when the thing changes. `GryMod_UsableChanged` (docs/events.md) is run when the prompt appears or goes.
+- **The use prompt** (`gry_usehint_delay`, 0.1 seconds by default as in the original, 0 for at once): the prompt shows after the crosshair stayed that long on the same usable thing,
+  and goes `gry_usehint_hold` seconds after the crosshair left the thing (0.2 by default as in the original, 0 for at once);
+  looking at another usable thing ends the hold at once, and looking back at the same thing keeps the prompt without a break. `GryMod_UsableChanged` (docs/events.md) is run when the prompt appears or goes.
 
 ## HUD events
 
