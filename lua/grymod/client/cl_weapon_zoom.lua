@@ -33,24 +33,44 @@ end
 -- Whether the weapon in hand is zooming: its registry entry says the right click zooms (alt = "zoom") and the field of view is below the normal
 -- one. The crosshair of the HUD asks it (below): a scope has its own aim. Nothing is allocated, the HUD asks every frame.
 function WeaponZoom.IsZoomed(ply)
-	if not HideConVar:GetBool() or not IsValid(ply) then
+	if not HideConVar:GetBool() then
 		return false
+	end
+
+	local weapon = WeaponZoom.ZoomingWeapon(ply)
+
+	-- a weapon with no scope aim of its own (the crossbow) keeps the crosshair while it zooms (zoomCrosshair: true, or the number of the one it shows)
+	return weapon ~= nil and not GryMod.API.WeaponValue(weapon, "zoomCrosshair", true)
+end
+
+-- The weapon in hand when it is zooming (its registry entry says the right click zooms and the field of view is below the normal one), else nil.
+function WeaponZoom.ZoomingWeapon(ply)
+	if not IsValid(ply) then
+		return nil
 	end
 
 	local weapon = ply:GetActiveWeapon()
 
 	if not IsValid(weapon) or GryMod.API.WeaponValue(weapon, "alt", true) ~= "zoom" then
-		return false
-	end
-
-	-- a weapon with no scope aim of its own (the crossbow) keeps the crosshair while it zooms
-	if GryMod.API.WeaponValue(weapon, "zoomCrosshair", true) == true then
-		return false
+		return nil
 	end
 
 	local fov, default = ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)
 
-	return type(fov) == "number" and type(default) == "number" and fov < default - WeaponZoom.TOLERANCE
+	if type(fov) == "number" and type(default) == "number" and fov < default - WeaponZoom.TOLERANCE then
+		return weapon
+	end
+
+	return nil
+end
+
+-- The crosshair of the movie (1 to 13) the weapon in hand wants while it zooms (its registry's zoomCrosshair, when that is a number), else nil: the player's
+-- style. The crossbow is a precision weapon: its zoom shows the thin cross, not the wide circle of the default style.
+function WeaponZoom.CrosshairFor(ply)
+	local weapon = WeaponZoom.ZoomingWeapon(ply)
+	local wanted = weapon and GryMod.API.WeaponValue(weapon, "zoomCrosshair", true)
+
+	return isnumber(wanted) and wanted or nil
 end
 
 -- The crosshair's own test of "the player is zooming" (cl_hud_crosshair_flash.lua, Cross.Zooming, which knows the binoculars) also says yes

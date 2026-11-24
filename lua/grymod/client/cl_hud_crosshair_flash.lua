@@ -179,6 +179,16 @@ function Cross.IndexFor(style, class, weaponDraws, zoomed, weaponStyles)
 	return math.floor(style)
 end
 
+-- The crosshair a zoomed weapon asks for (its registry's zoomCrosshair, see cl_weapon_zoom.lua) over the one chosen: only over a crosshair that is shown
+-- (0 stays 0: the binoculars, a weapon without one) and not when the player wants his own style everywhere (gry_hud_crosshair_weapon 0).
+function Cross.ZoomOverride(index, zoomIndex, weaponStyles)
+	if index ~= 0 and zoomIndex and weaponStyles ~= false then
+		return zoomIndex
+	end
+
+	return index
+end
+
 -- The spread (0 to 1) the crosshair is heading for: half of it at a run, more in the air and right after a shot,
 -- less crouched. The original reads the weapon's spread; Garry's Mod weapons have no common one, so this is
 -- estimated from what the player does.
@@ -965,6 +975,11 @@ function Cross.Paint()
 	local weapon = ply:GetActiveWeapon()
 	local class = IsValid(weapon) and weapon:GetClass() or nil
 	local index = Cross.IndexFor(STYLE_CONVAR:GetInt(), class, Cross.WeaponDraws(weapon), Cross.Zooming(ply), WEAPON_CONVAR:GetBool())
+	local zoomWeapon = GryMod.WeaponZoom
+
+	if zoomWeapon and zoomWeapon.CrosshairFor then
+		index = Cross.ZoomOverride(index, zoomWeapon.CrosshairFor(ply), WEAPON_CONVAR:GetBool())
+	end
 
 	if hidden(ply) then
 		index = 0

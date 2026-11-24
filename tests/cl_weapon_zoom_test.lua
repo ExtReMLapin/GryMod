@@ -376,12 +376,60 @@ return {
 					GetInfoNum = function(_, name, fallback) return name == "fov_desired" and 75 or fallback end
 				}
 
-				expect(GryMod.API.WeaponValue("weapon_crossbow", "zoomCrosshair", true)).to.beTrue()
+				expect(GryMod.API.WeaponValue("weapon_crossbow", "zoomCrosshair", true)).to.equal(7) -- the thin cross: a precision weapon wants a precise aim
 				expect(W.IsZoomed(zoomed)).to.beFalse()
 
 				local okBad = GryMod.API.RegisterWeapon("test_bad_zoom_crosshair", {alt = "zoom", zoomCrosshair = "yes"})
 				GryMod.API.UnregisterWeapon("test_bad_zoom_crosshair")
 				expect(okBad).to.beFalse()
+				local okRange = GryMod.API.RegisterWeapon("test_bad_zoom_crosshair", {alt = "zoom", zoomCrosshair = 14})
+				GryMod.API.UnregisterWeapon("test_bad_zoom_crosshair")
+				expect(okRange).to.beFalse()
+			end
+		},
+		{
+			-- fails without WeaponZoom.CrosshairFor / Cross.ZoomOverride: the zoomed crossbow showed the player's style (the 6: a wide circle with corners, reported
+			-- 2026-11-24 as not precise for a precision weapon)
+			name = "a zoomed weapon whose zoomCrosshair is a number shows that crosshair of the movie in its zoom (the crossbow: the thin cross), only if the player lets weapons choose",
+			func = function()
+				local W = GryMod.WeaponZoom
+				local Cross = GryMod.FlashCrosshair
+
+				local function fake(class, fov)
+					return {
+						IsValid = function() return true end,
+						GetActiveWeapon = function() return {IsValid = function() return true end, GetClass = function() return class end} end,
+						GetFOV = function() return fov end,
+						GetInfoNum = function(_, name, fallback) return name == "fov_desired" and 75 or fallback end
+					}
+				end
+
+				expect(W.CrosshairFor(fake("weapon_crossbow", 20))).to.equal(7)
+				expect(W.CrosshairFor(fake("weapon_crossbow", 75))).to.beNil() -- at rest: the player's style
+				expect(W.CrosshairFor(fake("weapon_smg1", 20))).to.beNil()
+				expect(W.CrosshairFor(NULL)).to.beNil()
+
+				GryMod.API.RegisterWeapon("test_keep_rifle", {alt = "zoom", altShoots = false, zoomCrosshair = true})
+				GryMod.API.RegisterWeapon("test_scope_rifle", {alt = "zoom", altShoots = false})
+
+				local ok, err = pcall(function()
+					expect(W.CrosshairFor(fake("test_keep_rifle", 20))).to.beNil() -- true: the player's style stays
+					expect(W.IsZoomed(fake("test_keep_rifle", 20))).to.beFalse()
+					expect(W.CrosshairFor(fake("test_scope_rifle", 20))).to.beNil() -- no field: the weapon's own scope, the crosshair goes
+				end)
+
+				GryMod.API.UnregisterWeapon("test_keep_rifle")
+				GryMod.API.UnregisterWeapon("test_scope_rifle")
+
+				if not ok then
+					error(err, 0)
+				end
+
+				-- the override: only over a crosshair that is shown (0 stays 0: the binoculars, a weapon without one), and not when the player wants his own style everywhere
+				expect(Cross.ZoomOverride(6, 7, true)).to.equal(7)
+				expect(Cross.ZoomOverride(6, nil, true)).to.equal(6)
+				expect(Cross.ZoomOverride(0, 7, true)).to.equal(0)
+				expect(Cross.ZoomOverride(6, 7, false)).to.equal(6)
 			end
 		},
 		{
