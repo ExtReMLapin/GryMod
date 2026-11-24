@@ -22,8 +22,8 @@ register("weapon_ar2", {fire = "auto", ammo = "AR2", alt = "energy", altAmmo = "
 -- The shotgun: the secondary fire is the double barrel, taken from the magazine: no secondary counter.
 register("weapon_shotgun", {fire = "semi", ammo = "Buckshot", alt = "doublebarrel", altShoots = true, slotIcon = "Shotgun", listIcon = "Shotgun"})
 
--- The crossbow: the secondary fire is a zoom, no counter.
-register("weapon_crossbow", {fire = "semi", ammo = "XBowBolt", alt = "zoom", altShoots = false, listIcon = "DSG1"})
+-- The crossbow: the secondary fire is a zoom, no counter. Its zoom has no scope picture of its own in Garry's Mod: the crosshair stays (zoomCrosshair).
+register("weapon_crossbow", {fire = "semi", ammo = "XBowBolt", alt = "zoom", altShoots = false, zoomCrosshair = true, listIcon = "DSG1"})
 
 -- The frag grenade: the secondary fire is the low throw, while there is a grenade. Its icon in the grenade slot is the explosive one
 -- (the only hand grenade of Half-Life 2; the other kinds of the HUD movie are for the weapons of other addons).

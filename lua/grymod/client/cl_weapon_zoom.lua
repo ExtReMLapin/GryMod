@@ -43,6 +43,11 @@ function WeaponZoom.IsZoomed(ply)
 		return false
 	end
 
+	-- a weapon with no scope aim of its own (the crossbow) keeps the crosshair while it zooms
+	if GryMod.API.WeaponValue(weapon, "zoomCrosshair", true) == true then
+		return false
+	end
+
 	local fov, default = ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)
 
 	return type(fov) == "number" and type(default) == "number" and fov < default - WeaponZoom.TOLERANCE

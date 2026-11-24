@@ -77,13 +77,16 @@ local CHECK = {
 	-- false: no crosshair; true: the player's style; 1 to 13: the number of one of the movie's crosshairs, chosen by the weapon
 	crosshair = function(v) if isbool(v) or (isnumber(v) and v == math.floor(v) and v >= 1 and v <= API.CrosshairCount) then return v end end,
 	grenade = function(v) if isstring(v) and GRENADES[v] then return v end end,
+	-- true: the crosshair of the HUD stays while the zoom of this weapon (alt = "zoom") is up, because the weapon draws no scope aim of its own (the
+	-- Half-Life 2 crossbow); without it a zoomed weapon hides the crosshair, as a scope has its own
+	zoomCrosshair = function(v) if isbool(v) then return v end end,
 	-- function(wep) returning the heat of the weapon, 0 (cold) to 1 (overheated): the bar of the HUD shows it
 	heat = function(v) if isfunction(v) then return v end end,
 	-- the silhouette of the weapon in the weapon list that shows at each weapon change (one of API.WeaponListIcons)
 	listIcon = function(v) if isstring(v) and LIST_ICONS[v] then return v end end
 }
 
-local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "grenade", "heat", "listIcon"}
+local FIELDS = {"fire", "burst", "ammo", "counter", "alt", "altAmmo", "altShoots", "altLabel", "altIcon", "icon", "slotIcon", "crosshair", "zoomCrosshair", "grenade", "heat", "listIcon"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry

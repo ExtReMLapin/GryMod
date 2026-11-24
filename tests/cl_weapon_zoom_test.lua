@@ -336,20 +336,52 @@ return {
 					}
 				end
 
-				expect(W.IsZoomed(fake("weapon_crossbow", 20, 75))).to.beTrue()
-				expect(W.IsZoomed(fake("weapon_crossbow", 75, 75))).to.beFalse()
-				expect(W.IsZoomed(fake("weapon_crossbow", 74.8, 75))).to.beFalse() -- within the tolerance
-				expect(W.IsZoomed(fake("weapon_smg1", 20, 75))).to.beFalse()
-				expect(W.IsZoomed(fake(nil, 20, 75))).to.beFalse()
-				expect(W.IsZoomed(NULL)).to.beFalse()
+				-- a weapon of an addon whose zoom is a scope with its own aim (alt = zoom, nothing more said)
+				GryMod.API.RegisterWeapon("test_scope_rifle", {fire = "semi", alt = "zoom", altShoots = false})
 
-				local convar = setting("gry_zoom_hide_crosshair")
-				expect(convar ~= nil).to.beTrue()
-				local saved = convar:GetString()
-				convar:SetString("0")
-				local off = W.IsZoomed(fake("weapon_crossbow", 20, 75))
-				convar:SetString(saved)
-				expect(off).to.beFalse()
+				local ok, err = pcall(function()
+					expect(W.IsZoomed(fake("test_scope_rifle", 20, 75))).to.beTrue()
+					expect(W.IsZoomed(fake("test_scope_rifle", 75, 75))).to.beFalse()
+					expect(W.IsZoomed(fake("test_scope_rifle", 74.8, 75))).to.beFalse() -- within the tolerance
+					expect(W.IsZoomed(fake("weapon_smg1", 20, 75))).to.beFalse()
+					expect(W.IsZoomed(fake(nil, 20, 75))).to.beFalse()
+					expect(W.IsZoomed(NULL)).to.beFalse()
+
+					local convar = setting("gry_zoom_hide_crosshair")
+					expect(convar ~= nil).to.beTrue()
+					local saved = convar:GetString()
+					convar:SetString("0")
+					local off = W.IsZoomed(fake("test_scope_rifle", 20, 75))
+					convar:SetString(saved)
+					expect(off).to.beFalse()
+				end)
+
+				GryMod.API.UnregisterWeapon("test_scope_rifle")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails if the crossbow's zoom hides the crosshair: the Half-Life 2 crossbow has no scope picture of its own in Garry's Mod, so the zoomed crossbow had NO
+			-- crosshair at all (reported 2026-11-24); it says so in the registry (zoomCrosshair)
+			name = "the zoomed crossbow keeps the crosshair (its registry entry says zoomCrosshair); a weapon with its own scope does not, and the field only takes true or false",
+			func = function()
+				local W = GryMod.WeaponZoom
+				local zoomed = {
+					IsValid = function() return true end,
+					GetActiveWeapon = function() return {IsValid = function() return true end, GetClass = function() return "weapon_crossbow" end} end,
+					GetFOV = function() return 20 end,
+					GetInfoNum = function(_, name, fallback) return name == "fov_desired" and 75 or fallback end
+				}
+
+				expect(GryMod.API.WeaponValue("weapon_crossbow", "zoomCrosshair", true)).to.beTrue()
+				expect(W.IsZoomed(zoomed)).to.beFalse()
+
+				local okBad = GryMod.API.RegisterWeapon("test_bad_zoom_crosshair", {alt = "zoom", zoomCrosshair = "yes"})
+				GryMod.API.UnregisterWeapon("test_bad_zoom_crosshair")
+				expect(okBad).to.beFalse()
 			end
 		},
 		{
@@ -360,24 +392,35 @@ return {
 				local Cross = GryMod.FlashCrosshair
 				expect(Cross.Zooming).to.equal(W.CrossWrapper)
 
+				-- (a weapon with a scope of its own: the crossbow keeps the crosshair, see the test above)
 				local function fake(fov)
 					return {
 						IsValid = function() return true end,
 						GetActiveWeapon = function()
-							return {IsValid = function() return true end, GetClass = function() return "weapon_crossbow" end}
+							return {IsValid = function() return true end, GetClass = function() return "test_scope_rifle" end}
 						end,
 						GetFOV = function() return fov end,
 						GetInfoNum = function(_, name, fallback) return name == "fov_desired" and 75 or fallback end
 					}
 				end
 
-				state.world.wanted = false
-				expect(Cross.Zooming(fake(20))).to.beTrue()
-				expect(Cross.Zooming(fake(75))).to.beFalse()
+				GryMod.API.RegisterWeapon("test_scope_rifle", {fire = "semi", alt = "zoom", altShoots = false})
 
-				-- the binoculars up: the base rule answers yes whatever the weapon does
-				state.world.wanted = true
-				expect(Cross.Zooming(fake(75))).to.beTrue()
+				local ok, err = pcall(function()
+					state.world.wanted = false
+					expect(Cross.Zooming(fake(20))).to.beTrue()
+					expect(Cross.Zooming(fake(75))).to.beFalse()
+
+					-- the binoculars up: the base rule answers yes whatever the weapon does
+					state.world.wanted = true
+					expect(Cross.Zooming(fake(75))).to.beTrue()
+				end)
+
+				GryMod.API.UnregisterWeapon("test_scope_rifle")
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		{
