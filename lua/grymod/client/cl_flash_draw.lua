@@ -1410,6 +1410,13 @@ end
 
 local lastError
 
+-- What Flash.Draw runs under pcall. A function that exists once, which pcall gives its arguments to: written in the call to pcall it was a new closure
+-- (264 to 280 bytes with its four captured values) at every call, 5 or 6 calls a frame.
+local function drawRoot(clip, x, y, scale)
+	drawEntries(clip, scale, 0, 0, scale, x, y, 1, 1, 1, 1, 0, 0, 0, 0)
+	flush()
+end
+
 -- Draws `clip` with the stage origin at (x, y) on the screen and `scale` screen pixels per stage pixel. Returns
 -- false when something went wrong: the error is printed once (not at every frame) and the state is put back.
 function Flash.Draw(clip, x, y, scale)
@@ -1417,10 +1424,7 @@ function Flash.Draw(clip, x, y, scale)
 	batchMaterial = nil
 	batchBlend = nil
 
-	local ok, err = pcall(function()
-		drawEntries(clip, scale, 0, 0, scale, x, y, 1, 1, 1, 1, 0, 0, 0, 0)
-		flush()
-	end)
+	local ok, err = pcall(drawRoot, clip, x, y, scale)
 
 	if ok then
 		lastError = nil
