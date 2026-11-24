@@ -25,7 +25,7 @@ Options.List = {
 	{name = "messages", label = "Text lines", help = "The lines of text of the HUD: the suit's own messages and the ones other addons show (the objective banner, for one)"},
 	{name = "usehint", label = "Use prompt", help = "The icon and the text under the crosshair when you can use or take what you look at (TAKE, ENTER VEHICLE, CLIMB, USE)"},
 	{name = "pickups", label = "Pickup popups", help = "The small popup when you take ammo, a weapon or an item (the Half-Life 2 pickup list is hidden when it is on)"},
-	{name = "corners", label = "Corner marks", default = "0", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them; GryMod's HUD never did, so they are off until you ask for them)"},
+	{name = "corners", label = "Corner marks", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them)"},
 	{name = "overheat", label = "Weapon heat bar", help = "The bar above the weapon icon, for the weapons that say how hot they are (an addon's energy weapon). The Half-Life 2 weapons have none"},
 	{name = "weaponlist", label = "Weapon list", help = "The list of your weapons at the bottom right when you change weapon, with the one in hand on a plate (the Half-Life 2 selector at the top right stays as it is)"},
 	{name = "objectives", label = "Objective markers", help = "The marker on the screen at the place of each active objective, with its distance in metres, and an arrow on the edge of the screen when it is off screen (the objectives come from the map or from other addons)"}
@@ -44,6 +44,21 @@ function Options.Find(name)
 	return byName[name]
 end
 
+-- The corner marks were OFF by default at first, so every player has a saved 0 that is only that old default. They became ON by default (the owner asked,
+-- 2026-11-24): a saved 0 is put to 1 ONCE (the marker below remembers it), after that the player's own choice is kept.
+local cornersMigrated = CreateClientConVar("gry_hud_corners_default_on", "0", true, false, "Internal: set to 1 once the corner marks have been switched on by their new default; leave it alone")
+
+function Options.MigrateCorners()
+	if cornersMigrated:GetBool() then
+		return
+	end
+
+	convars.corners:SetString("1")
+	cornersMigrated:SetString("1")
+end
+
+Options.MigrateCorners()
+
 -- Whether this element is switched on (an element that has no switch is on).
 function Options.Enabled(name)
 	local convar = convars[name]
@@ -53,8 +68,9 @@ end
 
 -- Puts every switch back to its default (on, but for the elements that are off by default).
 function Options.Reset()
-	for _, convar in pairs(convars) do
-		convar:SetString(convar:GetDefault())
+	-- the list is the source of the defaults (a convar made by an older version of the file in the same game keeps its old default until the game restarts)
+	for name, convar in pairs(convars) do
+		convar:SetString(byName[name].default or "1")
 	end
 end
 

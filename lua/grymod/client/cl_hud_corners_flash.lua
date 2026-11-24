@@ -3,7 +3,7 @@
 -- of the movies); they are a decoration. The movie's one function, destroy(status), puts the mark in the state of the suit: red while the HUD
 -- is down, off while it flickers. It is called from the report every other piece listens to (the hook GryMod_HUDStatus), nothing is polled.
 --
--- Off by default (gry_hud_corners, one of the HUD elements of cl_hud_options.lua): GryMod's HUD never had them. Drawn by the HUD's own paint
+-- On by default since 2026-11-24 (gry_hud_corners, one of the HUD elements of cl_hud_options.lua; it was off at first, GryMod's HUD never had them). Drawn by the HUD's own paint
 -- (cl_hud_flash.lua calls Corners.Paint), so they follow the HUD: gone with it when it is off (gry_hud, the suit off, the player dead), red
 -- with it when it goes down, and on the screen as long as the red HUD of a death is.
 
@@ -87,7 +87,7 @@ end
 local instances = {}
 local status = 0 -- what the HUD last reported
 
--- Whether the marks are wanted: the HUD element gry_hud_corners (off by default). The HUD itself being on is the caller's business.
+-- Whether the marks are wanted: the HUD element gry_hud_corners (on by default). The HUD itself being on is the caller's business.
 function Corners.Wanted()
 	return GryMod.HUDOptions ~= nil and GryMod.HUDOptions.Enabled("corners")
 end

@@ -4,8 +4,8 @@
 
 local NAMES = {"status", "radar", "radarunits", "radarhex", "crosshair", "damage", "hit", "grenade", "binoculars", "quickmenu", "boot", "damagefx", "messages", "usehint", "pickups", "corners", "overheat", "weaponlist", "objectives"}
 
--- the corner marks are off until the player asks for them (Options.List gives each element its `default`)
-local OFF_BY_DEFAULT = {corners = true}
+-- every element is on by default (the corner marks were off at first: they are on since 2026-11-24; Options.List gives an element its `default` if it has one)
+local OFF_BY_DEFAULT = {}
 
 local saved = {}
 
@@ -29,8 +29,9 @@ return {
 				for _, name in ipairs(NAMES) do
 					local convar = GetConVar("gry_hud_" .. name)
 					expect(convar ~= nil).to.beTrue()
-					expect(convar:GetDefault()).to.equal(OFF_BY_DEFAULT[name] and "0" or "1")
 					expect(GryMod.HUDOptions.Find(name)).to.exist()
+					-- (the definition is what a new game builds the convar from: one made earlier in the same game keeps an older default until it restarts)
+					expect(GryMod.HUDOptions.Find(name).default or "1").to.equal(OFF_BY_DEFAULT[name] and "0" or "1")
 				end
 			end
 		},
@@ -57,7 +58,7 @@ return {
 			end
 		},
 		{
-			name = "Reset puts every switch back to its default (on, but for the corner marks)",
+			name = "Reset puts every switch back to its default (on)",
 			func = function(state)
 				for _, name in ipairs(NAMES) do
 					GetConVar("gry_hud_" .. name):SetString("0")
@@ -220,8 +221,9 @@ return {
 					return drawn
 				end
 
-				-- the radar's hexagon is a second movie drawn with the radar (counted apart below)
+				-- the radar's hexagon is a second movie drawn with the radar (counted apart below), and the corner marks are two more (not counted here)
 				GetConVar("gry_hud_radarhex"):SetString("0")
+				GetConVar("gry_hud_corners"):SetString("0")
 				GetConVar("gry_hud_status"):SetString("1")
 				GetConVar("gry_hud_radar"):SetString("1")
 				local both = count()

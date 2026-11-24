@@ -174,13 +174,14 @@ return {
 			end
 		},
 		{
-			-- needs: the HUD element "corners" with the default "0"
-			name = "the corner marks are a HUD element that is off by default (gry_hud_corners), with a check box in the options; the other elements stay on by default",
+			-- needs: the HUD element "corners" with the default "1" (the owner asked for them on by default on 2026-11-24)
+			name = "the corner marks are a HUD element that is on by default (gry_hud_corners), with a check box in the options; the other elements stay on by default",
 			func = function(state)
 				local convar = GetConVar("gry_hud_corners")
 				expect(convar).toNot.beNil()
-				expect(convar:GetDefault()).to.equal("0")
+				-- (the definition is what a new game builds the convar from; a convar made earlier in the same game keeps its old default until it restarts)
 				expect(GryMod.HUDOptions.Find("corners")).to.exist()
+				expect(GryMod.HUDOptions.Find("corners").default).to.beNil() -- no default said: on, like every element
 				convar:SetString("0")
 				expect(Corners.Wanted()).to.beFalse()
 				convar:SetString("1")
@@ -212,6 +213,35 @@ return {
 				end
 
 				expect(found["gry_hud_corners"]).to.beTrue()
+			end
+		},
+		{
+			-- needs: Options.MigrateCorners and its saved marker: the marks were OFF by default before, so every player has a saved 0 that is only the old default
+			name = "a saved 0 of the corner marks (the old default) is put to 1 once, then the player's own choice is kept",
+			func = function(state)
+				local Options = GryMod.HUDOptions
+				local marker = GetConVar("gry_hud_corners_default_on")
+				expect(marker).toNot.beNil()
+				local savedMarker = marker:GetString()
+
+				local ok, err = pcall(function()
+					marker:SetString("0")
+					GetConVar("gry_hud_corners"):SetString("0")
+					Options.MigrateCorners()
+					expect(GetConVar("gry_hud_corners"):GetString()).to.equal("1")
+					expect(marker:GetString()).to.equal("1")
+
+					-- the player turns them off himself: the migration does not run again
+					GetConVar("gry_hud_corners"):SetString("0")
+					Options.MigrateCorners()
+					expect(GetConVar("gry_hud_corners"):GetString()).to.equal("0")
+				end)
+
+				marker:SetString(savedMarker)
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		{
