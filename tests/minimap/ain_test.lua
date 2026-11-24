@@ -154,13 +154,19 @@ return {
 	groupName = "GryMod minimap AIN reader (client)",
 	beforeEach = function(state)
 		state.read = nil
+		state.exists = nil
 	end,
 	afterEach = function(state)
-		-- put back file.Read if a case counted the calls
+		-- put back file.Read (and file.Exists) if a case counted the calls or stood in for them
 		pcall(function()
 			if state.read then
 				file.Read = state.read
 				state.read = nil
+			end
+
+			if state.exists then
+				file.Exists = state.exists
+				state.exists = nil
 			end
 		end)
 	end,
@@ -713,6 +719,85 @@ return {
 				expect(#calls).to.equal(1)
 				expect(calls[1][1]).to.equal("maps/graphs/d1_trainstation_03.ain")
 				expect(calls[1][2]).to.equal("GAME")
+			end
+		},
+		{
+			-- fails if an empty read through "GAME" (rp_apocalypse: file.Size 135568, file.Read "") ends in "too short" instead of the readable copy
+			name = "Load: an empty read through \"GAME\" goes on to the other search paths and finds the readable copy",
+			func = function(state)
+				local orig, origExists = file.Read, file.Exists
+				local good = orig("maps/graphs/d1_trainstation_03.ain", "GAME")
+				local calls = {}
+
+				expect(type(good) == "string" and #good > 16).to.beTrue()
+
+				state.read, state.exists = orig, origExists
+
+				file.Read = function(path, gamePath)
+					calls[#calls + 1] = gamePath
+
+					if gamePath == "GAME" then
+						return ""
+					end
+
+					if gamePath == "WORKSHOP" then
+						return good
+					end
+
+					return nil
+				end
+
+				local ok, res, err = pcall(function()
+					return ain().Load("some_map_with_two_graphs")
+				end)
+
+				file.Read, file.Exists = orig, origExists
+				state.read, state.exists = nil, nil
+
+				expect(ok).to.beTrue()
+				expect(err).to.beNil()
+				expect(res ~= nil).to.beTrue()
+				expect(#res.nodes > 0).to.beTrue()
+				expect(calls[1]).to.equal("GAME")
+				expect(calls[2]).to.equal("WORKSHOP")
+			end
+		},
+		{
+			-- fails if a file that exists and reads empty everywhere is reported as a short graph, or as no graph at all
+			name = "Load: a file that exists but reads empty on every path is \"unreadable\", a missing one stays \"no graph\"",
+			func = function(state)
+				local orig, origExists = file.Read, file.Exists
+
+				state.read, state.exists = orig, origExists
+
+				file.Read = function()
+					return ""
+				end
+
+				file.Exists = function()
+					return true
+				end
+
+				local ok, res, err = pcall(function()
+					return ain().Load("some_unreadable_map")
+				end)
+
+				file.Exists = function()
+					return false
+				end
+
+				local ok2, res2, err2 = pcall(function()
+					return ain().Load("some_missing_map")
+				end)
+
+				file.Read, file.Exists = orig, origExists
+				state.read, state.exists = nil, nil
+
+				expect(ok and ok2).to.beTrue()
+				expect(res).to.beNil()
+				expect(err).to.equal("unreadable")
+				expect(res2).to.beNil()
+				expect(err2).to.equal("no graph")
 			end
 		},
 		{

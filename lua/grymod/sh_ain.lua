@@ -179,7 +179,13 @@ function AIN.Parse(bytes)
 	return {version = version, mapVersion = int32(bytes, 5), nodes = nodes, links = links, lookup = lookup}
 end
 
--- Load(mapName) -> graph | nil, reason. One file.Read of maps/graphs/<mapName>.ain; "no graph" when the file is missing
+-- The search paths tried, in this order, when the first read gives nothing. A map that carries its own graph in its file (the bsp's embedded files) can show it
+-- with a size through "GAME" and give an empty read (measured on rp_apocalypse: file.Size 135568, file.Read ""), while the copy of its Workshop addon reads
+-- whole through "WORKSHOP". Only an empty read goes on to these; a normal map is still one single read.
+AIN.FALLBACK_PATHS = {"WORKSHOP", "thirdparty"}
+
+-- Load(mapName) -> graph | nil, reason. One file.Read of maps/graphs/<mapName>.ain; "no graph" when the file is missing, "unreadable" when it exists
+-- but every read of it is empty
 function AIN.Load(mapName)
 	if type(mapName) ~= "string" or mapName == "" then
 		return nil, "bad map name"
@@ -190,9 +196,33 @@ function AIN.Load(mapName)
 		return nil, "bad map name"
 	end
 
-	local bytes = file.Read("maps/graphs/" .. mapName .. ".ain", "GAME")
+	local path = "maps/graphs/" .. mapName .. ".ain"
+	local bytes = file.Read(path, "GAME")
 
-	if not bytes then
+	if bytes == nil or bytes == "" then
+		local paths = AIN.FALLBACK_PATHS
+
+		for i = 1, #paths do
+			local other = file.Read(path, paths[i])
+
+			if other ~= nil and other ~= "" then
+				bytes = other
+
+				break
+			end
+		end
+	end
+
+	if bytes == nil then
+		return nil, "no graph"
+	end
+
+	if bytes == "" then
+		-- a file that is there and gives nothing is not a short graph: say so
+		if file.Exists(path, "GAME") then
+			return nil, "unreadable"
+		end
+
 		return nil, "no graph"
 	end
 
