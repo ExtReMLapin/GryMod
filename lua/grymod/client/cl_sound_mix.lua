@@ -54,6 +54,11 @@ Mix.Original = {
 	["grymod/suit/suit_sound_137.wav"] = -18.96,
 	["grymod/suit/suit_medical_use_new.wav"] = -18,
 	["grymod/suit/suit_usage_error.wav"] = -15,
+	-- the night vision (events night_vision_select -29, night_vision_ambience -30, night_vision_deselect -29): mono 44100 Hz files,
+	-- not resampled, so no gain factor. The ambience is a loop (played with CreateSound like the cloak loop).
+	["grymod/suit/night_vision_select.wav"] = -29,
+	["grymod/suit/night_vision_ambience.wav"] = -30,
+	["grymod/suit/night_vision_deselect.wav"] = -29,
 	["grymod/hud/hud_activate_01.wav"] = -18,
 	["grymod/hud/hud_reboot.wav"] = -11,
 	["grymod/hud/hud_malfunction_hit.wav"] = -13.74,

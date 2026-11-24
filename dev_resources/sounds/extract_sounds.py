@@ -1,4 +1,4 @@
-"""Extracts the suit, HUD, quick menu, binocular and underwater sounds of GryMod from the Crysis SP demo, at their original quality.
+"""Extracts the suit, HUD, quick menu, binocular, night vision and underwater sounds of GryMod from the Crysis SP demo, at their original quality.
 
     python dev_resources/sounds/extract_sounds.py "C:/Program Files (x86)/Electronic Arts/Crytek/Crysis SP Demo/Game" --ffmpeg C:/ext/ffmpeg.exe
 
@@ -109,7 +109,7 @@ def decode_ima(h):
 VALID_RATES = (11025, 22050, 44100)
 # the loops are resampled as periodic signals
 LOOPS = ("servo_speed_loop_01c", "servo_speed_loop_01_underwater", "ambience_underwater_loop_02", "binocular_ambience",
-         "hud_cloak_feedback")
+         "hud_cloak_feedback", "night_vision_ambience")
 
 
 def valid_rate(rate):
@@ -164,6 +164,14 @@ SUIT = [
     ("servo_speed_stop_01_underwater", "interface_suit", "servo_speed_stop_01_underwater"),
     ("suit_medical_use_new", "interface_suit", "suit_medical_use_new.wav"),
     ("suit_usage_error", "interface_suit", "suit_usage_error.wav"),
+]
+# the night vision events (interface.fdp): night_vision_select = suit/nightvision_on.wav (-29 dB), night_vision_ambience =
+# suit/nightvision_ambience.wav (-30 dB, a loop: oneshot No), night_vision_deselect = suit/nightvision_off.wav (-29 dB);
+# all three are mono 44100 Hz, so nothing is resampled or scaled
+NIGHT_VISION = [
+    ("night_vision_select", "interface_suit", "nightvision_on.wav"),
+    ("night_vision_ambience", "interface_suit", "nightvision_ambience.wav"),
+    ("night_vision_deselect", "interface_suit", "nightvision_off.wav"),
 ]
 ARMOR_HITS = (2, 3, 4, 5, 6, 7, 9, 10, 11, 13, 14, 15, 16)
 VOICES = ("suit_maximum_armor", "suit_maximum_speed", "suit_maximum_strength", "suit_modification_engaged",
@@ -250,6 +258,7 @@ def main():
             save(folder, name, decode_ima(h), h["rate"])
 
     plain("suit", SUIT)
+    plain("suit", NIGHT_VISION)
 
     for n in ARMOR_HITS:
         name = "suit_bullet_impact_fp_%02d" % n

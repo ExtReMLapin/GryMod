@@ -75,7 +75,11 @@ local played = {
 	["grymod/binoculars/binocular_ambience.wav"] = 0.056,
 	["grymod/binoculars/binocular_zoom_in.wav"] = 0.22,
 	["grymod/binoculars/binocular_zoom_out.wav"] = 0.28,
-	["grymod/binoculars/binocular_tagged.wav"] = 0.10
+	["grymod/binoculars/binocular_tagged.wav"] = 0.10,
+	-- the night vision (interface.fdp): night_vision_select -29 dB, night_vision_ambience (loop) -30 dB, night_vision_deselect -29 dB
+	["grymod/suit/night_vision_select.wav"] = 0.071,
+	["grymod/suit/night_vision_ambience.wav"] = 0.063,
+	["grymod/suit/night_vision_deselect.wav"] = 0.071
 }
 
 local voices = {
@@ -159,6 +163,26 @@ return {
 
 				for path, volume in pairs(played) do
 					expectVolume(path, volume)
+				end
+			end
+		},
+		{
+			name = "the night vision sounds are in the table at the original event levels (select -29, ambience loop -30, deselect -29 dB: mono 44100 Hz files, nothing resampled, so no gain factor), at the sample's own pitch, and the files exist",
+			func = function(state)
+				local levels = {
+					["grymod/suit/night_vision_select.wav"] = -29,
+					["grymod/suit/night_vision_ambience.wav"] = -30,
+					["grymod/suit/night_vision_deselect.wav"] = -29
+				}
+
+				for path, level in pairs(levels) do
+					expect(GryMod.SoundMix.Original[path]).to.equal(level)
+					expect(GryMod.SoundMix.Volume(path, 0)).to.aboutEqual(10 ^ (level / 20), 0.0001)
+					expect(GryMod.SoundMix.Pitch(path)).to.equal(100)
+					expect(GryMod.SoundMix.Rate(path)).to.equal(1)
+					expect(file.Exists("sound/" .. path, "GAME")).to.beTrue()
+					-- the suit's own sounds: the camouflage mood lowers them like the other files of grymod/suit
+					expect(GryMod.SoundMix.SuitCategoryOf(path)).to.equal("hud_suit")
 				end
 			end
 		},
