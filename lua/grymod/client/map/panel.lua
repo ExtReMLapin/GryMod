@@ -53,6 +53,7 @@ local SHADOW = Color(0, 0, 0, 200)
 local WINDOW_BACK = Color(8, 12, 10)
 local DIM = Color(0, 0, 0, 160)
 local CHROME_DIM = Color(0, 0, 0, 110) -- the movie has its own dark backdrop under the window: the screen is dimmed less around it
+local HINT_BAND = Color(0, 0, 0, 205) -- behind the hint under the map: dark enough for the text to be read over any world
 local TILE_TINT = Color(215, 230, 240)
 local GREY = Color(170, 170, 170)
 local dotColour = Color(255, 255, 255, 255)
@@ -808,7 +809,18 @@ local function drawChromeOverlay(view)
 		key .. ": CLOSE"
 	}, SMALL_FONT, right - left)
 
-	draw.SimpleText(text, SMALL_FONT, right, S.oy + (Chrome.STRIP.y0 + Chrome.STRIP.y1) / 2 * S.scale, LINE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+	-- The hint is the map's own text, the movie has none there, and the movie's strip is only a 30 percent black veil: over a bright world (gravel, sky, a white
+	-- wall) the dark line colour could not be read (measured 1.1:1 on gravel). So the hint is in the movie's text colour (as the OBJECTIVE: cell next to it) on a dark
+	-- band as long as the text that fills the strip between its two lines: 4.5:1 or more over any world.
+	local cy = S.oy + (Chrome.STRIP.y0 + Chrome.STRIP.y1) / 2 * S.scale
+	local tw = surface.GetTextSize(text)
+	local pad = math.max(4, floor(S.scale * 3))
+	local bandTop = S.oy + (Chrome.STRIP.y0 + 3) * S.scale
+	local bandBottom = S.oy + (Chrome.STRIP.y1 - 3) * S.scale
+
+	surface.SetDrawColor(HINT_BAND.r, HINT_BAND.g, HINT_BAND.b, HINT_BAND.a)
+	surface.DrawRect(floor(right - tw - pad), floor(bandTop), ceil(tw + pad + 1), ceil(bandBottom - bandTop))
+	draw.SimpleText(text, SMALL_FONT, right, cy, TEXT, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 end
 
 -- The movie's DONE button follows the mouse (its own over, press and out frames); its rectangle is the movie's.

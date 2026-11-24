@@ -402,6 +402,93 @@ return {
 				Map.Close()
 			end
 		},
+		-- fails when the hint is drawn straight on the world (no band behind it) or in the dark line colour: the movie's own strip is only a 30 percent black veil, so
+		-- over a bright world (gravel, sky, white walls) the dark green text could not be read
+		{
+			name = "the hint under the map is readable whatever the world behind the panel: the movie's text colour over a dark band that covers the whole text, contrast 4.5:1 or more over a black, a grey and a white world",
+			func = function(state)
+				local Map = M()
+
+				standIns(state)
+				Map._state.opened = true
+				Map.Open()
+				tileUnderPlayer()
+				run(2)
+				stubDrawing(state)
+				paint()
+
+				local hintAt
+				local hint
+
+				for i, c in ipairs(recorded) do
+					if c[1] == "draw.SimpleText" and string.find(tostring(c[2]), "CLOSE", 1, true) then
+						hintAt, hint = i, c
+					end
+				end
+
+				expect(hint ~= nil).to.beTrue()
+
+				-- the text's box (it is right aligned and centred on its line)
+				surface.SetFont(hint[3])
+
+				local tw, th = surface.GetTextSize(hint[2])
+				local tx0, tx1 = hint[4] - tw, hint[4]
+				local ty0, ty1 = hint[5] - th / 2, hint[5] + th / 2
+
+				-- the nearest rectangle drawn before the text, and the colour set before that rectangle
+				local band, bandColor
+
+				for i = hintAt - 1, 1, -1 do
+					if recorded[i][1] == "surface.DrawRect" then
+						for j = i - 1, 1, -1 do
+							if recorded[j][1] == "surface.SetDrawColor" then
+								band, bandColor = recorded[i], recorded[j]
+
+								break
+							end
+						end
+
+						break
+					end
+				end
+
+				expect(band ~= nil).to.beTrue()
+
+				-- the band covers the whole text
+				expect(band[2] <= tx0 and band[3] <= ty0).to.beTrue()
+				expect(band[2] + band[4] >= tx1 and band[3] + band[5] >= ty1).to.beTrue()
+
+				local function linear(v)
+					v = v / 255
+
+					return v <= 0.04045 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4
+				end
+
+				local function luminance(r, g, b)
+					return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+				end
+
+				-- the colour was set with a Color or with three numbers and an alpha
+				local br, bg, bb, ba = bandColor[2], bandColor[3], bandColor[4], bandColor[5]
+
+				if type(br) == "table" then
+					br, bg, bb, ba = br.r, br.g, br.b, br.a
+				end
+
+				local colour = hint[6]
+				local textL = luminance(colour.r, colour.g, colour.b)
+
+				for _, world in ipairs({0, 128, 255}) do
+					local a = ba / 255
+					local back = luminance(br * a + world * (1 - a), bg * a + world * (1 - a), bb * a + world * (1 - a))
+					local hi, lo = math.max(textL, back), math.min(textL, back)
+
+					expect((hi + 0.05) / (lo + 0.05) >= 4.5).to.beTrue()
+				end
+
+				Map.Close()
+			end
+		},
 		-- fails when a long map is not letterboxed inside the movie's window
 		{
 			name = "a long map (2:1) is letterboxed in the movie's window, keeps its shape, and gets its own outline",
