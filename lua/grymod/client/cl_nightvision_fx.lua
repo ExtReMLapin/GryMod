@@ -1173,6 +1173,71 @@ end
 -- Start, stop, and what keeps them in step with the night vision
 -- ---------------------------------------------------------------------------------------------------------
 
+-- THE MINIMAP CAPTURE (minimap/capture.lua) renders a tile of the map from above, in PostRender, and a ProjectedTexture lights every render: a tile made while the
+-- night vision is on would carry the lamp's light into the cache. The capture's own hooks come too late for a light (they fire inside the render), so while the
+-- effect runs Capture.Render and Capture.RenderTo are wrapped: the lamp's brightness goes to 0 for the capture and comes back after it (Update takes effect at once).
+-- The wrappers are put in at Start and taken out at Stop (not if something else replaced the function meanwhile). The screen hook and the fogs already stay
+-- out while Capture.IsCapturing(), and the starlight pass is part of the screen hook.
+local CAPTURE_FUNCTIONS = {"Render", "RenderTo"}
+
+local function wrapCapture()
+	local capture = GryMod.Minimap and GryMod.Minimap.Capture
+
+	if capture == nil or S.captureWrapped ~= nil then
+		return
+	end
+
+	S.captureOriginal, S.captureWrapped = {}, {}
+
+	for _, name in ipairs(CAPTURE_FUNCTIONS) do
+		local original = capture[name]
+
+		if isfunction(original) then
+			local function wrapper(...)
+				local lamp = FX.Lamp()
+				local brightness = lamp ~= nil and lamp:GetBrightness() or 0
+
+				if lamp ~= nil then
+					lamp:SetBrightness(0)
+					lamp:Update()
+				end
+
+				local ok, a, b = pcall(original, ...)
+
+				if lamp ~= nil and lamp:IsValid() then
+					lamp:SetBrightness(brightness)
+					lamp:Update()
+				end
+
+				if not ok then
+					error(a, 0)
+				end
+
+				return a, b
+			end
+
+			S.captureOriginal[name], S.captureWrapped[name] = original, wrapper
+			capture[name] = wrapper
+		end
+	end
+end
+
+local function unwrapCapture()
+	local capture = GryMod.Minimap and GryMod.Minimap.Capture
+
+	if S.captureWrapped == nil then
+		return
+	end
+
+	for name, wrapper in pairs(S.captureWrapped) do
+		if capture ~= nil and capture[name] == wrapper then
+			capture[name] = S.captureOriginal[name]
+		end
+	end
+
+	S.captureOriginal, S.captureWrapped = nil, nil
+end
+
 function FX.IsRunning()
 	return S.running == true
 end
@@ -1192,6 +1257,7 @@ function FX.Start()
 	R = S.res
 	S.frame, S.lum, S.gain, S.haveMap = 0, nil, FX.GAIN.start, false
 	S.running = true
+	wrapCapture()
 
 	guarded("screen", screenBody)
 	guarded("fog", worldFogBody)
@@ -1206,6 +1272,7 @@ function FX.Stop()
 
 	FX.Recover()
 	removeLamp()
+	unwrapCapture()
 	S.running = false
 end
 

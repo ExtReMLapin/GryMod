@@ -581,6 +581,90 @@ return {
 			end
 		},
 		{
+			name = "the minimap capture does not see the lamp: while the night vision runs Capture.Render and RenderTo switch the lamp off for the capture and give it back after, and Stop gives the functions back",
+			func = function(state)
+				local NV, FX = GryMod.NightVision, GryMod.NightVisionFX
+				local Capture = GryMod.Minimap.Capture
+				local realRender, realRenderTo = Capture.Render, Capture.RenderTo
+				local seen = {}
+
+				Capture.Render = function(tile, level)
+					seen[#seen + 1] = {"render", FX.Lamp() and FX.Lamp():GetBrightness(), tile, level}
+
+					return "bytes", "reason"
+				end
+
+				Capture.RenderTo = function(tile, level, dest)
+					seen[#seen + 1] = {"renderTo", FX.Lamp() and FX.Lamp():GetBrightness(), tile, level, dest}
+
+					return true
+				end
+
+				local fakeRender, fakeRenderTo = Capture.Render, Capture.RenderTo
+
+				local ok, err = pcall(function()
+					NV.Set(true, "test")
+					state.now = state.now + 1
+					FX.UpdateLight()
+
+					local lit = FX.Lamp():GetBrightness()
+					expect(lit > 0).to.beTrue()
+
+					-- the capture sees no light, and what it returns comes through
+					local a, b = Capture.Render("tile", "level")
+					expect(a).to.equal("bytes")
+					expect(b).to.equal("reason")
+					expect(seen[1][2]).to.equal(0)
+					expect(seen[1][3]).to.equal("tile")
+					expect(seen[1][4]).to.equal("level")
+
+					expect(Capture.RenderTo("tile2", "level2", "dest")).to.beTrue()
+					expect(seen[2][2]).to.equal(0)
+					expect(seen[2][5]).to.equal("dest")
+
+					-- and the lamp has its light again at once
+					expect(FX.Lamp():GetBrightness()).to.aboutEqual(lit, 1e-6)
+
+					-- the functions are the wrapped ones only while it runs
+					expect(Capture.Render ~= fakeRender).to.beTrue()
+					FX.Stop()
+					expect(Capture.Render == fakeRender).to.beTrue()
+					expect(Capture.RenderTo == fakeRenderTo).to.beTrue()
+				end)
+
+				Capture.Render, Capture.RenderTo = realRender, realRenderTo
+				assert(ok, err)
+			end
+		},
+		{
+			name = "the capture wrapper leaves a function that something else replaced meanwhile alone, and a capture with no lamp still runs",
+			func = function(state)
+				local NV, FX = GryMod.NightVision, GryMod.NightVisionFX
+				local Capture = GryMod.Minimap.Capture
+				local realRender, realRenderTo = Capture.Render, Capture.RenderTo
+				local ran = 0
+
+				local ok, err = pcall(function()
+					GetConVar("gry_nightvision_light"):SetString("0")
+					Capture.Render = function() ran = ran + 1 return "x" end
+					NV.Set(true, "test")
+					FX.UpdateLight()
+					expect(FX.Lamp()).to.beNil()
+					expect(Capture.Render()).to.equal("x")
+					expect(ran).to.equal(1)
+
+					-- somebody else replaces it while we run: Stop must not put ours back over it
+					local other = function() return "other" end
+					Capture.Render = other
+					FX.Stop()
+					expect(Capture.Render == other).to.beTrue()
+				end)
+
+				Capture.Render, Capture.RenderTo = realRender, realRenderTo
+				assert(ok, err)
+			end
+		},
+		{
 			name = "the render state is put back after a failure: Stop leaves the lighting mode and the blend alone",
 			func = function(state)
 				local FX = GryMod.NightVisionFX
