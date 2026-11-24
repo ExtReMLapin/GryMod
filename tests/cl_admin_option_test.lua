@@ -46,6 +46,19 @@ local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DN
 -- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
 local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_radar_pings = true, gry_radar_detect = true, gry_radar_teammates = true, gry_zonemap = true, gry_zonemap_navmesh = true}
 
+-- how many settings of the white list the Config menu holds (the others are in the Radar and map menu)
+local function configSettingCount()
+	local count = 0
+
+	for _, setting in ipairs(GryMod.ServerSettings.List) do
+		if not RADAR_MENU[setting.name] then
+			count = count + 1
+		end
+	end
+
+	return count
+end
+
 return {
 	groupName = "GryMod administrators' settings (options panel)",
 	beforeEach = function()
@@ -513,7 +526,7 @@ return {
 							end
 						end)
 
-						expect(admins).to.equal(10) -- 10 settings, no button: the two toggles are check boxes (the objectives switch is one of them)
+						expect(admins).to.equal(configSettingCount()) -- one control for each setting of the Config menu, no button: the toggles are check boxes
 						expect(others > 20).to.beTrue()
 					end)
 				end)
@@ -537,7 +550,7 @@ return {
 							end
 						end)
 
-						expect(admins).to.equal(10)
+						expect(admins).to.equal(configSettingCount())
 					end)
 				end)
 				panel:Remove()

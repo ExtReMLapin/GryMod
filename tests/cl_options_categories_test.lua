@@ -6,6 +6,7 @@
 -- and the movement speeds choice of the server section (a third combo box, 2026-11-22)
 local CONFIG = [[binder
 binder
+binder
 box:gry_binoculars_aim
 box:gry_binoculars_baseline
 box:gry_binoculars_hold_zoom
@@ -67,6 +68,13 @@ box:gry_msg_cloak_disabled
 box:gry_msg_cloak_health
 box:gry_msg_killed_friend
 box:gry_msg_objectives
+box:gry_nightvision
+box:gry_nightvision_energy
+box:gry_nightvision_fx
+box:gry_nightvision_hold
+box:gry_nightvision_light
+box:gry_nightvision_localgain
+box:gry_nightvision_star
 box:gry_screenfx
 box:gry_sound_cloak_loop
 box:gry_sound_malfunction_loop
@@ -91,6 +99,8 @@ mixer
 mixer
 slider:gry_grenade_range
 slider:gry_hud_crosshair_style
+slider:gry_nightvision_drain
+slider:gry_nightvision_recharge
 slider:gry_sound_volume
 slider:gry_usehint_delay
 slider:gry_usehint_hold
@@ -132,7 +142,7 @@ slider:gry_radar_zoom_indoor
 slider:gry_radar_zoom_vehicle
 slider:gry_zonemap_debug_range]]
 
-local CONFIG_CATEGORIES = {"Keys", "HUD", "HUD colours", "Quick menu and start-up", "Grenade warning", "Binoculars", "Suit and camouflage", "Sounds", "Server (administrators only)", "Development"}
+local CONFIG_CATEGORIES = {"Keys", "HUD", "HUD colours", "Quick menu and start-up", "Grenade warning", "Binoculars", "Suit and camouflage", "Night vision", "Sounds", "Server (administrators only)", "Development"}
 local RADAR_CATEGORIES = {"Radar and compass", "Minimap", "Minimap speed and cache", "Automatic zoom", "In/out map", "Server (administrators only)"}
 
 -- the longest text a panel can show without cutting it, in characters (a check box: its box takes a part of the width; a slider: its label has a third of it)

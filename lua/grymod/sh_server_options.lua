@@ -28,7 +28,8 @@ Settings.List = {
 	{name = "gry_infinite_armor", kind = "bool"},
 	{name = "gry_objectives", kind = "bool"},
 	{name = "gry_campaign_objectives", kind = "bool"},
-	{name = "gry_campaign_secrets", kind = "bool"}
+	{name = "gry_campaign_secrets", kind = "bool"},
+	{name = "gry_sv_nightvision", kind = "bool"}
 }
 
 local byName = {}

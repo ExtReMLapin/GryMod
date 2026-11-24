@@ -259,6 +259,22 @@ function GryMod.SuitOptions(Panel)
 	GryMod.OptionBox(form, "Message: objectives", "gry_msg_objectives", "A line and a sound when an objective is added, finished or failed (the list you get when you join is silent).")
 end
 
+-- The night vision (cl_nightvision.lua; its key is in the Keys category, the server's switch in the server category). Each part of its screen effect has its own
+-- switch (cl_nightvision_fx.lua reads them).
+function GryMod.NightVisionOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Night vision")
+
+	GryMod.OptionBox(form, "Night vision", "gry_nightvision", "The suit's light amplifier. Off: it cannot be switched on.")
+	GryMod.OptionBox(form, "Hold the key to use it", "gry_nightvision_hold", "On while the key is down. Off: press once to switch it on, again to switch it off.")
+	GryMod.OptionBox(form, "Limited energy", "gry_nightvision_energy", "A bar of its own (60 s of use from full, 15 s to refill); it switches off when empty, as in the original. Off: no limit and no bar.")
+	GryMod.OptionSlider(form, "Energy used a second", "gry_nightvision_drain", 0.05, 5, 2, "Out of 30: the original's 0.5 gives 60 seconds of use.")
+	GryMod.OptionSlider(form, "Energy recovered a second", "gry_nightvision_recharge", 0.1, 20, 1, "While it is off: the original's 2 refills it in 15 seconds.")
+	GryMod.OptionBox(form, "Screen effect", "gry_nightvision_fx", "The green amplified picture. Off: only the sounds and the energy bar.")
+	GryMod.OptionBox(form, "Light behind you", "gry_nightvision_light", "A soft light behind the player that lights what you look at, with shadows.")
+	GryMod.OptionBox(form, "Starlight", "gry_nightvision_star", "A faint light on the darkest parts. It costs a second drawing of the world.")
+	GryMod.OptionBox(form, "Local gain", "gry_nightvision_localgain", "Each dark area of the screen is brightened on its own. Off: one gain for the whole screen.")
+end
+
 -- The suit's sounds (the binoculars' own are in the Binoculars category).
 function GryMod.SoundOptions(Panel)
 	local form = GryMod.OptionsCategory(Panel, "Sounds")
@@ -320,6 +336,28 @@ local function zoomWhenNone()
 	end
 
 	return "No default key is free (H, J, K and N are taken): choose a key here."
+end
+
+-- What the night vision does while no key is chosen: the default key (N, computed, never saved), a bind of +gry_nightvision, or nothing free.
+local function nightVisionWhenNone()
+	local NV = GryMod.NightVision
+
+	-- (built once, not at every frame: no cached answer)
+	NV.ForgetBinding()
+
+	if not GetConVar("gry_nightvision"):GetBool() then
+		return "The night vision is switched off (its box below)."
+	end
+
+	if input.LookupBinding("+gry_nightvision") ~= nil then
+		return "A `bind <key> +gry_nightvision` in the console is the night vision key."
+	end
+
+	if NV.DefaultKey() then
+		return "Default: " .. string.upper(input.GetKeyName(NV.DefaultKey()) or "?") .. " (free in the game), until you choose another key here."
+	end
+
+	return "No default key is free (N is taken): choose a key here."
 end
 
 -- The keys, all together at the top of the panel so that nobody has to scroll for them: each key picker with a short description and a line
@@ -388,6 +426,30 @@ function GryMod.KeysOptions(Parent)
 		GryMod.OptionSlider(Panel, "Short press (ms)", "gry_zoom_tap_ms", 100, 600, 0, "In the automatic mode a press shorter than this is a toggle, a longer one holds.")
 		GryMod.OptionBox(Panel, "Binoculars' own zoom", "gry_zoom_own", "Off: only the Half-Life 2 zoom key drives the binoculars.")
 	end
+
+	-- the night vision: its key (how it works, hold or toggle, is in the Night vision category)
+	local NV = GryMod.NightVision
+
+	if NV then
+		Panel:AddControl("Label", {
+			Text = "Night vision key: the suit's light amplifier (a `bind <key> +gry_nightvision` in the console works too)"
+		})
+
+		local nvBinder = vgui.Create("DBinder")
+		nvBinder:SetValue(GetConVar("gry_nightvision_key"):GetInt())
+		Panel:AddItem(nvBinder)
+
+		local nvStatus = Panel:Help(keyStatus(NV.Key.Chosen(), "+gry_nightvision", nightVisionWhenNone()))
+		nvBinder.OnChange = function(self, code)
+			-- a key that is refused (Escape, the wheel, the quick menu's or the zoom's key) is not shown as chosen
+			if not NV.Key.SetKey(code) then
+				self:SetValue(NV.Key.Chosen())
+			end
+
+			NV.ForgetBinding()
+			nvStatus:SetText(keyStatus(NV.Key.Chosen(), "+gry_nightvision", nightVisionWhenNone()))
+		end
+	end
 end
 
 -- The settings of the server: for the administrators only (greyed and disabled for the others). They do not write a convar from the client: they ask the
@@ -420,6 +482,7 @@ function GryMod.AdminOptions(Panel)
 	GryMod.AdminOption(Panel, "Objectives", "gry_objectives", "bool", {into = form, help = "Objectives given by maps and addons are sent to the players. Off: none are sent."})
 	GryMod.AdminOption(Panel, "Campaign objectives", "gry_campaign_objectives", "bool", {into = form, help = "The Half-Life 2 and episode maps give objectives (the way out of each map, key steps). Off: none, and nothing is read."})
 	GryMod.AdminOption(Panel, "Campaign secrets", "gry_campaign_secrets", "bool", {into = form, help = "Count the hidden items of a campaign map in one objective, \"Secrets 3/7\". Off: they are not mentioned."})
+	GryMod.AdminOption(Panel, "Night vision", "gry_sv_nightvision", "bool", {into = form, help = "The players may use the night vision. Off: it is forbidden for everybody and goes off at once."})
 	GryMod.AdminOption(Panel, "Grenade warning: armed ones only", "gry_grenade_armed_only", "bool", {into = form, help = "Only armed grenades, mines in the air... Off: also the ones lying around."})
 	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
 	GryMod.AdminOption(Panel, "Health regeneration", "gry_health_regen", "bool", {into = form, help = "The suit repairs the health over time. Off: no regeneration."})
@@ -628,6 +691,7 @@ function GryMod.GryOptionschute(Panel)
 	GryMod.GryHUDOptions(Panel)
 	GryMod.BinocularsOptions(Panel)
 	GryMod.SuitOptions(Panel)
+	GryMod.NightVisionOptions(Panel)
 	GryMod.SoundOptions(Panel)
 	GryMod.AdminOptions(Panel)
 	GryMod.DevelopmentOptions(Panel)
