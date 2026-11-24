@@ -1348,6 +1348,11 @@ function Module.Paint()
 	if GryMod.FlashCorners then
 		GryMod.FlashCorners.Paint(dt)
 	end
+
+	-- the night vision's energy bar (cl_hud_nightvision_flash.lua): one test of a flag while it is not up
+	if GryMod.FlashNightVisionBar then
+		GryMod.FlashNightVisionBar.Paint(dt)
+	end
 end
 
 -- Drops the HUD so that the next frame builds a new one (a new theme, a respawn...): the render targets of its
@@ -1365,6 +1370,10 @@ function Module.Reset()
 
 	if GryMod.FlashCorners then
 		GryMod.FlashCorners.Reset()
+	end
+
+	if GryMod.FlashNightVisionBar then
+		GryMod.FlashNightVisionBar.Reset()
 	end
 
 	-- the energy bar starts on the real value (a respawn)
@@ -1397,7 +1406,7 @@ end
 function Module.ResetAll()
 	Module.Reset()
 
-	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashMessages, GryMod.FlashUse, GryMod.FlashPickup, GryMod.FlashCorners, GryMod.FlashWeaponList, GryMod.FlashObjectives}) do
+	for _, module in ipairs({GryMod.FlashMenu, GryMod.FlashBinoculars, GryMod.FlashGrenade, GryMod.FlashCrosshair, GryMod.FlashBoot, GryMod.FlashMessages, GryMod.FlashUse, GryMod.FlashPickup, GryMod.FlashCorners, GryMod.FlashNightVisionBar, GryMod.FlashWeaponList, GryMod.FlashObjectives}) do
 		-- a piece that has a state to keep (the boot sequences) rebuilds its pictures instead of starting over
 		local rebuild = module and (module.Rebuild or module.Reset)
 

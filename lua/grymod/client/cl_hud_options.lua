@@ -28,7 +28,8 @@ Options.List = {
 	{name = "corners", label = "Corner marks", help = "A thin bracket in each top corner of the screen, in the colour of the HUD, red while the HUD is down (the original has them)"},
 	{name = "overheat", label = "Weapon heat bar", help = "The bar above the weapon icon, for the weapons that say how hot they are (an addon's energy weapon). The Half-Life 2 weapons have none"},
 	{name = "weaponlist", label = "Weapon list", help = "The list of your weapons at the bottom right when you change weapon, with the one in hand on a plate (the Half-Life 2 selector at the top right stays as it is)"},
-	{name = "objectives", label = "Objective markers", help = "The marker on the screen at the place of each active objective, with its distance in metres, and an arrow on the edge of the screen when it is off screen (the objectives come from the map or from other addons)"}
+	{name = "objectives", label = "Objective markers", help = "The marker on the screen at the place of each active objective, with its distance in metres, and an arrow on the edge of the screen when it is off screen (the objectives come from the map or from other addons)"},
+	{name = "nightvision", label = "Night vision bar", help = "The small energy bar at the top right, next to the corner mark: it comes up when you switch the night vision on and goes when the energy is full again (the original's)"}
 }
 
 local byName = {}

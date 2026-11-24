@@ -110,6 +110,9 @@ Prewarm.Pieces = {
 	end},
 	{name = "objectives", tier = 2, hud = true, option = "objectives", films = function()
 		return movieNames(movieOf("FlashObjectives", "MOVIE"))
+	end},
+	{name = "nightvision", tier = 2, hud = true, option = "nightvision", films = function()
+		return movieNames(movieOf("FlashNightVisionBar", "MOVIE"))
 	end}
 }
 

@@ -8,6 +8,8 @@
 -- twice (draw a second time and save out_2.png: it must be identical, from the group caches),
 -- radar = {bearing, fov, stealth} (the compass panel), advance (seconds of timeline to play before drawing the HUD),
 -- hud = {health, energy, mode, fireMode, ammo = {mag, reserve, size, grenades}} (the Crysis HUD with values),
+-- nightvision = {value, advance, status} (the night vision bar movie with a value),
+-- theme = {Line = {r, g, b}, Over = ..., Text = ...} (the colours the colour-set scripts give: FFDec does not run them, so a reference render has the movie's own),
 -- sprite, frame, x, y (draw one sprite of the movie alone instead of the whole movie),
 -- texts = {{path = "Root.Texts.HealthEnergy.Colorset", name = "HealthText1", text = "1"}, ...},
 -- drawX, drawY (shift of the stage origin in pixels), atlasSuffix, ignoreBlend (draw additive sprites as normal blends: FFDec's reference render does not honour blend modes).
@@ -72,11 +74,20 @@ elseif args.radar then
 	if args.advance then
 		for _ = 1, math.floor(args.advance * 30) do panel:Update(1 / 30) end
 	end
+elseif args.nightvision then
+	-- the night vision bar (cl_hud_nightvision_flash.lua) with a value: nightvision = {value = 50, advance = 1, status = 0}; the whole movie, at the stage origin
+	local nightBar = GryMod.FlashNightVisionBar.New(movie, args.theme)
+	nightBar:SetBar(args.nightvision.value or 100)
+	if args.nightvision.status then nightBar:Destroy(args.nightvision.status) end
+
+	for _ = 1, math.floor((args.nightvision.advance or 0) * 30) do nightBar:Update(1 / 30) end
+
+	root = nightBar.root
 elseif args.sprite then
 	-- one sprite of the movie alone, at (args.x, args.y) of the stage, on the frame args.frame
 	local single = {w = movie.w, h = movie.h, fps = movie.fps, atlases = movie.atlases, chars = movie.chars,
 		root = {{{d = 1, c = args.sprite, n = "S", m = {1, 0, 0, 1, args.x or 10, args.y or 10}}}}}
-	root = Flash.NewRoot(single)
+	root = Flash.NewRoot(single, args.theme)
 
 	if args.frame then
 		root:Child("S"):GotoAndStop(args.frame)
