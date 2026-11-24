@@ -1262,6 +1262,10 @@ function Module.Paint()
 		if GryMod.FlashCorners then
 			GryMod.FlashCorners.SetStatus(0)
 		end
+
+		-- the death told every listener "1"; the new HUD starts at 0, so its first feed sees no change and would never say it: the big map would open
+		-- on "Satellite Uplink disconnected" and the binoculars keep the malfunction look. The boot sequences hear it after EndDeath: no reboot sound.
+		hook.Run("GryMod_HUDStatus", 0, "respawn")
 	end
 
 	if not hud then

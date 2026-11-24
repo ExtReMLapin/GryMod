@@ -524,6 +524,51 @@ return {
 			end
 		},
 		{
+			-- would fail if: the respawn rebuilt the HUD working but never said so to the pieces that listen to GryMod_HUDStatus (the death told them 1, and the new
+			-- HUD starts at 0, so nothing changes and nobody hears the 0): the big map opened on "Satellite Uplink disconnected", the binoculars kept the malfunction look
+			name = "the respawn tells the pieces that listen to the HUD status that it is working again (the big map and the binoculars stayed jammed after a death), with no reboot sound",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					local Bino, List = GryMod.FlashBinoculars, GryMod.FlashWeaponList
+					local told = {}
+
+					hook.Add("GryMod_HUDStatus", "GRYTESTRESPAWNSPY", function(status, reason)
+						told[#told + 1] = tostring(status) .. ":" .. tostring(reason)
+					end)
+
+					local ok, err = pcall(function()
+						Boot.NoteSpawn()
+						HUD.Paint()
+						hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+						Boot.Reset()
+						played = {}
+						told = {}
+
+						life.dead = true
+						HUD.Paint()
+						expect(told[#told]).to.equal("1:death")
+						expect(Bino.HudStatus).to.equal(1)
+						expect(List.Status()).to.equal(1)
+						local soundsAtDeath = #played
+
+						life.dead = false
+						hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+						HUD.Paint()
+						expect(told[#told]).to.equal("0:respawn")
+						expect(Bino.HudStatus).to.equal(0)
+						expect(List.Status()).to.equal(0)
+						expect(#played).to.equal(soundsAtDeath) -- no reboot sound: the player did not lose the suit, he died
+					end)
+
+					hook.Remove("GryMod_HUDStatus", "GRYTESTRESPAWNSPY")
+
+					if not ok then
+						error(err, 0)
+					end
+				end)
+			end
+		},
+		{
 			-- needs: Boot.Step holding the Lost movie at Boot.LOST_HOLD_FRAME while the death is held (the movie itself ends on an empty stage at frame 137,
 			-- 4.6 s after it starts: the panel vanished while the player was still dead)
 			name = "the Lost screen of a death is still on the stage long after the movie's own end, and the respawn lets it go",
