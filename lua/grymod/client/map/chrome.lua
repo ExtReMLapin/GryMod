@@ -10,7 +10,9 @@
 --   destroy(1) / reboot / setDisconnect   the malfunction frame, the return to the normal frame, the "Satellite Uplink disconnected" overlay (core) and the
 --                       blinking status. The original also dims the map to 35 percent and shakes it by 3 pixels while it is disconnected: the content function is told
 --                       the alpha (ContentAlpha) and the shake (ShakeOffset).
---   the single player strip: only the DONE button (Buttons goes to "SinglePlayer"); the team buttons, the flags and the multiplayer texts are hidden.
+--   the single player strip: only the DONE button (Buttons goes to "SinglePlayer"); the team buttons, the Korean flag and the multiplayer texts are hidden.
+--                       The US flag between the header's brackets stays: the original's script (PDAArea frame 17) shows the flag of _root.PlayerTeam, which the
+--                       original's C++ sets to US for the player.
 --   Map_G / infoBox / the marker and ping templates are hidden: the movie's picture is NOT used, the map draws its own tiles and markers.
 -- WHAT THE PLAYER CANNOT DRAW. Static texts (the letters A to H and the numbers 1 to 8 of the sector grid, "SECTOR 08", "SATELLITE UPLINK") are not drawn by the
 -- Flash player (the converter writes them as `stext`): the grid letters stay the map's own drawing.
@@ -51,7 +53,7 @@ Chrome.SHAKE_RATE = 30
 -- what the movie shows that the big map does not use, by instance name, at each level of the tree
 Chrome.HIDE = {
 	root = {"Line", "Over", "Text"}, -- (the root's two empty text fields lie above the stage)
-	pda = {"Flag_Korean", "Flag_US"},
+	pda = {"Flag_Korean"}, -- (the US flag is shown: the original's script shows the player's team flag, and the player of single player is US)
 	map = {"HelpBar", "HideBtn_M"},
 	area = {"Map", "infoBox", "ObjectIcon", "EventIcon"}
 }

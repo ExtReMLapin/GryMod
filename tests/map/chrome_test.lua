@@ -362,11 +362,10 @@ return {
 				expect(has(all, "btn SWITCHTEAM")).to.beFalse()
 				expect(has(all, "btn SUICIDE")).to.beFalse()
 
-				-- the flags, the marker and ping templates, the picture of the movie, the info box and the root's helper fields are hidden
-				local flag = inst.area:Child("Flag_US")
+				-- the Korean flag, the marker and ping templates, the picture of the movie, the info box and the root's helper fields are hidden
+				-- (the US flag is shown: see the case about the flag)
+				local flag = inst.area:Child("Flag_Korean")
 
-				expect(flag == nil or flag.visible == false).to.beTrue()
-				flag = inst.area:Child("Flag_Korean")
 				expect(flag == nil or flag.visible == false).to.beTrue()
 
 				local mapArea = inst.area:Find("Map_M.MapArea")
@@ -380,6 +379,36 @@ return {
 				for _, name in ipairs({"Line", "Over", "Text"}) do
 					expect(inst.root:Child(name).visible).to.beFalse()
 				end
+			end
+		},
+		-- fails while Flag_US is in Chrome.HIDE (the clips are hidden each frame): the brackets of the header were empty
+		{
+			name = "the American flag shows between the header's brackets (the original's script shows Flag_US for the player's team, US in single player), the Korean one stays hidden, also after a malfunction and its reboot",
+			func = function()
+				local inst = fresh()
+
+				inst:Open(0)
+				run(inst, 2)
+
+				local us, korean = inst.area:Child("Flag_US"), inst.area:Child("Flag_Korean")
+
+				expect(us ~= nil and us.visible == true).to.beTrue()
+				expect(korean ~= nil and korean.visible == false).to.beTrue()
+
+				-- the opening of the original flashes the flag white and settles it to its own colours: no colour transform is left on it
+				local entry = inst.area:EntryAt(93)
+
+				expect(entry ~= nil and entry.id ~= nil).to.beTrue()
+				expect(entry.cx == nil or (entry.cx[1] == 1 and entry.cx[2] == 1 and entry.cx[3] == 1 and entry.cx[5] == 0 and entry.cx[6] == 0 and entry.cx[7] == 0)).to.beTrue()
+
+				inst:SetStatus(1)
+				run(inst, 0.5)
+				inst:SetStatus(0)
+				run(inst, 0.5)
+
+				us, korean = inst.area:Child("Flag_US"), inst.area:Child("Flag_Korean")
+				expect(us ~= nil and us.visible == true).to.beTrue()
+				expect(korean ~= nil and korean.visible == false).to.beTrue()
 			end
 		},
 		-- fails when the rebuild of the clips (a reboot goes back to an earlier frame) loses what was hidden
