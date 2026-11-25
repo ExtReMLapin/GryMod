@@ -165,11 +165,55 @@ local function npcState(npc)
 	return NPC_STATE_NONE
 end
 
+-- What an entity that makes its own perception (a nextbot of another addon, the smart soldier) says about one player, through its method
+-- ENT:GetGryAwareness(ply) -> level (0 calm, 1 alerted, 2 fighting), exposure (0 to 1), seen, heard. Called under GryMod.API.SafeCall (a broken
+-- method is disabled after a few errors and never breaks the radar); the values are clamped. nil when the entity has no such method or the
+-- call failed: the radar then keeps its own rule.
+function Radar.AwarenessOf(ent, ply)
+	local fn = ent.GetGryAwareness
+
+	if not isfunction(fn) then
+		return nil
+	end
+
+	local ok, level, exposure, seen, heard = GryMod.API.SafeCall("awareness:" .. ent:GetClass(), fn, ent, ply)
+
+	if not ok then
+		return nil
+	end
+
+	level = tonumber(level) or 0
+	level = math.Clamp(math.floor(level), 0, 2)
+	exposure = tonumber(exposure) or 0
+
+	if exposure ~= exposure then
+		exposure = 0
+	end
+
+	return {level = level, exposure = math.Clamp(exposure, 0, 1), seen = seen and true or false, heard = heard and true or false}
+end
+
+-- The alert level of a description (what Describe gives): the entity's own word when it reported one, the radar's rule from the NPC's state
+-- and enemy otherwise.
+function Radar.LevelOf(d)
+	if d.awareLevel ~= nil then
+		return d.awareLevel
+	end
+
+	return Radar.Level(d.state, d.enemyIsPlayer)
+end
+
 -- The alert level (0, 1, 2) of an NPC for a player, the radar's rule (Radar.Level) from the NPC's own state and enemy: the binoculars' hologram colours a hostile by it
--- (idle, alerted, in combat), as the original does. Anything that is not a living NPC is 0.
+-- (idle, alerted, in combat), as the original does. Anything that is not a living NPC is 0. An entity that reports its awareness gives its own level.
 function Radar.AlertLevelOf(npc, ply)
 	if not IsValid(npc) then
 		return 0
+	end
+
+	local aware = Radar.AwarenessOf(npc, ply)
+
+	if aware then
+		return aware.level
 	end
 
 	local enemy = isfunction(npc.GetEnemy) and npc:GetEnemy() or nil
@@ -211,9 +255,13 @@ function Radar.Describe(npc, ply)
 	end
 
 	local seen, heard = false, false
+	local aware = Radar.AwarenessOf(npc, ply)
 
-	-- what the engine's AI says about the player this very moment: it sees him, it hears his sounds (footsteps, shots); only an NPC has conditions
-	if isfunction(npc.HasCondition) and COND then
+	if aware then
+		-- an entity that makes its own perception says what it sees and hears of this player
+		seen, heard = aware.seen, aware.heard
+	elseif isfunction(npc.HasCondition) and COND then
+		-- what the engine's AI says about the player this very moment: it sees him, it hears his sounds (footsteps, shots); only an NPC has conditions
 		seen = COND.SEE_PLAYER ~= nil and npc:HasCondition(COND.SEE_PLAYER) or false
 		heard = COND.HEAR_PLAYER ~= nil and npc:HasCondition(COND.HEAR_PLAYER) or false
 	end
@@ -234,6 +282,11 @@ function Radar.Describe(npc, ply)
 		x = pos.x, y = pos.y, z = pos.z,
 		yaw = Radar.Facing(npc)
 	}
+
+	if aware then
+		d.awareLevel = aware.level
+		d.exposure = aware.exposure
+	end
 
 	if tracked then
 		d.type = tracked.type
@@ -384,7 +437,7 @@ function Radar.Step(origin, descs, st, now, alliesAlways, range)
 			-- shown like an enemy: the colours of its state (an ally keeps its own)
 			local asHostile = d.hostile or mode == "hostile" and not d.ally
 			-- (a hostile that can only be scanned is not noticed by its alert, but once scanned it shows its state's colour)
-			local level = (watched or asHostile) and Radar.Level(d.state, d.enemyIsPlayer) or 0
+			local level = (watched or asHostile) and Radar.LevelOf(d) or 0
 			local marker = st.markers[key]
 
 			if marker and now > marker then
@@ -530,21 +583,29 @@ end
 -- fighting someone else, or alert to something else, does not count: far away it says nothing about the player. descs: what Describe gives; listed:
 -- [id] = true for the NPCs that are contacts (the contact list carries their state). Nothing while gry_radar_detect is off.
 function Radar.Detect(descs, listed)
-	local puppet, vehicle = 0, 0
+	local puppet, vehicle, exposure = 0, 0, 0
 
 	if not detectOn:GetBool() then
-		return puppet, vehicle
+		return puppet, vehicle, exposure
 	end
 
 	for i = 1, #descs do
 		local d = descs[i]
 		local mode = d.radar
+		local counts = mode ~= "never" and mode ~= "scan" and (d.hostile or mode == "hostile" and not d.ally)
+			and not (d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0)) and d.state ~= NPC_STATE_DEAD
 
-		if not listed[d.id] and mode ~= "never" and mode ~= "scan" and (d.hostile or mode == "hostile" and not d.ally)
-			and not (d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0)) and d.state ~= NPC_STATE_DEAD then
+		-- the exposure an entity reports (its own perception, contact or not): the stealth bar shows the highest
+		if counts and d.exposure and d.exposure > exposure then
+			exposure = d.exposure
+		end
+
+		if counts and not listed[d.id] then
 			local level = 0
 
-			if d.enemyIsPlayer then
+			if d.awareLevel ~= nil then
+				level = d.awareLevel
+			elseif d.enemyIsPlayer then
 				level = Radar.Level(d.state, true)
 			end
 
@@ -570,21 +631,23 @@ function Radar.Detect(descs, listed)
 		end
 	end
 
-	return puppet, vehicle
+	return puppet, vehicle, exposure
 end
 
 -- Tells the player the two numbers of Radar.Detect when they changed since the last time (st.detectSent); an unchanged pair, and a pair of zeros for a player
 -- that never had any, send nothing.
-function Radar.SendDetect(ply, st, puppet, vehicle)
+function Radar.SendDetect(ply, st, puppet, vehicle, exposure)
+	-- the exposure goes on the wire as a step of 1/63: two values of the same step are the same message
+	local step = S.ExposureStep(exposure)
 	local last = st.detectSent
 
-	if not last and puppet == 0 and vehicle == 0 or last and last[1] == puppet and last[2] == vehicle then
+	if not last and puppet == 0 and vehicle == 0 and step == 0 or last and last[1] == puppet and last[2] == vehicle and last[3] == step then
 		return
 	end
 
-	st.detectSent = (puppet ~= 0 or vehicle ~= 0) and {puppet, vehicle} or nil
+	st.detectSent = (puppet ~= 0 or vehicle ~= 0 or step ~= 0) and {puppet, vehicle, step} or nil
 	net.Start("gry_radar_detect")
-	S.WriteDetect(puppet, vehicle)
+	S.WriteDetect(puppet, vehicle, exposure)
 	net.Send(ply)
 end
 
@@ -603,7 +666,7 @@ function Radar.Tick(ply, now)
 	now = now or CurTime()
 	local st = Radar.State(ply)
 	local list = {}
-	local puppet, vehicle = 0, 0
+	local puppet, vehicle, exposure = 0, 0, 0
 
 	if enabled:GetBool() and ply.GryRadarWant and ply:Alive() then
 		local origin = ply:GetPos()
@@ -633,10 +696,10 @@ function Radar.Tick(ply, now)
 			listed[list[i].id] = true
 		end
 
-		puppet, vehicle = Radar.Detect(descs, listed)
+		puppet, vehicle, exposure = Radar.Detect(descs, listed)
 	end
 
-	Radar.SendDetect(ply, st, puppet, vehicle)
+	Radar.SendDetect(ply, st, puppet, vehicle, exposure)
 
 	local last = st.sent
 
@@ -654,7 +717,7 @@ function Radar.Reset(ply)
 	states[ply] = nil
 
 	if st and st.detectSent and IsValid(ply) then
-		Radar.SendDetect(ply, st, 0, 0)
+		Radar.SendDetect(ply, st, 0, 0, 0)
 	end
 
 	if st and st.sent and #st.sent > 0 and IsValid(ply) then
@@ -719,3 +782,6 @@ timer.Create("GryMod radar", INTERVAL, 0, function()
 		end
 	end
 end)
+
+-- an entity that makes its own perception may report it (ENT:GetGryAwareness, Radar.AwarenessOf)
+GryMod.API.AddFeature("awareness")

@@ -30,16 +30,18 @@ return {
 			func = function(state)
 				local R = GryMod.FlashRadar
 				local real = {ReadUInt = net.ReadUInt}
-				local queue, head = {2, 1}, 0
+				local queue, head = {2, 1, 63}, 0
 				net.ReadUInt = function(bits) head = head + 1 return queue[head] end
 				local ok, err = pcall(R.ReadDetect)
 				net.ReadUInt = real.ReadUInt
 				assert(ok, err)
 				expect(R.Detected.puppet).to.equal(2)
 				expect(R.Detected.vehicle).to.equal(1)
+				expect(R.Detected.exposure).to.equal(1)
 				R.ResetDetect()
 				expect(R.Detected.puppet).to.equal(0)
 				expect(R.Detected.vehicle).to.equal(0)
+				expect(R.Detected.exposure).to.equal(0)
 			end
 		},
 		-- fails when Feed ignores Detected
@@ -78,6 +80,37 @@ return {
 					expect(R.Stealth).to.equal(0)
 				end)
 				R.Detected.puppet, R.Detected.vehicle = 0, 0
+				R.Snapshot, R.FindEntity, options.Enabled, GryMod.RadarZoom, R.Stealth = realSnapshot, realFind, realEnabled, realZoom, realStealth
+				net.Start, net.WriteBool, net.WriteUInt, net.SendToServer = real.Start, real.WriteBool, real.WriteUInt, real.SendToServer
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		-- fails when Feed ignores Detected.exposure
+		{
+			name = "the bar rises to the exposure the server sends (a bot that is 60 % aware of the player), with no contact and no detected number",
+			func = function(state)
+				local R = GryMod.FlashRadar
+				local panel = GryMod.FlashRadar.New(GryMod.Flash.Load("hud_radarcompassstealth"))
+				local options = GryMod.HUDOptions
+				local realSnapshot, realFind, realEnabled, realZoom, realStealth = R.Snapshot, R.FindEntity, options.Enabled, GryMod.RadarZoom, R.Stealth
+				local real = {Start = net.Start, WriteBool = net.WriteBool, WriteUInt = net.WriteUInt, SendToServer = net.SendToServer}
+				net.Start, net.WriteBool, net.WriteUInt, net.SendToServer = function() end, function() end, function() end, function() end
+				local ply = {GetPos = function() return Vector(0, 0, 0) end, EyeAngles = function() return Angle(0, 0, 0) end, InVehicle = function() return false end}
+				local ok, err = pcall(function()
+					options.Enabled = function() return true end
+					GryMod.RadarZoom = nil
+					R.Snapshot, R.FindEntity = {}, function() return nil end
+					R.Stealth = 0
+					R.Detected.puppet, R.Detected.vehicle, R.Detected.exposure = 0, 0, 0.6
+
+					for _ = 1, 60 do R.Feed(panel, ply, 1 / 30) end
+
+					expect(R.Stealth).to.aboutEqual(0.6, 0.01)
+				end)
+				R.Detected.puppet, R.Detected.vehicle, R.Detected.exposure = 0, 0, 0
 				R.Snapshot, R.FindEntity, options.Enabled, GryMod.RadarZoom, R.Stealth = realSnapshot, realFind, realEnabled, realZoom, realStealth
 				net.Start, net.WriteBool, net.WriteUInt, net.SendToServer = real.Start, real.WriteBool, real.WriteUInt, real.SendToServer
 

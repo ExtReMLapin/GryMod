@@ -53,6 +53,7 @@ end
 if SERVER then
 	AddCSLuaFile()
 	AddCSLuaFile("grymod/sh_api.lua")
+	AddCSLuaFile("grymod/sh_cloak_level.lua")
 	AddCSLuaFile("grymod/sh_api_weapons.lua")
 	AddCSLuaFile("grymod/sh_api_weapons_hl2.lua")
 	AddCSLuaFile("grymod/sh_api_tracked.lua")
@@ -167,6 +168,7 @@ if SERVER then
 	AddCSLuaFile("grymod/sh_relations.lua")
 	AddCSLuaFile("grymod/client/cl_hud_binoculars_holo.lua")
 	include("grymod/sh_api.lua")
+	include("grymod/sh_cloak_level.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
 	include("grymod/sh_api_tracked.lua")
@@ -180,6 +182,7 @@ if SERVER then
 	include("grymod/server/sv_malfunction.lua")
 	include("grymod/server/sv_underwater.lua")
 	include("grymod/server/sv_cloak_ai.lua")
+	include("grymod/server/sv_suit_noise.lua")
 	include("grymod/server/sv_nightvision.lua")
 	include("grymod/sh_ain.lua")
 	include("grymod/sh_zonemap.lua")
@@ -444,6 +447,7 @@ end
 
 if CLIENT then
 	include("grymod/sh_api.lua")
+	include("grymod/sh_cloak_level.lua")
 	include("grymod/sh_api_weapons.lua")
 	include("grymod/sh_api_weapons_hl2.lua")
 	include("grymod/sh_api_tracked.lua")

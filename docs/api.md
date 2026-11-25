@@ -81,6 +81,7 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_Zoom(ply, fov)` | the field of view the server zoom asks of the engine for the player, in degrees; `fov = 0` when the zoom is over |
 | `GryMod_ArmorAbsorbed(ply, absorbed, passed)` | a hit was taken by the armor: `absorbed` points went to the armor, `passed` points went on to the health (`absorbed + passed` is the hit). Only when `absorbed > 0` |
 | `GryMod_SprintStart(ply)`, `GryMod_SprintEnd(ply)` | the speed-mode sprint began, ended |
+| `GryMod_SuitNoise(ply, pos, radius, kind)` | the suit made a noise that an AI could hear (see "Suit noises" below) |
 | `GryMod_TargetSpotted(ply, ent, relation)` | the player's binoculars spotted `ent` (the scan ended on it and the radar shows it from now on). Once, the first time the entity is tagged for this player. `relation` is `"ally"`, `"neutral"` or `"hostile"` (the relation chain below) |
 
 The other hooks of this table run on the server only. `GryMod_ModeChanged` also runs on the client, for the local player. The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire (on the server).
@@ -174,6 +175,41 @@ the one veto.)
   `GryMod_SprintEnd` at once, so a start always has an end.
 - `GryMod_StrengthJump` is fired right after the jump is granted and the energy is paid. With the infinite armor the jump is free but it is
   reported too.
+
+## Cloak level (server and client)
+
+`GryMod.API.Has("cloaklevel")` is true. The camouflage is a switch for the player, but an AI that watches him needs to know how far it has
+faded: right after the switch the player is still half visible, and right after the end he is still half hidden.
+
+```lua
+local level = GryMod.API.CloakLevel(ply) -- 0 = not cloaked, 1 = fully cloaked
+```
+
+- The level moves toward 1 while the camouflage is on and toward 0 when it is off, at `1 / gry_cloak_fade_seconds` per second. The server
+  setting `gry_cloak_fade_seconds` is 2 by default, from 0 (an instant switch) to 10.
+- A camouflage switched on again during the fade-out goes on from the level it had.
+- A dead player is 0, and a respawn starts at 0 at once.
+- Nothing runs between two switches: the server writes two networked stamps on the player at each switch (`GryCloakLvl0`, the level at that
+  moment, and `GryCloakT0`, the time), and the level is computed when you ask. So it costs nothing to ask it often, on the server or on the
+  client.
+- `GryMod.CloakLevelFrom(on, level0, t0, now, rate)` is the formula itself, and `GryMod.CloakFadeRate()` the rate of the server setting.
+
+The camouflage still sets `FL_NOTARGET` for the Half-Life 2 NPCs, as before: the level is for AIs that make their own perception.
+
+## Suit noises (server)
+
+`GryMod.API.Has("suitnoise")` is true. The hook `GryMod_SuitNoise(ply, pos, radius, kind)` tells an AI's hearing about the noises only the
+suit knows of. `pos` is where the player stands, `radius` is how far it carries in units, `kind` is one of:
+
+| `kind` | When | Radius |
+| --- | --- | --- |
+| `cloak_fire` | the player fires while his cloak level is above 0 (at most once a quarter second) | 2000 |
+| `strength_jump` | a strength jump (the same moment as `GryMod_StrengthJump`) | 1000 |
+| `speed_sprint` | a speed sprint starts (the same moment as `GryMod_SprintStart`) | 800 |
+| `cloak_on`, `cloak_off` | the camouflage switches on or off (not at a respawn) | 300 |
+
+The radii are in `GryMod.SuitNoiseRadius`, which you may change. Footsteps, landings and the weapons' own sounds are not suit noises: hear them
+yourself (`PlayerFootstep`, `OnPlayerHitGround`, `EntityFireBullets`). `GryMod.EmitSuitNoise(ply, kind)` fires the hook by hand.
 
 ## Relation: ally, neutral or hostile (server)
 
@@ -742,6 +778,30 @@ no NPC state and no enemy: it is calm, and `radar = "always"` or a scan lists it
 `relation`). Vehicles and devices (the Combine mine) are listed too, as contacts with a `radar` rule, see above; other entities are
 accepted by the registry and ignored by the radar. The `label` does not travel to the client: the radar's message has no room for text and the movies have
 no field for a name; it is there for a later part.
+
+### Nextbots that report their awareness
+
+`GryMod.API.Has("awareness")` is true. A nextbot that makes its own perception (it has no NPC state for the radar to read) can tell the radar
+what it knows of each player with one method:
+
+```lua
+-- server side, on your entity
+function ENT:GetGryAwareness(ply)
+	return level, exposure, seen, heard
+	-- level: 0 calm, 1 alerted (it heard something, it searches), 2 fighting
+	-- exposure: 0 to 1, how aware it is of THIS player right now
+	-- seen, heard: whether it sees or hears this player at this moment
+end
+```
+
+- The radar asks it instead of reading an NPC state: the colour of the contact (calm, yellow, red), the binoculars' hologram and the danger
+  bar follow your level.
+- The **stealth bar** goes to the exact `exposure` (the highest of the hostiles that report one, contact or not), instead of the steps the radar
+  gives other NPCs (alerted = half, fighting = full). It travels in steps of 1/63.
+- The values are clamped (a level outside 0 to 2, an exposure outside 0 to 1). The method runs under `GryMod.API.SafeCall`: one that throws is
+  ignored for that call, and five errors in a row disable it, with one console line.
+- Your class must still be a radar contact: register it with `GryMod.API.RegisterTracked("my_addon_soldier", {class = "my_soldier", radar = "hostile"})`.
+- Every other entity keeps exactly today's rule.
 
 ### Dangers: the grenade warning
 

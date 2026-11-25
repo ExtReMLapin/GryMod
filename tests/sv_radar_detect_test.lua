@@ -119,7 +119,7 @@ return {
 				local sent = {}
 				state.realStart, state.realWriteUInt, state.realSend = net.Start, net.WriteUInt, net.Send
 				net.Start = function(name) sent[#sent + 1] = {name = name, values = {}} return true end
-				net.WriteUInt = function(v, bits) local m = sent[#sent] m.values[#m.values + 1] = v m.bits = bits end
+				net.WriteUInt = function(v, bits) local m = sent[#sent] m.values[#m.values + 1] = v m.bits = m.bits or bits end
 				net.Send = function(p) sent[#sent].to = p end
 				local ply = {}
 				local st = {}

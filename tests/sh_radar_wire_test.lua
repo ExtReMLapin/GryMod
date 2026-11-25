@@ -147,6 +147,22 @@ return {
 			end
 		},
 		{
+			name = "the detection message is 2 bits, 2 bits, then the exposure in 6 bits; a NaN exposure is step 0",
+			func = function(state)
+				local widths, values = {}, {}
+				local real = net.WriteUInt
+				net.WriteUInt = function(v, n) values[#values + 1] = v widths[#widths + 1] = n end
+				local ok, err = pcall(R().WriteDetect, 2, 1, 0.5)
+				net.WriteUInt = real
+				assert(ok, err)
+
+				expect(table.concat(widths, ",")).to.equal("2,2,6")
+				expect(table.concat(values, ",")).to.equal("2,1,32")
+				expect(R().ExposureStep(0 / 0)).to.equal(0)
+				expect(R().ExposureStep(2)).to.equal(63)
+			end
+		},
+		{
 			name = "a list is cut at the limit and a position past the map is clamped, not wrapped",
 			func = function(state)
 				local many = {}
