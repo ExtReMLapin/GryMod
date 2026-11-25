@@ -39,7 +39,8 @@ Banner.SOUNDS = {
 -- `oldState` is the state it had). Only a change of the STATE is news: the new state says the kind. `syncing` (GryMod.Objectives.Syncing()) is true while a full
 -- list arrives: nothing is said for it.
 function Banner.Decide(event, obj, oldState, syncing)
-	if syncing or not istable(obj) or not isstring(obj.title) or obj.title == "" then
+	-- an own objective (a point the player put on the big map) is no news to the player who made it
+	if syncing or not istable(obj) or obj.own == true or not isstring(obj.title) or obj.title == "" then
 		return nil
 	end
 

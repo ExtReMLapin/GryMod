@@ -270,6 +270,15 @@ return {
 				expect(#played).to.equal(1)
 				expect(played[1]).to.equal("grymod/hud/hud_mission_accomplished.wav")
 			end
+		},
+		{
+			-- fails when a point the player put on the map announces itself as a new objective (the player made it: it is no news)
+			name = "Decide: an own objective (a private point of the player) says nothing, whatever happens to it",
+			func = function()
+				expect(Banner.Decide("added", objective({own = true}))).to.beNil()
+				expect(Banner.Decide("changed", objective({own = true, state = "done"}), "active")).to.beNil()
+				expect(Banner.Decide("added", objective({own = false}))).to.equal("added")
+			end
 		}
 	}
 }

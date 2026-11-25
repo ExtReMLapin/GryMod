@@ -6,7 +6,7 @@
 -- The real map panel is created (a popup); a case that opens it closes it before it ends.
 
 local LEVEL = {id = "open_t256", open = true, zlo = -100, zhi = 256}
-local CONVARS = {"gry_map_enable", "gry_map_zoom", "gry_map_loading_fx", "gry_map_finished", "gry_map_grid", "gry_map_chrome"}
+local CONVARS = {"gry_map_enable", "gry_map_zoom", "gry_map_loading_fx", "gry_map_finished", "gry_map_grid", "gry_map_chrome", "gry_map_waypoints"}
 local PPM_LEVELS = {2, 4, 8, 16, 32, 64}
 
 local function M()
@@ -101,8 +101,12 @@ return {
 		-- these cases are about the plain panel (the title, the hint and the DONE button are drawn by the map itself, a frame is drawn at once); the frame of the
 		-- movie has its own cases in chrome_panel_test.lua
 		GetConVar("gry_map_chrome"):SetString("0")
+		-- the player's own points (waypoints.lua): on, no disk, none from an earlier case
+		GetConVar("gry_map_waypoints"):SetString("1")
 
 		state.saved = {
+			wpIO = Map.Waypoints.IO,
+			ui = {Menu = Map.UI.Menu, Ask = Map.UI.Ask, Ground = Map.UI.Ground, CancelAsk = Map.UI.CancelAsk},
 			Compute = Map.Bounds.Compute,
 			opened = Map._state.opened,
 			lastClose = Map._state.lastClose,
@@ -118,6 +122,8 @@ return {
 		end
 
 		Map.Bounds.Compute = function() return boundsAround(10000) end
+		Map.Waypoints.IO = {Read = function() return nil end, Write = function() end, CreateDir = function() end}
+		Map.Waypoints.Reset()
 		Map._state.lastClose = -math.huge
 		state.hooksRun = {}
 		state.cache = {}
@@ -140,6 +146,13 @@ return {
 			pcall(hook.Remove, "GryMod_HUDEvent", "gry map test")
 
 			Map.Bounds.Compute = state.saved.Compute
+			Map.Waypoints.Reset()
+			Map.Waypoints.IO = state.saved.wpIO
+
+			for k, v in pairs(state.saved.ui) do
+				Map.UI[k] = v
+			end
+
 			Map._state.opened = state.saved.opened
 			Map._state.lastClose = state.saved.lastClose
 			Mini.Cache, Mini.Capture, Mini.Floors, Mini.Settings = state.saved.Cache, state.saved.Capture, state.saved.Floors, state.saved.Settings
@@ -1029,6 +1042,339 @@ return {
 
 				for i, ppm in ipairs(PPM_LEVELS) do
 					expect(levels[i]).to.equal(ppm)
+				end
+			end
+		},
+		-- fails when a right click that did not move does not open the little menu at the cursor, when "create" does not ask for the title, or when the point is not put at
+		-- the world place under the click at the ground the map shows there
+		{
+			name = "a right click without moving opens the menu where it was made; its button asks for the title; the point goes where the click was, on the ground of the map, and is an objective",
+			func = function()
+				local Map = M()
+				local W = Map.Waypoints
+
+				Map._state.opened = true
+				GetConVar("gry_map_zoom"):SetString("3")
+				Map.Open()
+
+				local view = Map._state.view
+				local x, y = view.x + view.w / 3, view.y + view.h / 4
+				local menu, ask, groundAt = nil, nil, nil
+
+				Map.UI.Menu = function(sx, sy, onCreate) menu = {x = sx, y = sy, create = onCreate} end
+				Map.UI.Ask = function(default, onDone) ask = {default = default, done = onDone} end
+				Map.UI.Ground = function(wx, wy) groundAt = {wx, wy} return 77 end
+
+				expect(Map.PressStart(MOUSE_RIGHT, x, y)).to.equal("pan")
+				Map.DragMove(x + 1, y + 1) -- a hand that trembles: still a click
+				Map.PressEnd(MOUSE_RIGHT, x + 1, y + 1)
+
+				expect(menu ~= nil).to.beTrue()
+				expect(menu.x).to.equal(x + 1)
+				expect(menu.y).to.equal(y + 1)
+				expect(ask).to.beNil()
+				expect(#W.List()).to.equal(0)
+
+				menu.create()
+				expect(ask ~= nil).to.beTrue()
+				-- the title it offers is made of the grid cell under the click
+				expect(string.find(ask.default, "^Point [A-H][1-8]$") ~= nil).to.beTrue()
+
+				ask.done("Camp")
+
+				local wx, wy = Map.Frame.ToWorld(view, x + 1, y + 1)
+
+				expect(#W.List()).to.equal(1)
+				expect(W.List()[1].x).to.aboutEqual(wx, 1e-6)
+				expect(W.List()[1].y).to.aboutEqual(wy, 1e-6)
+				expect(W.List()[1].z).to.equal(77)
+				expect(groundAt[1]).to.aboutEqual(wx, 1e-6)
+				expect(GryMod.Objectives.Get(W.List()[1].id).title).to.equal("Camp")
+				Map.Close()
+			end
+		},
+		-- fails when a drag with the right button (the map's pan) also opens the menu, or a left click does
+		{
+			name = "a right drag is still the pan and opens nothing; a left click opens nothing; a right click outside the window opens nothing",
+			func = function()
+				local Map = M()
+				local opened = 0
+
+				Map._state.opened = true
+				GetConVar("gry_map_zoom"):SetString("3")
+				Map.Open()
+
+				local view = Map._state.view
+				local x, y = view.x + view.w / 2, view.y + view.h / 2
+
+				Map.UI.Menu = function() opened = opened + 1 end
+
+				Map.PressStart(MOUSE_RIGHT, x, y)
+				Map.DragMove(x + 40, y)
+				Map.PressEnd(MOUSE_RIGHT, x + 40, y)
+				expect(opened).to.equal(0)
+
+				-- a move and a move back is still a move
+				Map.PressStart(MOUSE_RIGHT, x, y)
+				Map.DragMove(x + 30, y)
+				Map.DragMove(x, y)
+				Map.PressEnd(MOUSE_RIGHT, x, y)
+				expect(opened).to.equal(0)
+
+				Map.PressStart(MOUSE_LEFT, x, y)
+				Map.PressEnd(MOUSE_LEFT, x, y)
+				expect(opened).to.equal(0)
+
+				Map.PressStart(MOUSE_RIGHT, view.x + view.w + 50, y)
+				Map.PressEnd(MOUSE_RIGHT, view.x + view.w + 50, y)
+				expect(opened).to.equal(0)
+
+				-- and a clean click does
+				Map.PressStart(MOUSE_RIGHT, x, y)
+				Map.PressEnd(MOUSE_RIGHT, x, y)
+				expect(opened).to.equal(1)
+				Map.Close()
+			end
+		},
+		-- fails when a right click on a point opens the menu instead of taking the point away, or leaves it in the mirror
+		{
+			name = "a right click on one of the player's points takes it away (no menu); a right click next to it opens the menu",
+			func = function()
+				local Map = M()
+				local W = Map.Waypoints
+				local menus = 0
+
+				Map._state.opened = true
+				GetConVar("gry_map_zoom"):SetString("3")
+				Map.Open()
+
+				local view = Map._state.view
+				local cx, cy = view.cx, view.cy
+				local id = W.Add(cx, cy, 0, "Camp")
+				local px, py = Map.Frame.ToScreen(view, cx, cy)
+
+				Map.UI.Menu = function() menus = menus + 1 end
+
+				-- 60 pixels away: not the point
+				Map.PressStart(MOUSE_RIGHT, px + 60, py)
+				Map.PressEnd(MOUSE_RIGHT, px + 60, py)
+				expect(menus).to.equal(1)
+				expect(GryMod.Objectives.Get(id) ~= nil).to.beTrue()
+
+				Map.PressStart(MOUSE_RIGHT, px + 2, py - 2)
+				Map.PressEnd(MOUSE_RIGHT, px + 2, py - 2)
+				expect(menus).to.equal(1)
+				expect(GryMod.Objectives.Get(id)).to.beNil()
+				expect(#W.List()).to.equal(0)
+				Map.Close()
+			end
+		},
+		-- fails when the switch does not stop the menu, or the point is made with a title the player did not give and then cancelled
+		{
+			name = "the switch gry_map_waypoints 0: a right click opens nothing; a title left empty gets the default one; a cancelled request puts no point",
+			func = function()
+				local Map = M()
+				local W = Map.Waypoints
+				local menu, ask
+
+				Map._state.opened = true
+				GetConVar("gry_map_zoom"):SetString("3")
+				Map.Open()
+
+				local view = Map._state.view
+				local x, y = view.x + view.w / 2, view.y + view.h / 2
+
+				Map.UI.Menu = function(sx, sy, onCreate) menu = onCreate end
+				Map.UI.Ask = function(default, onDone) ask = {default = default, done = onDone} end
+				Map.UI.Ground = function() return 5 end
+
+				GetConVar("gry_map_waypoints"):SetString("0")
+				Map.PressStart(MOUSE_RIGHT, x, y)
+				Map.PressEnd(MOUSE_RIGHT, x, y)
+				expect(menu).to.beNil()
+
+				GetConVar("gry_map_waypoints"):SetString("1")
+				Map.PressStart(MOUSE_RIGHT, x, y)
+				Map.PressEnd(MOUSE_RIGHT, x, y)
+				menu()
+				ask.done(nil) -- cancelled
+				expect(#W.List()).to.equal(0)
+
+				menu()
+				ask.done("   ") -- nothing typed
+				expect(#W.List()).to.equal(1)
+				expect(W.List()[1].title).to.equal(ask.default)
+				Map.Close()
+			end
+		},
+		-- fails when the ground is not looked for under the top of the level shown, or a place with no ground (outside the world) is put at height 0 instead of the player's
+		{
+			name = "the ground under a click: from the top of the level shown down, and the player's own height when there is none",
+			func = function()
+				local Map = M()
+				local seen
+
+				Map._state.opened = true
+				Map.Open()
+				Map._state.level = {id = "x", zlo = -500, zhi = 900}
+
+				local realTrace = util.TraceLine
+
+				util.TraceLine = function(t)
+					seen = t
+
+					return {Hit = true, HitSky = false, HitPos = Vector(t.start.x, t.start.y, 123)}
+				end
+
+				local ok, z = pcall(Map.UI.Ground, 10, 20)
+
+				util.TraceLine = realTrace
+				expect(ok).to.beTrue()
+				expect(z).to.equal(123)
+				expect(seen.start.z).to.equal(900)
+				expect(seen.endpos.z).to.equal(-500)
+
+				util.TraceLine = function() return {Hit = false} end
+				ok, z = pcall(Map.UI.Ground, 10, 20)
+				util.TraceLine = realTrace
+				expect(ok).to.beTrue()
+				expect(z).to.equal(LocalPlayer():GetPos().z)
+				Map.Close()
+			end
+		},
+		-- fails when the title request leaves the map's key active (typing the key's letter in the box would close the map under it) or stays open after the map closes
+		{
+			name = "while the title is asked for, the map is told the player is typing (its key does not close it); closing the map cancels the request",
+			func = function()
+				local Map = M()
+				local cancelled = 0
+				local ask
+
+				Map._state.opened = true
+				Map.Open()
+				Map.UI.Menu = function(sx, sy, onCreate) onCreate() end
+				Map.UI.Ask = function(default, onDone) ask = onDone end
+				Map.UI.CancelAsk = function() cancelled = cancelled + 1 end
+				Map.UI.Ground = function() return 0 end
+
+				local view = Map._state.view
+				local x, y = view.x + view.w / 2, view.y + view.h / 2
+
+				Map.PressStart(MOUSE_RIGHT, x, y)
+				Map.PressEnd(MOUSE_RIGHT, x, y)
+				expect(Map.IsTyping()).to.beTrue()
+
+				ask("Done")
+				expect(Map.IsTyping()).to.beFalse()
+
+				Map.PressStart(MOUSE_RIGHT, x, y + 30)
+				Map.PressEnd(MOUSE_RIGHT, x, y + 30)
+				expect(Map.IsTyping()).to.beTrue()
+				Map.Close()
+				expect(Map.IsTyping()).to.beFalse()
+				expect(cancelled).to.equal(1)
+			end
+		},
+		-- fails when the real request does not give the text to onDone exactly once (the window closes before the Create button's callback runs), or when closing the window by its
+		-- own cross is not a cancel (the map would believe the player is still typing and its key would never close it)
+		{
+			name = "the real title request: Create gives the text once; closing the window by its cross is a cancel, told once, after the buttons' own callbacks",
+			func = function()
+				local Map = M()
+
+				local function find(panel, class, text)
+					for _, child in ipairs(panel:GetChildren()) do
+						if child.ClassName == class and (text == nil or child:GetText() == text) then
+							return child
+						end
+
+						local deeper = find(child, class, text)
+
+						if deeper then
+							return deeper
+						end
+					end
+				end
+
+				local queued = {}
+				local realSimple = timer.Simple
+
+				timer.Simple = function(_, fn) queued[#queued + 1] = fn end
+
+				local ok, err = pcall(function()
+					local got = {}
+					local function onDone(text) got[#got + 1] = text == nil and "cancel" or text end
+
+					Map.UI.Ask("Point A1", onDone)
+
+					local frame = Map._state.ask
+
+					expect(IsValid(frame)).to.beTrue()
+					expect(find(frame, "DTextEntry"):GetValue()).to.equal("Point A1")
+					find(frame, "DTextEntry"):SetValue("Camp")
+					find(frame, "DButton", "Create"):DoClick()
+
+					for _, fn in ipairs(queued) do fn() end
+
+					expect(#got).to.equal(1)
+					expect(got[1]).to.equal("Camp")
+					expect(Map._state.ask).to.beNil()
+
+					-- the window's cross
+					queued, got = {}, {}
+					Map.UI.Ask("Point B2", onDone)
+					Map._state.ask:Close()
+					expect(#got).to.equal(0) -- not at once: the buttons' callbacks come right after Close
+
+					for _, fn in ipairs(queued) do fn() end
+
+					expect(#got).to.equal(1)
+					expect(got[1]).to.equal("cancel")
+					expect(Map._state.ask).to.beNil()
+
+					-- the Cancel button: told once, not twice
+					queued, got = {}, {}
+					Map.UI.Ask("Point C3", onDone)
+					find(Map._state.ask, "DButton", "Cancel"):DoClick()
+
+					for _, fn in ipairs(queued) do fn() end
+
+					expect(#got).to.equal(1)
+					expect(got[1]).to.equal("cancel")
+				end)
+
+				timer.Simple = realSimple
+				Map.UI.CancelAsk()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		-- fails when the hint under the map does not tell about the right click, or keeps telling when it is switched off
+		{
+			name = "the hint lines: the right click is in the long ones when the switch is on, and in none when it is off; the last one is only the key",
+			func = function()
+				local Map = M()
+
+				GetConVar("gry_map_waypoints"):SetString("1")
+
+				local on = Map.HintVariants("M")
+
+				expect(#on >= 3).to.beTrue()
+				expect(string.find(on[1], "RIGHT CLICK", 1, true) ~= nil).to.beTrue()
+				expect(string.find(on[1], "M: CLOSE", 1, true) ~= nil).to.beTrue()
+				expect(on[#on]).to.equal("M: CLOSE")
+
+				-- from the longest to the shortest
+				for i = 2, #on do
+					expect(#on[i] < #on[i - 1]).to.beTrue()
+				end
+
+				GetConVar("gry_map_waypoints"):SetString("0")
+
+				for _, line in ipairs(Map.HintVariants("M")) do
+					expect(string.find(line, "RIGHT CLICK", 1, true)).to.beNil()
 				end
 			end
 		}

@@ -14,6 +14,7 @@ Settings.DEFAULT_FX = "glitch"
 Settings.DEFAULT_FINISHED = false
 Settings.DEFAULT_GRID = true
 Settings.DEFAULT_CHROME = true
+Settings.DEFAULT_WAYPOINTS = true
 
 -- GetConVar first, so that a hot reload of this file keeps the same convars
 local EnableConVar = GetConVar("gry_map_enable") or CreateClientConVar("gry_map_enable", "1", true, false,
@@ -28,6 +29,9 @@ local FinishedConVar = GetConVar("gry_map_finished") or CreateClientConVar("gry_
 	"The big map also shows the objectives that are done or failed, greyed (1), or only the active ones (0)", 0, 1)
 local GridConVar = GetConVar("gry_map_grid") or CreateClientConVar("gry_map_grid", "1", true, false,
 	"The big map shows its 8 x 8 grid with the letters A to H and the numbers 1 to 8 (1), or not (0)", 0, 1)
+
+local WaypointsConVar = GetConVar("gry_map_waypoints") or CreateClientConVar("gry_map_waypoints", "1", true, false,
+	"The player's own objective points on the big map (a right click without moving the mouse puts one with a title, a right click on one takes it away; private, kept for each map): 1 on, 0 off", 0, 1)
 
 local ChromeConVar = GetConVar("gry_map_chrome") or CreateClientConVar("gry_map_chrome", "1", true, false,
 	"The big map is drawn in the frame of the original Crysis PDA map (1), or in the plain panel it had before (0)", 0, 1)
@@ -120,4 +124,9 @@ end
 
 function Settings.Chrome()
 	return Settings.ParseSwitch(ChromeConVar:GetString(), Settings.DEFAULT_CHROME)
+end
+
+-- Whether the player may put objective points of his own on the big map (gry_map_waypoints).
+function Settings.Waypoints()
+	return Settings.ParseSwitch(WaypointsConVar:GetString(), Settings.DEFAULT_WAYPOINTS)
 end

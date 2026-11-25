@@ -57,7 +57,7 @@ return {
 	cases = {
 		-- fails without GryMod.MapOptionsPanel (the file is missing) or when a control is left out or moved
 		{
-			name = "the page holds, in this order: the Big map category, the switch, the key picker, the Crysis PDA frame, the grid, the finished objectives and the loading look",
+			name = "the page holds, in this order: the Big map category, the switch, the key picker, the Crysis PDA frame, the grid, the finished objectives, the player's own points and the loading look",
 			func = function(state)
 				expect(isfunction(GryMod.MapOptionsPanel)).to.beTrue()
 
@@ -71,8 +71,50 @@ return {
 					"box:gry_map_chrome",
 					"box:gry_map_grid",
 					"box:gry_map_finished",
+					"box:gry_map_waypoints",
 					"combo:gry_map_loading_fx"
 				}, "\n"))
+			end
+		},
+		-- fails when the button that takes the player's points away does so without asking, or does not take them
+		{
+			name = "the button 'Remove my objective points of this map' asks first, and takes the points away only on yes",
+			func = function(state)
+				local W = GryMod.Map.Waypoints
+				local realConfirm, realIO = GryMod.Confirm, W.IO
+				local asked, yes = 0, nil
+
+				W.IO = {Read = function() return nil end, Write = function() end, CreateDir = function() end}
+				W.Reset()
+				GryMod.Confirm = function(text, onYes) asked = asked + 1 yes = onYes end
+
+				local ok, err = pcall(function()
+					state.panel = vgui.Create("ControlPanel")
+					GryMod.MapOptionsPanel(state.panel)
+
+					local button
+
+					for _, p in ipairs(walk(state.panel)) do
+						if p.ClassName == "DButton" and p:GetText() == "Remove my objective points of this map" then
+							button = p
+						end
+					end
+
+					expect(button ~= nil).to.beTrue()
+					W.Add(0, 0, 0, "Camp")
+					button:DoClick()
+					expect(asked).to.equal(1)
+					expect(#W.List()).to.equal(1) -- asked, not done
+					yes()
+					expect(#W.List()).to.equal(0)
+				end)
+
+				GryMod.Confirm, W.IO = realConfirm, realIO
+				W.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		-- fails when opening the page writes a setting (a combo box that selects its saved line writes it)

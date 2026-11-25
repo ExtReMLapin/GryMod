@@ -909,6 +909,9 @@ GryMod.Objectives.Get("my_addon.find_key")   -- one of them, or nil
 GryMod.Objectives.Main()                     -- the main objective, or nil
 ```
 
+The list can also hold the player's own points, put on the big map with a right click (`own = true`, ids `gry_user_N`): private to the client, never sent to or
+known by the server, and left alone by the full list and the CLEAR of the server. Code that wants only the server's objectives skips the entries with `o.own`.
+
 `GryMod.Objectives.Syncing()` is true while a full list is arriving (the list the player gets when he joins, or when `RefreshObjectives` sends it again): the
 hooks run during it too, so a display that tells the player about "a new objective" can stay silent for these.
 

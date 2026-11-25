@@ -534,6 +534,94 @@ return {
 				Obj.ApplySet(rec("with"))
 				expect(Obj.Get("with").via).to.beNil()
 			end
+		},
+		{
+			-- breaks if: ApplyOwn does not exist, the objective is not in List() and Get() marked own, or its hook (the radar, the markers and the big map follow it) is not told
+			name = "own objectives: ApplyOwn puts a private objective in the list marked own, tells GryMod_ObjectiveAdded (the copy is marked too), and RemoveOwn takes it away and tells Removed",
+			func = function()
+				local added = listen("GryMod_ObjectiveAdded")
+				local removed = listen("GryMod_ObjectiveRemoved")
+
+				Obj.ApplyOwn(rec("gry_user_1", {primary = false}))
+
+				expect(#Obj.List()).to.equal(1)
+				expect(Obj.List()[1].own).to.beTrue()
+				expect(Obj.Get("gry_user_1").own).to.beTrue()
+				expect(Obj.List()[1].pos == Vector(1, 2, 3)).to.beTrue()
+				expect(#added).to.equal(1)
+				expect(added[1][2].own).to.beTrue()
+
+				expect(Obj.RemoveOwn("gry_user_1")).to.beTrue()
+				expect(#Obj.List()).to.equal(0)
+				expect(#removed).to.equal(1)
+				expect(removed[1][2].own).to.beTrue()
+
+				-- a second time, and an id that is not there: nothing to remove
+				expect(Obj.RemoveOwn("gry_user_1")).to.beFalse()
+			end
+		},
+		{
+			-- breaks if: a full list from the server (the one sent when the player joins, which removes what it does not mention) or a CLEAR takes the player's own points away
+			name = "own objectives: the full list of the server and a CLEAR leave them alone, a server objective next to them still goes",
+			func = function()
+				Obj.ApplyOwn(rec("gry_user_1"))
+				Obj.ApplySet(rec("mission"))
+
+				-- Receive reads one message: the full list is three of them
+				receive(function() opStart(Obj.Ops.BEGIN) end)
+				receive(function()
+					opStart(Obj.Ops.SET)
+					Obj.WriteRecord(rec("other"))
+				end)
+				receive(function() opStart(Obj.Ops.END) end)
+
+				expect(Obj.Get("gry_user_1") ~= nil).to.beTrue()
+				expect(Obj.Get("mission")).to.beNil()
+				expect(Obj.Get("other") ~= nil).to.beTrue()
+
+				receive(function()
+					opStart(Obj.Ops.CLEAR)
+					net.WriteUInt(Obj.ReasonIds[Obj.Reasons.CLEARED], Obj.ReasonBits)
+				end)
+
+				expect(Obj.Get("gry_user_1") ~= nil).to.beTrue()
+				expect(Obj.Get("other")).to.beNil()
+				expect(#Obj.List()).to.equal(1)
+			end
+		},
+		{
+			-- breaks if: the server can overwrite, remove, or make main an objective that only this player owns (the server never knows them: an id of its own that
+			-- collides with one must not touch the player's point)
+			name = "own objectives: a SET, a REMOVE or a MAIN from the server with the id of an own objective changes nothing; RemoveOwn does not remove a server objective",
+			func = function()
+				Obj.ApplyOwn(rec("gry_user_1", {title = "Mine"}))
+				Obj.ApplySet(rec("mission"))
+
+				receive(function()
+					opStart(Obj.Ops.SET)
+					Obj.WriteRecord(rec("gry_user_1", {title = "Theirs", main = true}))
+				end)
+
+				expect(Obj.Get("gry_user_1").title).to.equal("Mine")
+				expect(Obj.Get("gry_user_1").main).to.beFalse()
+
+				receive(function()
+					opStart(Obj.Ops.REMOVE)
+					net.WriteString("gry_user_1")
+					net.WriteUInt(Obj.ReasonIds[Obj.Reasons.REMOVED], Obj.ReasonBits)
+				end)
+
+				expect(Obj.Get("gry_user_1") ~= nil).to.beTrue()
+
+				receive(function()
+					opStart(Obj.Ops.MAIN)
+					net.WriteString("gry_user_1")
+				end)
+
+				expect(Obj.Main()).to.beNil()
+				expect(Obj.RemoveOwn("mission")).to.beFalse()
+				expect(Obj.Get("mission") ~= nil).to.beTrue()
+			end
 		}
 	}
 }

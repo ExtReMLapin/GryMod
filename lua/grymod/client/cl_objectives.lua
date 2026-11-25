@@ -82,7 +82,8 @@ local function snapshot(o)
 		ent = o.ent,
 		radar = o.radar,
 		marker = o.marker,
-		via = copyVia(o.via)
+		via = copyVia(o.via),
+		own = o.own == true
 	}
 end
 
@@ -118,10 +119,15 @@ end
 -- What the messages do (each one is a function, the receiver below only reads and calls)
 -- ---------------------------------------------------------------------------------------------------------
 
--- A new objective, or the new values of one the client has. `rec` is what Obj.ReadRecord gives.
-function Obj.ApplySet(rec)
+-- A new objective, or the new values of one the client has. `rec` is what Obj.ReadRecord gives. `own` is true for a private objective of this player (see
+-- ApplyOwn): the server's messages never reach one (a SET with the id of an own objective is dropped).
+function Obj.ApplySet(rec, own)
 	local o = store[rec.id]
 	local isNew = o == nil
+
+	if o and o.own and not own then
+		return
+	end
 	local before
 
 	if isNew then
@@ -136,6 +142,7 @@ function Obj.ApplySet(rec)
 	o.radar, o.marker = rec.radar, rec.marker
 	o.entIndex, o.serverPos = rec.entIndex, rec.pos
 	o.via = rec.via
+	o.own = own == true
 
 	-- one main objective: the one that had the flag loses it
 	local lost
@@ -179,11 +186,12 @@ local function forget(id)
 	end
 end
 
--- The objective is gone; `reason` is one of Obj.Reasons.
-function Obj.ApplyRemove(id, reason)
+-- The objective is gone; `reason` is one of Obj.Reasons. `own` is true when the player's own code removes one of the player's own objectives (RemoveOwn): the
+-- server's REMOVE does not remove an own objective.
+function Obj.ApplyRemove(id, reason, own)
 	local o = store[id]
 
-	if not o then
+	if not o or (o.own == true) ~= (own == true) then
 		return
 	end
 
@@ -193,20 +201,49 @@ function Obj.ApplyRemove(id, reason)
 	Obj.Fire("GryMod_ObjectiveRemoved", id, snap, reason or Reasons.REMOVED)
 end
 
--- Every objective is gone.
-function Obj.ApplyClear(reason)
-	local snaps = {}
+-- A private objective of this player (the points put on the big map with a right click, client/map/waypoints.lua): the same record as a server objective, but
+-- it lives only here. It shows wherever the objectives show (the big map, the minimap and the compass radar, the markers of the binoculars) and the server never
+-- knows it: a full list or a CLEAR from the server leaves it, and a message of the server cannot change or remove it. Returns true.
+function Obj.ApplyOwn(rec)
+	Obj.ApplySet(rec, true)
 
-	for i, id in ipairs(order) do
-		snaps[i] = snapshot(store[id])
+	return true
+end
+
+-- Takes an own objective away (the hook Removed is told). Returns false when `id` is not an own objective.
+function Obj.RemoveOwn(id)
+	local o = isstring(id) and store[id] or nil
+
+	if not o or not o.own then
+		return false
 	end
 
-	for id in pairs(store) do
-		store[id] = nil
+	Obj.ApplyRemove(id, Reasons.REMOVED, true)
+
+	return true
+end
+
+-- Every objective of the server is gone (the own ones stay).
+function Obj.ApplyClear(reason)
+	local snaps, kept = {}, {}
+
+	for _, id in ipairs(order) do
+		local o = store[id]
+
+		if o.own then
+			kept[#kept + 1] = id
+		else
+			snaps[#snaps + 1] = snapshot(o)
+			store[id] = nil
+		end
 	end
 
 	for i = #order, 1, -1 do
 		order[i] = nil
+	end
+
+	for i, id in ipairs(kept) do
+		order[i] = id
 	end
 
 	Obj._main = nil
@@ -218,7 +255,8 @@ end
 
 -- The main objective is `id` ("" or an objective the client does not have: none).
 function Obj.ApplyMain(id)
-	if not isstring(id) or not store[id] then
+	-- an own objective is never the main one: the server does not know it
+	if not isstring(id) or not store[id] or store[id].own then
 		id = nil
 	end
 
@@ -282,7 +320,7 @@ function Obj.ApplyEnd()
 	mentioned = nil
 
 	for _, id in ipairs(order) do
-		if not seen[id] then
+		if not seen[id] and not store[id].own then
 			gone[#gone + 1] = id
 		end
 	end

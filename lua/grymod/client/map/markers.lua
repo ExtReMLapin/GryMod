@@ -178,6 +178,7 @@ function Markers.FromObjectives(list, showFinished, out)
 
 					m.pos, m.type, m.subtype = o.pos, 5, o.primary and 0 or 2
 					m.id, m.label, m.main = o.id, o.title, o.main == true and not finished
+					m.own = o.own == true
 					m.finished, m.alpha = finished, finished and Markers.FINISHED_ALPHA or nil
 				end
 			end
@@ -260,6 +261,7 @@ end
 -- as the radar's; a finished one is grey.
 local PRIMARY_R, PRIMARY_G, PRIMARY_B = 107, 212, 90
 local SECOND_R, SECOND_G, SECOND_B = 240, 196, 60
+local OWN_R, OWN_G, OWN_B = 90, 170, 255 -- the points the player put on the map: a colour of their own, apart from the missions
 
 function Markers.Style(m)
 	local kind = type(m) == "table" and m.type or nil
@@ -267,6 +269,10 @@ function Markers.Style(m)
 	if kind == 5 then
 		if m.finished then
 			return "diamond", 150, 150, 150
+		end
+
+		if m.own then
+			return "diamond", OWN_R, OWN_G, OWN_B
 		end
 
 		if m.subtype == 2 or m.subtype == 3 then

@@ -318,6 +318,14 @@ made by the same render, from straight above, outside view: terrain, rocks and r
   window (a bigger window or a smaller map reaches it at a different number, the pixel size is the same). A small map keeps x8. A wheel notch is `z * 1.35 - 0.25`
   in and `z / (1.35 - 0.25 / z)` out, which is the original game's rule (eleven notches from 1 to 8); over 8 the smooth zoom of the middle button goes faster
   in proportion, and the icons stop growing at 8.
+- **Your own points.** A right click on the map, **without moving the mouse** (a drag with the right button is still the pan), opens a small menu with one button,
+  "Create an objective here". The button asks for a title (the box holds "Point C4", the grid cell, so Enter is enough), and the point is put where the click was,
+  on the ground the map shows there (the first solid surface under the top of the level that is drawn; the player's own height outside the world). A right
+  click on a point takes it away. A point is a private **secondary objective of this client** (an "own" objective, `own = true`), so it is shown wherever the objectives
+  are: the big map (in blue, to tell it from the missions'), the minimap and the compass radar (a yellow arrow, on the border when it is beyond the radar) and, with the
+  binoculars up, the marker on the screen (`gry_objectives_marker_mode`). The server never knows them and nobody else sees them. Up to 32 a map, kept in the file
+  `data/grymod/waypoints/<map>.txt` (a text, a line a point) and back the next time the map is played; "Remove my objective points of this map" in the options
+  takes them all away, after asking. `gry_map_waypoints 0` turns the whole thing off (the points stay in the file and come back when it is on again).
 - **The hard limit.** The map never shows anything outside its bounds: the picture always fills the window, there is no empty margin at any zoom. At zoom 1
   there is no pan (the window has the shape of the bounds, from 1:2 to 2:1; a very long map can still be moved along its long side).
 - **Zoom and place.** The first opening of a map session uses the automatic zoom: the whole bounds when their long side is up to 1000 m, else a window of about
@@ -424,6 +432,7 @@ The base of a cell (the coarse picture, or the plain tile) is drawn by the map; 
 | `gry_map_finished` | 0 | 0 or 1 | Also show the objectives that are done or failed, greyed. |
 | `gry_map_grid` | 1 | 0 or 1 | The 8 x 8 grid with its letters and numbers. |
 | `gry_map_chrome` | 1 | 0 or 1 | Draw the map in the frame of the original Crysis PDA map (1), or in the plain panel (0). Read at each opening. |
+| `gry_map_waypoints` | 1 | 0 or 1 | The player's own objective points: a right click on the map puts one (a title is asked for), a right click on one takes it away. Private, kept for each map. 0: no menu, and the points leave the lists. |
 
 All of them are saved client convars, and in the options menu of the GryMod category, on the page "Big map". The tile size and the generator's time are the
 minimap's (`gry_minimap_tile`, `gry_minimap_budget_ms`).
@@ -469,8 +478,14 @@ GryMod.Map.RemoveMarkerSource("my_addon")
 `type` 5 is an objective (subtype 0 or 1 primary, green; 2 or 3 secondary, yellow), 6 a ring, 7 a team mate, the others are white dots; `alpha` (0 to 1) and `scale`
 (percent) are read. The objectives of `GryMod.Objectives` need no source: the map reads them.
 
+The player's own points are `GryMod.Map.Waypoints` (`waypoints.lua`): `Add(x, y, z, title)` (the id `gry_user_N`, or `false` and why), `Remove(id)`, `Clear()`,
+`List()`, `Load()` and `Save()` (the file of the map), `Pick(view, sx, sy, radius)`, `GroundAt(x, y, zTop, zBottom, trace)`, `CleanTitle(text)`, `Enabled()`. They go
+into the client's objectives as `GryMod.Objectives.ApplyOwn(record)` and out with `RemoveOwn(id)`: an own objective is in `List()` with `own = true`, the full list and
+the CLEAR of the server leave it alone, and no message of the server changes or removes it (code that lists the objectives and wants only the server's skips
+`o.own`). The menu and the title request are fields of `GryMod.Map.UI` (`Menu`, `Ask`, `CancelAsk`, `Ground`), so a test or an addon can replace them.
+
 The modules are in `lua/grymod/client/map/`: `zoom` (the zoom rules), `frame` (the maths between the world and the window: zoom toward a point, the drag, the hard
-clamp), `bounds`, `pyramid`, `store`, `fx`, `markers`, `settings`, `tiles` and `panel`. The first seven are pure and have tests that need no render (`tests/map/`). The
+clamp), `bounds`, `pyramid`, `store`, `fx`, `markers`, `settings`, `waypoints`, `tiles` and `panel`. The first seven are pure and have tests that need no render (`tests/map/`). The
 tests of `tiles` and `panel` replace the minimap's cache, capture, floors and settings and the engine's render targets by stand-ins.
 
 ### Limits

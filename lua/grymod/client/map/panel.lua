@@ -23,11 +23,12 @@ GryMod.Map = GryMod.Map or {}
 
 local Map = GryMod.Map
 
-local Zoom, Frame, Bounds, Pyramid, Fx, Markers, Tiles, Settings, Chrome
+local Zoom, Frame, Bounds, Pyramid, Fx, Markers, Tiles, Settings, Chrome, Waypoints
 
 local function modules()
 	Zoom, Frame, Bounds, Pyramid = Map.Zoom, Map.Frame, Map.Bounds, Map.Pyramid
 	Fx, Markers, Tiles, Settings, Chrome = Map.Fx, Map.Markers, Map.Tiles, Map.Settings, Map.Chrome
+	Waypoints = Map.Waypoints
 end
 
 modules()
@@ -43,6 +44,8 @@ Map.Sounds = {
 Map.TRIM_SECONDS = 60 -- the tiles of the map are forgotten this long after it closed
 Map.ARROW_MIN = 7 -- the smallest size (pixels) of the player arrow
 Map.CLOSE_GUARD = 0.25 -- seconds after a close during which the key does not open it again (the key that closed it may be seen by two readers)
+Map.CLICK_SLOP = 4 -- pixels (all the moves added): a right button that moved no more than this is a click, not the pan
+Map.POINT_PICK = 6 -- pixels added to the size of a point's icon for the click that takes it away
 
 -- the colours of the original's map: line, hover, text, and the accent
 local LINE = Color(96, 112, 80)
@@ -94,6 +97,7 @@ S.lastClose = S.lastClose or -math.huge
 S.lastReason = S.lastReason or nil
 S.hudStatus = S.hudStatus or 0 -- the status of the HUD (GryMod_HUDStatus): 0 working, 1 malfunction, 2 flicker
 
+S.typing = S.typing or false -- the title of a point is being asked for: the map's key does not close the map
 S.frame = S.frame or {} -- what the content function of the chrome needs from the frame being drawn
 S.closing = S.closing or false -- the chrome's closing animation is playing (the map itself is closed)
 
@@ -287,6 +291,7 @@ function Map.PressStart(code, x, y)
 		end
 
 		S.drag, S.dragX, S.dragY = "pan", x, y
+		S.moved = 0
 
 		return "pan"
 	end
@@ -315,6 +320,7 @@ function Map.DragMove(x, y)
 	S.dragX, S.dragY = x, y
 
 	if S.drag == "pan" then
+		S.moved = (S.moved or 0) + math.abs(dx) + math.abs(dy)
 		Frame.Pan(view, dx, dy)
 
 		return true
@@ -353,7 +359,155 @@ function Map.PressEnd(code, x, y)
 		end
 	end
 
+	-- the right button that did not move is a click: a point to put, or one to take away (a drag of it is the pan)
+	if kind == "pan" and code == MOUSE_RIGHT and (S.moved or 0) <= Map.CLICK_SLOP then
+		Map.RightClick(x, y)
+	end
+
 	return kind
+end
+
+-- the player's own points ---------------------------------------------------------------------------------------------------------------------------------
+
+-- The parts of this that touch the engine's interface are fields of Map.UI, so that the tests (and a developer) can put their own: the little menu, the request
+-- for a title, the cancelling of that request and the ground under a place.
+Map.UI = Map.UI or {}
+
+-- The menu with the one button "create an objective", at the screen point (sx, sy). `onCreate` is called when the button is clicked.
+function Map.UI.Menu(sx, sy, onCreate)
+	local menu = DermaMenu()
+	local option = menu:AddOption("Create an objective here", onCreate)
+
+	option:SetIcon("icon16/flag_blue.png")
+	menu:Open(sx, sy, false, S.panel)
+end
+
+-- The request for the title, with `default` already in the box. `onDone(text)` is called once, with the text, or with nil when the player cancels.
+function Map.UI.Ask(default, onDone)
+	local finished = false
+
+	local function finish(text)
+		if not finished then
+			finished = true
+			S.ask = nil
+			onDone(text)
+		end
+	end
+
+	local frame = Derma_StringRequest("New objective", "Title of the objective (shown on the map, the minimap and the compass):", default, finish, function()
+		finish(nil)
+	end, "Create", "Cancel")
+
+	-- the cross of the window ends it with neither button: that is a cancel. The buttons close the window first and give their answer right after, so the cross
+	-- waits one frame, and an answer that was given by then is the one that counts.
+	frame.OnClose = function()
+		timer.Simple(0, function()
+			finish(nil)
+		end)
+	end
+
+	S.ask = frame
+end
+
+-- Takes the request away without calling onDone (the map closed under it).
+function Map.UI.CancelAsk()
+	if IsValid(S.ask) then
+		S.ask:Remove()
+	end
+
+	S.ask = nil
+end
+
+-- The height of the ground the map shows at the world place (wx, wy): the first solid surface under the top of the level that is drawn, as the picture is a view
+-- from above cut there. The player's own height where there is nothing (outside the world).
+function Map.UI.Ground(wx, wy)
+	local ply = LocalPlayer()
+	local fallback = IsValid(ply) and ply:GetPos().z or 0
+	local level = S.level
+
+	if type(level) ~= "table" or type(level.zhi) ~= "number" then
+		return fallback
+	end
+
+	local z = Waypoints.GroundAt(wx, wy, level.zhi, level.zlo or level.zhi - 20000, function(x, y, from, to)
+		return util.TraceLine({start = Vector(x, y, from), endpos = Vector(x, y, to), mask = MASK_SOLID_BRUSHONLY})
+	end)
+
+	return z or fallback
+end
+
+-- Whether the title of a point is being asked for (the map's key must not close the map while the player types in the box).
+function Map.IsTyping()
+	return S.typing == true
+end
+
+-- The title is asked for, then the point is made at the world place (wx, wy).
+local function askTitle(wx, wy)
+	local _, _, cell = Markers.GridRef(S.view, wx, wy)
+	local default = Waypoints.DefaultTitle(cell)
+
+	S.typing = true
+
+	Map.UI.Ask(default, function(text)
+		S.typing = false
+
+		if text == nil then
+			return
+		end
+
+		local id, why = Waypoints.Add(wx, wy, Map.UI.Ground(wx, wy), Waypoints.CleanTitle(text) or default)
+
+		if id then
+			play("grymod/hud/pda_updated.wav")
+		elseif notification and notification.AddLegacy then
+			notification.AddLegacy(tostring(why), NOTIFY_ERROR, 4)
+		end
+	end)
+end
+
+-- A right click that did not move, at the screen point (x, y): on a point of the player it takes the point away, anywhere else in the window it opens the menu.
+-- Returns "removed", "menu" or nil (the switch is off, or the click is outside the window).
+function Map.RightClick(x, y)
+	local view = S.view
+
+	if not S.open or not view or not Waypoints.Enabled() or not inWindow(view, x, y) then
+		return nil
+	end
+
+	local id = Waypoints.Pick(view, x, y, Markers.IconSize(view.zoom, 7 * (ScrH() / 1080), nil) + Map.POINT_PICK)
+
+	if id then
+		Waypoints.Remove(id)
+		play(Map.Sounds.close)
+
+		return "removed"
+	end
+
+	local wx, wy = Frame.ToWorld(view, x, y)
+
+	Map.UI.Menu(x, y, function()
+		askTitle(wx, wy)
+	end)
+
+	return "menu"
+end
+
+-- The lines of the hint under the map, from the longest to the shortest: the window draws the first that fits. `key` is the name of the map's key.
+function Map.HintVariants(key)
+	local base = "WHEEL: ZOOM   DRAG: MOVE   "
+	local close = key .. ": CLOSE"
+
+	if Waypoints and Waypoints.Enabled() then
+		return {
+			base .. "MIDDLE BUTTON: SMOOTH ZOOM   RIGHT CLICK: OBJECTIVE   " .. close,
+			base .. "RIGHT CLICK: OBJECTIVE   " .. close,
+			base .. close,
+			"RIGHT CLICK: OBJECTIVE   " .. close,
+			close
+		}
+	end
+
+	return {base .. "MIDDLE BUTTON: SMOOTH ZOOM   " .. close, base .. close, close}
 end
 
 -- the markers ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -647,7 +801,7 @@ local function drawFrameAndTexts(view, ply)
 
 	draw.SimpleText("STRATEGIC MAP", TITLE_FONT, view.x, view.y - gap, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
 	draw.SimpleText(string.format("%s    x%.1f", text or "--", view.zoom), TITLE_FONT, view.x + view.w, view.y - gap, TEXT, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
-	draw.SimpleText("WHEEL: ZOOM   DRAG: MOVE   MIDDLE BUTTON: SMOOTH ZOOM   " .. key .. ": CLOSE", SMALL_FONT, view.x, view.y + view.h + gap, LINE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+	draw.SimpleText(Map.HintVariants(key)[1], SMALL_FONT, view.x, view.y + view.h + gap, LINE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
 	-- the "done" button (the original has one too)
 	local bw, bh = floor(ScrW() * 0.06), floor(ScrH() * 0.034)
@@ -803,11 +957,7 @@ local function drawChromeOverlay(view)
 
 	local key = Map.Key and Map.Key.KeyName(Map.Key.Effective()) or "M"
 	local left, right = S.ox + Chrome.STRIP.x0 * S.scale, S.ox + Chrome.STRIP.x1 * S.scale
-	local text = fitText({
-		"WHEEL: ZOOM   DRAG: MOVE   MIDDLE BUTTON: SMOOTH ZOOM   " .. key .. ": CLOSE",
-		"WHEEL: ZOOM   DRAG: MOVE   " .. key .. ": CLOSE",
-		key .. ": CLOSE"
-	}, SMALL_FONT, right - left)
+	local text = fitText(Map.HintVariants(key), SMALL_FONT, right - left)
 
 	-- The hint is the map's own text, the movie has none there, and the movie's strip is only a 30 percent black veil: over a bright world (gravel, sky, a white
 	-- wall) the dark line colour could not be read (measured 1.1:1 on gravel). So the hint is in the movie's text colour (as the OBJECTIVE: cell next to it) on a dark
@@ -930,6 +1080,8 @@ local function drawMap(panel)
 
 	local level, res = Tiles.Begin()
 	local target = Pyramid.Target(Frame.Scale(view), S.target)
+
+	S.level = level -- the ground under a click on the map is looked for under its top
 
 	S.target = target
 
@@ -1068,7 +1220,7 @@ local function poll()
 		local down = input.IsButtonDown(code)
 
 		-- the key goes down while the map is open: it closes (unless the player is typing: a key that opens the chat is not ours)
-		if down and not S.keyDown and not ply:IsTyping() then
+		if down and not S.keyDown and not ply:IsTyping() and not S.typing then
 			Map.Close()
 
 			return
@@ -1210,6 +1362,12 @@ function Map._close()
 	S.open = false
 	S.drag = nil
 	S.lastClose = RealTime()
+
+	-- a title that is being asked for goes with the map
+	if S.typing then
+		Map.UI.CancelAsk()
+		S.typing = false
+	end
 
 	hook.Remove("Think", POLL_HOOK)
 

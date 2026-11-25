@@ -57,6 +57,16 @@ function GryMod.MapOptionsPanel(Panel)
 	GryMod.OptionBox(form, "Crysis PDA frame", "gry_map_chrome", "Draw the map in the frame of the original Crysis PDA map (its title, status strip, DONE button and opening). Off: the plain panel. Takes effect at the next opening.")
 	GryMod.OptionBox(form, "Grid", "gry_map_grid", "The 8 x 8 grid with the letters A to H and the numbers 1 to 8.")
 	GryMod.OptionBox(form, "Finished objectives", "gry_map_finished", "Show the objectives that are done or failed, greyed. Off: only the active ones.")
+	GryMod.OptionBox(form, "My objective points", "gry_map_waypoints", "A right click on the map, without moving the mouse, puts an objective point of your own there (it asks for a title); a right click on one takes it away. They are private, kept for each map, and show on the minimap, the compass and, with the binoculars up, on the screen.")
+
+	local clear = form:Button("Remove my objective points of this map")
+
+	clear.DoClick = function()
+		GryMod.Confirm("Remove every objective point you put on this map? This cannot be undone.", function()
+			Map.Waypoints.Clear()
+		end)
+	end
+
 	GryMod.OptionSlider(form, "Closest zoom (cm a pixel)", "gry_map_zoom_cm", 1, 100, 0, "How closely the map zooms: what one pixel of the screen covers in the world at the closest zoom, 7 cm by default. On a big map this allows a much closer zoom than the original's x8; a small map always keeps x8. Takes effect at the next opening.")
 
 	form:Help("Look of the tiles while they load")

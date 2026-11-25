@@ -291,6 +291,33 @@ return {
 				expect((m.Style({type = 99}))).to.equal("dot")
 				expect((m.Style({}))).to.equal("dot")
 			end
+		},
+		{
+			-- fails when FromObjectives drops the own flag (the big map could not tell the player's points from the missions) or Style gives them the mission colours
+			name = "an own objective (a point the player put on the map) keeps its flag in its marker and is drawn blue; finished, it is grey like any other",
+			func = function()
+				local m = M()
+				local out = {}
+				local list = {
+					{id = "gry_user_1", title = "Camp", primary = false, state = "active", pos = Vector(1, 2, 3), radar = true, own = true},
+					{id = "m", title = "Mission", primary = true, state = "active", pos = Vector(4, 5, 6), radar = true}
+				}
+
+				expect(m.FromObjectives(list, false, out)).to.equal(2)
+				expect(out[1].own).to.beTrue()
+				expect(out[2].own).to.beFalse()
+
+				local shape, r, g, b = m.Style(out[1])
+
+				expect(shape).to.equal("diamond")
+				expect(b > r and b > g).to.beTrue()
+
+				shape, r, g, b = m.Style(out[2])
+				expect(g > b).to.beTrue()
+
+				shape, r, g, b = m.Style({type = 5, subtype = 2, own = true, finished = true})
+				expect(r == g and g == b).to.beTrue()
+			end
 		}
 	}
 }
