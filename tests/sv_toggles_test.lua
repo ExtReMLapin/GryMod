@@ -236,6 +236,21 @@ return {
 					expect(convar:GetString()).to.equal(before)
 				end
 			end
+		},
+		{
+			-- breaks if: the two convars are created without FCVAR_ARCHIVE (the engine then forgets an administrator's choice at the next start)
+			name = "the two convars are archived, so the choice of the administrator is kept from one session to the next",
+			func = function()
+				local source = file.Read("grymod/server/sv_system.lua", "LUA")
+
+				expect(source ~= nil).to.beTrue()
+
+				local flags = source:match("local toggleFlags = ([^\n]+)")
+
+				expect(flags ~= nil).to.beTrue()
+				expect(flags:find("FCVAR_ARCHIVE", 1, true) ~= nil).to.beTrue()
+				expect(flags:find("FCVAR_REPLICATED", 1, true) ~= nil).to.beTrue()
+			end
 		}
 	}
 }

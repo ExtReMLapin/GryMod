@@ -15,11 +15,11 @@ GryMod.Config = {
 }
 
 -- The two toggles of the administrators are real settings: replicated convars that the options panel shows as check boxes and changes through
--- the white list (sh_server_options.lua, sv_server_options.lua). NOT archived: as before, every load starts from the defaults (regeneration on,
--- infinite armor off), so an infinite armor that an administrator forgot cannot come back at the next start. GryMod.Config stays what the rest of
--- the code reads: it follows the convars (read here at load, and a change callback on each), and the other code, the tests and the extension keep
--- writing it.
-local toggleFlags = bit.bor(FCVAR_REPLICATED, FCVAR_NOTIFY)
+-- the white list (sh_server_options.lua, sv_server_options.lua). ARCHIVED, like every other setting of the server panel: the choice of the
+-- administrator is kept from one map and one session to the next (a server convar that is not archived is created again with its default at every
+-- map load, so the check box seemed to forget its value). GryMod.Config stays what the rest of the code reads: it follows the convars (read here at
+-- load, and a change callback on each), and the other code, the tests and the extension keep writing it.
+local toggleFlags = bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY)
 
 local healthRegen = CreateConVar("gry_health_regen", "1", toggleFlags,
 	"1: the suit repairs the health over time; 0: no regeneration (the console command gry_Health flips it)", 0, 1)
