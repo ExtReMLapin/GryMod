@@ -83,7 +83,7 @@ return {
 	cases = {
 		{
 			-- fails without the page, or when it has no tabs (everything would be in one long list again)
-			name = "the page exists and has one tab for the suit's effects, one for TFA, one for ARC9 and one for the other weapon bases",
+			name = "the page exists and has one tab for the suit's effects, one for TFA, one for ARC9, one for Draconic and one for the other weapon bases",
 			func = function()
 				expect(isfunction(GryMod.CompatOptionsPanel)).to.beTrue()
 
@@ -97,7 +97,7 @@ return {
 
 				local names = tabNames(sheet)
 
-				expect(table.concat(names, ",")).to.equal("Suit effects,TFA,ARC9,Other weapon bases,Glide")
+				expect(table.concat(names, ",")).to.equal("Suit effects,TFA,ARC9,Draconic,Other weapon bases,Glide")
 			end
 		},
 		{

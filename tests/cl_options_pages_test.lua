@@ -246,7 +246,7 @@ local PAGES = {
 	hud = {name = "HUD and controls", tabs = "Keys,Panels,On screen,Aim and prompts,Colours,Quick menu,Alerts,Advanced", builder = "HUDOptionsPanel"},
 	suit = {name = "Suit and vision", tabs = "Suit,Camouflage,Binoculars,Scan,Zoom,Night vision,Sounds", builder = "SuitOptionsPanel"},
 	radar = {name = "Radar and map", tabs = "Radar,Minimap,Auto zoom,Cache,In/out map,Big map", builder = "RadarOptionsPanel"},
-	compat = {name = "Compatibility", tabs = "Suit effects,TFA,ARC9,Other weapon bases,Glide", builder = "CompatOptionsPanel"},
+	compat = {name = "Compatibility", tabs = "Suit effects,TFA,ARC9,Draconic,Other weapon bases,Glide", builder = "CompatOptionsPanel"},
 	server = {name = "Server (admins)", tabs = "Suit rules,Camouflage and more,Objectives,Radar and map", builder = "ServerOptionsPanel"}
 }
 

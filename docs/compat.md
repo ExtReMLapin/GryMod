@@ -56,6 +56,9 @@ Taking a file away takes the patch away and breaks nothing else.
 `sv_compat_*_test.lua`, `cl_compat_*_test.lua` for Wiremod, JMod, M9K Specialties, Gbombs 5, PAC3 and prop protection) pin what the patches read and answer, not what the real addons do. Install the addon
 and look before trusting one: the explosions of those addons ring the radar through the core's wrap of `util.BlastDamage` (see [api.md](api.md)), and what is not certain is listed in the comment at
 the top of each file (the camouflage of JMod's armor, PAC3's outfit in first person).
+| | `cl_draconic.lua`, `sv_draconic.lua` | The Draconic Base (a weapon base with melee weapons, projectiles, an EMP and a shield of its own): the fire mode icon follows its `CurFireMode` (single, automatic, burst; the fists and melee weapons show no gun); a projectile of its base made by the player, and a melee blow, end the camouflage; its EMP (`DRC:EMP`) puts the suit of a player down; and each Draconic weapon a player takes stops putting the field of view back (its `ShouldFixFOV`, every 0.4 s) while the suit's zoom is held. Its crosshair needs nothing (see below). Tried with the REAL base (installed). |
+| `compat/npc/` | `sh_drgbase.lua`, `sv_drgbase.lua`, `cl_drgbase.lua` | DrGBase's nextbots (they are not NPCs for the engine): creatures for GryMod, one registry entry for every class built on `drgbase_nextbot` (its own relation, asked as an ABSOLUTE one so that a camouflaged player does not turn every nextbot neutral; its awareness: fighting, alerted, calm; dead), its grenades as dangers (not the smoke grenade), the suit's noises passed on to the nextbots that can hear them, and a player who possesses a nextbot: his camera is another's (`AddCameraOwner`) and the suit ignores the hits DrGBase cancels (`AddHitFilter`). The registry entries are made only while DrGBase is installed (the grenades' entries name their entities by a function, which makes the client follow every new entity one frame longer). Tried with the REAL DrGBase and its nextbots. |
+| | `sh_zbase.lua`, `sv_zbase.lua`, `cl_zbase.lua` | ZBase's NPCs (real engine NPCs wrapped in Lua): the real class under ZBase's replaced `GetClass` (class provider), the invisible copy ZBase leaves of an NPC it replaced is never a contact (radar, scan, hologram), its rocket and mortar are dangers, the controller's camera and hits (as for DrGBase's possession), and the FOLLOW prompt of an allied NPC. **Read in ZBase's source, tried with stand-ins only**: ZBase needs its author's library, which is not available here. Its registry entries are made only while ZBase is installed. |
 
 ## Damage: living with the addons that change it
 
@@ -274,3 +277,45 @@ VJ Base keeps its own opinion of who is an enemy and tells the engine late, so w
 
 The classes that the shared part registers are the ones the scripted entities declare (`scripted_ents.GetMember(class, "VJ_ID_Grenade")`), scanned once at the first frame: the same list on
 both realms (measured: 5 grenades, 3 missiles with Half-Life Resurgence). A hornet, an orb or a stomp is tagged as a danger by VJ but is not an explosive: it is left out.
+## DrGBase, ZBase and the Draconic Base: how it was checked (2026-11-27)
+
+A test client with the REAL DrGBase (its repository, mounted together with the Lua of GryMod: a client takes ONE `lua_mount` folder, so the two `lua/` folders were copied into one) and the real
+Draconic Base (the owner's Workshop has the base and a few tools of it, no gun pack: two test guns, `tests/fixtures/draconic/`, a gun with the three fire modes and a launcher of Draconic's grenades, stand
+for a pack). `tests/drgbase_job.lua` and `tests/draconic_job.lua` are those checks as `lua_job`s (every `ok` true on 2026-11-27); the stand-in tests are `tests/*compat_drgbase*`, `*compat_zbase*`, `*compat_draconic*`.
+
+| What | Checked with |
+| --- | --- |
+| A nextbot is a creature, hostile by DrGBase's own relation, in the radar's list (fighting), in the binoculars' hologram list, a friend opens the friendly cross | real DrGBase (`npc_drg_zombie`) |
+| A camouflaged player: DrGBase's own relation turns neutral (D_NU) while GryMod's stays hostile (the absolute one) | real DrGBase |
+| Possession: the camera is another's (client), the hits are ignored, and the notarget flag of the camouflage is back after the end (DrGBase takes it off without condition; the core puts it back within half a second) | real DrGBase |
+| The grenades of DrGBase armed by `Unpin`, the smoke grenade no danger, a pack's own class | real DrGBase (`proj_drg_*`) |
+| The noise of a sprint spots the player for a nextbot that looks away; a camouflaged player is ignored | real DrGBase |
+| Draconic: the fire mode icon follows the base's three modes and the fists show no gun; the suit's zoom holds with a Draconic gun in hand and is put back to the normal field of view within half a second WITHOUT the adapter; `DRC:EMP` puts the suit down | real Draconic, test gun |
+| Draconic: a projectile shot by a camouflaged player ends the camouflage (it does not without the adapter) | real Draconic, test launcher; the shot was made by the weapon's server function (a left click is also ended by the client's own rule) |
+| Draconic: a melee blow ends the camouflage (`EntityTakeDamage` with the custom damage 2221208) | stand-in only: no blow could be made to hit with the fists in the test client. The camouflage ended on the click anyway (the client's rule for a left click) |
+| ZBase: all of it | stand-ins only (ZBase needs a library of its author) |
+
+**Draconic and the checklist for a weapon base** (lines 1 to 19 above; Draconic's weapons are written on its own base, `SWEP.Draconic == true`):
+
+| Line | Result |
+| --- | --- |
+| 1. Detect | `weapon.Draconic == true`. |
+| 2. Fire mode | Tried: auto, burst, single (the base clears `Primary.Automatic` in burst, so the generic reading was wrong); the fists no gun. |
+| 3. Ammunition | `SetLoadedAmmo` sets the engine's `Clip1` (read in the code, and the clip was 18 then 17 in the checks): the counter reads it. Not looked at on screen. |
+| 4. Own HUD | Draconic draws its own crosshair and defines `SWEP:DoDrawCrosshair`, which GryMod's crosshair reads as "this weapon draws its own": there is no second crosshair (the ARC9 option is not needed). Its inspection screen and scope stay. |
+| 5. Weapon menu | **Not done.** Draconic opens its attachment menu from its own keys (use + reload, then zoom) and keeps the "inspecting" state on the server (`DRC:ForceAttachmentMenu`): there is no call a provider can make from the client. |
+| 6-9. Camouflage of attachments, optics, drawing context | **Not done**: no installed weapon has attachments (the two test guns have none), and the first person view of the test client could not be held steady for a camouflaged screenshot. Draconic's attachments are entities of `draconic_attachment_base`; its scope is a 2D picture drawn by its HUD hook. To do with a real pack. |
+| 10. Ends on an attack | Bullets (`FireBullets`) yes; projectiles and melee: the adapter (see above). |
+| 11-15. Strength and speed effects | **Not done** (not annoying: the suit simply does nothing to a Draconic weapon, as for the weapon bases that have no patch). Draconic's own melee scale and speeds (`DRC_MeleeDamageMod`, `SpeedRunStand` tables of the weapon, which also set the player's speeds, see below) would need their own study. |
+| 16-19. Shipping | Tab "Draconic" of the Compatibility page (notes, no setting), loader lines, tests above. |
+
+Things the Draconic Base does that GryMod only notes: a weapon that defines speed tables sets the player's walk and run speeds every tick and puts the remembered ones back when it is put away (`sv_drc_movement`),
+which is the speed mode's business; its shield (`DRC_Shielded`) cancels damage in an `EntityTakeDamage` hook of its own (the order of the hooks, as in "Damage" above); its experimental first person view and third
+person camera have their own `CalcView` hooks (not looked at).
+
+**ZBase and DrGBase and the order of the damage hooks**: DrGBase scales the damage it does to players (`drgbase_multiplier_damage_players`) in an `EntityTakeDamage` hook, ZBase does it with `zbase_dmg_mult`,
+Draconic with `DRC_GunDamageMod`: the armor pays for the scaled or the original damage according to the order of the hooks, as described in "Damage" above. Neither is an error.
+
+Two core tests are red only while DrGBase (or any addon with an entry that names its entities by a base or a function) is installed in the test game: `sh_api_danger_test` ("DangerNeedsEntity: false with class dangers
+only") and `cl_hud_grenade_flash_test` ("a projectile that has no class yet ... looked at again one frame on"), and `sh_api_tracked_test` ("the cache: the base of a class is worked out once") counts the
+`IsBasedOn` calls. They pass with the adapter's entries taken away (`GryMod.DrGBaseCompat.Uninstall()` in both realms): the tests assume a registry with no such entry.
