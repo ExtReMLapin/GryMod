@@ -236,6 +236,46 @@ return {
 			end
 		},
 		{
+			name = "the answer also carries the relation word (ally, neutral, hostile): the client's ClientRelation reads it as a code of 2 bits",
+			func = function()
+				local F = GryMod.Friendly
+				local p = ply()
+				local friend = spawnNPC("npc_citizen", 500)
+				local foe = spawnNPC("npc_citizen", 700)
+				local gull = spawnNPC("npc_citizen", 900)
+				gull:AddEntityRelationship(p, D_NU, 99)
+				friend:AddEntityRelationship(p, D_LI, 99)
+				foe:AddEntityRelationship(p, D_HT, 99)
+				local words = {}
+				local function reply(to, idx, ally, relation) words[#words + 1] = {ally = ally, relation = relation} end
+
+				F.Forget(p)
+				F.Handle(p, friend:EntIndex(), 300, reply)
+				F.Handle(p, foe:EntIndex(), 300.1, reply)
+				F.Handle(p, gull:EntIndex(), 300.2, reply)
+				F.Forget(p)
+
+				expect(#words).to.equal(3)
+				expect(words[1].relation).to.equal("ally")
+				expect(words[1].ally).to.beTrue()
+				expect(words[2].relation).to.equal("hostile")
+				expect(words[2].ally).to.beFalse()
+				expect(words[3].relation).to.equal("neutral")
+			end
+		},
+		{
+			name = "the message of the server writes the code of the relation after the bool (0 neutral, 1 ally, 2 hostile), 2 bits",
+			func = function()
+				local F = GryMod.Friendly
+				expect(F.RelationCode).toNot.beNil()
+				expect(F.RelationCode("neutral")).to.equal(0)
+				expect(F.RelationCode("ally")).to.equal(1)
+				expect(F.RelationCode("hostile")).to.equal(2)
+				expect(F.RelationCode("anything else")).to.equal(0)
+				expect(F.RelationCode(nil)).to.equal(0)
+			end
+		},
+		{
 			name = "the questions of a player are limited to 5 a second, and the limit lets go as the second passes",
 			func = function()
 				local F = GryMod.Friendly
