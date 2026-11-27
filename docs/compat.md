@@ -35,6 +35,7 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_arc9_hud.lua` | ARC9's own HUD (weapon name, ammunition, fire mode) crowds the bottom left corner: `gry_arc9_hide_hud` (on by default, ARC9 tab of the Compatibility page) hides it while GryMod's HUD is up. Its key hints and customization menu stay, none of its settings is changed. |
 | | `sh_tfa_suit.lua`, `sv_tfa_suit.lua`, `sh_arc9_suit.lua`, `sv_arc9_suit.lua` | What the suit does to a TFA or ARC9 weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each, the same for both bases. |
 | | `sv_tfa.lua`, `sv_arc9.lua` | The attacks of TFA and ARC9 that are not bullets (a knife's stab, a bash, a grenade's throw, ARC9's launcher under the barrel) end the camouflage, through the base's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
+| `compat/vehicles/` | `sh_lvs.lua`, `sv_lvs.lua`, `cl_lvs.lua` | **LVS** (the framework `lvs_base` of SpaxscE and the packs built on it). The vehicle of a player, its driver and its kind (`AddVehicleProvider`); the radar entries (flying unit or machine, relation by LVS team, a wreck is no contact, the occupants, the heading, what an AI vehicle knows of the player); the grenade warning for `lvs_missile` / `lvs_bomb` and the classes built on them (only for the player the missile is aimed at); the use prompt of a vehicle (not for a locked or wrecked one); the icon of LVS's tools; the hits an occupant takes (`AddHitFilter`: what LVS cancels is ignored, the explosion's kill goes through the bar); the shots of LVS's weapons end the camouflage (`LVS:FireBullet` is wrapped, `ReportAttack`); the view LVS owns (`AddCameraOwner`). **Read in LVS's code, not tried in a game** (LVS was not installed when it was written): see below. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -121,6 +122,21 @@ The original holds the binoculars in place of the weapon: `gry_binoculars_hide_w
 | 16. Settings | The ARC9 tab: its HUD, and the suit's server settings (the same as TFA's). |
 | 17. Shipping | Loader lines, syntax check and loader test, stand-in tests (`tests/cl_compat_arc9_test.lua`, `tests/sv_compat_arc9_suit_test.lua`, ...) and the live checks above. |
 | 18. Hooks | ARC9's own global hooks (`ARC9_<Stat>Hook`, `ARC9_Hook_...`), `pcall`, `nil` when nothing changes; nothing of ARC9 is replaced but `ARC9.ShouldDrawHUD` (a wrapper, for the HUD option). |
+
+## LVS: what was read, and what to check with the real addon
+
+Nothing of this was tried with LVS itself: the tests use stand-ins that answer like what was read in `lvs_base` (commit 54c88e2, version 354, `github.com/SpaxscE/lvs_base`). The patch does nothing when the `LVS` table does not
+exist, and installs itself when LVS announces itself (`LVS:Initialize`) or at `InitPostEntity`. To check with the real addon (two minutes each):
+
+1. **Hits**: in armor mode, seated in an LVS car, `ply:TakeDamage(20)`: the energy must not move (LVS zeroes the hit, the filter says "ignore"). Destroy the plane the player sits in: he must die (the explosion's `Health() + Armor()` hit goes through the bar).
+2. **Radar**: an LVS plane with `SetAI(true)` shows as a flying unit once scanned, and goes alerted / fighting when its target is the player; the car the player sits in is not on his radar; a wreck leaves the radar.
+3. **Grenade warning**: a missile locked on the player's vehicle warns him, a missile locked on another vehicle does not. A bomb or an unguided missile warns when it flies at him.
+4. **Prompt**: "ENTER VEHICLE" in front of an LVS car (not when it is locked with the key `1`); a car with doors needs two presses (the prompt stays).
+5. **Camouflage**: firing an LVS weapon (machine gun, cannon, missile) ends it.
+6. **View**: the radar's heading follows the view in a plane, in direct input and in mouse aim.
+
+Not done on purpose (the owner decides): hiding GryMod's radar and status panels while seated in an LVS vehicle (LVS draws its own health at the bottom left and its speed at the bottom right: `AddHudSuppressor`), a `heavy` entry for the hits of LVS vehicles
+(a suit put down by a tank shell: an effect Crysis does not have), a warning for `lvs_item_mine`.
 
 ## Adding a patch
 
