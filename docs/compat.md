@@ -25,13 +25,15 @@ Taking a file away takes the patch away and breaks nothing else.
 | `compat/hl2/` | `sh_weapons.lua` | The 19 stock weapons (Half-Life 2 and Garry's Mod): fire mode, ammo, what the secondary fire is, the icons. They are written in C++, there is no `Primary` table to read. See [weapons.md](weapons.md). |
 | | `sh_tracked.lua` | The stock NPCs, vehicles and projectiles: the radar icon, the heavy machines, the dangerous projectiles of the grenade warning. |
 | | `sh_usable.lua` | What the +use key acts on in the stock game (doors, buttons, ladders, chargers, props, vehicles...), each class checked in the SDK code. |
-| `compat/weapons/` | `cl_arc9.lua`, `cl_arccw.lua`, `cl_tfa.lua`, `cl_m9k.lua`, `cl_cw2_fas2.lua` | One reader for each third-party weapon base: how to read the fire mode it keeps in its own fields, for the icon of the weapon slot. |
-| | `cl_tfa_parts.lua` | The attachments of a TFA weapon (a reflex sight, a laser) are models the weapon draws itself: they are the weapon's parts, so the camouflage covers them like the gun (`GryMod.API.AddWeaponPartsProvider`). |
+| `compat/weapons/` | `cl_arc9.lua`, `cl_arccw.lua`, `cl_tfa.lua`, `cl_m9k.lua`, `cl_cw2_fas2.lua` | One reader for each third-party weapon base: how to read the fire mode it keeps in its own fields, for the icon of the weapon slot. ARC9's was tried with real weapons (automatic, burst, single, the launcher under the barrel; a safety shows the single shot icon, a knife no gun). |
+| | `cl_tfa_parts.lua`, `cl_arc9_parts.lua` | The attachments of a TFA or ARC9 weapon (a reflex sight, a laser, a suppressor) are models the weapon draws itself: they are the weapon's parts, so the camouflage covers them like the gun (`GryMod.API.AddWeaponPartsProvider`). |
 | | | The optics are found by their materials, for any base: the picture of a scope, a reticle, a lens with a dot stay readable on a camouflaged gun (`GryMod.CloakFX.Refract.Keeps`, see [api.md](api.md)). |
 | | `cl_tfa_menu.lua` | The weapon icon of the quick menu opens TFA's own menu (attachments, ammunition) for the weapon in hand, with the impulse TFA's key sends (`GryMod.API.AddWeaponMenuProvider`, see [api.md](api.md)). |
-| | `cl_arc9_menu.lua`, `cl_arccw_menu.lua`, `cl_cw2_menu.lua`, `cl_fas2_menu.lua` | The same for ARC9 (`ToggleCustomize(true)`), ArcCW (`arccw_toggle_inv`), CW 2.0 (`attemptToggleInteractionMenu`) and FA:S 2 (`fas2_togglegunpimper`). **Read in their source code and not tried in a game** (none of them was installed when written): check with the real base before trusting them. |
-| | `sh_tfa_suit.lua`, `sv_tfa_suit.lua` | What the suit does to a TFA weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each. |
-| | `sv_tfa.lua` | TFA's attacks that are not bullets (a knife's right click, a bash, a grenade's low throw) end the camouflage, through TFA's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
+| | `cl_arc9_menu.lua` | The same for ARC9 (`ToggleCustomize(true)`, tried), and the camouflage leaves the gun plain while ARC9's customization menu is up (`GryMod.API.AddPlainViewProvider`). |
+| | `cl_arccw_menu.lua`, `cl_cw2_menu.lua`, `cl_fas2_menu.lua` | The same for ArcCW (`arccw_toggle_inv`), CW 2.0 (`attemptToggleInteractionMenu`) and FA:S 2 (`fas2_togglegunpimper`). **Read in their source code and not tried in a game** (none of them was installed when written): check with the real base before trusting them. |
+| | `cl_arc9_hud.lua` | ARC9's own HUD (weapon name, ammunition, fire mode) crowds the bottom left corner: `gry_arc9_hide_hud` (on by default, ARC9 tab of the Compatibility page) hides it while GryMod's HUD is up. Its key hints and customization menu stay, none of its settings is changed. |
+| | `sh_tfa_suit.lua`, `sv_tfa_suit.lua`, `sh_arc9_suit.lua`, `sv_arc9_suit.lua` | What the suit does to a TFA or ARC9 weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each, the same for both bases. |
+| | `sv_tfa.lua`, `sv_arc9.lua` | The attacks of TFA and ARC9 that are not bullets (a knife's stab, a bash, a grenade's throw, ARC9's launcher under the barrel) end the camouflage, through the base's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -79,6 +81,45 @@ of the addons (the order problem above only exists for an addon that *scales* da
 What GryMod cannot do for you: an addon that takes health away itself (`SetHealth`, not a damage) goes around the armor, and an addon that scales `DMG_FALL` inside
 `EntityTakeDamage` is the case of the first section (the armor pays for the damage it sees, the order of the two hooks is not ours). An addon that answers `GetFallDamage`
 is the clean way to change a fall, and is the one to prefer.
+
+## ARC9: how it was checked (2026-11-27)
+
+Tried with the real base (the pack "[ARC9] Gunsmith Arms: Source", `arc9_fas_famas` with a suppressor, an Aimpoint or an ACOG, a laser and an M203; `arc9_go_knife_ct`,
+`arc9_go_ak47`, `arc9_fas_machete`, `arc9_go_nade_frag`), in a test client at 640x360. Every number is from the game.
+
+**The camouflage.** ARC9 draws its view model inside its own 3D camera and depth range (`SWEP:PreDrawViewModel` ... `PostDrawViewModel`), and the layer of the camouflage draws
+the view model again (`vm:DrawModel()` from the engine's `PostDrawViewModel` hook), which runs ARC9's own `PreDrawViewModel` / `PostDrawViewModel` a second time, nested. Two things
+followed. ARC9 copies the screen again there (`render.UpdateScreenEffectTexture`, `arc9_fx_adsblur_bleeding`, on by default): the copy the layer reads then held the plain gun, and the layer
+refracted the gun it was meant to hide. And the second `PostDrawViewModel` puts `render.DepthRange(0, 1)` back, so the layer over the hands that came next failed the depth test. Both are
+fixed for every base: the first person layer reads a copy of its own taken before the view model is drawn (`Refract.CaptureScreen`, the render target `GryCloakScreenCopy`), and it
+sets the engine's view model depth range (0 to 0.1) before each layer. The attachments are the parts of `cl_arc9_parts.lua`. ARC9's customization menu draws a dark, blurred backdrop
+after the copy, so the gun is left plain there (a plain view). The laser's beam and dot are a light effect, and stay.
+
+**The binoculars.** ARC9 draws its gun with a field of view of its own, so the world zooms and the gun does not (TFA does the same; the stock weapons are put away by the game's own zoom).
+The original holds the binoculars in place of the weapon: `gry_binoculars_hide_weapon` (on by default) does not draw the view model and the hands while they are up.
+
+**The checklist for ARC9** (lines 1 to 19 above):
+
+| Line | Result |
+| --- | --- |
+| 1. Detect | `weapon.ARC9 == true`, never a class name; nothing without ARC9 (tests with stand-ins and with no `ARC9` table). |
+| 2. Fire mode | Tried live: automatic, burst, single, the M203 (grenade). A safety (`GetSafe`) shows the single shot icon, a knife (`PrimaryBash`) shows no gun. The 121 weapons installed use modes -1, 1, 2 and 3. |
+| 3. Ammunition | A knife has no magazine (Clip1 -1): the HUD shows the infinity icon and no bullet counter. |
+| 4. Own HUD | `gry_arc9_hide_hud`, ARC9 tab. Checked live: the panel beside the minimap goes, the key hints stay. |
+| 5. Menu | `ToggleCustomize(true)` opens the menu (tried through the quick menu's provider). |
+| 6. Covered | Gun, hands and attachments (suppressor, Aimpoint, ACOG, laser, M203) in first person, compared plain and camouflaged. The laser beam stays. Third person: the gun is covered through the proxy of its world model; ARC9's attachments are not drawn there (the server hides the world model, so ARC9's own world model draw does not run). |
+| 7. Changed while camouflaged | Attached, detached, swapped during the camouflage: covered at once (the provider reads ARC9's `VModel` at each frame). |
+| 8. Optics | The picture of the ACOG and its reticle, the Aimpoint's dot and lens stay readable in iron sights while camouflaged (same picture as plain). |
+| 9. Own drawing context | The cause of the report, above. Checked in iron sights and in the customization menu. |
+| 10. Ends on an attack | Bullets (the server sees them, also with ARC9's physical bullets), a bash key swing of a gun, a knife, a machete, a grenade throw and a launcher shot end it (`sv_arc9.lua`); the sights do not. |
+| 11. Melee | Hit damage and push x9.2 with a full bar in the strength mode: knife 45 to 414 (push 16000 to 147200), machete 20 to 184, a gun's bash 45 to 414. |
+| 12. Recoil | ARC9's `Recoil` (every up / side value and the camera kick are multiplied by it) and `VisualRecoil`: 0.844 to 0.316 with a full bar in the strength mode, the same on the client and the server. |
+| 13. Energy | 7.50 a shot in the strength mode (6 shots: 45.00), nothing in the other modes, never under 0, nothing with an infinite armor. A melee hit costs nothing (the rule gives it no cost, as for TFA). |
+| 14. Speed mode | Draw 1.00 to 0.571 s, holster 0.333 to 0.190 s, ready 5.97 to 3.41 s, melee swing x1.5 (knife 0.40 to 0.267 s, the hit comes at 0.105 then 0.09 s). The lock-out times follow (ARC9 computes them from the same number). The reload stays 2.833 s in every mode, and is 1.417 s with `gry_suit_reload_rate` 2. The fire mode switch and the sprint exit use the raise's rate (ARC9 has no such animation on the famas, so not measured there). |
+| 15. Other animations | Sights, inspect, firing, idle and the swing's impact animation are left alone (a test pins the list). |
+| 16. Settings | The ARC9 tab: its HUD, and the suit's server settings (the same as TFA's). |
+| 17. Shipping | Loader lines, syntax check and loader test, stand-in tests (`tests/cl_compat_arc9_test.lua`, `tests/sv_compat_arc9_suit_test.lua`, ...) and the live checks above. |
+| 18. Hooks | ARC9's own global hooks (`ARC9_<Stat>Hook`, `ARC9_Hook_...`), `pcall`, `nil` when nothing changes; nothing of ARC9 is replaced but `ARC9.ShouldDrawHUD` (a wrapper, for the HUD option). |
 
 ## Adding a patch
 

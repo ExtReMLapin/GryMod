@@ -44,6 +44,7 @@ local SwayConVar = CreateClientConVar("gry_binoculars_sway", "1", true, false, "
 
 local MalfunctionConVar = CreateClientConVar("gry_binoculars_malfunction", "1", true, false, "The binoculars' film follows the HUD while the suit is down: it fades to white on a malfunction and fades out when the HUD flickers, as the original film does (off: it stays as it is)")
 local NoFireConVar = CreateClientConVar("gry_binoculars_no_fire", "1", true, false, "No shooting while the binoculars are up: the original holds them as an item instead of a weapon (on by default, as in the original; off: the Half-Life 2 zoom lets you shoot)")
+local HideWeaponConVar = CreateClientConVar("gry_binoculars_hide_weapon", "1", true, false, "The weapon is not drawn while the binoculars are up: the original holds them in place of the weapon, and the Half-Life 2 weapons are put away by the game's own zoom (off: a weapon base that keeps its gun at its size and in front of the zoomed world, ARC9 and TFA, shows it)")
 local WalkConVar = CreateClientConVar("gry_binoculars_walk", "1", true, false, "No sprint while the binoculars are up, and the pace of a slow walk, as in the original (off: you move as usual)")
 local HoldZoomConVar = CreateClientConVar("gry_binoculars_hold_zoom", "1", true, false, "Holding the right click steps the zoom once, 0.25 s after it went down (2x, 4x, 8x) and, from the last stage, back to the first, as in the original (needs the zoom stages)")
 local ThirdPersonConVar = CreateClientConVar("gry_binoculars_thirdperson", "1", true, false, "The binoculars' film is not drawn in third person, as the original does (off: it is drawn there too)")
@@ -1196,6 +1197,28 @@ hook.Add("GryMod_BinocularsToggled", "GRYBINOCULARSMOVE", function(wanted)
 		hook.Add("CreateMove", "GRYBINOCULARSMOVE", Bino.BinocularsMove)
 	else
 		hook.Remove("CreateMove", "GRYBINOCULARSMOVE")
+	end
+end)
+
+-- The weapon is not drawn while the binoculars are up (gry_binoculars_hide_weapon): the original holds them in place of the weapon, and the game's own zoom already puts
+-- away the Half-Life 2 weapons. A weapon base that draws its view model with a field of view of its own (ARC9: "so it doesn't inherit the zoomed world camera"; TFA keeps its
+-- gun at its size too) left the gun in front of the zoomed world, unzoomed, as the owner reported. The view model and the hands are not drawn (the hook of the engine's draw,
+-- which the weapons' own draw code follows). The two hooks exist only while the binoculars are up, like the one of the move above.
+function Bino.HideWeapon()
+	if HideWeaponConVar:GetBool() and Bino.Enabled() and Bino.Wanted(LocalPlayer()) then
+		return true
+	end
+
+	return nil
+end
+
+hook.Add("GryMod_BinocularsToggled", "GRYBINOCULARSHIDEWEAPON", function(wanted)
+	if wanted then
+		hook.Add("PreDrawViewModel", "GRYBINOCULARSHIDEWEAPON", Bino.HideWeapon)
+		hook.Add("PreDrawPlayerHands", "GRYBINOCULARSHIDEWEAPON", Bino.HideWeapon)
+	else
+		hook.Remove("PreDrawViewModel", "GRYBINOCULARSHIDEWEAPON")
+		hook.Remove("PreDrawPlayerHands", "GRYBINOCULARSHIDEWEAPON")
 	end
 end)
 

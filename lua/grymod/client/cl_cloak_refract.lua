@@ -24,6 +24,7 @@ local convar = GetConVar("gry_cloak_refract") or CreateClientConVar("gry_cloak_r
 R.PIXEL = R.PIXEL or "grymod_cloak_refract_ps30"
 R.VERTEX = R.VERTEX or "grymod_cloak_refract_vs30"
 R.SCREEN = "_rt_FullFrameFB"
+R.COPY = "GryCloakScreenCopy"
 R.BUMP = "grymod/cloak/cloak_n"
 R.PALETTE = "grymod/cloak/cloak_palette"
 R.INTERLATION = "grymod/cloak/cloak_interlation"
@@ -138,9 +139,10 @@ end
 
 local parts = {}
 
--- The material that draws the layer over a part of a model whose own material is `path`, with that material's relief map. Made once.
-function R.Part(path)
-	local name = R.prefix .. "_" .. R.PIXEL .. "_" .. R.VERTEX .. "_" .. string.gsub(path, "[^%w]", "_")
+-- The material that draws the layer over a part of a model whose own material is `path`, with that material's relief map. Made once. `own` (the
+-- first person view model) makes the material read the layer's own copy of the picture (R.CaptureScreen) and not the engine's shared copy.
+function R.Part(path, own)
+	local name = R.prefix .. (own and "Own" or "") .. "_" .. R.PIXEL .. "_" .. R.VERTEX .. "_" .. string.gsub(path, "[^%w]", "_")
 	local part = parts[name]
 
 	if part then
@@ -160,7 +162,7 @@ function R.Part(path)
 		material = CreateMaterial(name, "screenspace_general", {
 			["$pixshader"] = R.PIXEL,
 			["$vertexshader"] = R.VERTEX,
-			["$basetexture"] = R.SCREEN,
+			["$basetexture"] = own and R.COPY or R.SCREEN,
 			["$texture1"] = bump,
 			["$texture2"] = R.PALETTE,
 			["$texture3"] = R.INTERLATION,
@@ -182,6 +184,29 @@ function R.Part(path)
 	parts[name] = part
 
 	return part
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- The layer's own copy of the picture behind (first person)
+--------------------------------------------------------------------------------------------------------------------
+
+-- The engine's copy of the screen (_rt_FullFrameFB) is shared: any weapon base that blurs or fades while it draws its view model copies the screen again
+-- (ARC9 does it in the draw it makes of the view model, which is also the draw this layer makes of it), and the copy that is read then holds the plain gun,
+-- so the layer showed the gun it was meant to hide (measured). The first person layer reads a copy of its own, taken before the view model is drawn.
+local copyTarget
+
+function R.CopyTarget()
+	if not copyTarget then
+		copyTarget = GetRenderTargetEx(R.COPY, ScrW(), ScrH(), RT_SIZE_FULL_FRAME_BUFFER, MATERIAL_RT_DEPTH_NONE, bit.bor(4, 8, 256, 512), 0, IMAGE_FORMAT_RGBA8888)
+	end
+
+	return copyTarget
+end
+
+-- The picture behind, copied for the first person layer: once a frame, before the view model is on it.
+function R.CaptureScreen()
+	render.UpdateScreenEffectTexture()
+	render.CopyTexture(render.GetScreenEffectTexture(), R.CopyTarget())
 end
 
 --------------------------------------------------------------------------------------------------------------------
@@ -332,8 +357,8 @@ end
 -- The parts (one for each material of the model) of an entity, resolved once for each model, and the list of the materials that are kept (false when there is none).
 local modelParts, modelKept = {}, {}
 
-local function partsOf(ent)
-	local key = R.PIXEL .. R.VERTEX .. ent:GetModel()
+local function partsOf(ent, own)
+	local key = (own and "own" or "") .. R.PIXEL .. R.VERTEX .. ent:GetModel()
 	local list = modelParts[key]
 
 	if not list then
@@ -344,7 +369,7 @@ local function partsOf(ent)
 		for index, path in ipairs(ent:GetMaterials()) do
 			local keeps = R.Keeps(path) == true
 
-			list[index] = R.Part(path)
+			list[index] = R.Part(path, own)
 			keptList[index] = keeps
 			any = any or keeps
 		end
@@ -358,7 +383,7 @@ end
 
 -- The materials of a model that the layers leave as they are (one entry for each material, true for a kept one), or nil when the model has none.
 function R.KeptParts(ent)
-	local _, keptList = partsOf(ent)
+	local _, keptList = partsOf(ent, true)
 
 	return keptList or nil
 end
@@ -372,7 +397,7 @@ local drawConstants
 function R.Draw(ent, bump, alpha, draw, keep)
 	if not R.Active() or alpha < R.MIN_ALPHA or not IsValid(ent) then return false end
 
-	local list, keptList = partsOf(ent)
+	local list, keptList = partsOf(ent, keep)
 
 	if not keep then
 		keptList = nil

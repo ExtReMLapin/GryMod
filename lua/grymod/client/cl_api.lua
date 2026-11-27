@@ -347,3 +347,74 @@ function API.OpenWeaponMenu(weapon)
 end
 
 API.AddFeature("weaponmenu")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Plain views (client)
+-- ---------------------------------------------------------------------------------------------------------
+-- Some weapon bases show the weapon on a screen of their own: ARC9's customization menu turns the gun towards the player over a dark and blurred picture of the world.
+-- The camouflage of the first person view copies the picture behind the gun before the weapon draws, so there it would show a world that is not the one on the screen,
+-- and the player needs to see the parts he picks. A provider says, for a weapon, that its view is such a screen: the effects then draw the weapon plain. The weapon bases
+-- that need this have their provider in lua/grymod/compat/weapons/ (docs/compat.md); an addon with its own weapons registers its own.
+--
+--   GryMod.API.AddPlainViewProvider(id, function(weapon) return true end)   true while the weapon's own screen has the view; anything else is a no
+--   GryMod.API.RemovePlainViewProvider(id)
+--   GryMod.API.IsPlainView(weapon)                                          true when a provider says so
+--
+-- A provider runs under SafeCall (five errors in a row switch it off; adding it again re-arms it) and must be cheap: it is asked at every frame the camouflage is on, in first
+-- person. The same id replaces the provider.
+local plainProviders = API._plainViewProviders or {} -- {{id, fn, callId}, ...} in the order they were added
+API._plainViewProviders = plainProviders
+
+function API.AddPlainViewProvider(id, fn)
+	if not isstring(id) or id == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "plainview:" .. id
+
+	API.SafeCallReset(callId)
+
+	for _, provider in ipairs(plainProviders) do
+		if provider.id == id then
+			provider.fn = fn
+
+			return true
+		end
+	end
+
+	plainProviders[#plainProviders + 1] = {id = id, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemovePlainViewProvider(id)
+	for i, provider in ipairs(plainProviders) do
+		if provider.id == id then
+			table.remove(plainProviders, i)
+			API.SafeCallReset(provider.callId)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+function API.IsPlainView(weapon)
+	if not (isentity(weapon) or istable(weapon)) or not IsValid(weapon) then
+		return false
+	end
+
+	for i = 1, #plainProviders do
+		local provider = plainProviders[i]
+		local ok, plain = API.SafeCall(provider.callId, provider.fn, weapon)
+
+		if ok and plain == true then
+			return true
+		end
+	end
+
+	return false
+end
+
+API.AddFeature("plainview")

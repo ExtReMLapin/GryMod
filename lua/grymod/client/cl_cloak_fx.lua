@@ -682,6 +682,9 @@ local function startFirstPerson(ent, ply)
 
 	if not s or s.amount <= 0 then return end
 
+	-- the weapon's own screen has the view (a customization menu): the gun is drawn plain there, the picture behind it is not the one the layer would copy
+	if GryMod.API.IsPlainView(ply:GetActiveWeapon()) then return end
+
 	local refract, base = firstPersonLayers(s)
 	local refractMat = materials()
 
@@ -691,7 +694,7 @@ local function startFirstPerson(ent, ply)
 	-- hook; here only the picture behind is copied, before the model is on it (once per frame, for the view model: the hands come right after it).
 	if F.Refract and F.Refract.Active() then
 		if base < F.NearlyPlain and ent == ply:GetViewModel() then
-			render.UpdateScreenEffectTexture()
+			F.Refract.CaptureScreen()
 		end
 
 		return
@@ -727,6 +730,11 @@ end
 -- of the change. One function for every such model, so that the arms, the gun and a sight on it are treated the same.
 local function firstPersonOver(ent, s)
 	local _, layerBase, edge = firstPersonLayers(s)
+
+	-- the engine draws the view model in the first tenth of the depth (so that it never goes into a wall). A weapon base that draws the view
+	-- model itself (ARC9: its own camera and its own depth range, restored to the whole range when its draw ends, which the layer's draw of the view
+	-- model runs through) leaves another range behind, and the layer was then hidden by the hands it covers (measured). Set it as the engine has it.
+	render.DepthRange(0, 0.1)
 
 	-- the refraction layer over the arms the engine has just drawn, with the alpha the plain model has lost; at the end of the change (the plain
 	-- model nearly all there) nothing
