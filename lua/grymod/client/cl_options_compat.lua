@@ -6,7 +6,7 @@
 local TAB_HEIGHT = 560
 
 -- A tab: a scrolling panel with a panel of controls in it (GryMod.OptionsCategory and GryMod.AdminOption build on a control panel).
-local function addTab(sheet, name, build)
+local function addTab(sheet, name, build, Panel)
 	local scroll = vgui.Create("DScrollPanel", sheet)
 	local root = vgui.Create("ControlPanel", scroll)
 
@@ -19,20 +19,21 @@ local function addTab(sheet, name, build)
 		root.Header.PerformLayout = function(self) self:SetTall(0) end
 	end
 
-	build(root)
+	build(root, Panel)
 	sheet:AddSheet(name, scroll)
 
 	return root
 end
 
-local function tfaTab(root)
+-- `Panel` is the menu panel itself: the administrators' controls are registered on it (GryMod.AdminOption), wherever they are drawn
+local function tfaTab(root, Panel)
 	root:Help("What the suit does to a TFA weapon, with the original game's numbers. These are the server's settings: only an administrator changes them.")
 
 	local strength = GryMod.OptionsCategory(root, "Strength mode", true)
 
-	GryMod.AdminOption(root, "Strength mode: stronger melee", "gry_suit_strength_melee", "bool", {into = strength, help = "A melee hit does more damage and pushes harder with the energy, up to 9 times with a full bar."})
-	GryMod.AdminOption(root, "Strength mode: less recoil", "gry_suit_strength_recoil", "bool", {into = strength, help = "The kick of a shot is much smaller with the energy (about a third with a full bar)."})
-	GryMod.AdminOption(root, "Strength mode: energy of a shot", "gry_suit_shot_cost", "choice", {
+	GryMod.AdminOption(Panel, "Strength mode: stronger melee", "gry_suit_strength_melee", "bool", {into = strength, help = "A melee hit does more damage and pushes harder with the energy, up to 9 times with a full bar."})
+	GryMod.AdminOption(Panel, "Strength mode: less recoil", "gry_suit_strength_recoil", "bool", {into = strength, help = "The kick of a shot is much smaller with the energy (about a third with a full bar)."})
+	GryMod.AdminOption(Panel, "Strength mode: energy of a shot", "gry_suit_shot_cost", "choice", {
 		into = strength,
 		help = "The energy each shot takes in the strength mode. The original takes 7.5 of the bar.",
 		choices = {
@@ -45,8 +46,8 @@ local function tfaTab(root)
 
 	local speed = GryMod.OptionsCategory(root, "Speed mode", true)
 
-	GryMod.AdminOption(root, "Speed mode: faster weapon handling", "gry_suit_handling", "bool", {into = speed, help = "Like the original game: a weapon is drawn, put away and raised faster (x1.75) and a melee swing is faster (x1.5)."})
-	GryMod.AdminOption(root, "Speed mode: reload speed", "gry_suit_reload_rate", "choice", {
+	GryMod.AdminOption(Panel, "Speed mode: faster weapon handling", "gry_suit_handling", "bool", {into = speed, help = "Like the original game: a weapon is drawn, put away and raised faster (x1.75) and a melee swing is faster (x1.5)."})
+	GryMod.AdminOption(Panel, "Speed mode: reload speed", "gry_suit_reload_rate", "choice", {
 		into = speed,
 		help = "The original game does not make a reload faster in the speed mode, so the default is the normal speed.",
 		choices = {
@@ -82,8 +83,8 @@ function GryMod.CompatOptionsPanel(Panel)
 	sheet:SetTall(TAB_HEIGHT)
 	Panel:AddItem(sheet)
 
-	addTab(sheet, "TFA", tfaTab)
-	addTab(sheet, "Other weapon bases", othersTab)
+	addTab(sheet, "TFA", tfaTab, Panel)
+	addTab(sheet, "Other weapon bases", othersTab, Panel)
 
 	return sheet
 end

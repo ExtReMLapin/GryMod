@@ -46,12 +46,19 @@ local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DN
 -- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
 local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_radar_pings = true, gry_radar_detect = true, gry_radar_teammates = true, gry_zonemap = true, gry_zonemap_navmesh = true}
 
+-- the server settings that are on the Compatibility page (cl_options_compat.lua, the TFA tab): not in the Config menu either
+local COMPAT_MENU = {gry_suit_handling = true, gry_suit_reload_rate = true, gry_suit_shot_cost = true, gry_suit_strength_melee = true, gry_suit_strength_recoil = true}
+
+local function notInConfig(name)
+	return RADAR_MENU[name] == true or COMPAT_MENU[name] == true
+end
+
 -- how many settings of the white list the Config menu holds (the others are in the Radar and map menu)
 local function configSettingCount()
 	local count = 0
 
 	for _, setting in ipairs(GryMod.ServerSettings.List) do
-		if not RADAR_MENU[setting.name] then
+		if not notInConfig(setting.name) then
 			count = count + 1
 		end
 	end
@@ -320,7 +327,7 @@ return {
 
 					local expected = {}
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
-						if not RADAR_MENU[setting.name] then
+						if not notInConfig(setting.name) then
 							expected[#expected + 1] = setting.name
 						end
 					end
@@ -332,7 +339,7 @@ return {
 					-- the kind of each control is the kind of the list
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
 						local control = panel.GryAdminControls[setting.name]
-						if RADAR_MENU[setting.name] then
+						if notInConfig(setting.name) then
 							expect(control).to.beNil()
 						else
 							expect(control.ClassName).to.equal(setting.kind == "choice" and "DComboBox" or "DCheckBoxLabel")
@@ -559,21 +566,24 @@ return {
 		},
 		{
 			-- breaks if: a setting of the white list is in neither menu, or in both (the radar ones moved, the others stayed)
-			name = "the Config menu and the Radar and map menu together hold every setting of the white list exactly once, and the radar menu holds the four radar ones",
+			name = "the Config, the Radar and map and the Compatibility menus together hold every setting of the white list exactly once, the radar menu the radar ones and the Compatibility menu the suit's weapon ones",
 			func = function()
-				local config, radar = newPanel(), newPanel()
+				local config, radar, compat = newPanel(), newPanel(), newPanel()
 				local ok, err = pcall(function()
 					asAdmin(true, function()
 						GryMod.GryOptionschute(config)
 						GryMod.RadarOptionsPanel(radar)
+						GryMod.CompatOptionsPanel(compat)
 					end)
 
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
 						local inConfig = config.GryAdminControls[setting.name] ~= nil
 						local inRadar = radar.GryAdminControls[setting.name] ~= nil
+						local inCompat = compat.GryAdminControls[setting.name] ~= nil
 
-						expect(inConfig ~= inRadar).to.beTrue()
+						expect((inConfig and 1 or 0) + (inRadar and 1 or 0) + (inCompat and 1 or 0)).to.equal(1)
 						expect(inRadar).to.equal(RADAR_MENU[setting.name] == true)
+						expect(inCompat).to.equal(COMPAT_MENU[setting.name] == true)
 					end
 
 					-- the radar menu's server section has only those three and the reset action
@@ -588,6 +598,7 @@ return {
 				end)
 				config:Remove()
 				radar:Remove()
+				compat:Remove()
 				if not ok then error(err, 0) end
 			end
 		},
