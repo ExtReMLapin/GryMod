@@ -56,6 +56,28 @@ function Boot.PlacementFor(kind, w, h)
 	return x, y, scale
 end
 
+-- A dark rectangle behind the Lost panel: its text is hard to read on a bright scene (the owner's request). Black at 25 %, around the panel's frame (measured in the movie:
+-- x 256 to 765 and y 464 to 763 of the 1024 x 768 stage, with the origin of the movie at the top left) and a margin of 24 stage pixels, so it follows the panel wherever
+-- PlacementFor puts it. Only the Lost screen has one; gry_hud_lost_backdrop (on by default) turns it off.
+Boot.LOST_BOX = {x0 = 256, y0 = 464, x1 = 765, y1 = 763, margin = 24}
+Boot.BACKDROP_ALPHA = 64 -- 25 % of 255
+
+local LostBackdropConVar = CreateClientConVar("gry_hud_lost_backdrop", "1", true, false, "1 (default): a dark rectangle (black, 25 %) is drawn behind the shutdown screen (DANGER SYSTEM OVERRUN) so that it can be read on a bright scene; 0: none", 0, 1)
+
+-- Draws it for a sequence of this kind on a screen of w x h pixels (nothing for another kind, or with the setting off).
+function Boot.DrawBackdrop(kind, w, h)
+	if kind ~= "lost" or not LostBackdropConVar:GetBool() then
+		return
+	end
+
+	local x, y, scale = Boot.PlacementFor(kind, w, h)
+	local box = Boot.LOST_BOX
+	local margin = box.margin
+
+	surface.SetDrawColor(0, 0, 0, Boot.BACKDROP_ALPHA)
+	surface.DrawRect(x + (box.x0 - margin) * scale, y + (box.y0 - margin) * scale, (box.x1 - box.x0 + 2 * margin) * scale, (box.y1 - box.y0 + 2 * margin) * scale)
+end
+
 -- The movies hold localisation keys (@ui_init_text01): the English texts of the original game (Flash.Localise).
 function Boot.Localise(text)
 	return Flash.Localise(text)
@@ -489,6 +511,7 @@ hook.Add("HUDPaint", "GRYFLASHBOOT", function()
 
 	-- the sequence may have ended in this step
 	if current and sequences[current] then
+		Boot.DrawBackdrop(current, ScrW(), ScrH())
 		sequences[current]:Draw(Boot.PlacementFor(current, ScrW(), ScrH()))
 	end
 end)

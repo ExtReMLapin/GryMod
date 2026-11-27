@@ -103,6 +103,76 @@ return {
 			end
 		},
 		{
+			-- fails without Boot.DrawBackdrop (the dark rectangle behind the shutdown panel, which is hard to read on a bright scene), or when it is not black at 25 %, does not hold the whole
+			-- panel, is not on the panel (in the middle of the screen, as the panel is), is drawn for another sequence, or when the setting gry_hud_lost_backdrop (on by default) does not
+			-- turn it off
+			name = "gry_hud_lost_backdrop: a black rectangle at 25 % behind the Lost panel (and only that one), around the whole panel, on the panel; off, none",
+			func = function(state)
+				local convar = GetConVar("gry_hud_lost_backdrop")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("1")
+				expect(isfunction(Boot.DrawBackdrop)).to.beTrue()
+
+				local centered = GetConVar("gry_hud_lost_centered")
+				local savedBackdrop, savedCentered = convar:GetString(), centered:GetString()
+				local setColor, drawRect = surface.SetDrawColor, surface.DrawRect
+				local colour, rects
+
+				surface.SetDrawColor = function(r, g, b, a)
+					if istable(r) then r, g, b, a = r.r, r.g, r.b, r.a end
+					colour = {r, g, b, a or 255}
+				end
+
+				surface.DrawRect = function(x, y, w, h)
+					rects[#rects + 1] = {x, y, w, h, colour}
+				end
+
+				local ok, err = pcall(function()
+					centered:SetString("1")
+
+					for _, screen in ipairs(SCREENS) do
+						local w, h = screen[1], screen[2]
+						local lost = function(sw, sh) return Boot.PlacementFor("lost", sw, sh) end
+						local x0, y0, x1, y1 = boundsOf(started("lost", 2.5), w, h, lost)
+
+						convar:SetString("1")
+						rects = {}
+						Boot.DrawBackdrop("lost", w, h)
+						expect(#rects).to.equal(1)
+
+						local rect = rects[1]
+						expect(rect[5][1]).to.equal(0)
+						expect(rect[5][2]).to.equal(0)
+						expect(rect[5][3]).to.equal(0)
+						expect(rect[5][4]).to.equal(64) -- 25 % of 255
+						expect(rect[1] <= x0 and rect[2] <= y0 and rect[1] + rect[3] >= x1 and rect[2] + rect[4] >= y1).to.beTrue()
+						expect(math.abs((rect[1] + rect[3] / 2) / w - 0.5) < 0.03).to.beTrue()
+						expect(math.abs((rect[2] + rect[4] / 2) / h - 0.5) < 0.04).to.beTrue()
+						expect(rect[3] < w and rect[4] < h).to.beTrue() -- a rectangle around the panel, not the whole screen
+
+						for _, kind in ipairs({"initialize", "reboot"}) do
+							rects = {}
+							Boot.DrawBackdrop(kind, w, h)
+							expect(#rects).to.equal(0)
+						end
+
+						convar:SetString("0")
+						rects = {}
+						Boot.DrawBackdrop("lost", w, h)
+						expect(#rects).to.equal(0)
+					end
+				end)
+
+				surface.SetDrawColor, surface.DrawRect = setColor, drawRect
+				convar:SetString(savedBackdrop)
+				centered:SetString(savedCentered)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails without Boot.PlacementFor, the setting gry_hud_lost_centered and the shift of the Lost screen
 			name = "gry_hud_lost_centered: the Lost screen (only that one) goes to the middle of the screen, still centred across; on by default; off, it stays low as in its movie",
 			func = function(state)

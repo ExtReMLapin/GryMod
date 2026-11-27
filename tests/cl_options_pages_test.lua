@@ -142,6 +142,7 @@ box:gry_hud_energy_smooth
 box:gry_hud_grenade
 box:gry_hud_grenade_edge
 box:gry_hud_hit
+box:gry_hud_lost_backdrop
 box:gry_hud_lost_centered
 box:gry_hud_lost_on_death
 box:gry_hud_messages

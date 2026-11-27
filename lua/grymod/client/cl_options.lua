@@ -210,6 +210,7 @@ local function hudAlerts(Panel)
 	-- client setting: the HUD goes red with its emergency shutdown screen and sound when the player dies, until the respawn
 	GryMod.OptionBox(form, "Red HUD and shutdown screen at death", "gry_hud_lost_on_death", "When you die the HUD goes red with the emergency shutdown animation and sound until you respawn (the original). Off: the HUD just disappears.")
 	-- client setting: the shutdown screen of the suit going down (and of a death) in the middle of the screen
+	GryMod.OptionBox(form, "Dark backdrop behind the shutdown screen", "gry_hud_lost_backdrop", "A black rectangle at 25 % behind the DANGER SYSTEM OVERRUN panel, so that it can be read on a bright scene.")
 	GryMod.OptionBox(form, "Shutdown screen in the middle", "gry_hud_lost_centered", "The DANGER SYSTEM OVERRUN panel (suit down, death) is in the middle of the screen. On by default. Off: low, where the original's movie puts it.")
 	form:NumSlider("Grenade warning range (m)", "gry_grenade_range", 5, 200, 0)
 	GryMod.OptionBox(form, "Also for a grenade you threw", "gry_grenade_own_warn", "Only within 15 m. Off: a grenade you threw never warns; your own missiles never do.")
