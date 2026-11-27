@@ -43,27 +43,30 @@ end
 
 local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DNumSlider = true, DBinder = true, DColorMixer = true}
 
--- the server settings that moved to the Radar and map menu (cl_options_radar.lua): they are not in the Config menu any more
-local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_radar_pings = true, gry_radar_detect = true, gry_radar_teammates = true, gry_zonemap = true, gry_zonemap_navmesh = true}
-
--- the server settings that are on the Compatibility page (cl_options_compat.lua, the TFA tab): not in the Config menu either
+-- the server settings that are on the Compatibility page (cl_options_compat.lua, the Suit effects tab): the others are on the Server page (cl_options.lua, cl_options_radar.lua)
 local COMPAT_MENU = {gry_suit_handling = true, gry_suit_reload_rate = true, gry_suit_shot_cost = true, gry_suit_shot_cost_by_ammo = true, gry_suit_melee_cost = true, gry_suit_strength_melee = true, gry_suit_strength_recoil = true}
 
-local function notInConfig(name)
-	return RADAR_MENU[name] == true or COMPAT_MENU[name] == true
-end
-
--- how many settings of the white list the Config menu holds (the others are in the Radar and map menu)
-local function configSettingCount()
-	local count = 0
+-- the settings of the white list that the Server page holds (the radar ones included): one control for each, and the reset action
+local function serverPageSettings()
+	local list = {}
 
 	for _, setting in ipairs(GryMod.ServerSettings.List) do
-		if not notInConfig(setting.name) then
-			count = count + 1
+		if not COMPAT_MENU[setting.name] then
+			list[#list + 1] = setting.name
 		end
 	end
 
-	return count
+	return list
+end
+
+local function serverPage(isAdmin)
+	local panel = newPanel()
+
+	asAdmin(isAdmin, function()
+		GryMod.ServerOptionsPanel(panel)
+	end)
+
+	return panel
 end
 
 return {
@@ -312,25 +315,18 @@ return {
 			end
 		},
 		{
-			name = "the Config menu has a Server (administrators only) section at the bottom with the settings of the white list that are not about the radar (the two toggles included, as check boxes), and only those",
+			name = "the Server page holds the settings of the white list that are not the suit's weapon effects (the two toggles included, as check boxes), and only those, and no control of the player",
 			func = function()
-				local panel = newPanel()
+				local panel = serverPage(true)
 				local ok, err = pcall(function()
-					asAdmin(true, function()
-						GryMod.GryOptionschute(panel)
-					end)
-
 					local seen = {}
 					for name in pairs(panel.GryAdminControls or {}) do
-						seen[#seen + 1] = name
-					end
-
-					local expected = {}
-					for _, setting in ipairs(GryMod.ServerSettings.List) do
-						if not notInConfig(setting.name) then
-							expected[#expected + 1] = setting.name
+						if string.sub(name, 1, 7) ~= "action:" then
+							seen[#seen + 1] = name
 						end
 					end
+
+					local expected = serverPageSettings()
 
 					table.sort(seen)
 					table.sort(expected)
@@ -339,50 +335,20 @@ return {
 					-- the kind of each control is the kind of the list
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
 						local control = panel.GryAdminControls[setting.name]
-						if notInConfig(setting.name) then
+						if COMPAT_MENU[setting.name] then
 							expect(control).to.beNil()
 						else
 							expect(control.ClassName).to.equal(setting.kind == "choice" and "DComboBox" or "DCheckBoxLabel")
 						end
 					end
 
-					-- order: the title, then all of the admin controls; no other control comes after the title
-					local order, titleAt = {}, nil
+					-- every control of the page is an administrators' one: nothing of the player's is mixed in
 					walk(panel, function(child, admin)
-						-- the section is a folding category (cl_options.lua): its title is the header of the category, and the Development category follows it
-						if child.ClassName == "ControlPanel" and child.Header and child.Header:GetText() == "Server (administrators only)" then
-							titleAt = #order + 1
-							order[#order + 1] = "title"
-						elseif child.ClassName == "ControlPanel" and child.Header and child.Header:GetText() == "Development" then
-							order[#order + 1] = "development"
-						elseif child.GryDebugOpen then
-							order[#order + 1] = "debug" -- the button that opens the effects test window (cl_debug_window.lua)
-						elseif INTERACTIVE[child.ClassName] then
-							order[#order + 1] = admin and "admin" or "other"
+						if INTERACTIVE[child.ClassName] and not admin then
+							expect(child.ClassName).to.equal("DButton") -- the arrows of the tab strip, when the tabs do not fit
+							expect(child:GetText()).to.equal("")
 						end
 					end)
-
-					expect(titleAt ~= nil).to.beTrue()
-
-					-- the button of the effects test window is the last control of the panel, after the administrators' section
-					expect(order[#order]).to.equal("debug")
-					table.remove(order)
-
-					-- between the title and the Development category: the administrators' controls and nothing else; after it: the development tools
-					local developmentAt = indexOf(order, "development")
-					expect(developmentAt ~= nil).to.beTrue()
-
-					for i = titleAt + 1, developmentAt - 1 do
-						expect(order[i]).to.equal("admin")
-					end
-
-					for i = developmentAt + 1, #order do
-						expect(order[i]).to.equal("other")
-					end
-
-					for i = 1, titleAt - 1 do
-						expect(order[i]).to.equal("other")
-					end
 
 					-- none of the server settings is a box tied to a client convar any more
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
@@ -398,15 +364,11 @@ return {
 			end
 		},
 		{
-			-- breaks if: a toggle is left as a button (or made as another control), is bound to another name, or moves out of its place after the grenade line
+			-- breaks if: a toggle is left as a button (or made as another control), is bound to another name, or moves away from its neighbour
 			name = "the two toggles (health regeneration, infinite armor) are check boxes of the section, bound to the names of the white list, with their labels, where the two buttons were, and no button option is left",
 			func = function()
-				local panel = newPanel()
+				local panel = serverPage(true)
 				local ok, err = pcall(function()
-					asAdmin(true, function()
-						GryMod.GryOptionschute(panel)
-					end)
-
 					local regen = panel.GryAdminControls["gry_health_regen"]
 					local armor = panel.GryAdminControls["gry_infinite_armor"]
 
@@ -423,37 +385,19 @@ return {
 					expect(regen:GetChecked()).to.equal(GetConVar("gry_health_regen"):GetBool())
 					expect(armor:GetChecked()).to.equal(GetConVar("gry_infinite_armor"):GetBool())
 
-					-- no control of the section is a button, and no entry is named after a command
+					-- no entry is named after a command (the only button of the page is the action, named after its message)
 					for name in pairs(panel.GryAdminControls) do
 						expect(string.sub(name, 1, 7) ~= "button:").to.beTrue()
 					end
 
-					walk(panel, function(child, admin)
-						if admin then
-							expect(child.ClassName ~= "DButton").to.beTrue()
-						end
-					end)
-
-					-- the order: the grenade line, the regeneration, the armor, last of the section (the two lines took the place of the two buttons)
+					-- the two are neighbours, in this order, in the Suit rules tab
 					local names = {}
 
 					for _, entry in ipairs(panel.GryAdminEntries) do
-						names[#names + 1] = entry.name
+						names[#names + 1] = tostring(entry.name)
 					end
 
-					expect(table.concat(names, ",", #names - 2)).to.equal("gry_grenade_armed_only,gry_health_regen,gry_infinite_armor")
-
-					-- the section's other buttons are not the administrators' options: they stay buttons of the panel
-					local labels = {}
-
-					walk(panel, function(child)
-						if child.ClassName == "DButton" and child:GetParent().ClassName ~= "DSlider" and child.GetText then
-							labels[child:GetText()] = true
-						end
-					end)
-
-					expect(labels["Switch every element back on"]).to.beTrue()
-					expect(labels["Open the effects test window"]).to.beTrue()
+					expect(string.find(table.concat(names, ","), "gry_health_regen,gry_infinite_armor", 1, true) ~= nil).to.beTrue()
 				end)
 				panel:Remove()
 				if not ok then error(err, 0) end
@@ -467,16 +411,8 @@ return {
 				UI().Transport = function(name, value) sent[#sent + 1] = name .. "=" .. value end
 				UI().RunCommand = function() ran = ran + 1 end
 
-				local admin, other = newPanel(), newPanel()
+				local admin, other = serverPage(true), serverPage(false)
 				local ok, err = pcall(function()
-					asAdmin(true, function()
-						GryMod.GryOptionschute(admin)
-					end)
-
-					asAdmin(false, function()
-						GryMod.GryOptionschute(other)
-					end)
-
 					for _, name in ipairs({"gry_health_regen", "gry_infinite_armor"}) do
 						local box = admin.GryAdminControls[name]
 						local before = GetConVar(name):GetString()
@@ -513,28 +449,20 @@ return {
 			end
 		},
 		{
-			name = "for a player who is not an admin every control of the section is disabled and no other control of the panel is",
+			name = "for a player who is not an admin every control of the Server page is disabled (the arrows of the tab strip are not its controls)",
 			func = function()
-				local panel = newPanel()
+				local panel = serverPage(false)
 				local ok, err = pcall(function()
 					asAdmin(false, function()
-						GryMod.GryOptionschute(panel)
-
-						local admins, others = 0, 0
+						local admins = 0
 						walk(panel, function(child, admin)
-							if INTERACTIVE[child.ClassName] then
-								if admin then
-									admins = admins + 1
-									expect(child:IsEnabled()).to.beFalse()
-								else
-									others = others + 1
-									expect(child:IsEnabled()).to.beTrue()
-								end
+							if INTERACTIVE[child.ClassName] and admin then
+								admins = admins + 1
+								expect(child:IsEnabled()).to.beFalse()
 							end
 						end)
 
-						expect(admins).to.equal(configSettingCount()) -- one control for each setting of the Config menu, no button: the toggles are check boxes
-						expect(others > 20).to.beTrue()
+						expect(admins).to.equal(#serverPageSettings() + 1) -- one control for each setting and the reset action: the toggles are check boxes
 					end)
 				end)
 				panel:Remove()
@@ -542,13 +470,11 @@ return {
 			end
 		},
 		{
-			name = "for an admin every control of the section is enabled",
+			name = "for an admin every control of the Server page is enabled",
 			func = function()
-				local panel = newPanel()
+				local panel = serverPage(true)
 				local ok, err = pcall(function()
 					asAdmin(true, function()
-						GryMod.GryOptionschute(panel)
-
 						local admins = 0
 						walk(panel, function(child, admin)
 							if admin and INTERACTIVE[child.ClassName] then
@@ -557,7 +483,7 @@ return {
 							end
 						end)
 
-						expect(admins).to.equal(configSettingCount())
+						expect(admins).to.equal(#serverPageSettings() + 1)
 					end)
 				end)
 				panel:Remove()
@@ -565,39 +491,39 @@ return {
 			end
 		},
 		{
-			-- breaks if: a setting of the white list is in neither menu, or in both (the radar ones moved, the others stayed)
-			name = "the Config, the Radar and map and the Compatibility menus together hold every setting of the white list exactly once, the radar menu the radar ones and the Compatibility menu the suit's weapon ones",
+			-- breaks if: a setting of the white list is on neither page, or on both
+			name = "the Server and the Compatibility pages together hold every setting of the white list exactly once, the Compatibility page the suit's weapon ones, the Server page the others and the reset action",
 			func = function()
-				local config, radar, compat = newPanel(), newPanel(), newPanel()
+				local server, compat = newPanel(), newPanel()
 				local ok, err = pcall(function()
 					asAdmin(true, function()
-						GryMod.GryOptionschute(config)
-						GryMod.RadarOptionsPanel(radar)
+						GryMod.ServerOptionsPanel(server)
 						GryMod.CompatOptionsPanel(compat)
 					end)
 
 					for _, setting in ipairs(GryMod.ServerSettings.List) do
-						local inConfig = config.GryAdminControls[setting.name] ~= nil
-						local inRadar = radar.GryAdminControls[setting.name] ~= nil
+						local inServer = server.GryAdminControls[setting.name] ~= nil
 						local inCompat = compat.GryAdminControls[setting.name] ~= nil
 
-						expect((inConfig and 1 or 0) + (inRadar and 1 or 0) + (inCompat and 1 or 0)).to.equal(1)
-						expect(inRadar).to.equal(RADAR_MENU[setting.name] == true)
+						expect((inServer and 1 or 0) + (inCompat and 1 or 0)).to.equal(1)
 						expect(inCompat).to.equal(COMPAT_MENU[setting.name] == true)
 					end
 
-					-- the radar menu's server section has only those three and the reset action
 					local names = {}
 
-					for name in pairs(radar.GryAdminControls) do
+					for name in pairs(compat.GryAdminControls) do
 						names[#names + 1] = name
 					end
 
 					table.sort(names)
-					expect(table.concat(names, ",")).to.equal("action:gry_zonemap_reset,gry_radar_allies_always,gry_radar_detect,gry_radar_objects,gry_radar_pings,gry_radar_teammates,gry_zonemap,gry_zonemap_navmesh")
+					expect(table.concat(names, ",")).to.equal("gry_suit_handling,gry_suit_melee_cost,gry_suit_reload_rate,gry_suit_shot_cost,gry_suit_shot_cost_by_ammo,gry_suit_strength_melee,gry_suit_strength_recoil")
+
+					-- the radar tab of the Server page has the radar ones and the reset action
+					for _, name in ipairs({"gry_radar_allies_always", "gry_radar_detect", "gry_radar_objects", "gry_radar_pings", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh", "action:gry_zonemap_reset"}) do
+						expect(server.GryAdminControls[name] ~= nil).to.beTrue()
+					end
 				end)
-				config:Remove()
-				radar:Remove()
+				server:Remove()
 				compat:Remove()
 				if not ok then error(err, 0) end
 			end

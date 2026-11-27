@@ -70,7 +70,7 @@ The map always turns with the player's view, like the contacts: there is no fixe
 Changing the definition or the tile size makes a new set of tiles (the name of a tile contains both), so the first change generates
 the map again. The old tiles stay in the cache until the size limit removes them.
 
-The same options are in the options menu, under "Minimap", with a button "Clear the minimap cache". In that section the radar range slider
+The same options are in the options menu, on the Radar and map page: the "Minimap" tab, and the "Cache" tab with a button "Clear the minimap cache". In the Minimap tab the radar range slider
 comes first, then the check box "Automatic definition (follows the radar range and the screen)", then the definition slider, which is greyed
 (it keeps its value) while the check box is on, also when the convar is changed from the console.
 
@@ -173,7 +173,7 @@ the automatic zoom asks it first and only falls back on its own rays where the m
 - **Size limit:** `gry_minimap_cache_mb`, for the directory of the current map. Above the limit the least recently used tiles are
   deleted, until the size is at 90 % of the limit. The check runs at the first request of a map and then every 64 tiles made. The
   tile that was just written is never removed.
-- **Clearing it:** press "Clear the minimap cache" in the options menu (it clears the current map and the map is made again as you
+- **Clearing it:** press "Clear the minimap cache" in the options menu (Radar and map page, Cache tab) (it clears the current map and the map is made again as you
   play), or delete the directory `garrysmod/data/grymod/minimap/<key>/` (or all of `garrysmod/data/grymod/minimap/`) while the game is
   closed.
 
@@ -442,7 +442,7 @@ The base of a cell (the coarse picture, or the plain tile) is drawn by the map; 
 | `gry_map_contacts` | 1 | 0 or 1 | The NPCs of the minimap and the compass radar on the big map, with the same icons (the radar's contacts: the ones near you). 0: none. |
 | `gry_map_waypoints` | 1 | 0 or 1 | The player's own objective points: a right click on the map puts one (a title is asked for), a right click on one takes it away. Private, kept for each map. 0: no menu, and the points leave the lists. |
 
-All of them are saved client convars, and in the options menu of the GryMod category, on the page "Big map". The tile size and the generator's time are the
+All of them are saved client convars, and in the options menu of the GryMod category, on the "Big map" tab of the Radar and map page. The tile size and the generator's time are the
 minimap's (`gry_minimap_tile`, `gry_minimap_budget_ms`).
 
 ### For developers

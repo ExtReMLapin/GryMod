@@ -253,7 +253,7 @@ provider. A provider is never asked about an invalid player or entity.
 ## Binoculars: spotting and the hologram
 
 While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD follows the original game's rules. Every part has its own setting of the player
-(the Binoculars category of the options, all saved client convars):
+(the Binoculars, Scan and Zoom tabs of the Suit and vision page of the options, all saved client convars):
 
 - **Pace and shot.** No sprint, and the slow walk instead of the jog (`gry_binoculars_walk`, 1); no shooting (`gry_binoculars_no_fire`, 1). Both work on the buttons of
   the player's move, only while the binoculars are up. Holding the right click steps the zoom ONCE, 0.25 s after the key went down (2x, 4x, 8x, then back to 2x; let go and hold again to step again) (`gry_binoculars_hold_zoom`, 1).
@@ -713,7 +713,7 @@ A **marker** is a table. Only `pos` and `type` are required:
 A marker more than 500 m above or below the player is not drawn, and a radar can show 64 markers at most. A marker that is not valid is skipped.
 A source runs under `pcall`: when it throws, the others are not affected; after three errors in a row it is **removed** with one message in the console.
 The radar zoom (`gry_radar_range`, and the automatic zoom) applies to the markers as to the contacts. The player's switch is `gry_hud_radarmarkers`
-(Radar and map menu): off, no source is asked.
+(Radar and map page, Radar tab): off, no source is asked.
 
 ### Explosion rings: `GryMod.API.ReportRadarPing(pos, kind)` (server)
 
@@ -736,7 +736,7 @@ end)
 ```
 
 `ReportRadarPing` returns `true`, or `false` and why: the position is not a `Vector`, the kind is not one, or more than 20 pings were reported in the
-same second. A ring of more than 4 m makes one echo, as the original does. The server's `gry_radar_pings` (Radar and map menu, administrators) turns the
+same second. A ring of more than 4 m makes one echo, as the original does. The server's `gry_radar_pings` (Server page, Radar and map tab, administrators) turns the
 automatic pings off; a report through the function always goes out. The player's `gry_hud_radarpings` hides the rings. The rings are drawn through the
 marker sources above (key `gry_pings`).
 
@@ -744,7 +744,7 @@ marker sources above (key `gry_pings`).
 
 In a team game (at least two teams with players: `Player:Team()` is neither the unassigned, the spectator nor the connecting team) the living players of
 your team show on your radar with the team mate icon (type 7), anywhere on the map: far ones stick to the circle of the range. Sandbox, where everybody is
-in one team, shows none. The server's `gry_radar_teammates` (1 by default; Radar and map menu, administrators) turns it off. They are radar contacts, so
+in one team, shows none. The server's `gry_radar_teammates` (1 by default; Server page, Radar and map tab, administrators) turns it off. They are radar contacts, so
 the player's "Radar contacts" switch hides them.
 
 ### Danger bar and hexagon: seen or heard
@@ -754,7 +754,7 @@ hexagon for the machines (flying units, vehicles, turrets). The radar's contacts
 the server counts the hostile NPCs that are **not** contacts, wherever they are in the radar's search sphere (2.1 times the radar range): one that has
 the player as enemy or sees him (`COND.SEE_PLAYER`) counts as fighting, one that hears him (`COND.HEAR_PLAYER`) or has lost him and looks for him counts as
 alerted. A hostile that fights someone else does not count. The two highest numbers travel in a 4-bit message (`gry_radar_detect`), only when they change.
-The server's `gry_radar_detect` (1 by default; Radar and map menu, administrators) turns it off and brings the old behaviour back. A friend never counts.
+The server's `gry_radar_detect` (1 by default; Server page, Radar and map tab, administrators) turns it off and brings the old behaviour back. A friend never counts.
 It costs two engine calls (`HasCondition`) per NPC in the sphere at each tick of the radar (5 a second), no new search and no new timer.
 
 ## Tracked entities
@@ -1112,7 +1112,7 @@ The HUD shows the objectives with no code on your side, and each part has its ow
   nearest to the middle of the screen opens a small box with the objective's title. A primary and a secondary objective look the same here, as in the
   original. A finished or failed objective has no marker. By default (`gry_objectives_marker_mode` `binoculars`, as in the original) the markers are only
   there while the player looks through the binoculars; `always` draws them all the time.
-- **On the radar and the minimap** (`gry_hud_radarobjectives`, in the Radar and map menu): a green glow for a primary objective and a yellow one for a
+- **On the radar and the minimap** (`gry_hud_radarobjectives`, on the Radar and map page, Radar tab): a green glow for a primary objective and a yellow one for a
   secondary one, for each active objective whose `radar` is on, and an arrow on the border of the radar when the objective is farther than its range.
   The minimap is the radar's own window, so it shows the same markers. This uses the marker sources of the radar (see "Radar markers (client)").
 - **A line and a sound** (`gry_msg_objectives`): when an objective is added, finished or failed, the top line of the HUD says

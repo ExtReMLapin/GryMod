@@ -2810,10 +2810,10 @@ return {
 			end
 		},
 		{
-			name = "the Radar and map menu's server section has the gry_zonemap switch (asked through the server, not a convar) and the button that makes the map again; the Config menu's has neither",
+			name = "the Server page's radar tab has the gry_zonemap switch (asked through the server, not a convar) and the button that makes the map again; the administrators' controls of the other pages have neither",
 			func = function(state)
 				state.panel = vgui.Create("ControlPanel")
-				GryMod.RadarOptionsPanel(state.panel)
+				GryMod.ServerOptionsPanel(state.panel)
 
 				local control = state.panel.GryAdminControls["gry_zonemap"]
 
@@ -2853,7 +2853,7 @@ return {
 				GryMod.AdminUI.IsAdmin = function() return true end
 
 				state.panel = vgui.Create("ControlPanel")
-				GryMod.RadarOptionsPanel(state.panel)
+				GryMod.ServerOptionsPanel(state.panel)
 
 				local box = resetButton(state.panel)
 
@@ -2877,7 +2877,7 @@ return {
 				GryMod.AdminUI.IsAdmin = function() return false end
 
 				state.panel = vgui.Create("ControlPanel")
-				GryMod.RadarOptionsPanel(state.panel)
+				GryMod.ServerOptionsPanel(state.panel)
 
 				local box = resetButton(state.panel)
 

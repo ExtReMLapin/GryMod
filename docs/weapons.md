@@ -245,7 +245,7 @@ weapons are mapped as data in `lua/grymod/compat/hl2/sh_weapons.lua`: the pistol
 
 ### The weapon selector setting (the mouse wheel)
 
-`gry_weapon_selector` is a client setting (a choice of three lines in the options menu, HUD category), and it is 0 by default:
+`gry_weapon_selector` is a client setting (a choice of three lines in the options menu, HUD and controls page, Aim and prompts tab), and it is 0 by default:
 
 | Value | What the wheel does |
 | --- | --- |

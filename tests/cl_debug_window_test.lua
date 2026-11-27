@@ -463,15 +463,24 @@ return {
 			end
 		},
 		{
-			-- would fail if: the button of the options panel was not at the bottom, after the administrators' section
-			name = "the options panel ends with the button that opens the window",
+			-- would fail if: the button is not the last control of the "Advanced" tab of the HUD page (the development tools)
+			name = "the Advanced tab of the HUD page ends with the button that opens the window",
 			func = function()
 				stubAll({})
-				local panel = vgui.Create("ControlPanel")
+				local page = vgui.Create("ControlPanel")
+				local panel
 				local ok, err = pcall(function()
 					asAdmin(true, function()
-						GryMod.GryOptionschute(panel)
+						GryMod.HUDOptionsPanel(page)
 					end)
+
+					for _, item in ipairs(page.GryOptionsPage.sheet:GetItems()) do
+						if item.Tab.GryName == "Advanced" then
+							panel = item.Panel
+						end
+					end
+
+					expect(panel ~= nil).to.beTrue()
 
 					local found, lastButton
 
@@ -496,7 +505,7 @@ return {
 					found:DoClick()
 					expect(IsValid(DW().Frame)).to.beTrue()
 				end)
-				panel:Remove()
+				page:Remove()
 
 				if not ok then
 					error(err, 0)

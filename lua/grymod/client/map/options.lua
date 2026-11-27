@@ -1,4 +1,4 @@
--- The options menu of the big map: a page of its own, "Big map", next to Config and Radar and map in the GryMod category of the Options tab. The settings are
+-- The options of the big map: a tab ("Big map") of the Radar and map page of the options menu (cl_options_tabs.lua). The settings are
 -- written when the player changes a control, never when the panel opens. The key picker is the factory's (cl_key_binder.lua), like the other keys.
 
 GryMod = GryMod or {}
@@ -28,11 +28,7 @@ local function lookChoices()
 	return choices
 end
 
-function GryMod.MapOptionsPanel(Panel)
-	Panel:AddControl("Label", {
-		Text = "GryMod Big map"
-	})
-
+function GryMod.MapOptionsTab(Panel)
 	local form = GryMod.OptionsCategory(Panel, "Big map", true)
 
 	GryMod.OptionBox(form, "Big map", "gry_map_enable", "A map of the whole level on a key: the wheel zooms toward the mouse, a drag moves it. The game goes on while it is open.")
@@ -95,8 +91,14 @@ function GryMod.MapOptionsPanel(Panel)
 	form:AddItem(combo)
 end
 
-function GryMod.MapOptionsMenu()
-	spawnmenu.AddToolMenuOption("Options", "GryMod", "BigMap", "Big map", "", "", GryMod.MapOptionsPanel)
-end
+-- The tab of the Radar and map page, after the ones of cl_options_radar.lua.
+GryMod.AddOptionTab("radar", "Big map", GryMod.MapOptionsTab, 60)
 
-hook.Add("PopulateToolMenu", "GryMod big map options", GryMod.MapOptionsMenu)
+-- The same settings on a panel of their own with a title (what a script or a test wants).
+function GryMod.MapOptionsPanel(Panel)
+	Panel:AddControl("Label", {
+		Text = "GryMod Big map"
+	})
+
+	GryMod.MapOptionsTab(Panel)
+end

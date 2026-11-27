@@ -1,6 +1,6 @@
 -- Tests of the Compatibility page of the options menu (GryMod.CompatOptionsPanel, lua/grymod/client/cl_options_compat.lua), GLuaTest format, client realm. The settings that
--- belong to a third-party addon do not go in the general page: they have a page of their own with one TAB for each family of addons (TFA, the other weapon bases), and the
--- general page's server section no longer holds the suit's effects on weapons. Each case names the change that makes it fail.
+-- belong to a third-party addon do not go in the general pages: they have a page of their own with one TAB for each family of addons (TFA, ARC9, the other weapon bases) and one
+-- tab for the server's settings that are the same for every base (the suit's effects on weapons), and the Server page no longer holds those. Each case names the change that makes it fail.
 
 local panels
 
@@ -62,7 +62,7 @@ local function tabNames(sheet)
 	local names = {}
 
 	for _, item in ipairs(sheet:GetItems()) do
-		names[#names + 1] = item.Tab:GetText()
+		names[#names + 1] = item.Tab.GryName or item.Tab:GetText()
 	end
 
 	return names
@@ -83,7 +83,7 @@ return {
 	cases = {
 		{
 			-- fails without the page, or when it has no tabs (everything would be in one long list again)
-			name = "the page exists and has one tab for TFA, one for ARC9 and one for the other weapon bases",
+			name = "the page exists and has one tab for the suit's effects, one for TFA, one for ARC9 and one for the other weapon bases",
 			func = function()
 				expect(isfunction(GryMod.CompatOptionsPanel)).to.beTrue()
 
@@ -97,12 +97,12 @@ return {
 
 				local names = tabNames(sheet)
 
-				expect(table.concat(names, ",")).to.equal("TFA,ARC9,Other weapon bases")
+				expect(table.concat(names, ",")).to.equal("Suit effects,TFA,ARC9,Other weapon bases")
 			end
 		},
 		{
 			-- fails when a setting of the suit's effects on TFA weapons is not on the TFA tab (the owner asked for them under Compatibility, in a TFA category)
-			name = "the TFA tab holds the suit's effects on weapons, the other tab says what is known about the other bases",
+			name = "the Suit effects tab holds the suit's effects on weapons, the other tabs say what is known about the bases",
 			func = function()
 				local panel = make()
 
@@ -120,23 +120,23 @@ return {
 			end
 		},
 		{
-			-- fails when the settings are still in the general page's server section too (two places for one setting)
-			name = "the general page's server section no longer holds them",
+			-- fails when the settings are still on the Server page too (two places for one setting)
+			name = "the Server page no longer holds them",
 			func = function()
 				local panel = make()
 
-				GryMod.GryOptionschute(panel)
+				GryMod.ServerOptionsPanel(panel)
 
 				local all = texts(panel)
 
 				expect(has(all, "Strength mode: stronger melee")).to.beFalse()
 				expect(has(all, "Speed mode: faster weapon handling")).to.beFalse()
-				expect(has(all, "Movement speeds")).to.beTrue() -- the section itself is still there
+				expect(has(all, "Movement speeds")).to.beTrue() -- the page itself is there
 			end
 		},
 		{
-			-- fails when the page is not offered in the menu (the spawn menu's Options tab) next to the two other pages
-			name = "the page is registered in the menu with the two others",
+			-- fails when the page is not offered in the menu (the spawn menu's Options tab) next to the four others
+			name = "the page is registered in the menu with the four others",
 			func = function()
 				local added = {}
 				local real = spawnmenu.AddToolMenuOption
@@ -157,9 +157,11 @@ return {
 					classes[entry.class] = entry.category
 				end
 
-				expect(classes.Config).to.equal("GryMod")
+				expect(classes.HUD).to.equal("GryMod")
+				expect(classes.Suit).to.equal("GryMod")
 				expect(classes.Radar).to.equal("GryMod")
 				expect(classes.Compat).to.equal("GryMod")
+				expect(classes.Server).to.equal("GryMod")
 			end
 		}
 	}

@@ -71,6 +71,17 @@ local function choiceText(choices, value)
 			return choice[1]
 		end
 	end
+
+	-- a number is written as the engine writes it ("7.500000" for the choice "7.5"): the same number is the same choice
+	local number = tonumber(value)
+
+	if number then
+		for _, choice in ipairs(choices) do
+			if tonumber(choice[2]) == number then
+				return choice[1]
+			end
+		end
+	end
 end
 
 -- Shows the value the server has in the control (without asking the server again).

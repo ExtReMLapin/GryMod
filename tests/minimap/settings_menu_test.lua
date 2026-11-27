@@ -65,6 +65,21 @@ local function hasCategory(panel, title)
 	return false
 end
 
+-- a tab of the page (cl_options_tabs.lua) with this name: the sections of the Radar and map page are its tabs
+local function hasTab(panel, name)
+	for _, p in ipairs(walk(panel)) do
+		if p.GetItems and p.AddSheet then
+			for _, item in ipairs(p:GetItems()) do
+				if item.Tab.GryName == name then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
 local function hasLabel(panel, text)
 	for _, p in ipairs(walk(panel)) do
 		if p.ClassName == "DLabel" and p:GetText() == text then
@@ -679,7 +694,7 @@ return {
 			end
 		},
 		{
-			name = "the Radar and map menu contains the Minimap section once, and the Config menu not at all",
+			name = "the Radar and map menu contains the Minimap tab once, and the Config menu not at all",
 			func = function(state)
 				local function count(panel)
 					local n = 0
@@ -695,7 +710,7 @@ return {
 
 				state.panel = buildRadarMenu()
 				expect(count(state.panel)).to.equal(1)
-				expect(hasCategory(state.panel, "Minimap")).to.beTrue()
+				expect(hasTab(state.panel, "Minimap")).to.beTrue()
 				state.panel:Remove()
 
 				state.panel = vgui.Create("ControlPanel")

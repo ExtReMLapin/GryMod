@@ -179,17 +179,25 @@ return {
 				end
 			end
 		},
-		-- fails when the page is not registered in the tool menu, or when it takes the place of another
+		-- fails when the big map has no tab in the Radar and map page, or has an entry of its own in the tool menu again
 		{
-			name = "the page is added to the tool menu (Options, GryMod, 'Big map') by its own hook, and the two other entries are still the Config and Radar menus' own",
+			name = "the big map is the last tab of the Radar and map page (map/options.lua adds it with GryMod.AddOptionTab) and has no entry of its own in the tool menu",
 			func = function(state)
+				local names = {}
+
+				for _, tab in ipairs(GryMod.OptionTabList("radar")) do
+					names[#names + 1] = tab.name
+				end
+
+				expect(names[#names]).to.equal("Big map")
+
 				local added = {}
 
 				spawnmenu.AddToolMenuOption = function(tab, category, name, label, command, config, builder)
-					added[#added + 1] = {tab = tab, category = category, name = name, label = label, builder = builder}
+					added[#added + 1] = name
 				end
 
-				local ok, err = pcall(GryMod.MapOptionsMenu)
+				local ok, err = pcall(GryMod.GryOptionschuteOptionmenu)
 
 				spawnmenu.AddToolMenuOption = state.realAdd
 
@@ -197,14 +205,12 @@ return {
 					error(err, 0)
 				end
 
-				expect(#added).to.equal(1)
-				expect(added[1].tab).to.equal("Options")
-				expect(added[1].category).to.equal("GryMod")
-				expect(added[1].name).to.equal("BigMap")
-				expect(added[1].label).to.equal("Big map")
-				expect(added[1].builder).to.equal(GryMod.MapOptionsPanel)
-				expect(hook.GetTable().PopulateToolMenu["GryMod big map options"]).to.equal(GryMod.MapOptionsMenu)
-				-- the existing hook still makes the two menus of the others
+				for _, name in ipairs(added) do
+					expect(name ~= "BigMap").to.beTrue()
+				end
+
+				expect(GryMod.MapOptionsMenu).to.beNil()
+				expect(hook.GetTable().PopulateToolMenu["GryMod big map options"]).to.beNil()
 				expect(hook.GetTable().PopulateToolMenu.PopulateToolMenu).to.equal(GryMod.GryOptionschuteOptionmenu)
 			end
 		}

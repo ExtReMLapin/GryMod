@@ -47,7 +47,19 @@ local function addColourMixer(Panel, label, convarName)
 end
 
 -- A category of an options panel: a folding title with the controls of one subject under it (a ControlPanel nested in the menu's one: it has AddControl, which a plain DForm has not). It starts folded unless `open`. Controls are made on the returned form, as on the panel.
+-- In a TAB of a page (cl_options_tabs.lua) there is no fold: the tab is the category, so the panel of the tab itself is returned; a second category in the same tab
+-- is told apart by a bold line with its title.
 function GryMod.OptionsCategory(Panel, title, open)
+	if Panel.GryTabRoot then
+		Panel.GryTabSections = (Panel.GryTabSections or 0) + 1
+
+		if Panel.GryTabSections > 1 then
+			Panel:Help(title):SetFont("DermaDefaultBold")
+		end
+
+		return Panel
+	end
+
 	local form = vgui.Create("ControlPanel", Panel)
 
 	form:SetLabel(title)
@@ -78,22 +90,42 @@ function GryMod.OptionSlider(form, label, convarName, min, max, decimals, help)
 
 	return slider
 end
-
--- The HUD elements whose switches are in the Radar and map menu (cl_options_radar.lua), not in the list of this panel.
+-- The HUD elements whose switches are in the Radar and map menu (cl_options_radar.lua), not in the list of the HUD tabs.
 GryMod.RadarHUDElements = {radar = true, radarunits = true, radarhex = true}
 
--- The HUD: one switch for each element of the interface, the crosshair, how the pictures are loaded.
-local function hudElements(Panel)
-	local form = GryMod.OptionsCategory(Panel, "HUD", true)
+-- The elements of the HUD that are about what happens in the view (the crosshair and what goes with it, the markers, the quick menu, the effects): the "On screen" tab.
+-- The other elements (the panels and bars of the corners, the lists, the popups) are in the "Panels" tab, and so is every element that is added to the list later.
+local ON_SCREEN = {crosshair = true, damage = true, hit = true, grenade = true, binoculars = true, quickmenu = true, boot = true, damagefx = true, usehint = true, objectives = true}
 
-	GryMod.OptionBox(form, "Draw the HUD", "gry_hud", "Health, energy, ammo, radar.")
-	form:Help("HUD elements")
-
+-- One switch for each element of the list that `wanted` accepts (the name of an element, true or false).
+local function elementSwitches(form, wanted)
 	for _, option in ipairs(GryMod.HUDOptions.List) do
-		if not GryMod.RadarHUDElements[option.name] then
+		if not GryMod.RadarHUDElements[option.name] and wanted(option.name) then
 			form:CheckBox(option.label, "gry_hud_" .. option.name)
 		end
 	end
+end
+
+-- The HUD, tab "Panels": the master switch, the panels and bars of the corners, the lists and the popups.
+function GryMod.HUDPanelsOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "HUD", true)
+
+	GryMod.OptionBox(form, "Draw the HUD", "gry_hud", "Health, energy, ammo, radar.")
+	elementSwitches(form, function(name) return not ON_SCREEN[name] end)
+	GryMod.OptionBox(form, "Energy bar at every frame", "gry_hud_energy_smooth", "The energy bar is predicted between the server's updates, so that it moves at every frame.")
+	form:Button("Switch every element back on", "gry_hud_reset")
+end
+
+-- The HUD, tab "On screen": what is drawn in the view (crosshair, markers, quick menu, effects).
+function GryMod.HUDScreenOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "HUD in the view")
+
+	elementSwitches(form, function(name) return ON_SCREEN[name] == true end)
+end
+
+-- Tab "Aim and prompts": the crosshair, the weapon selector, the objective markers, the use prompt.
+function GryMod.HUDAimOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Aim and prompts")
 
 	form:NumSlider("Crosshair style", "gry_hud_crosshair_style", 1, 13, 0)
 	GryMod.OptionBox(form, "Weapons choose their crosshair", "gry_hud_crosshair_weapon", "A weapon of an addon can ask for one of the 13 crosshairs. Off: always the style above.")
@@ -111,12 +143,7 @@ local function hudElements(Panel)
 		RunConsoleCommand("gry_weapon_selector", tostring(data))
 	end
 	form:AddItem(selectorBox)
-	form:ControlHelp("Wheel only: a notch of the wheel changes the weapon at once, no click. Wheel, then click: the wheel walks the weapon list of the HUD (turn the list on above) and the left click confirms; the click then never counts as a shot in the camouflage. The weapon keys keep the game's selector.")
-	GryMod.OptionBox(form, "Energy bar at every frame", "gry_hud_energy_smooth", "The energy bar is predicted between the server's updates, so that it moves at every frame.")
-	GryMod.OptionBox(form, "Use prompt on props", "gry_usehint_props", "PICK UP also shows on the props, ragdolls and physboxes you can lift (you can pick up almost anything). Off: the prompt is only for what really needs the use key.")
-	GryMod.OptionBox(form, "Use prompt feedback", "gry_usehint_feedback", "The prompt pulses with a beep when you press the use key on a door, a button or a charger, then dims for a moment.")
-	GryMod.OptionSlider(form, "Use prompt delay (s)", "gry_usehint_delay", 0, 1, 2, "The prompt shows after the crosshair stayed this long on the same thing (0.1 s is the original's; 0: at once).")
-	GryMod.OptionSlider(form, "Use prompt hold (s)", "gry_usehint_hold", 0, 1, 2, "The prompt stays this long after the crosshair leaves the thing (0.2 s is the original's; 0: it goes at once). Another usable thing replaces it at once.")
+	form:ControlHelp("Wheel only: a notch of the wheel changes the weapon at once, no click. Wheel, then click: the wheel walks the weapon list of the HUD (turn the list on in the Panels tab) and the left click confirms; the click then never counts as a shot in the camouflage. The weapon keys keep the game's selector.")
 	form:Help("Objective markers on the screen")
 
 	local markerBox = vgui.Create("DComboBox")
@@ -130,20 +157,10 @@ local function hudElements(Panel)
 	end
 	form:AddItem(markerBox)
 	form:ControlHelp("The radar, the minimap and the map show the objectives in both cases.")
-	form:Button("Switch every element back on", "gry_hud_reset")
-
-	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)
-	form:Help("Preloading of the interface (only the elements above that are on)")
-	form:AddControl("ComboBox", {
-		Label = "Preload",
-		MenuButton = 0,
-		Options = {
-			["At the loading screen"] = {gry_hud_prewarm = "1"},
-			["Over the first seconds of play"] = {gry_hud_prewarm = "2"},
-			["Never"] = {gry_hud_prewarm = "0"}
-		}
-	})
-	form:ControlHelp("At the loading screen: a longer loading and no freeze later. Over the first seconds of play: short freezes. Never: each part freezes the game the first time it is used.")
+	GryMod.OptionBox(form, "Use prompt on props", "gry_usehint_props", "PICK UP also shows on the props, ragdolls and physboxes you can lift (you can pick up almost anything). Off: the prompt is only for what really needs the use key.")
+	GryMod.OptionBox(form, "Use prompt feedback", "gry_usehint_feedback", "The prompt pulses with a beep when you press the use key on a door, a button or a charger, then dims for a moment.")
+	GryMod.OptionSlider(form, "Use prompt delay (s)", "gry_usehint_delay", 0, 1, 2, "The prompt shows after the crosshair stayed this long on the same thing (0.1 s is the original's; 0: at once).")
+	GryMod.OptionSlider(form, "Use prompt hold (s)", "gry_usehint_hold", 0, 1, 2, "The prompt stays this long after the crosshair leaves the thing (0.2 s is the original's; 0: it goes at once). Another usable thing replaces it at once.")
 end
 
 -- The colours: the four sets of the original game, or your own.
@@ -166,16 +183,10 @@ local function hudColours(Panel)
 	addColourMixer(form, "Custom colour of the digits and letters", "gry_hud_color_text")
 end
 
--- The quick menu, the suit mode icon and the start-up sequence: how closely they follow the original.
-local function hudBehaviour(Panel)
+-- Tab "Quick menu": the quick menu, the suit mode icon and the start-up sequence: how closely they follow the original.
+local function hudQuickMenu(Panel)
 	local form = GryMod.OptionsCategory(Panel, "Quick menu and start-up")
 
-	-- client setting: the HUD also goes down (Lost, then Reboot) while the energy bar is empty, GryMod's old rule
-	GryMod.OptionBox(form, "HUD malfunction on empty energy", "gry_malfunction_empty", "The original: the HUD goes down only on an EMP, an electric attack or death.")
-	-- client setting: the HUD goes red with its emergency shutdown screen and sound when the player dies, until the respawn
-	GryMod.OptionBox(form, "Red HUD and shutdown screen at death", "gry_hud_lost_on_death", "When you die the HUD goes red with the emergency shutdown animation and sound until you respawn (the original). Off: the HUD just disappears.")
-	-- client setting: the shutdown screen of the suit going down (and of a death) in the middle of the screen
-	GryMod.OptionBox(form, "Shutdown screen in the middle", "gry_hud_lost_centered", "The DANGER SYSTEM OVERRUN panel (suit down, death) is in the middle of the screen. Off: low, where the original's movie puts it.")
 	-- client setting: the quick menu icon that was chosen stays lit while the menu fades out
 	GryMod.OptionBox(form, "Quick menu: the chosen icon stays lit", "gry_menu_keep_highlight", "While the menu fades out (the original). Off: it goes plain at the release.")
 	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one
@@ -190,36 +201,74 @@ local function hudBehaviour(Panel)
 	GryMod.OptionBox(form, "Start-up log at every spawn", "gry_boot_every_spawn", "Off: the start-up log and sounds play only at the first spawn after the map loads, as in the original.")
 end
 
--- client settings: how far the grenade warning reaches, the old warning for the player's own hand grenade, walls (the original has no range and warns through walls)
-local function grenadeWarning(Panel)
-	local form = GryMod.OptionsCategory(Panel, "Grenade warning")
+-- Tab "Alerts": the HUD going down (malfunction, death) and the grenade warning (how far it reaches, the old warning for the player's own hand grenade, walls: the original has no range and warns through walls).
+local function hudAlerts(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Malfunction and grenade warning")
 
-	form:NumSlider("Warning range (metres)", "gry_grenade_range", 5, 200, 0)
+	-- client setting: the HUD also goes down (Lost, then Reboot) while the energy bar is empty, GryMod's old rule
+	GryMod.OptionBox(form, "HUD malfunction on empty energy", "gry_malfunction_empty", "The original: the HUD goes down only on an EMP, an electric attack or death.")
+	-- client setting: the HUD goes red with its emergency shutdown screen and sound when the player dies, until the respawn
+	GryMod.OptionBox(form, "Red HUD and shutdown screen at death", "gry_hud_lost_on_death", "When you die the HUD goes red with the emergency shutdown animation and sound until you respawn (the original). Off: the HUD just disappears.")
+	-- client setting: the shutdown screen of the suit going down (and of a death) in the middle of the screen
+	GryMod.OptionBox(form, "Shutdown screen in the middle", "gry_hud_lost_centered", "The DANGER SYSTEM OVERRUN panel (suit down, death) is in the middle of the screen. Off: low, where the original's movie puts it.")
+	form:NumSlider("Grenade warning range (m)", "gry_grenade_range", 5, 200, 0)
 	GryMod.OptionBox(form, "Also for a grenade you threw", "gry_grenade_own_warn", "Only within 15 m. Off: a grenade you threw never warns; your own missiles never do.")
 	GryMod.OptionBox(form, "Only what you can see", "gry_grenade_los", "Off: also through walls, as in the original game.")
 	GryMod.OptionBox(form, "Warning stays at the screen edge", "gry_hud_grenade_edge", "A grenade off the screen to the side, above or below keeps its warning at the edge it is on (the original). Off: the warning goes away.")
 end
 
--- The HUD settings: the colours (the four sets of the original game, or your own), one switch for each element of the interface, the quick menu and the
--- grenade warning, in four categories.
-function GryMod.GryHUDOptions(Panel)
-	hudElements(Panel)
-	hudColours(Panel)
-	hudBehaviour(Panel)
-	grenadeWarning(Panel)
+-- Tab "Advanced": how the pictures of the interface are loaded, and the tools of the people who work on the addon.
+local function hudAdvanced(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Preloading of the interface")
 
-	-- the radar, the compass and the maps have a menu of their own (cl_options_radar.lua)
+	-- the pictures of the interface take about a second each to load: ahead of time, or at the first use (a freeze)
+	form:Help("Preloading of the interface (only the elements that are on)")
+	form:AddControl("ComboBox", {
+		Label = "Preload",
+		MenuButton = 0,
+		Options = {
+			["At the loading screen"] = {gry_hud_prewarm = "1"},
+			["Over the first seconds of play"] = {gry_hud_prewarm = "2"},
+			["Never"] = {gry_hud_prewarm = "0"}
+		}
+	})
+	form:ControlHelp("At the loading screen: a longer loading and no freeze later. Over the first seconds of play: short freezes. Never: each part freezes the game the first time it is used.")
+	GryMod.DevelopmentOptions(Panel)
+end
+
+-- The HUD settings, all together on one panel (what a script or a test wants; the menu shows them in the tabs of the HUD page): the panels, the view, the aim, the colours,
+-- the quick menu, the alerts.
+function GryMod.GryHUDOptions(Panel)
+	GryMod.HUDPanelsOptions(Panel)
+	GryMod.HUDScreenOptions(Panel)
+	GryMod.HUDAimOptions(Panel)
+	hudColours(Panel)
+	hudQuickMenu(Panel)
+	hudAlerts(Panel)
+
+	-- the radar, the compass and the maps have a page of their own (cl_options_radar.lua)
 	Panel:Help("Radar, compass and map options are in the Radar and map menu.")
 end
 
--- What was added to the binoculars, each on its own: the screen itself is the "Binoculars" element of the HUD (the zoom key is in the Keys category).
-function GryMod.BinocularsOptions(Panel)
+-- The binoculars, tab "Binoculars": what the screen of the binoculars looks and sounds like (the screen itself is the "Binoculars" element of the HUD, the zoom key is in the Keys tab).
+function GryMod.BinocularsViewOptions(Panel)
 	local form = GryMod.OptionsCategory(Panel, "Binoculars")
 
 	GryMod.OptionBox(form, "Binoculars sounds", "gry_binoculars_sounds", "Opening, closing, ambience loop, target locked.")
-	GryMod.OptionBox(form, "Original aim rules", "gry_binoculars_aim", "4 rays, 300 m, the distance to the entity aimed at.")
-	GryMod.OptionBox(form, "Horizon ladder", "gry_binoculars_horizon", "It follows where you look.")
 	GryMod.OptionBox(form, "Vignette fades out when closing", "gry_binoculars_vignette", "Off: the dark vignette goes at once.")
+	GryMod.OptionBox(form, "Horizon ladder", "gry_binoculars_horizon", "It follows where you look.")
+	GryMod.OptionBox(form, "Full-screen vision", "gry_binoculars_vision", "Cool tint, scan lines and darker edges. The original has it in the High quality only, and it doubles the film's vignette.")
+	GryMod.OptionBox(form, "Film follows a malfunction", "gry_binoculars_malfunction", "While the suit is down the binoculars fade to white; with the HUD flickering they fade out (the original film's own states).")
+	GryMod.OptionBox(form, "No film in third person", "gry_binoculars_thirdperson", "As in the original: the zoom works, the film is not drawn. Off: it is drawn there too.")
+	GryMod.OptionBox(form, "Binoculars sway", "gry_binoculars_sway", "The view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view.")
+	GryMod.OptionBox(form, "Lower the world's sounds", "gry_binoculars_mood", "Explosions, collisions and vehicles are lowered while the binoculars are up.")
+end
+
+-- The binoculars, tab "Scan": what the binoculars aim at and mark.
+function GryMod.BinocularsScanOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Binoculars scan")
+
+	GryMod.OptionBox(form, "Original aim rules", "gry_binoculars_aim", "4 rays, 300 m, the distance to the entity aimed at.")
 	GryMod.OptionBox(form, "Tag the NPC you aim at", "gry_binoculars_tag", "For half a second; the radar shows it.")
 	GryMod.OptionBox(form, "Outline what the binoculars spot", "gry_binoculars_silhouette", "A thin outline round what the scan reaches, from the end of its scan until the binoculars come down. Needs the tag option above.")
 	GryMod.OptionBox(form, "Spotted targets as a hologram", "gry_binoculars_hologram", "A thin outline and the whole body filled with scan lines: green for a hostile, white while it is scanned, blue for an ally. Off: the pale blue halo.")
@@ -237,35 +286,35 @@ function GryMod.BinocularsOptions(Panel)
 	form:AddItem(styleBox)
 	form:ControlHelp("The shader fills the whole body, brightens its boundary and adds the scan lines and a glow, as the original does. The game falls back to the simple style by itself when it cannot run the shader.")
 	GryMod.OptionBox(form, "Hostiles in view drawn at once", "gry_binoculars_baseline", "The hostile NPCs in view are green before they are spotted, as in the original. Off: only what the scan reaches.")
-	GryMod.OptionBox(form, "Lower the world's sounds", "gry_binoculars_mood", "Explosions, collisions and vehicles are lowered while the binoculars are up.")
+end
+
+-- The binoculars, tab "Zoom": the zoom, and what you can do while the binoculars are up.
+function GryMod.BinocularsZoomOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Binoculars zoom")
+
 	GryMod.OptionBox(form, "Zoom stages with the mouse wheel", "gry_binoculars_stages", "2x, 4x, 8x, 0.055 s between them, 0.2 s to open and close. Off: the Half-Life 2 zoom (always on with the own zoom key). Changes how the mouse feels.")
-	GryMod.OptionBox(form, "Binoculars sway", "gry_binoculars_sway", "The view drifts slowly in a figure of eight, strongest at the start, less when crouching or in strength mode (the original). Moves the view.")
+	GryMod.OptionBox(form, "Hold the zoom key to step the zoom", "gry_binoculars_hold_zoom", "Holding the key goes 2x, 4x, 8x, then back to 2x. Needs the zoom stages.")
 	GryMod.OptionBox(form, "Field of view follows the zoom", "gry_zoom_follow_fov", "The server sets it, so that distant windows and fades keep the details of a zoomed view. Off: only the picture is zoomed.")
 	GryMod.OptionBox(form, "Hide the crosshair in a weapon zoom", "gry_zoom_hide_crosshair", "While the crossbow (or any weapon whose right click zooms) is zoomed, the HUD crosshair goes, as it does with the binoculars.")
 	GryMod.OptionBox(form, "Cancel the crossbow zoom", "gry_zoom_cancel_weapon", "Opening the binoculars while the crossbow is zoomed (right click) ends the crossbow's zoom. Off: it comes back when the binoculars close.")
-	GryMod.OptionBox(form, "Film follows a malfunction", "gry_binoculars_malfunction", "While the suit is down the binoculars fade to white; with the HUD flickering they fade out (the original film's own states).")
 	GryMod.OptionBox(form, "No shooting with the binoculars up", "gry_binoculars_no_fire", "The original holds the binoculars in place of the weapon. Off: you can shoot through the Half-Life 2 zoom.")
 	GryMod.OptionBox(form, "Put the weapon away with the binoculars up", "gry_binoculars_hide_weapon", "The original holds the binoculars in place of the weapon. Off: weapons that keep their gun at its size in front of the zoom (ARC9, TFA) show it.")
 	GryMod.OptionBox(form, "Walk pace with the binoculars up", "gry_binoculars_walk", "No sprint, and the slow walk instead of the jog, as in the original.")
-	GryMod.OptionBox(form, "Hold the zoom key to step the zoom", "gry_binoculars_hold_zoom", "Holding the key goes 2x, 4x, 8x, then back to 2x. Needs the zoom stages.")
-	GryMod.OptionBox(form, "No film in third person", "gry_binoculars_thirdperson", "As in the original: the zoom works, the film is not drawn. Off: it is drawn there too.")
-	GryMod.OptionBox(form, "Full-screen vision", "gry_binoculars_vision", "Cool tint, scan lines and darker edges. The original has it in the High quality only, and it doubles the film's vignette.")
 end
 
--- The suit: the camouflage and the screen effects of what happens to it.
-function GryMod.SuitOptions(Panel)
-	local form = GryMod.OptionsCategory(Panel, "Suit and camouflage")
+-- All the binoculars' settings together on one panel (the three tabs, one after the other: what a script or a test wants).
+function GryMod.BinocularsOptions(Panel)
+	GryMod.BinocularsViewOptions(Panel)
+	GryMod.BinocularsScanOptions(Panel)
+	GryMod.BinocularsZoomOptions(Panel)
+end
+
+-- The suit, tab "Suit": the screen effects of what happens to it and its own text lines.
+function GryMod.SuitEffectsOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Suit")
 
 	GryMod.OptionBox(form, "Screen effects", "gry_screenfx", "Heavy armor hit flash and shake, red tint and blur at low health, colour tint of a suit mode change.")
 	GryMod.OptionBox(form, "Small shake on a light hit", "gry_hit_shake", "A hit the armor takes that costs less than a fifth of the bar shakes the screen a little (needs the screen effects above).")
-	GryMod.OptionBox(form, "Camouflage: bend the picture", "gry_cloak_fx", "The picture behind the player is bent, and it fades in and out. Off: the old material.")
-	GryMod.OptionBox(form, "Camouflage: original refraction", "gry_cloak_refract", "The bent picture is the original game's own pixel shader, blended over the model. Off: the older Refract material.")
-	GryMod.OptionBox(form, "Camouflage: original sparks", "gry_cloak_shader", "The sparks are the original game's own pixel shader, when the game can run it. Off: the older approximation.")
-	GryMod.OptionBox(form, "Camouflage: scan lines", "gry_cloak_lines", "Electric blue scan lines cross the sparks, drawn on the screen over the silhouette. Off: no lines.")
-	GryMod.OptionBox(form, "Camouflage: progressive change", "gry_cloak_transition", "With the sparks, in first and third person. Off: it switches at once.")
-	GryMod.OptionBox(form, "Right click that fires ends it", "gry_cloak_altfire", "Shotgun double barrel, SMG grenade, AR2 ball, frag lob; the crossbow zoom does not.")
-	GryMod.OptionBox(form, "Selector click keeps the camouflage", "gry_cloak_selector_guard", "A click just after the weapon selector closed by itself (1.2 s after the wheel) confirms the selection instead of firing and ending the camouflage.")
-	GryMod.OptionBox(form, "Glitch when firing out of it", "gry_decloak_glitch", "Flash, HUD jump and shake, at any energy and not only above 20 %.")
 
 	-- the suit's own text lines (the HUD element "Text lines" must be on too)
 	for _, key in ipairs(GryMod.Messages.LineKeys()) do
@@ -275,6 +324,26 @@ function GryMod.SuitOptions(Panel)
 	end
 
 	GryMod.OptionBox(form, "Message: objectives", "gry_msg_objectives", "A line and a sound when an objective is added, finished or failed (the list you get when you join is silent).")
+end
+
+-- The suit, tab "Camouflage": how it looks, and when it ends.
+function GryMod.CamouflageOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Camouflage")
+
+	GryMod.OptionBox(form, "Camouflage: bend the picture", "gry_cloak_fx", "The picture behind the player is bent, and it fades in and out. Off: the old material.")
+	GryMod.OptionBox(form, "Camouflage: original refraction", "gry_cloak_refract", "The bent picture is the original game's own pixel shader, blended over the model. Off: the older Refract material.")
+	GryMod.OptionBox(form, "Camouflage: original sparks", "gry_cloak_shader", "The sparks are the original game's own pixel shader, when the game can run it. Off: the older approximation.")
+	GryMod.OptionBox(form, "Camouflage: scan lines", "gry_cloak_lines", "Electric blue scan lines cross the sparks, drawn on the screen over the silhouette. Off: no lines.")
+	GryMod.OptionBox(form, "Camouflage: progressive change", "gry_cloak_transition", "With the sparks, in first and third person. Off: it switches at once.")
+	GryMod.OptionBox(form, "Right click that fires ends it", "gry_cloak_altfire", "Shotgun double barrel, SMG grenade, AR2 ball, frag lob; the crossbow zoom does not.")
+	GryMod.OptionBox(form, "Selector click keeps the camouflage", "gry_cloak_selector_guard", "A click just after the weapon selector closed by itself (1.2 s after the wheel) confirms the selection instead of firing and ending the camouflage.")
+	GryMod.OptionBox(form, "Glitch when firing out of it", "gry_decloak_glitch", "Flash, HUD jump and shake, at any energy and not only above 20 %.")
+end
+
+-- The suit's settings together on one panel (the two tabs, one after the other: what a script or a test wants).
+function GryMod.SuitOptions(Panel)
+	GryMod.SuitEffectsOptions(Panel)
+	GryMod.CamouflageOptions(Panel)
 end
 
 -- The night vision (cl_nightvision.lua; its key is in the Keys category, the server's switch in the server category). Each part of its screen effect has its own
@@ -403,6 +472,17 @@ function GryMod.KeysOptions(Parent)
 
 			status:SetText(keyStatus(GryMod.MenuKey.Chosen(), "+crysishud", "No key is chosen."))
 		end
+
+		-- the reminder of the quick menu key (cl_menu_key.lua) comes back at every start while no key is chosen, unless the player ticked "don't ask again" in it: the box is
+		-- the other way round (ticked = it asks = the setting is 0), written when the player clicks, never when the panel opens. The same convar, the same default as that file.
+		local dontAsk = CreateClientConVar("gry_menu_key_dontask", "0", true, false)
+		local askBox = Panel:CheckBox("Ask for the quick menu key at start")
+
+		askBox:SetValue(not dontAsk:GetBool())
+		askBox.OnChange = function(_, checked)
+			RunConsoleCommand("gry_menu_key_dontask", checked and "0" or "1")
+		end
+		Panel:ControlHelp("While no quick menu key is chosen, a reminder asks for one at every start. Off: it does not ask again.")
 	end
 
 	-- the binoculars' own zoom: a zoom of its own, apart from the Half-Life 2 suit zoom, which is left as it is; the wheel steps the stages
@@ -471,26 +551,39 @@ function GryMod.KeysOptions(Parent)
 end
 
 -- The settings of the server: for the administrators only (greyed and disabled for the others). They do not write a convar from the client: they ask the
--- server (cl_admin_option.lua). A category of its own, with the line that says whether you are an administrator.
-function GryMod.AdminOptions(Panel)
-	local form = GryMod.OptionsCategory(Panel, "Server (administrators only)")
-
-	GryMod.AdminUI.Section(Panel, "Server (administrators only)", form)
-
-	GryMod.AdminOption(Panel, "Suit malfunctions", "gry_malfunction", "bool", {into = form, help = "EMP, electric hits and heavy impacts put the suit down."})
-	GryMod.AdminOption(Panel, "Drowning rules", "gry_drown_rules", "bool", {into = form, help = "60 s of breath, then the suit energy, then health. Off: the engine's drowning."})
-	GryMod.AdminOption(Panel, "Realistic fall damage", "gry_realistic_fall", "bool", {into = form, help = "The fall hurts by its speed, not 10 whatever the height. The armor takes it first. Turns the game's own setting on at every launch."})
-	GryMod.AdminOption(Panel, "Energy sent at every tick", "gry_energy_net", "bool", {into = form, help = "Off: the slower networked value."})
+-- server (cl_admin_option.lua). They are on the Server page, in tabs (the ones about the radar are in cl_options_radar.lua, the suit's effects on weapons on the
+-- Compatibility page); the line that says whether you are an administrator is at the top of the page. `root` is the panel that draws them, `Panel` the one that looks
+-- after them (the same panel when they are all on one).
+local function adminSuitRules(root, Panel)
 	GryMod.AdminOption(Panel, "Suit rules", "gry_mechanics", "choice", {
-		into = form,
+		into = root,
 		choices = {
 			{"Crysis (the original game's numbers)", "crysis"},
 			{"Classic GryMod", "classic"}
 		}
 	})
-	GryMod.AdminOption(Panel, "Camouflage: enemies forget you", "gry_cloak_ai", "bool", {into = form, help = "Striders, hunters and manhacks forget you."})
+	GryMod.AdminOption(Panel, "Movement speeds", "gry_movement", "choice", {
+		into = root,
+		choices = {
+			{"GMod's own speeds", "0"},
+			{"Crysis vanilla speeds", "1"},
+			{"Crysis ratios on GMod's speeds", "2"}
+		}
+	})
+	root:ControlHelp("Crysis vanilla: the original game's walk 177 and sprint 266 units a second, the speed mode's sprint climbing to 757 in a second. Ratios: GMod's walk 200 and sprint 400 with the same increases in the speed mode. Both also use the original's energy rules.")
+	GryMod.AdminOption(Panel, "Suit malfunctions", "gry_malfunction", "bool", {into = root, help = "EMP, electric hits and heavy impacts put the suit down."})
+	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
+	GryMod.AdminOption(Panel, "Health regeneration", "gry_health_regen", "bool", {into = root, help = "The suit repairs the health over time. Off: no regeneration."})
+	GryMod.AdminOption(Panel, "Infinite armor", "gry_infinite_armor", "bool", {into = root, help = "The suit never loses energy and no malfunction happens. Off: the normal rules."})
+	GryMod.AdminOption(Panel, "Energy sent at every tick", "gry_energy_net", "bool", {into = root, help = "Off: the slower networked value."})
+	GryMod.AdminOption(Panel, "Realistic fall damage", "gry_realistic_fall", "bool", {into = root, help = "The fall hurts by its speed, not 10 whatever the height. The armor takes it first. Turns the game's own setting on at every launch."})
+	GryMod.AdminOption(Panel, "Drowning rules", "gry_drown_rules", "bool", {into = root, help = "60 s of breath, then the suit energy, then health. Off: the engine's drowning."})
+end
+
+local function adminCamouflage(root, Panel)
+	GryMod.AdminOption(Panel, "Camouflage: enemies forget you", "gry_cloak_ai", "bool", {into = root, help = "Striders, hunters and manhacks forget you."})
 	GryMod.AdminOption(Panel, "Camouflage fade for the AI", "gry_cloak_fade_seconds", "choice", {
-		into = form,
+		into = root,
 		help = "How long you stay half visible to addon AIs when the camouflage starts or ends.",
 		choices = {
 			{"Instant", "0"},
@@ -501,23 +594,24 @@ function GryMod.AdminOptions(Panel)
 			{"5 s", "5"}
 		}
 	})
-	GryMod.AdminOption(Panel, "Movement speeds", "gry_movement", "choice", {
-		into = form,
-		choices = {
-			{"GMod's own speeds", "0"},
-			{"Crysis vanilla speeds", "1"},
-			{"Crysis ratios on GMod's speeds", "2"}
-		}
-	})
-	form:ControlHelp("Crysis vanilla: the original game's walk 177 and sprint 266 units a second, the speed mode's sprint climbing to 757 in a second. Ratios: GMod's walk 200 and sprint 400 with the same increases in the speed mode. Both also use the original's energy rules.")
-	GryMod.AdminOption(Panel, "Objectives", "gry_objectives", "bool", {into = form, help = "Objectives given by maps and addons are sent to the players. Off: none are sent."})
-	GryMod.AdminOption(Panel, "Campaign objectives", "gry_campaign_objectives", "bool", {into = form, help = "The Half-Life 2 and episode maps give objectives (the way out of each map, key steps). Off: none, and nothing is read."})
-	GryMod.AdminOption(Panel, "Campaign secrets", "gry_campaign_secrets", "bool", {into = form, help = "Count the hidden items of a campaign map in one objective, \"Secrets 3/7\". Off: they are not mentioned."})
-	GryMod.AdminOption(Panel, "Night vision", "gry_sv_nightvision", "bool", {into = form, help = "The players may use the night vision. Off: it is forbidden for everybody and goes off at once."})
-	GryMod.AdminOption(Panel, "Grenade warning: armed ones only", "gry_grenade_armed_only", "bool", {into = form, help = "Only armed grenades, mines in the air... Off: also the ones lying around."})
-	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
-	GryMod.AdminOption(Panel, "Health regeneration", "gry_health_regen", "bool", {into = form, help = "The suit repairs the health over time. Off: no regeneration."})
-	GryMod.AdminOption(Panel, "Infinite armor", "gry_infinite_armor", "bool", {into = form, help = "The suit never loses energy and no malfunction happens. Off: the normal rules."})
+	GryMod.AdminOption(Panel, "Night vision", "gry_sv_nightvision", "bool", {into = root, help = "The players may use the night vision. Off: it is forbidden for everybody and goes off at once."})
+	GryMod.AdminOption(Panel, "Grenade warning: armed ones only", "gry_grenade_armed_only", "bool", {into = root, help = "Only armed grenades, mines in the air... Off: also the ones lying around."})
+end
+
+local function adminObjectives(root, Panel)
+	GryMod.AdminOption(Panel, "Objectives", "gry_objectives", "bool", {into = root, help = "Objectives given by maps and addons are sent to the players. Off: none are sent."})
+	GryMod.AdminOption(Panel, "Campaign objectives", "gry_campaign_objectives", "bool", {into = root, help = "The Half-Life 2 and episode maps give objectives (the way out of each map, key steps). Off: none, and nothing is read."})
+	GryMod.AdminOption(Panel, "Campaign secrets", "gry_campaign_secrets", "bool", {into = root, help = "Count the hidden items of a campaign map in one objective, \"Secrets 3/7\". Off: they are not mentioned."})
+end
+
+-- The settings of the server that are not about the radar, all in one category of one panel (what a script or a test wants; the page has them in tabs).
+function GryMod.AdminOptions(Panel)
+	local form = GryMod.OptionsCategory(Panel, "Server (administrators only)")
+
+	GryMod.AdminUI.Section(Panel, "Server (administrators only)", form)
+	adminSuitRules(form, Panel)
+	adminCamouflage(form, Panel)
+	adminObjectives(form, Panel)
 end
 
 -- Tells the player what the cache button did (a notice on the screen).
@@ -619,12 +713,12 @@ local function followAutoZoom(slider)
 	end)
 end
 
--- The map behind the radar, in two categories. "Minimap": the switch, the distance the radar shows (the radar range), how sharp the map is (pixels per metre
+-- The map behind the radar, in two tabs. "Minimap": the switch, the distance the radar shows (the radar range), how sharp the map is (pixels per metre
 -- of the tiles: chosen by itself from the range and the screen, or by the slider, which the check box greys), how opaque the map is, how visible the floor
 -- below is through the empty parts of the current one and how visible the outside (the whole height of the map) is behind both. "Minimap speed and cache":
 -- making the tiles in advance, the veil, how much disk the cache of a map may take, the size of one tile, how much time the generator may take in a frame.
 -- The settings are written when the player changes a control, never when the panel opens.
-function GryMod.MinimapOptions(Panel)
+function GryMod.MinimapMapOptions(Panel)
 	local form = GryMod.OptionsCategory(Panel, "Minimap", true)
 
 	GryMod.OptionBox(form, "Map behind the radar", "gry_minimap", "Draw the map of the level behind the radar.")
@@ -646,7 +740,11 @@ function GryMod.MinimapOptions(Panel)
 	form:NumSlider("Map opacity (%)", "gry_minimap_opacity", 0, 100, 0)
 	form:NumSlider("Floor below (opacity %)", "gry_minimap_below", 0, 100, 0)
 	GryMod.OptionSlider(form, "Outside behind floors (%)", "gry_minimap_outside", 0, 100, 0, "The whole height of the map seen through the solid parts; 0 = off.")
+end
 
+-- The minimap, tab "Cache": making the tiles in advance, the veil, the size of the cache and of a tile, the time the generator takes. Returns the panel that holds them
+-- (the button that clears the cache is added to it by the Radar and map page).
+function GryMod.MinimapCacheOptions(Panel)
 	local speed = GryMod.OptionsCategory(Panel, "Minimap speed and cache")
 
 	GryMod.OptionBox(speed, "Make outdoor tiles in advance", "gry_minimap_preload", "From the in/out map, at the definitions the zoom ranges need. Off: only as you play.")
@@ -683,6 +781,13 @@ function GryMod.MinimapOptions(Panel)
 	return speed
 end
 
+-- Both together on one panel (what a script or a test wants); returns the panel of the cache settings.
+function GryMod.MinimapOptions(Panel)
+	GryMod.MinimapMapOptions(Panel)
+
+	return GryMod.MinimapCacheOptions(Panel)
+end
+
 -- The radar's automatic zoom (cl_hud_radar_zoom.lua): the switch, the range of each of the three modes (nothing ties one to another: the player puts what he
 -- wants) and how long a mode has to hold before the radar goes there. The radar range slider of the Minimap category is greyed while the switch is on.
 function GryMod.RadarZoomOptions(Panel)
@@ -702,7 +807,7 @@ function GryMod.ZoneMapOptions(Panel)
 
 	local Zone = GryMod.ZoneMapClient
 
-	form:Help(Zone and Zone.StatusText() or "In/out map: not available")
+	GryMod.OptionNote(form, Zone and Zone.StatusText() or "In/out map: not available")
 	GryMod.OptionBox(form, "Draw the map in the world", "gry_zonemap_debug", "A debug drawing of the in/out map, as boxes in the world.")
 	form:CheckBox("Show the IN zones (indoor, red)", "gry_zonemap_debug_in")
 	form:CheckBox("Show the OUT zones (outdoor, green)", "gry_zonemap_debug_out")
@@ -711,27 +816,70 @@ function GryMod.ZoneMapOptions(Panel)
 	form:NumSlider("Display distance (m)", "gry_zonemap_debug_range", 20, 300, 0)
 end
 
--- The Config menu: the title, then one folding category for each subject (the keys, the HUD, the binoculars, the suit, the sounds, the server, the
--- development tools). Every control is bound to its convar: the settings are saved, and opening the panel never changes them.
+-- All the settings of the player that the HUD and the Suit pages hold, together on one panel with a folding category for each subject (the tabs one after the other, no
+-- sheet, no settings of the server: those have their own page): what a script or a test wants. The menu itself shows the pages (GryMod.HUDOptionsPanel and the
+-- others, in tabs). Every control is bound to its convar: the settings are saved, and building the panel never changes them.
 function GryMod.GryOptionschute(Panel)
 	Panel:AddControl("Label", {
 		Text = "GryMod Config"
 	})
 
-	GryMod.KeysOptions(Panel)
-	GryMod.GryHUDOptions(Panel)
-	GryMod.BinocularsOptions(Panel)
-	GryMod.SuitOptions(Panel)
-	GryMod.NightVisionOptions(Panel)
-	GryMod.SoundOptions(Panel)
-	GryMod.AdminOptions(Panel)
-	GryMod.DevelopmentOptions(Panel)
+	GryMod.BuildOptionsFlat(Panel, {"hud", "suit"})
+
+	-- the radar, the compass and the maps have a page of their own (cl_options_radar.lua)
+	Panel:Help("Radar, compass and map options are in the Radar and map menu.")
 end
 
+-- The tabs of the HUD page ("HUD and controls").
+GryMod.AddOptionTab("hud", "Keys", function(root) GryMod.KeysOptions(root) end, 10)
+GryMod.AddOptionTab("hud", "Panels", function(root) GryMod.HUDPanelsOptions(root) end, 20)
+GryMod.AddOptionTab("hud", "On screen", function(root) GryMod.HUDScreenOptions(root) end, 30)
+GryMod.AddOptionTab("hud", "Aim and prompts", function(root) GryMod.HUDAimOptions(root) end, 40)
+GryMod.AddOptionTab("hud", "Colours", hudColours, 50)
+GryMod.AddOptionTab("hud", "Quick menu", hudQuickMenu, 60)
+GryMod.AddOptionTab("hud", "Alerts", hudAlerts, 70)
+GryMod.AddOptionTab("hud", "Advanced", hudAdvanced, 80)
+
+-- The tabs of the Suit page ("Suit and vision").
+GryMod.AddOptionTab("suit", "Suit", function(root) GryMod.SuitEffectsOptions(root) end, 10)
+GryMod.AddOptionTab("suit", "Camouflage", function(root) GryMod.CamouflageOptions(root) end, 20)
+GryMod.AddOptionTab("suit", "Binoculars", function(root) GryMod.BinocularsViewOptions(root) end, 30)
+GryMod.AddOptionTab("suit", "Scan", function(root) GryMod.BinocularsScanOptions(root) end, 40)
+GryMod.AddOptionTab("suit", "Zoom", function(root) GryMod.BinocularsZoomOptions(root) end, 50)
+GryMod.AddOptionTab("suit", "Night vision", function(root) GryMod.NightVisionOptions(root) end, 60)
+GryMod.AddOptionTab("suit", "Sounds", function(root) GryMod.SoundOptions(root) end, 70)
+
+-- The tabs of the Server page ("Server (admins)"); the one about the radar is added by cl_options_radar.lua.
+GryMod.AddOptionTab("server", "Suit rules", adminSuitRules, 10)
+GryMod.AddOptionTab("server", "Camouflage and more", adminCamouflage, 20)
+GryMod.AddOptionTab("server", "Objectives", adminObjectives, 30)
+
+-- The pages of the menu, each a function that builds it on the panel the spawn menu gives (a name that the tests and the other files can find).
+function GryMod.HUDOptionsPanel(Panel)
+	return GryMod.BuildOptionsPage(Panel, "hud")
+end
+
+function GryMod.SuitOptionsPanel(Panel)
+	return GryMod.BuildOptionsPage(Panel, "suit")
+end
+
+function GryMod.ServerOptionsPanel(Panel)
+	return GryMod.BuildOptionsPage(Panel, "server")
+end
+
+-- The entries of the menu: the Options tab of the spawn menu, the GryMod category (the radar, compatibility pages are built by cl_options_radar.lua and cl_options_compat.lua).
 function GryMod.GryOptionschuteOptionmenu()
-	spawnmenu.AddToolMenuOption("Options", "GryMod", "Config", "Config it !", "test1", "test23", GryMod.GryOptionschute)
-	spawnmenu.AddToolMenuOption("Options", "GryMod", "Radar", "Radar and map", "", "", GryMod.RadarOptionsPanel)
-	spawnmenu.AddToolMenuOption("Options", "GryMod", "Compat", "Compatibility", "", "", GryMod.CompatOptionsPanel)
+	local builders = {
+		hud = GryMod.HUDOptionsPanel,
+		suit = GryMod.SuitOptionsPanel,
+		radar = GryMod.RadarOptionsPanel,
+		compat = GryMod.CompatOptionsPanel,
+		server = GryMod.ServerOptionsPanel
+	}
+
+	for _, page in ipairs(GryMod.OptionPages) do
+		spawnmenu.AddToolMenuOption("Options", "GryMod", page.class, page.name, "", "", builders[page.id])
+	end
 end
 
 hook.Add("PopulateToolMenu", "PopulateToolMenu", GryMod.GryOptionschuteOptionmenu)

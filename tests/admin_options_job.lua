@@ -34,7 +34,7 @@ local function withAdmin(isAdmin, fn)
 	end
 end
 
-GryMod.GryOptionschute(panel)
+GryMod.ServerOptionsPanel(panel)
 local box = panel.GryAdminControls.gry_malfunction
 local combo = panel.GryAdminControls.gry_mechanics
 local energy = panel.GryAdminControls.gry_energy_net

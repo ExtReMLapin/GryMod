@@ -193,7 +193,7 @@ return {
 		},
 		{
 			-- the slider lives in the Radar and map menu (next to the automatic definition, which follows it); the Config menu has none and only says where the radar options went
-			name = "the Radar and map menu has ONE slider for the range, in the Minimap section, with the recommended values in its label; the Config menu has none and points to the menu",
+			name = "the Radar and map menu has ONE slider for the range, in the Minimap tab, with the recommended values in its label; the Config menu has none and points to the menu",
 			func = function()
 				local found, sliderMin, sliderMax, advice
 				local count, position, minimapAt, sliderAt = 0, 0, nil, nil
@@ -212,9 +212,13 @@ return {
 								sliderMin, sliderMax = child:GetMin(), child:GetMax()
 								count = count + 1
 								sliderAt = position
-							elseif child.ClassName == "ControlPanel" and child.Header and child.Header:GetText() == "Minimap" then
-								-- the section is a folding category (cl_options.lua): its title is the header
-								minimapAt = position
+							elseif child.ClassName == "ControlPanel" and child.GryTabRoot and child:GetParent().GetItems then
+								-- the section is a tab of the page (cl_options_tabs.lua): its name is the tab's
+								for _, item in ipairs(child:GetParent():GetItems()) do
+									if item.Panel == child and item.Tab.GryName == "Minimap" then
+										minimapAt = position
+									end
+								end
 							elseif child.ClassName == "DLabel" and string.find(child:GetText(), "down to 5", 1, true) then
 								-- the recommended values are the text under the slider (its label is short: a panel cuts a long one)
 								advice = child:GetText()

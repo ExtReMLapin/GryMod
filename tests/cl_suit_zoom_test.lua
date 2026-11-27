@@ -999,11 +999,12 @@ return {
 					expect(combo).toNot.beNil()
 					expect(slider).toNot.beNil()
 
-					-- the zoom key picker, then the selector, then the slider
+					-- the quick menu key picker and its reminder box, then the zoom key picker, then the selector, then the slider
 					expect(order[1]).to.equal("binder")
-					expect(order[2]).to.equal("binder")
-					expect(order[3]).to.equal("combo")
-					expect(order[4]).to.equal("slider")
+					expect(order[2]).to.equal("box")
+					expect(order[3]).to.equal("binder")
+					expect(order[4]).to.equal("combo")
+					expect(order[5]).to.equal("slider")
 
 					-- three lines, in the order of the modes, and the saved mode is the one shown; opening wrote nothing
 					for mode = 0, 2 do

@@ -1,6 +1,6 @@
--- The Radar and map menu of the options: a second entry of the GryMod category (Options tab), next to Config. It holds everything about the radar, the
--- compass and the maps, which was in the Config menu: the two HUD switches of the radar, the minimap, the automatic zoom, the in/out map, and the
--- settings of the server that touch them.
+-- The Radar and map page of the options (an entry of the GryMod category, Options tab). It holds everything about the radar, the compass and the maps, in
+-- tabs (cl_options_tabs.lua): the HUD switches of the radar, the minimap, the automatic zoom, the minimap cache, the in/out map and the big map. The settings of the
+-- server that touch them are in a tab of the Server page.
 -- An action is a BUTTON, a toggle (an on/off state) is a check box:
 --   * a setting of the player is a check box (or a slider) bound to its convar; opening the menu writes nothing;
 --   * an action is a button (GryMod.ActionButton, GryMod.AdminOption kind "action"): a click asks "are you sure", on yes it runs the action, on no
@@ -49,23 +49,19 @@ local function radarHUDSwitches(Panel)
 	GryMod.OptionBox(form, "Explosion rings", "gry_hud_radarpings", "A ring on the radar at each explosion near you (a grenade, a rocket, a barrel).")
 end
 
--- The settings of the server about the radar and the in/out map, for the administrators only: four check boxes (a request to the server each) and the
--- button that deletes the in/out map and makes it again (the server checks the right again).
-local function serverOptions(Panel)
-	local form = GryMod.OptionsCategory(Panel, "Server (administrators only)")
-
-	GryMod.AdminUI.Section(Panel, "Server (administrators only)", form)
-
-	GryMod.AdminOption(Panel, "Allies in blue from the start", "gry_radar_allies_always", "bool", {into = form, help = "NPCs that like you. Off: they show only when alerted, fighting or scanned."})
-	GryMod.AdminOption(Panel, "Vehicles and mines once scanned", "gry_radar_objects", "bool", {into = form, help = "Vehicles and Combine mines show on the radar once the binoculars have scanned them."})
-	GryMod.AdminOption(Panel, "Explosion rings on the radar", "gry_radar_pings", "bool", {into = form, help = "Each explosion rings the radar of the players within 250 m. Off: only the ones an addon reports."})
-	GryMod.AdminOption(Panel, "Danger bar: hostiles that see or hear you", "gry_radar_detect", "bool", {into = form, help = "The danger bar and the hexagon also react to hostiles that have noticed you from far away, not only to the alerted ones that are on the radar."})
-	GryMod.AdminOption(Panel, "Team mates on the radar", "gry_radar_teammates", "bool", {into = form, help = "In a team game, the living players of your team show on your radar."})
-	GryMod.AdminOption(Panel, "The server makes the in/out map", "gry_zonemap", "bool", {into = form, help = "The automatic zoom and other features use it."})
-	GryMod.AdminOption(Panel, "In/out map from the navigation mesh", "gry_zonemap_navmesh", "bool", {into = form, help = "Off: it is made from the AI node graph."})
+-- The settings of the server about the radar and the in/out map, for the administrators only: the check boxes (a request to the server each) and the
+-- button that deletes the in/out map and makes it again (the server checks the right again). A tab of the Server page. `root` draws them, `Panel` looks after them.
+local function serverOptions(root, Panel)
+	GryMod.AdminOption(Panel, "Allies in blue from the start", "gry_radar_allies_always", "bool", {into = root, help = "NPCs that like you. Off: they show only when alerted, fighting or scanned."})
+	GryMod.AdminOption(Panel, "Vehicles and mines once scanned", "gry_radar_objects", "bool", {into = root, help = "Vehicles and Combine mines show on the radar once the binoculars have scanned them."})
+	GryMod.AdminOption(Panel, "Explosion rings on the radar", "gry_radar_pings", "bool", {into = root, help = "Each explosion rings the radar of the players within 250 m. Off: only the ones an addon reports."})
+	GryMod.AdminOption(Panel, "Danger bar: hostiles that see or hear you", "gry_radar_detect", "bool", {into = root, help = "The danger bar and the hexagon also react to hostiles that have noticed you from far away, not only to the alerted ones that are on the radar."})
+	GryMod.AdminOption(Panel, "Team mates on the radar", "gry_radar_teammates", "bool", {into = root, help = "In a team game, the living players of your team show on your radar."})
+	GryMod.AdminOption(Panel, "The server makes the in/out map", "gry_zonemap", "bool", {into = root, help = "The automatic zoom and other features use it."})
+	GryMod.AdminOption(Panel, "In/out map from the navigation mesh", "gry_zonemap_navmesh", "bool", {into = root, help = "Off: it is made from the AI node graph."})
 
 	local reset = GryMod.AdminOption(Panel, "Delete and remake the in/out map", nil, "action", {
-		into = form,
+		into = root,
 		message = "gry_zonemap_reset",
 		confirm = "Delete the in/out map of this map and make it again? The server computes it again from the map's navigation mesh or its node graph (the box above); the automatic zoom uses its own rays meanwhile."
 	})
@@ -73,25 +69,26 @@ local function serverOptions(Panel)
 	reset.GryZoneMapReset = true
 end
 
--- The menu, in this order: the title, then the categories: the HUD switches of the radar, the minimap and its speed and cache (with the cache button), the
--- automatic zoom, the in/out map, the server.
-function GryMod.RadarOptionsPanel(Panel)
-	Panel:AddControl("Label", {
-		Text = "GryMod Radar and map"
-	})
-
-	radarHUDSwitches(Panel)
-
-	local speed = GryMod.MinimapOptions(Panel)
+-- The tab "Cache": the minimap's cache settings and the button that clears the cache of this level.
+local function cacheOptions(root)
+	local speed = GryMod.MinimapCacheOptions(root)
 
 	local clear = GryMod.ActionButton(speed, "Clear the minimap cache", function()
 		GryMod.ClearMinimapCache()
 	end, "Clear the minimap cache of this level? The map is made again as you play.")
 
 	clear.GryMinimapClear = true
+end
 
-	GryMod.RadarZoomOptions(Panel)
-	GryMod.ZoneMapOptions(Panel)
+-- The tabs of the Radar and map page, in this order (the big map adds its own, map/options.lua); the settings of the server that touch the radar are a tab of the Server page.
+GryMod.AddOptionTab("radar", "Radar", radarHUDSwitches, 10)
+GryMod.AddOptionTab("radar", "Minimap", function(root) GryMod.MinimapMapOptions(root) end, 20)
+GryMod.AddOptionTab("radar", "Auto zoom", function(root) GryMod.RadarZoomOptions(root) end, 30)
+GryMod.AddOptionTab("radar", "Cache", cacheOptions, 40)
+GryMod.AddOptionTab("radar", "In/out map", function(root) GryMod.ZoneMapOptions(root) end, 50)
+GryMod.AddOptionTab("server", "Radar and map", serverOptions, 40)
 
-	serverOptions(Panel)
+-- The page: title, filter, tabs.
+function GryMod.RadarOptionsPanel(Panel)
+	return GryMod.BuildOptionsPage(Panel, "radar")
 end

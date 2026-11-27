@@ -168,7 +168,7 @@ in the commit message, not skipped.
 15. **Inspect and other animations** that have their own timing are left alone unless the original speeds them up.
 
 **Shipping**
-16. Settings go on the **Compatibility page, one tab or category for the base** (administrators' settings through the white list), each one optional.
+16. Settings go on the **Compatibility page, one tab for the base**, added with `GryMod.AddOptionTab("compat", "Name", function(root, Panel) ... end)` (see the top of `lua/grymod/client/cl_options_tabs.lua`; the tab keeps to about ten settings, and the filter field of the page finds them by their label and explanation). The administrators' settings go through the white list (`GryMod.AdminOption(Panel, ..., {into = root})`); the ones that are the same for every base are in the Suit effects tab. Each one is optional.
 17. Loader lines (`grymod_shared.lua`), `python tools/check_lua_syntax.py`, `python -m unittest tools.test_loader_coverage`, tests with stand-ins that pin the markers and
     what is called, plus a live check on the real base, numbers written in the commit message.
 18. Every hook the patch adds is cheap (early return), runs under `pcall` where the base calls it, and answers `nil` when nothing changes.

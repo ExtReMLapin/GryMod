@@ -1,6 +1,6 @@
 -- The settings of GryMod that belong to the SERVER and that an administrator may change from the options panel: the white list, with the
 -- kind and the valid values of each. Shared: the server checks every request against it (sv_server_options.lua), the panel builds its
--- "Server (administrators only)" section from the same names (cl_admin_option.lua, cl_options.lua).
+-- Server page (and the suit's weapon effects on the Compatibility page) from the same names (cl_admin_option.lua, cl_options.lua, cl_options_radar.lua, cl_options_compat.lua).
 -- A setting that is not here cannot be changed through the net message, whatever the sender.
 
 GryMod = GryMod or {}
