@@ -97,6 +97,21 @@ local function hudElements(Panel)
 
 	form:NumSlider("Crosshair style", "gry_hud_crosshair_style", 1, 13, 0)
 	GryMod.OptionBox(form, "Weapons choose their crosshair", "gry_hud_crosshair_weapon", "A weapon of an addon can ask for one of the 13 crosshairs. Off: always the style above.")
+	-- how the mouse wheel changes the weapon: the setting is written when the player picks a line, never when the panel opens
+	form:Help("Weapon selector (the mouse wheel)")
+
+	local selectorBox = vgui.Create("DComboBox")
+	selectorBox.GryConVar = "gry_weapon_selector"
+	selectorBox:SetSortItems(false)
+	selectorBox:AddChoice("The game's own selector (default)", 0)
+	selectorBox:AddChoice("Wheel only: a notch changes the weapon", 1)
+	selectorBox:AddChoice("Wheel, then click: the list at the bottom right", 2)
+	selectorBox:SetValue((selectorBox:GetOptionText(math.Clamp(GetConVar("gry_weapon_selector"):GetInt(), 0, 2) + 1)))
+	selectorBox.OnSelect = function(_, _, _, data)
+		RunConsoleCommand("gry_weapon_selector", tostring(data))
+	end
+	form:AddItem(selectorBox)
+	form:ControlHelp("Wheel only: a notch of the wheel changes the weapon at once, no click. Wheel, then click: the wheel walks the weapon list of the HUD (turn the list on above) and the left click confirms; the click then never counts as a shot in the camouflage. The weapon keys keep the game's selector.")
 	GryMod.OptionBox(form, "Energy bar at every frame", "gry_hud_energy_smooth", "The energy bar is predicted between the server's updates, so that it moves at every frame.")
 	GryMod.OptionBox(form, "Use prompt on props", "gry_usehint_props", "PICK UP also shows on the props, ragdolls and physboxes you can lift (you can pick up almost anything). Off: the prompt is only for what really needs the use key.")
 	GryMod.OptionBox(form, "Use prompt feedback", "gry_usehint_feedback", "The prompt pulses with a beep when you press the use key on a door, a button or a charger, then dims for a moment.")

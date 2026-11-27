@@ -242,6 +242,25 @@ weapons are mapped as data in `lua/grymod/compat/hl2/sh_weapons.lua`: the pistol
 `Shotgun`, the RPG `LAW`, the crossbow `DSG1`, the grenade `Grenade_Explosive`, the crowbar, the stun baton and the fists `Fists`, the SLAM
 `AVMine`, the medkit `RepairKit`. The gravity gun, the physics gun, the tool gun, the camera and the bug bait show their name.
 
+### The weapon selector setting (the mouse wheel)
+
+`gry_weapon_selector` is a client setting (a choice of three lines in the options menu, HUD category), and it is 0 by default:
+
+| Value | What the wheel does |
+| --- | --- |
+| 0 | The game's own selector, as it always was. Nothing of GryMod runs for it. |
+| 1 | Wheel only: a notch changes the weapon at once (down is the next weapon, up the previous one, in the order of the slots), with no click. The weapon list above shows by itself, as it does for any change. |
+| 2 | Wheel, then click: the wheel walks the weapon list above (the selection is on the plate) and the left click confirms. When the list cannot show (the HUD or the list is off) the wheel works as in position 1. |
+
+It is one `PlayerBindPress` hook and nothing runs between two binds. The wheel is left to the game when the attack key is down (the physgun
+moves the prop with it), in a vehicle, with no weapon in hand, and while the zoom of the binoculars or of the suit is up. The weapon keys
+(`slot1`...) and the last weapon key still open the game's own selector in every position. A weapon with no ammo is skipped, as the game's selector does.
+
+With the camouflage, the click that confirms a selection (position 2) is taken, so the weapon in hand does not fire, and it never counts as a shot that
+ends the camouflage, with the option "Selector click keeps the camouflage" on or off. In positions 1 and 2 the game's selector is never open, so a click
+after the wheel is a plain click. In position 2 the client hook `GryMod_WeaponListShown(ply, wep)` runs at each notch, with `wep` the weapon the
+wheel is on.
+
 ### A weapon that draws its own crosshair, or none
 
 `crosshair = false` keeps GryMod's crosshair off while the weapon is in hand: for a weapon with no aiming point (a melee weapon, a

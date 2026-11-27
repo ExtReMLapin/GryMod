@@ -609,6 +609,16 @@ local function wheelTaken()
 	return bino ~= nil and bino.IsUp ~= nil and bino.StagesEnabled ~= nil and bino.IsUp() and bino.StagesEnabled()
 end
 
+GryMod.WheelTaken = wheelTaken -- asked by the weapon selector setting (cl_weapon_selector.lua)
+
+-- Is the wheel the weapon selector setting's (gry_weapon_selector 1 or 2, cl_weapon_selector.lua)? Then the game's selector never sees the notches of the
+-- wheel: they are not given to the guard below (it would take the next real shot for the confirmation of a selector that is not there).
+local function selectorSettingOwnsWheel(ply, kind)
+	local mine = GryMod.WeaponSelector
+
+	return (kind == "next" or kind == "prev") and mine ~= nil and mine.TakesWheel(ply)
+end
+
 -- Selects the weapon the wheel was on when the selector closed (steps notches from the weapon in hand); nothing when unknown.
 local function selectOnTheWheel(ply, steps)
 	local active = ply:GetActiveWeapon()
@@ -657,7 +667,7 @@ function GryMod.CloakSelectorBind(ply, bind, pressed, code)
 		return true
 	elseif kind == "close" then
 		Sel.Reset(selectorState)
-	elseif not wheelTaken() then
+	elseif not wheelTaken() and not selectorSettingOwnsWheel(ply, kind) then
 		Sel.Notch(selectorState, now, kind)
 	end
 
@@ -698,6 +708,8 @@ function GryMod.CloackAttack(ply, key)
 
 		if SelectorGuard:GetBool() and Sel.ConfirmsPress(selectorState, CurTime()) then
 			watchAfterConfirmation(ply) -- the selector's click: no shot, unless it stays held and the new weapon fires
+		elseif GryMod.WeaponSelector and GryMod.WeaponSelector.ConfirmsPress(CurTime()) then
+			watchAfterConfirmation(ply) -- the click that confirmed a selection of the weapon selector setting (position 2): the same
 		elseif attackNow(ply, weapon) then
 			endCloak(ply)
 		else

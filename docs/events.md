@@ -173,7 +173,8 @@ in the weapon registry, another weapon in hand, or the player turned the bar off
 
 Client. Runs each time the weapon list is shown: the player changed the weapon in hand (`wep`) and the list of the player's weapons (at the
 bottom right, up to five rows, the weapon in hand on a plate) appears for three seconds. It is not run when the list is off (`gry_hud_weaponlist`,
-the HUD, the suit) or when the HUD was just made (nothing changed). Run inside a `pcall`; the return value is ignored.
+the HUD, the suit) or when the HUD was just made (nothing changed). With the weapon selector setting at 2 (`gry_weapon_selector`, [weapons.md](weapons.md)) it also
+runs at each notch of the wheel, and `wep` is then the weapon the wheel is on, not the one in hand. Run inside a `pcall`; the return value is ignored.
 
 ## What depends on the drawn HUD
 
