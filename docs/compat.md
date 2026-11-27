@@ -40,6 +40,7 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_vmanip.lua` | VManip's animations are not started while the binoculars are up (`VManipPrePlayAnim` answers `false`) and the one that plays is ended: the view model is not drawn then, so its `PostDrawViewModel` does not come and the animation would freeze, with its camera angle. Stand-ins only. |
 | | `cl_nvg_others.lua` | `GryMod_CanUseView("nightvision")` answers `false` while another night vision is on, so the key does not stack a second one. Reads NVScript (its `NV_FX` hook; read in two forks of its code) and JMod's goggles (`ply.EZarmor.effects`). Modern Warfare NVGs and Arctic's GCAL are not read (no public source, not installed): add a reader to `GryMod.CompatOtherNV.Sources`. Stand-ins only. |
 | `compat/vehicles/` | `sh_simfphys.lua`, `sv_simfphys.lua`, `cl_simfphys.lua` | simfphys, the physics vehicle base (the base and its armed pack). The car is one class for every vehicle, the player sits on a child seat, the wheels have a +use of their own. Shared: the vehicle provider (the car, not the seat; the driver who sits, never the remote driver), the tracked entries (every car is a vehicle contact once scanned, a tank is a heavy machine, the crew of the car colours it, its own forward turns its icon, a wreck is no contact, the anti-tank mine is a device), the prompts of the wheels and of the mine. Server: a hit filter (what simfphys cancels on a seated player costs the suit nothing; the explosion of the car, which wants its occupants dead, goes through the armor) and the shell of a cannon and the thrown mine ending the camouflage. Client: no prompt on a locked car. **Written from the source of simfphys, tested with stand-ins: see the section below.** |
+| `compat/vehicles/` | `sh_lvs.lua`, `sv_lvs.lua`, `cl_lvs.lua` | **LVS** (the framework `lvs_base` of SpaxscE and the packs built on it). The vehicle of a player, its driver and its kind (`AddVehicleProvider`); the radar entries (flying unit or machine, relation by LVS team, a wreck is no contact, the occupants, the heading, what an AI vehicle knows of the player); the grenade warning for `lvs_missile` / `lvs_bomb` and the classes built on them (only for the player the missile is aimed at); the use prompt of a vehicle (not for a locked or wrecked one); the icon of LVS's tools; the hits an occupant takes (`AddHitFilter`: what LVS cancels is ignored, the explosion's kill goes through the bar); the shots of LVS's weapons end the camouflage (`LVS:FireBullet` is wrapped, `ReportAttack`); the view LVS owns (`AddCameraOwner`). **Read in LVS's code, not tried in a game** (LVS was not installed when it was written): see below. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -144,6 +145,20 @@ its code answers (`tests/sh_compat_simfphys_test.lua`, `sv_...`, `cl_...`). **Wh
 - the shells (`simfphys_tankprojectile`, made with `Attacker` and `AttackingEnt` set before the spawn, seen a tick after) and the thrown mine (`Thrown`, `CreatedBy`);
 - what is NOT done on purpose: no ring of the radar for the shell and the wreck (the core rings every `util.BlastDamage`; the wreck's gib makes one), no danger of the grenade warning for the shell (it flies at
   about 13 000 units a second: less than a second of warning at the warning's rate), no camouflage ban and no notarget for a seated player (the owner's decision: the suit works in a vehicle).
+## LVS: what was read, and what to check with the real addon
+
+Nothing of this was tried with LVS itself: the tests use stand-ins that answer like what was read in `lvs_base` (commit 54c88e2, version 354, `github.com/SpaxscE/lvs_base`). The patch does nothing when the `LVS` table does not
+exist, and installs itself when LVS announces itself (`LVS:Initialize`) or at `InitPostEntity`. To check with the real addon (two minutes each):
+
+1. **Hits**: in armor mode, seated in an LVS car, `ply:TakeDamage(20)`: the energy must not move (LVS zeroes the hit, the filter says "ignore"). Destroy the plane the player sits in: he must die (the explosion's `Health() + Armor()` hit goes through the bar).
+2. **Radar**: an LVS plane with `SetAI(true)` shows as a flying unit once scanned, and goes alerted / fighting when its target is the player; the car the player sits in is not on his radar; a wreck leaves the radar.
+3. **Grenade warning**: a missile locked on the player's vehicle warns him, a missile locked on another vehicle does not. A bomb or an unguided missile warns when it flies at him.
+4. **Prompt**: "ENTER VEHICLE" in front of an LVS car (not when it is locked with the key `1`); a car with doors needs two presses (the prompt stays).
+5. **Camouflage**: firing an LVS weapon (machine gun, cannon, missile) ends it.
+6. **View**: the radar's heading follows the view in a plane, in direct input and in mouse aim.
+
+Not done on purpose (the owner decides): hiding GryMod's radar and status panels while seated in an LVS vehicle (LVS draws its own health at the bottom left and its speed at the bottom right: `AddHudSuppressor`), a `heavy` entry for the hits of LVS vehicles
+(a suit put down by a tank shell: an effect Crysis does not have), a warning for `lvs_item_mine`.
 
 ## Adding a patch
 
