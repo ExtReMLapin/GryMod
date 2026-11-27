@@ -823,14 +823,15 @@ return {
 					expect(def.altAmmo).to.beNil()
 				end
 
-				expect(API.ResolveWeapon("weapon_physcannon").alt).to.equal("none")
-				expect(API.ResolveWeapon("weapon_physcannon").altShoots).to.beFalse()
-
-				-- the right click of the three stock melee weapons is another blow (the other hand for the fists): it ends the camouflage, so it is declared as a "shot"
-				for _, class in ipairs({"weapon_crowbar", "weapon_stunstick", "weapon_fists"}) do
-					expect(API.ResolveWeapon(class).alt).to.equal("melee")
-					expect(API.ResolveWeapon(class).altShoots).to.beTrue()
+				-- the right click of the fists is another blow (the other hand): it ends the camouflage, so it is declared as a "shot". The crowbar and the stun baton have NO
+				-- secondary in the game (measured: the right click starts no swing and no cooldown), so their registry entries say "none"
+				for _, class in ipairs({"weapon_physcannon", "weapon_crowbar", "weapon_stunstick"}) do
+					expect(API.ResolveWeapon(class).alt).to.equal("none")
+					expect(API.ResolveWeapon(class).altShoots).to.beFalse()
 				end
+
+				expect(API.ResolveWeapon("weapon_fists").alt).to.equal("melee")
+				expect(API.ResolveWeapon("weapon_fists").altShoots).to.beTrue()
 			end
 		},
 		{

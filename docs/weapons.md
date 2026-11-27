@@ -100,7 +100,7 @@ When the HUD asks whether a right click shoots now (the camouflage), it uses `al
 | `"melee"` | always (a blow), but only with `altShoots = true`: the default of `"melee"` is false, a swing that is not declared an attack never ends the camouflage |
 | `"zoom"`, `"none"` | never |
 
-`altShoots` itself defaults to true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow`. A melee weapon whose right click is another blow (the stock crowbar, stun baton and fists) says `alt = "melee", altShoots = true`.
+`altShoots` itself defaults to true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow`. A melee weapon whose right click is another blow (the stock fists; the stock crowbar and stun baton have no right click at all) says `alt = "melee", altShoots = true`.
 
 The icon keys are the labels of the HUD movie: `Single`, `Burst`, `Auto`, `Grenade`, `Shotgun`, `Mine`, `Repairkit`, `Missle`,
 `NoGun`, `HandGrenade`, and twelve that no stock weapon uses and are yours to choose: `Incendiary`, `Tranquilizer`, `infinity`,
