@@ -357,8 +357,11 @@ return {
 			func = function()
 				local calls = 0
 
+				-- (only the base of this test is counted: the entries that GryMod registers for another addon, when it is there, name bases too)
 				scripted_ents.IsBasedOn = function(class, base)
-					calls = calls + 1
+					if base == "t_base_ai" then
+						calls = calls + 1
+					end
 
 					return false
 				end

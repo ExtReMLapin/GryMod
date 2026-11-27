@@ -101,11 +101,24 @@ return {
 					return realSafeCall(...)
 				end
 
+				-- (the provider of an adapter that GryMod ships for another addon is there only when that addon is: it is put aside for the count)
+				local adapter = GryMod.VJBase
+				local hadAdapter = adapter and adapter.ProviderAdded
+
+				if hadAdapter then
+					adapter.TeardownServer()
+				end
+
 				local ok, err = pcall(function()
 					for _ = 1, 20 do API.Relation(ply(), fakeNPC(D_LI)) end
 				end)
 
 				API.SafeCall = realSafeCall
+
+				if hadAdapter then
+					adapter.SetupServer()
+				end
+
 				expect(ok).to.beTrue()
 				expect(calls).to.equal(0)
 			end

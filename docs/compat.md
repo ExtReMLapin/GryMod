@@ -49,6 +49,8 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_pac3.lua` | PAC3: the outfit of a player is hidden while he is camouflaged (`pac.TogglePartDrawing`, told by `GryMod_CloakChanged`), the parts on the view model and the hands of the local player too. |
 | | `cl_prop_protection.lua` | Falco's Prop Protection and NADMOD PP: no use prompt on what the prop protection will not let the player use (`AddUsableFilter`). |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
+| `compat/npc/` | `sh_vjbase.lua`, `sv_vjbase.lua` | **VJ Base** (and the packs built on it: Half-Life Resurgence, the official collection...). Shared: the projectiles VJ tags as grenades or dangers (`VJ_ID_Grenade`, `VJ_ID_Danger`) join the grenade warning; the tanks, the aircraft and the bullseye in the radar's registry; the prompts "TAKE" (a VJ weapon on the floor needs the use key) and "FOLLOW" (an ally that follows when used); a melee weapon has no gun icon; the NPC controller (possession) owns the camera. Server: VJ's enemies that have not seen the player are hostile (not neutral) for the radar, the friends stay allies while the player is camouflaged and keep following him, a melee weapon or a launcher in the hands ends the camouflage, VJ's projectiles ring the radar, the melee slow gives back the new mode's speeds. Nothing happens without VJ Base. Facts read in its code and tried in a real game, see [the VJ Base section](#vj-base-what-the-adapter-does-and-why). |
+| `compat/damage/` | (none yet) | Where the patches for addons that change the damage go. |
 
 **The patches of `compat/tools/` were written from the public code of the addons and tried with stand-ins only** (none of them was installed on the machine): the tests (`tests/sh_compat_*_test.lua`,
 `sv_compat_*_test.lua`, `cl_compat_*_test.lua` for Wiremod, JMod, M9K Specialties, Gbombs 5, PAC3 and prop protection) pin what the patches read and answer, not what the real addons do. Install the addon
@@ -246,3 +248,29 @@ in the commit message, not skipped.
     what is called, plus a live check on the real base, numbers written in the commit message.
 18. Every hook the patch adds is cheap (early return), runs under `pcall` where the base calls it, and answers `nil` when nothing changes.
 19. Document it in the table at the top of this file and in [api.md](api.md) if the API grew.
+
+## VJ Base: what the adapter does and why
+
+VJ Base keeps its own opinion of who is an enemy and tells the engine late, so what GryMod reads from the engine (`Disposition`) is not what VJ means. Measured in a real game
+(VJ Base 3.3.0, the 3.2.0 release has the same code for all of this):
+
+- **A hostile that has not seen the player is `D_NU`** (or `D_VJ_INTEREST`, 100): the radar saw every VJ enemy as neutral until it fought. The relation provider `GryMod VJ Base adapter`
+  answers from VJ's rules: its memory of the player (`RelationshipMemory[ply][VJ.MEM_OVERRIDE_DISPOSITION]`), a class shared with the player (`VJ_NPC_Class`, `CanAlly`), its behaviour
+  (neutral, passive and nature NPCs are neutral), and the engine's own `D_HT` / `D_LI` when they are clear. The answer is kept for 0.2 s per player and NPC. It is added to the chain
+  only when VJ Base is there.
+- **A camouflaged player (`FL_NOTARGET`) is `D_NU` to every VJ NPC, friends included**, and a follower that is not `D_LI` at its next Think stops following (measured: within 0.25 s).
+  A priority of 99 on the relation does not hold: VJ writes it again 0.75 s later. A Disposition set on the NPC's own table is never called (an engine method is found first). So the
+  adapter replaces the NPC metatable's `Disposition` **only while a camouflaged player has VJ followers**, and it answers `D_LI` for that player only (and only for what the engine says is
+  `D_NU` or `D_ER`); the original is put back when the camouflage ends or the player dies or leaves. A player cannot start a follow while camouflaged (VJ refuses a `D_NU`).
+- **The weapon in the hands**: `weapon_vj_*` fire bullets through `FireBullets` (the server sees them), but a melee weapon and a launcher (`Primary.DisableBulletCode`) do not. The weapon
+  entity gets one wrapper on `PrimaryAttack` (when the player picks it up) that calls `GryMod.API.ReportAttack` after the weapon's own code. The stock VJ melee weapons are for NPCs only
+  (`MadeForNPCsOnly`: the player's copy is removed), the packs have their own.
+- **The explosions** of VJ's projectiles are drawn as effects and dealt by `VJ.ApplyRadiusDamage` (no `env_explosion`, no `util.BlastDamage`): the class goes into `Radar.ExplosiveClasses`
+  the first time one is made, with its `RadiusDamageRadius`. (The death blasts of VJ's tanks and helicopters are `util.BlastDamage`: the core rings them.)
+- **The melee slow** (`MeleeAttackPlayerSpeed`: the Cry of Fear, L4D and No More Room in Hell packs, the Zombine) stores the player's speeds and gives them back 5 s later; a change of
+  mode meanwhile put the new mode's speeds on the player, so the stored ones are refreshed at each mode change.
+- **VJ HUD** (the official plugin, `vj_hud_enabled`) draws its own crosshair, ammunition and health beside GryMod's, and hides the game's HUD. Nothing is changed: it is a setting of another
+  addon (turn one of the two HUDs off).
+
+The classes that the shared part registers are the ones the scripted entities declare (`scripted_ents.GetMember(class, "VJ_ID_Grenade")`), scanned once at the first frame: the same list on
+both realms (measured: 5 grenades, 3 missiles with Half-Life Resurgence). A hornet, an orb or a stomp is tagged as a danger by VJ but is not an explosive: it is left out.

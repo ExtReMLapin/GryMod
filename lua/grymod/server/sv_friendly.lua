@@ -100,19 +100,30 @@ function Friendly.Forget(ply)
 	windows[ply] = nil
 end
 
--- The answer to one message: `reply(player, index, isAlly)` is called unless the player asked too much.
+-- The code of a relation word on the network (2 bits): 0 neutral, 1 ally, 2 hostile; anything else is neutral. GryMod.API.ClientRelation (client) reads it.
+local CODES = {neutral = 0, ally = 1, hostile = 2}
+
+function Friendly.RelationCode(relation)
+	return CODES[relation] or 0
+end
+
+-- The answer to one message: `reply(player, index, isAlly, relation)` is called unless the player asked too much. `relation` is the word of the relation chain
+-- ("ally", "neutral" or "hostile"), `isAlly` is `relation == "ally"` (the old second field of the message).
 function Friendly.Handle(ply, index, now, reply)
 	if not IsValid(ply) or not Friendly.Allowed(ply, now) then
 		return
 	end
 
-	reply(ply, index, Friendly.IsAlly(ply, Entity(index)))
+	local relation = Friendly.Relation(ply, Entity(index))
+
+	reply(ply, index, relation == "ally", relation)
 end
 
-local function send(ply, index, ally)
+local function send(ply, index, ally, relation)
 	net.Start("gry_friendly")
 	net.WriteUInt(index, 13)
 	net.WriteBool(ally)
+	net.WriteUInt(Friendly.RelationCode(relation), 2)
 	net.Send(ply)
 end
 
