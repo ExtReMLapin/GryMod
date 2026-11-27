@@ -174,6 +174,8 @@ local function hudBehaviour(Panel)
 	GryMod.OptionBox(form, "HUD malfunction on empty energy", "gry_malfunction_empty", "The original: the HUD goes down only on an EMP, an electric attack or death.")
 	-- client setting: the HUD goes red with its emergency shutdown screen and sound when the player dies, until the respawn
 	GryMod.OptionBox(form, "Red HUD and shutdown screen at death", "gry_hud_lost_on_death", "When you die the HUD goes red with the emergency shutdown animation and sound until you respawn (the original). Off: the HUD just disappears.")
+	-- client setting: the shutdown screen of the suit going down (and of a death) in the middle of the screen
+	GryMod.OptionBox(form, "Shutdown screen in the middle", "gry_hud_lost_centered", "The DANGER SYSTEM OVERRUN panel (suit down, death) is in the middle of the screen. Off: low, where the original's movie puts it.")
 	-- client setting: the quick menu icon that was chosen stays lit while the menu fades out
 	GryMod.OptionBox(form, "Quick menu: the chosen icon stays lit", "gry_menu_keep_highlight", "While the menu fades out (the original). Off: it goes plain at the release.")
 	-- client setting: the quick menu ring keeps its colour from an active mode to an inactive one

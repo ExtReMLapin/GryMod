@@ -71,9 +71,12 @@ reads what a listener returns. The malfunction, `GryMod_InOutMapReady` and `GryM
 that fails is shown once in the console and stops nothing. `GryMod_HUDStatus`, `GryMod_BinocularsToggled` and `GryMod_SuitZoom` are run with a
 plain `hook.Run`: an error in your listener there reaches GryMod's own code, so keep those listeners safe.
 
-### `GryMod_HUDStatus(status)`
+### `GryMod_HUDStatus(status, why)`
 
-The state of the HUD changed. `status` is a number: `0` the suit works, `1` malfunction (the server says the suit is down; with
+The state of the HUD changed. `why` is a text, and only given for the changes that do not come from the suit itself: `"death"` (the player died, `status` 1:
+the red HUD of the death), `"respawn"` (the life is back, `status` 0) and `"gone"` (`status` 0: the HUD is dropped and will not be shown, because the suit is
+off, the HUD is switched off, or the player died with no red HUD; what was told as down is over, so a listener never keeps a malfunction look for good). `"gone"`
+is not a reboot: GryMod plays no reboot sequence for it. `status` is a number: `0` the suit works, `1` malfunction (the server says the suit is down; with
 `gry_malfunction_empty 1` an empty energy bar counts too), `2` flicker (a light shock). It is run once at each change of that number, from the
 frame code of the HUD, so only while the HUD is drawn (see "What depends on the drawn HUD"). GryMod's own `lost` and `reboot` events, and the
 close of the binoculars' zoom, are driven by it. A HUD that is built again (a respawn, a new theme) starts at `0` and does not report it: a

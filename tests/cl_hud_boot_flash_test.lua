@@ -569,6 +569,117 @@ return {
 			end
 		},
 		{
+			-- would fail if: the paint that finds the HUD cannot be shown (the suit goes off while the player is dead) dropped the red HUD and forgot to tell the listeners:
+			-- the death told them 1, the new HUD starts at 0, nobody ever heard the 0 and the big map opened on "Satellite Uplink disconnected" for good (owner's report)
+			name = "the HUD dropped while it is down (the suit goes off during the death) tells the listeners of the HUD status that nothing is down any more: the big map is not jammed for good",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1"}, function(life, HUD)
+					local Bino, List = GryMod.FlashBinoculars, GryMod.FlashWeaponList
+					local Map = GryMod.Map._state
+					local told = {}
+
+					hook.Add("GryMod_HUDStatus", "GRYTESTGONESPY", function(status, reason)
+						told[#told + 1] = tostring(status) .. ":" .. tostring(reason)
+					end)
+
+					local ok, err = pcall(function()
+						Boot.NoteSpawn()
+						HUD.Paint()
+						hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+						Boot.Reset()
+						told = {}
+
+						life.dead = true
+						HUD.Paint()
+						expect(told[#told]).to.equal("1:death")
+						expect(Map.hudStatus).to.equal(1)
+
+						-- the suit goes off while the player is dead: the paint drops the HUD
+						HUD.SetLocalOff(true)
+						HUD.Paint()
+						expect(told[#told]).to.equal("0:gone")
+						expect(Map.hudStatus).to.equal(0)
+						expect(Bino.HudStatus).to.equal(0)
+						expect(List.Status()).to.equal(0)
+
+						-- it comes back, and the player with it: nothing is down, nothing said twice
+						HUD.SetLocalOff(false)
+						life.dead = false
+						HUD.Paint()
+						hook.GetTable().HUDPaint["GRYFLASHBOOT"]()
+						expect(Map.hudStatus).to.equal(0)
+						expect(HUD.Status()).to.equal(0)
+					end)
+
+					hook.Remove("GryMod_HUDStatus", "GRYTESTGONESPY")
+					HUD.SetLocalOff(false)
+
+					if not ok then
+						error(err, 0)
+					end
+				end)
+			end
+		},
+		{
+			-- would fail if: a player who dies with the suit down and no red HUD (gry_hud_lost_on_death 0: the HUD is dropped) left the listeners on 1
+			name = "dying while the suit is down with gry_hud_lost_on_death 0: the dropped HUD tells the listeners that nothing is down, and the respawn starts clean",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "0", gry_hud = "1", gry_hud_boot = "1", gry_malfunction_empty = "1"}, function(life, HUD)
+					local Map = GryMod.Map._state
+					local real = HUD.MalfunctionFor
+
+					local ok, err = pcall(function()
+						Boot.NoteSpawn()
+						HUD.MalfunctionFor = function() return 1 end
+						HUD.Paint()
+						expect(Map.hudStatus).to.equal(1) -- the suit is down (the empty-bar rule says so)
+
+						HUD.MalfunctionFor = function() return 0 end
+						life.dead = true
+						HUD.Paint() -- the HUD is dropped
+						expect(Map.hudStatus).to.equal(0)
+
+						life.dead = false
+						HUD.Paint()
+						expect(Map.hudStatus).to.equal(0)
+					end)
+
+					HUD.MalfunctionFor = real
+
+					if not ok then
+						error(err, 0)
+					end
+				end)
+			end
+		},
+		{
+			-- would fail if: turning the HUD off (gry_hud 0) while the suit is down dropped the HUD without telling the listeners
+			name = "turning the HUD off while the suit is down tells the listeners that nothing is down any more",
+			func = function(state)
+				withDeath({gry_hud_lost_on_death = "1", gry_hud = "1", gry_hud_boot = "1", gry_malfunction_empty = "1"}, function(life, HUD)
+					local Map = GryMod.Map._state
+					local real = HUD.MalfunctionFor
+
+					local ok, err = pcall(function()
+						Boot.NoteSpawn()
+						HUD.MalfunctionFor = function() return 1 end
+						HUD.Paint()
+						expect(Map.hudStatus).to.equal(1)
+
+						HUD.Apply(false)
+						expect(Map.hudStatus).to.equal(0)
+					end)
+
+					HUD.MalfunctionFor = real
+					HUD.Apply(GetConVar("gry_hud"):GetBool())
+
+					if not ok then
+						error(err, 0)
+					end
+				end)
+			end
+		},
+		{
 			-- needs: Boot.Step holding the Lost movie at Boot.LOST_HOLD_FRAME while the death is held (the movie itself ends on an empty stage at frame 137,
 			-- 4.6 s after it starts: the panel vanished while the player was still dead)
 			name = "the Lost screen of a death is still on the stage long after the movie's own end, and the respawn lets it go",

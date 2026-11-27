@@ -1029,6 +1029,25 @@ local function serverEnergy(ply)
 	return ply:GetNW2Float("GryEnergy")
 end
 
+-- What the listeners of GryMod_HUDStatus last heard (0 working, 1 down, 2 flicker). A HUD that is made starts at 0 and says nothing about it, so a state that was
+-- told as down has to be ended by something: the feed (the status changes), the respawn, or TellGone when the HUD is dropped for good. Every report goes through here.
+local told = 0
+
+local function tell(status, why)
+	told = status
+	hook.Run("GryMod_HUDStatus", status, why)
+end
+
+-- The HUD is dropped and will not be shown (the suit is off, the HUD is switched off, a death with no red HUD): what was told as down is over for the pieces that
+-- listen. They kept the last status they heard (the big map opened on "Satellite Uplink disconnected" for good after a death during which the suit went off, the
+-- binoculars and the weapon list kept their malfunction look), because the new HUD, when it comes, starts at 0 and has no change to report. The reason "gone" is
+-- not a reboot: the sequences do not play one for it (cl_hud_boot_flash.lua).
+function Module.TellGone()
+	if told ~= 0 then
+		tell(0, "gone")
+	end
+end
+
 local function feed(ply)
 	local maxHealth = ply:GetMaxHealth()
 	local health = Module.HealthValue(ply:Health(), maxHealth)
@@ -1066,7 +1085,7 @@ local function feed(ply)
 		end
 
 		-- the start-up and reboot sequences follow the state of the HUD
-		hook.Run("GryMod_HUDStatus", status)
+		tell(status)
 	end
 
 	local mode = Module.ModeName(ply.NanosuitMode)
@@ -1195,7 +1214,7 @@ function Module.GoDown()
 			panel:Destroy(1)
 		end
 
-		hook.Run("GryMod_HUDStatus", 1, "death")
+		tell(1, "death")
 	end
 
 	if GryMod.FlashBoot then
@@ -1210,6 +1229,7 @@ function Module.Paint()
 
 	if not IsValid(ply) or not Module.SuitOn(ply) then
 		deathShown, wasAlive = false, false
+		Module.TellGone()
 		Module.Reset()
 
 		return
@@ -1220,6 +1240,7 @@ function Module.Paint()
 	wasAlive = alive
 
 	if phase == "drop" then
+		Module.TellGone()
 		Module.Reset()
 
 		return
@@ -1241,7 +1262,7 @@ function Module.Paint()
 
 		-- the death told every listener "1"; the new HUD starts at 0, so its first feed sees no change and would never say it: the big map would open
 		-- on "Satellite Uplink disconnected" and the binoculars keep the malfunction look. The boot sequences hear it after EndDeath: no reboot sound.
-		hook.Run("GryMod_HUDStatus", 0, "respawn")
+		tell(0, "respawn")
 	end
 
 	if not hud then
@@ -1372,6 +1393,7 @@ function Module.Apply(enabled)
 	else
 		hook.Remove("HUDPaint", "GRYFLASHHUD")
 		Module.ForgetPaintTime()
+		Module.TellGone()
 		Module.Reset()
 	end
 
