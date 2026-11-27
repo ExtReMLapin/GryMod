@@ -165,10 +165,17 @@ local CHECK = {
 	heavy = function(v) if isbool(v) then return v end end,
 	shock = function(v) if isstring(v) and SHOCK[v] then return v end end,
 	cloakBlind = function(v) if isbool(v) then return v end end,
+	-- functions of the entry (SafeCall): `dead(ent) -> bool` a destroyed entity is not a contact; `awareness(ent, ply) -> level, exposure, seen, heard` the registry's
+	-- equivalent of ENT:GetGryAwareness; `crew(ent) -> {ply or npc, ...}` the occupants of a vehicle (its relation follows theirs); `facing(ent) -> Vector` the world
+	-- forward of the entity (the radar's heading). All of them are server-side readers; the client may read `facing` too.
+	dead = function(v) if isfunction(v) then return v end end,
+	awareness = function(v) if isfunction(v) then return v end end,
+	crew = function(v) if isfunction(v) then return v end end,
+	facing = function(v) if isfunction(v) then return v end end,
 	priority = function(v) if isnumber(v) and v >= -MAX_PRIORITY and v <= MAX_PRIORITY then return v end end
 }
 
-local FIELDS = {"class", "base", "match", "scan", "radar", "relation", "type", "label", "shape", "size", "danger", "indicator", "heavy", "shock", "cloakBlind", "priority"}
+local FIELDS = {"class", "base", "match", "scan", "radar", "relation", "type", "label", "shape", "size", "danger", "indicator", "heavy", "shock", "cloakBlind", "priority", "dead", "awareness", "crew", "facing"}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The registry
@@ -227,7 +234,8 @@ function API.RegisterTracked(key, def)
 	end
 
 	local entry = {key = key, scan = true, shape = "unit", relation = "auto", priority = 0, matchId = "tracked:" .. key .. "/match",
-		relationId = "tracked:" .. key .. "/relation", armedId = "tracked:" .. key .. "/armed", ownerId = "tracked:" .. key .. "/owner"}
+		relationId = "tracked:" .. key .. "/relation", armedId = "tracked:" .. key .. "/armed", ownerId = "tracked:" .. key .. "/owner",
+		deadId = "tracked:" .. key .. "/dead", awarenessId = "tracked:" .. key .. "/awareness", crewId = "tracked:" .. key .. "/crew", facingId = "tracked:" .. key .. "/facing"}
 
 	for _, field in ipairs(FIELDS) do
 		local value = def[field]
@@ -268,6 +276,10 @@ function API.RegisterTracked(key, def)
 	API.SafeCallReset(entry.relationId)
 	API.SafeCallReset(entry.armedId)
 	API.SafeCallReset(entry.ownerId)
+	API.SafeCallReset(entry.deadId)
+	API.SafeCallReset(entry.awarenessId)
+	API.SafeCallReset(entry.crewId)
+	API.SafeCallReset(entry.facingId)
 
 	for i = 1, #order do
 		if order[i].key == key then
@@ -368,7 +380,8 @@ function API.GetTracked(ent)
 		return nil
 	end
 
-	local class = ent:GetClass()
+	-- the real class (SHARED-CLASS-1: an addon may replace Entity:GetClass)
+	local class = API.ClassOf and API.ClassOf(ent) or ent:GetClass()
 	local list = cache[class]
 
 	if list == nil then
@@ -444,7 +457,7 @@ function API.GetDanger(class)
 			return nil
 		end
 
-		class = class:GetClass()
+		class = API.ClassOf and API.ClassOf(class) or class:GetClass()
 	end
 
 	if order[1] == nil then
