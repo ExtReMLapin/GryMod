@@ -54,8 +54,55 @@ local selectableModes = {
 	[GryMod.Modes.STRENGTH] = true
 }
 
+-- Does an addon that brought the player back with Player:Spawn (a ragdoll that gets up, a respawn in place) want the suit to keep its state? The hook
+-- GryMod_CanResetOnSpawn(ply) is the veto: a handler that answers false keeps the energy, the mode and the camouflage (put on again in silence, see below),
+-- the radar's tags, a malfunction in progress and the delays of the regeneration. Every PlayerSpawn hook of GryMod that resets something asks here (they run in
+-- no fixed order), and the handlers are asked ONCE for a spawn: the answer is kept for the tick. A player who has no mode yet (his first spawn) has nothing to keep.
+-- A handler that raises an error is not a veto and does not break the spawn.
+GryMod.SpawnRestore = GryMod.SpawnRestore or {}
+
+function GryMod.SpawnRestore.Reset(ply)
+	if IsValid(ply) then
+		ply.gryKeepSpawn = nil
+	end
+end
+
+function GryMod.KeepStateOnSpawn(ply)
+	if not IsValid(ply) or ply.Nanosuit_mode == nil then
+		return false
+	end
+
+	local asked = ply.gryKeepSpawn
+	local tick, now = engine.TickCount(), CurTime()
+
+	if asked and asked.tick == tick and asked.time == now then
+		return asked.keep
+	end
+
+	local ok, answer = pcall(hook.Run, "GryMod_CanResetOnSpawn", ply)
+
+	if not ok then
+		ErrorNoHalt("[GryMod] A handler of GryMod_CanResetOnSpawn failed: " .. tostring(answer) .. "\n")
+		answer = nil
+	end
+
+	local keep = answer == false
+
+	ply.gryKeepSpawn = {tick = tick, time = now, keep = keep}
+
+	return keep
+end
+
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
+	if GryMod.KeepStateOnSpawn(ply) then
+		-- the engine's Spawn erased the notarget flag, the material and the run speed: the mode that the player had is put on again, with no start-up of the HUD, no
+		-- message (the client's mode did not change) and no announcement (it is the same mode)
+		ply:SetNanosuitMode(ply.Nanosuit_mode, false, GryMod.ModeReasons.RESTORE)
+
+		return
+	end
+
 	-- the energy first: a handler of GryMod_ModeChanged (cause SPAWN) runs inside SetNanosuitMode and must see the full bar of the new life
 	ply:SetNW2Float("GryEnergy", 100)
 	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.SPAWN)

@@ -279,6 +279,11 @@ hook.Add("PostPlayerDeath", "GryMod malfunction death", function(ply)
 end)
 
 hook.Add("PlayerSpawn", "GryMod malfunction spawn", function(ply)
+	-- a restore in place (GryMod_CanResetOnSpawn): a suit that is down stays down until its own timer ends
+	if GryMod.KeepStateOnSpawn and GryMod.KeepStateOnSpawn(ply) then
+		return
+	end
+
 	Malfunction.Clear(ply)
 end)
 

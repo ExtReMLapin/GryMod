@@ -39,9 +39,9 @@ return {
 		},
 		{
 			-- would fail if: the order of the list changed (the ids are the wire format: an old client would read the wrong cause) or an id was off by one
-			name = "the ids are the position in the list minus 1, in the order of the wire format: spawn is 0, sync is 8",
+			name = "the ids are the position in the list minus 1, in the order of the wire format: spawn is 0, sync is 8, restore (added at the end) is 9",
 			func = function()
-				local expected = {"spawn", "player", "api", "energy", "malfunction", "disabled", "other", "vetoed", "sync"}
+				local expected = {"spawn", "player", "api", "energy", "malfunction", "disabled", "other", "vetoed", "sync", "restore"}
 
 				for i, reason in ipairs(expected) do
 					expect(GryMod.ModeReasonList[i]).to.equal(reason)

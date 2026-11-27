@@ -9,7 +9,7 @@ GryMod = GryMod or {}
 GryMod.Feedback = GryMod.Feedback or {}
 
 local function living(ent)
-	return IsValid(ent) and (ent:IsNPC() or ent:IsPlayer() or ent:IsNextBot())
+	return IsValid(ent) and (GryMod.API.IsCreature(ent) or ent:IsPlayer() or ent:IsNextBot())
 end
 
 -- What a hit of this amount tells the client. The amount is the one the hit had when it came, before the suit's armor

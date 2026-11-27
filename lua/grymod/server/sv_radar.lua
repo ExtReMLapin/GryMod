@@ -119,27 +119,23 @@ end
 
 -- The driver of a vehicle (the player or the NPC at the wheel), or nil. A field of Radar so that a test can replace it (the methods of
 -- a real entity cannot be overridden on the instance).
+-- The vehicle providers of the extension API (sh_api_vehicles.lua) know the drivers of the vehicles that are not the engine's (LVS, Glide, simfphys); the entity's own
+-- GetDriver is the fallback inside GryMod.API.GetVehicleDriver.
 function Radar.DriverOf(ent)
-	if isfunction(ent.GetDriver) then
-		local driver = ent:GetDriver()
-
-		if IsValid(driver) then
-			return driver
-		end
-	end
-
-	return nil
+	return GryMod.API.GetVehicleDriver(ent)
 end
 
 -- Whether the player sits in this vehicle.
+-- The vehicle of a player is the LOGICAL one (GryMod.API.GetVehicleOf: the providers of other addons first, the engine's Player:GetVehicle after): a car that has
+-- its own seats is not the entity the engine says he sits in.
 function Radar.Sits(ply, ent)
-	return IsValid(ply) and ent:IsVehicle() and ply:GetVehicle() == ent
+	return IsValid(ply) and IsValid(ent) and GryMod.API.GetVehicleOf(ply) == ent
 end
 
 -- A contact that is neither an NPC nor a nextbot: a vehicle or a mine, whatever the registry gives a radar rule (a vehicle of another
 -- addon registered through the API is one too). Never the player, never what the player sits in.
 function Radar.IsObject(ent, ply, tracked)
-	if not IsValid(ent) or ent:IsNPC() or ent:IsNextBot() or ent:IsPlayer() or not Radar.ObjectsEnabled() then
+	if not IsValid(ent) or GryMod.API.IsCreature(ent) or ent:IsNextBot() or ent:IsPlayer() or not Radar.ObjectsEnabled() then
 		return false
 	end
 
@@ -169,14 +165,24 @@ end
 -- ENT:GetGryAwareness(ply) -> level (0 calm, 1 alerted, 2 fighting), exposure (0 to 1), seen, heard. Called under GryMod.API.SafeCall (a broken
 -- method is disabled after a few errors and never breaks the radar); the values are clamped. nil when the entity has no such method or the
 -- call failed: the radar then keeps its own rule.
+-- An entity that cannot get a method (a vehicle of another addon) says the same through the `awareness` field of its registry entry (the method wins when both exist).
 function Radar.AwarenessOf(ent, ply)
 	local fn = ent.GetGryAwareness
+	local id
 
-	if not isfunction(fn) then
-		return nil
+	if isfunction(fn) then
+		id = "awareness:" .. (GryMod.API.ClassOf(ent) or ent:GetClass())
+	else
+		local entry = trackedOf(ent)
+
+		if not entry or not entry.awareness then
+			return nil
+		end
+
+		fn, id = entry.awareness, entry.awarenessId
 	end
 
-	local ok, level, exposure, seen, heard = GryMod.API.SafeCall("awareness:" .. ent:GetClass(), fn, ent, ply)
+	local ok, level, exposure, seen, heard = GryMod.API.SafeCall(id, fn, ent, ply)
 
 	if not ok then
 		return nil
@@ -229,6 +235,17 @@ end
 -- airboat at yaw 0 face along +y): the rectangle on the radar points where it drives. The raw angles on both sides, the same rule
 -- as the client's (Radar.Facing, cl_hud_radar_units.lua): the forward vector of a vehicle differs between the server and the client.
 function Radar.Facing(ent)
+	-- the registry says where an entity faces (`facing`: the world forward): a vector that is null or not a vector is no answer
+	local entry = trackedOf(ent)
+
+	if entry and entry.facing then
+		local ok, forward = GryMod.API.SafeCall(entry.facingId, entry.facing, ent)
+
+		if ok and isvector(forward) and forward.x == forward.x and forward.y == forward.y and (forward.x ~= 0 or forward.y ~= 0) then
+			return forward:Angle().y
+		end
+	end
+
 	local yaw = ent:GetAngles().y
 
 	if ent:IsVehicle() then
@@ -238,19 +255,63 @@ function Radar.Facing(ent)
 	return yaw
 end
 
+-- What the occupants of a vehicle make it to the player: "hostile" if one of them is, else "ally" if one is, else "neutral". The player himself does not count.
+-- `entry.crew(ent)` runs under SafeCall: a list of players and NPCs.
+function Radar.CrewRelation(ply, ent, entry)
+	local ok, crew = GryMod.API.SafeCall(entry.crewId, entry.crew, ent)
+
+	if not ok or not istable(crew) then
+		return "neutral"
+	end
+
+	local result = "neutral"
+
+	for i = 1, #crew do
+		local member = crew[i]
+
+		if member ~= ply and (isentity(member) or istable(member)) and IsValid(member) then
+			local relation = GryMod.Friendly.Relation(ply, member)
+
+			if relation == "hostile" then
+				return "hostile"
+			elseif relation == "ally" then
+				result = "ally"
+			end
+		end
+	end
+
+	return result
+end
+
+-- Whether the entry says the entity is destroyed (`dead`): a destroyed entity is not a contact and cannot be tagged.
+function Radar.IsDeadEntry(ent, entry)
+	if not entry or not entry.dead then
+		return false
+	end
+
+	local ok, dead = GryMod.API.SafeCall(entry.deadId, entry.dead, ent)
+
+	return ok and dead == true
+end
+
 function Radar.Describe(npc, ply)
 	local pos = npc:GetPos()
 	local enemy = isfunction(npc.GetEnemy) and npc:GetEnemy() or nil
 	local relation = GryMod.Friendly.Relation(ply, npc)
 	local tracked = trackedOf(npc)
 
-	-- a vehicle is the colour of its driver (nobody, or a driver that is neither friend nor foe: neutral); an entry that says what the
-	-- vehicle is to the player (a relation of its own) is not overridden
-	if relation == "neutral" and npc:IsVehicle() then
-		local driver = Radar.DriverOf(npc)
+	-- a vehicle is the colour of its crew when its entry lists one (`crew`: hostile if an occupant is, else allied if one is, else neutral), or of its
+	-- driver (nobody, or a driver that is neither friend nor foe: neutral); an entry that says what the vehicle is to the player (a relation of its
+	-- own) is not overridden. The vehicle is any entity that is not a creature: the vehicles of other addons are not engine vehicles (IsVehicle)
+	if relation == "neutral" then
+		if tracked and tracked.crew then
+			relation = Radar.CrewRelation(ply, npc, tracked)
+		elseif npc:IsVehicle() or not GryMod.API.IsCreature(npc) and not npc:IsNextBot() then
+			local driver = Radar.DriverOf(npc)
 
-		if driver and driver ~= ply then
-			relation = GryMod.Friendly.Relation(ply, driver)
+			if driver and driver ~= ply then
+				relation = GryMod.Friendly.Relation(ply, driver)
+			end
 		end
 	end
 
@@ -271,7 +332,7 @@ function Radar.Describe(npc, ply)
 		id = npc:EntIndex(),
 		seen = seen,
 		heard = heard,
-		class = npc:GetClass(),
+		class = GryMod.API.ClassOf(npc) or npc:GetClass(),
 		relation = relation,
 		hostile = relation == "hostile",
 		ally = relation == "ally",
@@ -298,6 +359,10 @@ function Radar.Describe(npc, ply)
 
 		if tracked.scan == false then
 			d.noScan = true
+		end
+
+		if tracked.dead then
+			d.dead = Radar.IsDeadEntry(npc, tracked)
 		end
 	end
 
@@ -353,7 +418,11 @@ function Radar.Scan(ply, npc)
 
 	local tracked = trackedOf(npc)
 
-	if npc:IsNPC() then
+	if Radar.IsDeadEntry(npc, tracked) then
+		return false
+	end
+
+	if GryMod.API.IsCreature(npc) then
 		if npc:Health() <= 0 then
 			return false
 		end
@@ -413,7 +482,7 @@ function Radar.Step(origin, descs, st, now, alliesAlways, range)
 
 		-- dead: no health left, unless it never had any (MEASURED: a rollermine has 0 of 0 health all its life and is removed
 		-- when it is destroyed, so 0 health says nothing about it)
-		if d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0) or d.state == NPC_STATE_DEAD then
+		if d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0) or d.state == NPC_STATE_DEAD or d.dead then
 			st.tagged[key] = nil
 			st.markers[key] = nil
 		elseif d.radar == "never" then
@@ -593,7 +662,7 @@ function Radar.Detect(descs, listed)
 		local d = descs[i]
 		local mode = d.radar
 		local counts = mode ~= "never" and mode ~= "scan" and (d.hostile or mode == "hostile" and not d.ally)
-			and not (d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0)) and d.state ~= NPC_STATE_DEAD
+			and not (d.health <= 0 and (d.maxHealth == nil or d.maxHealth > 0)) and d.state ~= NPC_STATE_DEAD and not d.dead
 
 		-- the exposure an entity reports (its own perception, contact or not): the stealth bar shows the highest
 		if counts and d.exposure and d.exposure > exposure then
@@ -675,7 +744,7 @@ function Radar.Tick(ply, now)
 		local range = S.ClampRange(ply.GryRadarRange)
 
 		for _, ent in ipairs(ents.FindInSphere(origin, S.ScanUnits(range))) do
-			if ent ~= ply and (ent:IsNPC() or ent:IsNextBot() and trackedOf(ent) or Radar.IsObject(ent, ply)) then
+			if ent ~= ply and (GryMod.API.IsCreature(ent) or ent:IsNextBot() and trackedOf(ent) or Radar.IsObject(ent, ply)) then
 				descs[#descs + 1] = Radar.Describe(ent, ply)
 				seen[ent] = true
 			end
@@ -733,14 +802,24 @@ hook.Add("EntityTakeDamage", "GryMod radar", function(victim, dmg)
 		return
 	end
 
+	-- a hit that a filter of another addon makes the suit ignore (GryMod.API.AddHitFilter) marks nobody
+	if GryMod.API.HitVerdict and GryMod.API.HitVerdict(victim, dmg) == "ignore" then
+		return
+	end
+
 	local attacker = dmg:GetAttacker()
 
-	if IsValid(attacker) and attacker:IsNPC() then
+	if IsValid(attacker) and GryMod.API.IsCreature(attacker) then
 		Radar.Mark(Radar.State(victim), attacker, CurTime())
 	end
 end)
 
 hook.Add("PlayerSpawn", "GryMod radar", function(ply)
+	-- a restore in place (GryMod_CanResetOnSpawn) keeps the tags and the markers: the same life goes on
+	if GryMod.KeepStateOnSpawn and GryMod.KeepStateOnSpawn(ply) then
+		return
+	end
+
 	Radar.Reset(ply)
 end)
 
