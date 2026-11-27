@@ -16,6 +16,13 @@ GryMod.ARC9HUD = H
 local hideConvar = GetConVar("gry_arc9_hide_hud") or CreateClientConVar("gry_arc9_hide_hud", "1", true, false,
 	"1: ARC9's own HUD (weapon name, ammunition, fire mode) is hidden while GryMod's HUD is up; its key hints and its customization menu stay. 0: both HUDs are drawn", 0, 1)
 
+-- The key hints (the list of keys on the left: aim, fire mode, attachments, safety) are drawn by ARC9's HUDPaint hook ARC9_DrawHud, also when its HUD is off, so the first patch
+-- cannot take them away. GryMod's HUD shows the fire mode itself, the list is a nuisance for the owner: a second option (gry_arc9_hide_hints, on by default) replaces that hook
+-- by a wrapper that does not run it while the HUD is hidden (same condition as above). ARC9's own comment says its sway needs EyeAngles() and EyePos() called every frame, even
+-- with no HUD: the wrapper still calls them. Replacing the hook by the same name adds none.
+local hintsConvar = GetConVar("gry_arc9_hide_hints") or CreateClientConVar("gry_arc9_hide_hints", "1", true, false,
+	"1: ARC9's list of key hints (aim, fire mode, attachments...) is hidden while GryMod's HUD is up. 0: it is drawn", 0, 1)
+
 -- Whether ARC9's HUD is to be hidden now: the option is on, GryMod's HUD is up, and the weapon in hand is not in ARC9's customization menu.
 function H.Hidden()
 	if not hideConvar:GetBool() or not GryMod.FlashHUD or not GryMod.FlashHUD.Enabled() then
@@ -79,3 +86,49 @@ end
 -- ARC9 defines its function when its own files load, which may be after this one: asked again when the game is up.
 H.Install()
 hook.Add("InitPostEntity", "GryMod compat arc9 hud", H.Install)
+
+-- The wrappers of the HUDPaint hook (a hook loaded again must not take a wrapper for ARC9's own function).
+H.paintWrappers = H.paintWrappers or setmetatable({}, {__mode = "k"})
+
+local function paintWrapper(...)
+	if hintsConvar:GetBool() and H.Hidden() then
+		EyeAngles() -- ARC9's sway needs these two every frame, with its HUD or without (its comment in DrawHUD)
+		EyePos()
+
+		return
+	end
+
+	return H.paintOriginal(...)
+end
+
+H.paintWrappers[paintWrapper] = true
+
+-- Puts the wrapper on ARC9's HUDPaint hook. True when it is there (also when it already was), false when ARC9's hook does not exist (ARC9 is not installed, or changed).
+function H.InstallPaint()
+	local hooks = hook.GetTable().HUDPaint
+	local current = hooks and hooks["ARC9_DrawHud"]
+
+	if not isfunction(current) then
+		if istable(ARC9) and GryMod.API and GryMod.API.WarnPatchMissing then
+			GryMod.API.WarnPatchMissing("ARC9", "the HUDPaint hook ARC9_DrawHud", function()
+				local now = hook.GetTable().HUDPaint
+
+				return istable(ARC9) and not (now and isfunction(now["ARC9_DrawHud"]))
+			end)
+		end
+
+		return false
+	end
+
+	if H.paintWrappers[current] then
+		return true
+	end
+
+	H.paintOriginal = current
+	hook.Add("HUDPaint", "ARC9_DrawHud", paintWrapper)
+
+	return true
+end
+
+H.InstallPaint()
+hook.Add("InitPostEntity", "GryMod compat arc9 hud paint", H.InstallPaint)

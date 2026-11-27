@@ -63,7 +63,8 @@ local function tfaTab(root)
 end
 
 local function arc9Tab(root)
-	GryMod.OptionBox(root, "Hide ARC9's own HUD", "gry_arc9_hide_hud", "ARC9 draws the weapon's name, the ammunition and the fire mode in the bottom left corner, under the minimap. Hidden while GryMod's HUD is up. ARC9's key hints and its customization menu stay, and none of ARC9's own settings is changed.")
+	GryMod.OptionBox(root, "Hide ARC9's own HUD", "gry_arc9_hide_hud", "ARC9 draws the weapon's name, the ammunition and the fire mode in the bottom left corner, under the minimap. Hidden while GryMod's HUD is up. ARC9's customization menu stays, and none of ARC9's own settings is changed.")
+	GryMod.OptionBox(root, "Hide ARC9's key hints", "gry_arc9_hide_hints", "The list of keys ARC9 draws on the left (aim, fire mode, attachments, safety). GryMod's HUD already shows the fire mode. Hidden while GryMod's HUD is up; shown again in ARC9's customization menu.")
 	GryMod.OptionNote(root, "The weapon icon of the quick menu opens ARC9's customization menu for the weapon in your hands. While that menu is up the camouflage leaves the gun plain, so that the parts can be seen.")
 	GryMod.OptionNote(root, "What the suit does to ARC9 weapons (strength, speed) is in the Suit effects tab.")
 end

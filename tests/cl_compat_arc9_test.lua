@@ -249,6 +249,85 @@ return {
 			end
 		},
 		{
+			-- fails when the setting does not exist, is off by default (the owner: the list of ARC9's keys at the bottom left is a nuisance once GryMod shows the fire mode), or when it has no
+			-- check box in the options
+			name = "gry_arc9_hide_hints: a saved client setting, on by default",
+			func = function()
+				local cvar = GetConVar("gry_arc9_hide_hints")
+
+				expect(cvar).to.exist()
+				expect(cvar:GetDefault()).to.equal("1")
+			end
+		},
+		{
+			-- fails when the list of ARC9's key hints (drawn by its HUDPaint hook ARC9_DrawHud, also when its HUD is off) is still drawn while GryMod's HUD is up and the option is on; when ARC9's
+			-- own paint is not called otherwise (the option off, GryMod's HUD down, the customization menu: ARC9's own answer); or when its sway stops (it needs EyeAngles and EyePos to be
+			-- called every frame even with no HUD: its own comment in DrawHUD)
+			name = "ARC9's key hints: the HUDPaint hook of ARC9 is not run while GryMod's HUD is up and the option is on, EyeAngles and EyePos still are; otherwise it is run",
+			func = function()
+				local H = GryMod.ARC9HUD
+				local realHook = hook.GetTable().HUDPaint and hook.GetTable().HUDPaint["ARC9_DrawHud"]
+				local realPaintOriginal = H.paintOriginal
+				local painted, eyes = 0, 0
+				local hidden = true
+
+				expect(isfunction(H.InstallPaint)).to.beTrue()
+
+				stub(_G, "ARC9", {})
+				stub(_G, "EyeAngles", function() eyes = eyes + 1 return Angle(0, 0, 0) end)
+				stub(_G, "EyePos", function() eyes = eyes + 1 return Vector(0, 0, 0) end)
+				stub(H, "Hidden", function() return hidden end)
+
+				local cvar = GetConVar("gry_arc9_hide_hints")
+				local before = cvar:GetString()
+
+				hook.Add("HUDPaint", "ARC9_DrawHud", function() painted = painted + 1 end)
+
+				local ok, err = pcall(function()
+					expect(H.InstallPaint()).to.beTrue()
+
+					local wrapper = hook.GetTable().HUDPaint["ARC9_DrawHud"]
+
+					cvar:SetString("1")
+					wrapper()
+					expect(painted).to.equal(0) -- the hints are not drawn
+					expect(eyes).to.equal(2) -- and the sway still runs
+
+					painted, eyes = 0, 0
+					hidden = false -- GryMod's HUD is down, or the customization menu is open
+					wrapper()
+					expect(painted).to.equal(1)
+
+					painted = 0
+					hidden = true
+					cvar:SetString("0")
+					wrapper()
+					expect(painted).to.equal(1) -- the option is off: ARC9's own
+
+					-- installing again does not wrap the wrapper
+					expect(H.InstallPaint()).to.beTrue()
+					painted = 0
+					cvar:SetString("0")
+					hook.GetTable().HUDPaint["ARC9_DrawHud"]()
+					expect(painted).to.equal(1)
+				end)
+
+				cvar:SetString(before)
+
+				if realHook then
+					hook.Add("HUDPaint", "ARC9_DrawHud", realHook)
+				else
+					hook.Remove("HUDPaint", "ARC9_DrawHud")
+				end
+
+				H.paintOriginal = realPaintOriginal
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails when installing twice wraps the wrapper (a hot reload: ARC9's own function would be called twice, and its answer lost when the option is off)
 			name = "installing again (a reload) wraps ARC9's own function once: it is asked once, and a file loaded again does not lose it",
 			func = function()

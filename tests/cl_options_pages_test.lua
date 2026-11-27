@@ -93,6 +93,7 @@ local EXPECTED = [[binder
 binder
 binder
 binder
+box:gry_arc9_hide_hints
 box:gry_arc9_hide_hud
 box:gry_binoculars_aim
 box:gry_binoculars_baseline
