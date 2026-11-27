@@ -95,6 +95,8 @@ return {
 		{
 			-- fails when a GB5 bomb has no prompt, when it keeps it once it is armed (GryArmed, networked by GryMod for the danger entries), or when the easy use setting is off
 			name = "a bomb has the ARM prompt, taken away once it is armed, and when the easy use setting is off",
+			-- the case writes the replicated setting: only the server can (the client reads its value)
+			when = SERVER,
 			func = function()
 				local fresh = bomb("gb5_light_b_50lb")
 				local entry = API.GetUsable(fresh)
