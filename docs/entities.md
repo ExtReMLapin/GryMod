@@ -225,7 +225,7 @@ end
 
 | Field | Effect (server) |
 | --- | --- |
-| `heavy` | `true`: when this entity is the attacker or the inflictor of a hit that breaks the armor of a player in armor mode (the damage is 25 or more and at least the energy the suit has left), the suit goes down for 3 seconds. Needs the player's switch `gry_malfunction_impact`. Matched by class, base or `match` like any field |
+| `heavy` | `true`: when this entity is the attacker or the inflictor of a hit that breaks the armor of a player in armor mode (the damage is 25 or more and at least the energy the suit has left), the suit goes down for 3 seconds. Needs the player's switch `gry_malfunction_impact`. Matched by class, base or `match` like any field when the rule is given an entity; given a class name, only an entry that names it in `class` counts, and a `heavy` function then answers false |
 | `shock` | `"strong"`: a hit by this inflictor puts the suit down for 5 seconds (unless it just restarted). `"light"`: the HUD flickers and the energy bar loses 1.5 per point of damage (5 to 30). The damage type does not matter. Without the field, the usual rule applies: shock, energy beam and plasma damage is light under 25 points and strong from 25. Needs `gry_malfunction_shock` |
 | `cloakBlind` | `true`: this NPC keeps a camouflaged player as its enemy for good (the engine's NPCs of this kind ignore the cloak badly), so while a player is camouflaged the server makes it neutral to him and makes it forget him, and gives its attitude back when the cloak ends. Only a hostile NPC is touched. Needs a `class` (the server searches these classes only, every half second, and only while somebody is camouflaged) and the administrators' switch `gry_cloak_ai` |
 
@@ -265,7 +265,8 @@ print(describe(Entity(0)))
 
 `GetTracked(ent)` returns the stored entry (read it, do not change it) or `nil`. `GetTrackedByClass(class)` asks the same about a
 class name; it only sees entries that list the class in `class` (an entry with a `base` or a `match` needs an entity).
-`GetDanger(classOrEntity)` is the same question for the entries with a `danger`. `TrackedClasses(field)` lists the classes whose
+`GetDanger(classOrEntity)` is the same question for the entries with a `danger`: it gives the first entry that has a `danger`, even
+when a higher-priority entry without one is the one `GetTracked` returns. `TrackedClasses(field)` lists the classes whose
 entry has a field set (for example `TrackedClasses("cloakBlind")`); the list is kept, read it, do not change it.
 
 ## The fields, and what each one changes
@@ -277,11 +278,15 @@ entry has a field set (for example `TrackedClasses("cloakBlind")`); the list is 
 | `radar` | a vehicle or device is scannable only with a rule other than `"never"` | when the contact is listed | | |
 | `relation` | | the colour | the answer of step 2 | |
 | `type`, `size` | | the icon, the size | | |
-| `label` | | | | fallback text of a danger. Nothing else shows it |
+| `label` | | | | fallback text of a danger. Nothing else shows it. A function is accepted but never called |
 | `shape` | | | | not read by anything |
 | `danger` | | | | the whole warning |
 | `indicator` | | | | `"warning"` draws it; `"marker"`, `"none"` draw nothing |
-| `heavy`, `shock`, `cloakBlind` | | | | server rules of the suit, see above (nothing is drawn) |
+| `heavy`, `shock`, `cloakBlind` | | | | server rules of the suit, see above (nothing is drawn). `heavy` may be a function of the entity; given a class name only, a `heavy` function answers false, and `heavy` and `shock` only see entries that name the class in `class` |
+| `dead` | | not listed, not tagged, not counted for the danger bar | | `function(ent)`, server: `true` when the entity is destroyed (a wrecked vehicle is not a contact). The client reads it nowhere |
+| `awareness` | | the contact's colour, the danger bar | | `function(ent, ply)`, server: `level, exposure, seen, heard`, the registry's equivalent of `ENT:GetGryAwareness` (the method wins when the entity has both) |
+| `crew` | | | the colour of a vehicle with no `relation` of its own | `function(ent)`, server: the occupants of the vehicle (players and NPCs); the vehicle's relation follows theirs |
+| `facing` | | the heading of the icon | | `function(ent)` returning a world forward `Vector`, read by the server for the radar's message. The client does not read it: it replaces the yaw of the message with the entity's own yaw (plus 90 degrees for a vehicle) whenever it has the entity and it is not dormant |
 | `priority` | which entry wins | which entry wins | which entry wins | which entry wins |
 
 `priority` (-1000 to 1000, 0 by default) orders the entries: the higher first, and among equals the one registered first. The first
@@ -358,6 +363,7 @@ engine class `NPC`), so a nextbot or a vehicle that you made an ally shows blue 
 | `danger.label`, `danger.range`, `danger.ownMissile`, `indicator` | | the warning |
 | `priority` | the order of the entries | the order of the entries |
 | `heavy`, `shock`, `cloakBlind` | the suit's malfunctions and the camouflage's effect on the NPCs | stored |
+| `dead`, `awareness`, `crew`, `facing` | the radar's rules for entities of other addons | stored (the client replaces the yaw itself) |
 | `label`, `shape`, `danger.type` | stored | stored |
 
 So a declaration file that runs in both realms is right for every field. If you only registered on the server, the client would

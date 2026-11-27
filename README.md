@@ -1,147 +1,91 @@
-GryMod
+# GryMod Remastered
 
-[Workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=153963150)
+**Playing? Get it on the Steam Workshop: [GryMod Remastered - Crysis Nanosuit & HUD](https://steamcommunity.com/sharedfiles/filedetails/?id=3846743387).**
+Everything a player needs (what it does, the keys, the settings) is on that page and in the options menu of the game. This repository is the developer's page.
 
-----------
+GryMod Remastered is the nanosuit of Crysis 1 for Garry's Mod: its four modes (Armor, Strength, Speed, Cloak), its energy rules, its HUD, its binoculars, its night
+vision and its maps. Fan-made, not affiliated with Crytek or EA.
 
-Crysis for Garry's Mod
-----------
-           
-**YOU ARE NOT ALLOWED TO RE-UPLOAD IT**
-**YOU ARE NOT ALLOWED TO MAKE MONEY USING THIS MOD**
+## What changed since the first GryMod: the interface is a port
 
+The first GryMod drew a look-alike of the Crysis HUD with Garry's Mod's own drawing functions. Remastered is a **port**: the interface is the Crysis one, ported from
+its Flash (Scaleform) files, so the animations are the original's animations and not an imitation of them.
 
-The code is kindda garbage because it's the very first project i worked on
-           
-           
-> **Features:**
+How the port works:
 
-> - The Crysis 1 HUD, quick menu, binoculars and grenade warning, drawn from the original Scaleform movies
-> - Crysis 1 suit modes (Strength, Speed, Armor, Cloak and shit)
-> - Crysis 1 energy and health rules (a setting gives the earlier GryMod ones back)
-> - Auto resizing support (Different monitors format and different sizes, so it will not look like shit)
+1. **Convert, once, offline** (`dev_resources/flash2lua/`). The Flash movies are read with [FFDec](https://github.com/jindrapetrik/jpexs-decompiler). Every shape is rasterised
+   into a texture atlas (VTF files in `materials/grymod/flash/`), and every timeline (the frames, the transforms, the colour changes, the masks, the labels) becomes plain
+   Lua data (`lua/grymod/flash/*.lua`). The generated files are committed: the game needs neither the converter nor the original files.
+2. **Play the timelines in the game** (`lua/grymod/client/cl_flash.lua` and `cl_flash_draw.lua`). A small Flash player written in Lua runs the timelines at the movie's
+   30 images per second whatever the frame rate of the game, with `gotoAndPlay`, masks, colour transforms and text fields.
+3. **Port the ActionScript by hand.** What the movies do when the game sends them a value (the digits, the bars, the quick menu's selection, the crosshair's states, the
+   malfunction and the shutdown and reboot sequences...) was read in the original scripts and rewritten in Lua: the `cl_hud_*_flash.lua` files are that link, one for each movie.
+4. **Same for the rules.** The energy, the armor, the health regeneration, the camouflage and the speeds follow the numbers of Crysis (`lua/grymod/server/sv_mechanics.lua`;
+   a server setting gives the earlier GryMod numbers back). The camouflage's electric sparks are a port of the original pixel shader (`dev_resources/shaders/`).
 
-           
-How it Works 
--------------
-         
-Download and Put this in GarrysMod/garrysmod/addons
+That is why the animations match: nothing is redrawn by eye. The converter needs the Crysis SP demo's files; they are not in this repository (see
+[`dev_resources/flash2lua/README.md`](dev_resources/flash2lua/README.md)).
 
-Pick a key for the quick menu: when none is set, a small window asks for one every time you spawn (click the
-box, press the key). Or choose it in Options > GryMod, or in the console:
+## Where things are
 
-              bind mouse3 +crysishud          
+| Folder | What is in it |
+| --- | --- |
+| [`lua/autorun/grymod_shared.lua`](lua/autorun/grymod_shared.lua) | The loader: it includes every file of `lua/grymod/` (a test checks that none is forgotten) and holds the addon's version and Workshop id. |
+| [`lua/grymod/`](lua/grymod/README.md) | The addon: `sh_` shared, `sv_` server and `cl_` client files. |
+| [`lua/grymod/client/`](lua/grymod/client/README.md) | The HUD, the Flash player, the quick menu, the radar, the camouflage rendering, the options, the keys. |
+| [`lua/grymod/client/minimap/`](lua/grymod/client/minimap/README.md) | The minimap and the big map: the map rendered from above, kept on disk, with levels. |
+| [`lua/grymod/server/`](lua/grymod/server/README.md) | The suit's rules, the radar's contacts, the damage, the objectives, the in/out map. |
+| [`lua/grymod/compat/`](lua/grymod/compat/README.md) | The patches for other addons: weapon bases, NPC bases, vehicles, tools, third person cameras. |
+| [`lua/grymod/flash/`](lua/grymod/flash/README.md) | The converted movies. Generated, not written by hand. |
+| [`lua/grymod/campaign/`](lua/grymod/campaign/README.md) | The objectives of the Half-Life 2 campaign maps, generated from the maps. |
+| [`docs/`](docs/README.md) | The documentation for the addons that plug into GryMod. |
+| [`tests/`](tests/README.md) | The tests, run in a real game. |
+| [`tools/`](tools/README.md) | The release tools and the checks that need no game. |
+| [`dev_resources/`](dev_resources/README.md) | What makes the data: the Flash converter, the shaders, the campaign builder. Left out of the Workshop package. |
 
-Hold the key, point at a mode with the mouse (the view stays where it is), release to switch. The binoculars are
-the Half-Life 2 suit zoom (the zoom key). A grenade coming at you gets the red warning of the original game.
+## For addon developers
 
-The night vision is on **N** (or the key you pick in Options > GryMod > Keys): a green light amplifier with a soft light behind you, an energy of its own
-(60 s of use, 15 s to refill, it switches itself off when empty) and the sounds and energy bar of the original. It is best in dark places. Every piece
-(screen effect, light, starlight, hold or press, energy) can be turned off in the options, see `docs/api.md`.
-    
-         
-         
-Developers      
--------------
+GryMod has a public API, so that your weapons, NPCs, vehicles and effects show properly on the HUD, the radar and the binoculars without patching GryMod. Start with
+[`docs/README.md`](docs/README.md):
 
-##
->Here is the only NW Var used (it's a float)
+| Guide | What it covers |
+| --- | --- |
+| [`docs/api.md`](docs/api.md) | The extension API: is GryMod there and which version, safe calls, the suit's commands and events, the relation chain. |
+| [`docs/entities.md`](docs/entities.md) | Tracked entities: make your NPCs, vehicles, mines and projectiles show on the radar, the binoculars and the grenade warning. |
+| [`docs/weapons.md`](docs/weapons.md) | The weapon registry: fire modes, ammunition, melee, the weapon list. |
+| [`docs/events.md`](docs/events.md) | The HUD events: every effect of the interface (animation and sound together), how to play or add one. |
+| [`docs/minimap.md`](docs/minimap.md) | The minimap and the big map: how they are made, cached and set. |
+| [`docs/compat.md`](docs/compat.md) | The compatibility patches, the rules they follow, and the checklist for supporting a new weapon base. |
 
-* GryEnergy (0-100)
+The one thing to know first: test for GryMod from the `Initialize` hook, with `GRYMOD_INSTALLED` and `GryMod.API.Version` (see
+[`docs/README.md`](docs/README.md)). The interface version goes up only when something breaks.
 
+## Compatibility
 
+**TFA and ARC9 are the only addons with real, tested support.** Their weapons work with the suit (melee and recoil effects, the camouflage with the attachments, fire mode
+and ammo on the HUD, the weapon menu).
 
+Everything else in `lua/grymod/compat/` (ArcCW, CW 2.0, FA:S 2, M9K, VJ Base, DrGBase, ZBase, Draconic Base, LVS, Glide, simfphys, JMod, Wiremod, PAC3...) is the bare
+minimum, written without much testing. It uses the public API only, it may be incomplete, and it may break. What was tried in a game and what was only read in the
+source is written in [`docs/compat.md`](docs/compat.md), which also holds the rules a patch follows.
 
-         
-         
-         
-         
-  
-		
-		
-Settings
--------------
+## Settings
 
-All of them are saved between sessions (Options > GryMod in the spawn menu, or the console):
+Everything is optional and saved: Options > GryMod in the spawn menu, or the console. Server rules (`gry_mechanics`, the cloak's rules, the minimap's in/out map...) are in the
+administrators' page of the options. A few to know: `gry_hud 0` hides the HUD, `gry_hud_theme` picks the colours, `gry_minimap 0` turns the minimap off, `gry_mechanics classic`
+gives the earlier numbers back. The quick menu key is asked at the first spawn (or `bind mouse3 +crysishud`).
 
-* `gry_hud 0` : hide the HUD (health, energy, ammo, radar, compass). The quick menu and the suit abilities keep working.
-* `gry_sounds 0` : mute the suit sounds.
-* `gry_hud_theme` : the colours of the HUD: `blue` (the original's "Ice blue"), `default` ("Military green"), `orange` ("Amber"), `white`, the four sets the original game offers, or `custom`, which uses the three colours `gry_hud_color_line` (outlines and icons), `gry_hud_color_over` (active indicators) and `gry_hud_color_text` (digits and letters), each written `r g b` (0 to 255). The options panel has a colour mixer for each.
-* One switch for each element of the interface, all on by default (`gry_hud_reset` puts them back): `gry_hud_status` (health, energy and ammo panel), `gry_hud_radar` (compass and radar panel), `gry_hud_radarhex` (the alert hexagon of the radar: it warns when a vehicle or a machine has noticed you, and the danger bar then follows the soldiers only), `gry_hud_crosshair`, `gry_hud_damage` (damage direction arcs), `gry_hud_hit` (hit marker), `gry_hud_grenade` (grenade warning), `gry_hud_binoculars`, `gry_hud_quickmenu`, `gry_hud_nightvision` (the night vision energy bar), `gry_hud_bar_smooth` (the suit's energy bar and the night vision bar follow the exact value instead of whole percents; it only acts when one percent is wider than a pixel, that is from 1080p up for the suit bar and at any size for the night vision bar; 0 gives the original's whole steps), `gry_hud_boot` (start-up log, shutdown animation and reboot sequence, with their sounds). The original game has no such switches, only the four colour sets and a crosshair style.
-* `gry_compass_intercardinals` : `0` (default) shows only N, E, S and W on the compass strip, as the Crysis remaster does; `1` also shows NE, SE, SW and NW, as the original demo does. It is in the Radar and compass category of the Radar and map options.
-* `gry_hud_prewarm` : when the pictures of the interface are loaded. Each big one takes 0.6 to 1.3 s to decode, so the first use of the quick menu or the binoculars used to freeze the game. `1` (default): at the loading screen, for the elements that are switched on (the map takes about ten seconds longer to open); `2`: the panels of the spawn at the loading screen, the rest in short steps over the first seconds of play; `0`: when first used.
-* `gry_hud_crosshair_style` : the crosshair, 1 to 13 (the original's profile uses 6).
-* `gry_menu_key` : the button code of the quick menu key (the engine does not let an addon run `bind`; set it with the key picker of the options or of the prompt).
-* `gry_mechanics` (server) : `crysis` (default, the original game's numbers: energy recharge 8/6/7 s after a 1 s delay, sprint, cloak and jump costs, 30 % minimum armor absorption, health back in 1 s steps after 2.5 s) or `classic` (GryMod's earlier numbers).
-* `gry_xadd`, `gry_xdist` : HUD position.
-* Admins: `gry_Health` toggles the health regeneration, `gry_Armor` toggles the infinite armor (also usable from the server console).
+## Tests and checks
 
+The tests (`tests/`) are in the GLuaTest format and run in a real game with [gmod-mcp](https://github.com/ExtReMLapin/gmod-mcp): load a map, then `tests_run` with the
+realm of the file (`sv_` server, `cl_` client). The checks that need no game (Lua syntax, the loader, the shaders, the release package) run in GitHub Actions on every
+push; see [`tools/README.md`](tools/README.md).
 
-The Crysis interface
--------------
+## Releases
 
-The interface is drawn from the Crysis Scaleform movies (`HUD_AmmoHealthEnergySuit`, `HUD_RadarCompassStealth`,
-`HUD_QuickMenu`, `HUD_Binoculars`, `HUD_GrenadeDetect`, `HUD_Crosshair`, `HUD_FriendlyCross`, `HUD_Initialize`,
-`HUD_Lost`, `HUD_Reboot`), with their own animations and the original ActionScript rules for the digits, the bars,
-the suit icon, the ammo colours, the malfunction (the HUD turns red when the energy is empty, the shutdown animation
-plays, then the reboot sequence when the suit comes back), the quick menu's selection, the crosshair (13 styles that
-spread with what you do, open on something you can use, blink on a hit; the damage arcs show where a hit came from;
-a cross on an ally) and the start-up log at every spawn. The sounds of the start-up, malfunction and reboot are the
-demo's own interface sounds. How it works:
+A GitHub release (a tag such as `5.0`) builds the zip and the Workshop package from the same commit with `tools/prepare_release.py`, which refuses anything that the Workshop
+would refuse, then uploads it (`.github/workflows/release.yml`). The Workshop item of GryMod Remastered is a new item, separate from the first GryMod's.
 
-* `dev_resources/flash2lua/` converts the movies once, offline (Python, [FFDec](https://github.com/jindrapetrik/jpexs-decompiler)
-  and the Crysis SP demo's `GameData.pak`): every shape becomes a picture in an atlas
-  (`materials/grymod/flash/*.png`) and every timeline becomes Lua data (`lua/grymod/flash/*.lua`).
-  `dev_resources/flash2lua/README.md` says how to run it. The generated files are committed: the game does not need
-  the converter or the demo.
-* `lua/grymod/client/cl_flash.lua` plays the timelines (30 images per second, any frame rate),
-  `cl_flash_draw.lua` draws them; `cl_hud_flash.lua`, `cl_hud_radar_flash.lua`, `cl_hud_quickmenu_flash.lua`,
-  `cl_hud_binoculars_flash.lua`, `cl_hud_grenade_flash.lua`, `cl_hud_crosshair_flash.lua` and
-  `cl_hud_boot_flash.lua` are the hand-ported ActionScript and the link with GryMod's values;
-  `lua/grymod/server/sv_feedback.lua` tells the client where damage came from and when the player hit something.
-* The compass panel has no minimap picture and no enemy icons yet; its stealth bar shows how many NPCs are near.
-  Not ported: the binoculars' horizon ladder and target locks, pickups, use icons, mission markers (a survey of every
-  movie is in the research notes of the branch's author). The crosshair's spread is estimated from what the player
-  does (speed, air, crouch, shots) because Garry's Mod weapons have no common spread value, and "friendly" means a
-  teammate or one of the Half-Life 2 rebels' NPC classes.
+## License
 
-Tests
--------------
-
-`tests/` holds GLuaTest-format tests for the server and the client. They run in a real game with
-[gmod-mcp](https://github.com/ExtReMLapin/gmod-mcp): load a map in singleplayer, then
-`tests_run` with `realm=server` on `tests/sv_grymod_test.lua` and `realm=client` on `tests/cl_grymod_test.lua`.
-
-
-Releases
--------------
-
-Publishing a GitHub release (tag `4.3` or `v4.3`) attaches a zip of the addon to it and uploads the addon to the
-Steam Workshop (`.github/workflows/release.yml`; the secrets it needs are listed at the top of that file).
-The release notes become the Workshop change note: no double quote (`"`) in them.
-
-Before anything is published a `verify` job checks the Lua, the compiled shaders, the package (file types, names, size,
-version) and that the Workshop id of the `WORKSHOP_ID` secret is the `GryMod.WSID` of the code. A rehearsal that publishes
-nothing: Actions > Release > Run workflow. The same checks run locally:
-
-    python tools/prepare_release.py --version 4.3 --out dist/workshop --workshop --expect-wsid <the item id>
-    python tools/check_lua_syntax.py            # needs: pip install lupa
-    python dev_resources/shaders/check_compiled.py
-
-The compiled shaders (`shaders/fxc/*.vcs`) are committed: after changing a `.hlsl`, recompile it
-(`dev_resources/shaders/README.md`) and run `check_compiled.py --update`.
-
-Credits    
-----------
-
-Lapin : Lua code, HUD materials and some others stuff
-
-The Crysis-style HUD uses graphics and fonts taken from the Crysis Scaleform HUD files (Crytek / Electronic Arts).
-
-Carl Mcgee : Working on GryEngine models-map 
-
-Vuthakral Darastrix : Ideas and his work on the scar materials (now unused)
-
-Dlaor : The original quick-menu
-
-Sven Dixon :  Designed the original crysis interface suite
+You are not allowed to re-upload it or to make money with it. Credits for the ideas and the data that come from others are in the source files that use them.

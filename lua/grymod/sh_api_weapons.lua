@@ -424,7 +424,7 @@ resolveField = function(field, class, wep, source, entity, explicit)
 end
 
 -- The final description of a weapon, the one the HUD uses: a table with the fields of a definition (fire, burst, ammo, counter,
--- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, grenade, heat, listIcon) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
+-- alt, altAmmo, altShoots, altLabel, altIcon, icon, slotIcon, crosshair, zoomCrosshair, grenade, heat, listIcon) plus `display` (the numbers of CustomAmmoDisplay, when it has them).
 -- wep is the weapon entity, or its class name (then only what is declared or read from the stored SWEP counts). nil for an invalid
 -- weapon. explicit = true: only what is declared (registry, GryHUD, adapters), no defaults, no alt/altShoots/counter fallbacks.
 function API.ResolveWeapon(wep, explicit)

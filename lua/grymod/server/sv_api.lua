@@ -428,7 +428,7 @@ util.AddNetworkString("gry_api_hud")
 
 -- Plays the HUD event `name` on the clients of `players` (a player, or a list of players; what is not a valid player is left
 -- out). `data` is nil or a small table of numbers, strings and booleans (see GryMod.API.HUDEventLimits). The events that exist
--- are the built-in ones (boot, reboot, lost, malfunction) and the ones other addons register on the client. Returns true and
+-- are the built-in ones (registered by the client files, listed in docs/events.md) and the ones other addons register on the client. Returns true and
 -- how many clients were asked, or false and why not.
 function API.HUDEvent(players, name, data)
 	local ok, reason = API.CheckHUDEvent(name, data)

@@ -22,8 +22,8 @@ end
 
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
-- `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"weaponmenu"` (client), `"plainview"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client), `"cameraowner"`, `"viewfov"`, `"viewveto"`, `"hudsuppress"`, `"clientrelation"`, `"playerparts"`, `"usablefilter"` (all client). New parts add a name here and never change the version number.
+- `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today, in both realms: `"suit"`, `"relation"`, `"hudevents"` and `"safecall"` (`sh_api.lua` sets these four in both realms, so `Has("suit")` is true on the client although the suit commands exist on the server only), `"weapons"`, `"tracked"`, `"usable"`, `"vehicles"`, `"class"`, `"creature"`, `"cloaklevel"`, `"objectives"`, `"messages"`.
+  Server only: `"attackreport"`, `"shotreport"`, `"hitfilter"`, `"suitnoise"`, `"awareness"`, `"campaign"`. Client only: `"weaponparts"`, `"weaponmenu"`, `"plainview"`, `"pickups"`, `"radarmarkers"`, `"weaponlist"`, `"bigmap"`, `"cameraowner"`, `"viewfov"`, `"viewveto"`, `"hudsuppress"`, `"clientrelation"`, `"playerparts"`, `"usablefilter"`. New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -68,7 +68,8 @@ GryMod.API.ReportAttack(ply, true)    -- true: it came from the right click (the
 GryMod.API.ReportAttack(ply, false)   -- any other attack
 ```
 
-It returns `true` when the player was camouflaged (his client ends the camouflage), or `false` and why (`"invalid player"`, `"not camouflaged"`); nothing is raised,
+The server does not change the mode itself: `ReportAttack` sends the message `gry_cloak_shot` to the player, and his client ends the camouflage (cause `"player"`) and empties the bar,
+so the effect comes after a network round trip. It returns `true` when the player was camouflaged, even if his client then ignores a right-click report because of `gry_cloak_altfire`, or `false` and why (`"invalid player"`, `"not camouflaged"`); nothing is raised,
 whatever you give it. `GryMod.API.Has("attackreport")` tells whether it exists. Weapons that are not yours: GryMod ships patches for some weapon bases (TFA, see
 [compat.md](compat.md)).
 
@@ -113,14 +114,14 @@ GryMod.API.Has("hitfilter")
 ```
 
 - `"ignore"`: no energy taken, no damage arrows, no hit marker, no malfunction, no armor sound, no "armor absorbed" report, and the radar does not mark the NPC that struck. The damage
-  is left exactly as it came (another addon may still scale it).
+  is left exactly as it came (another addon may still scale it). The suit returns before it touches the health's regeneration, so `"ignore"` does not restart the regeneration delay.
 - `"bypass"`: the damage goes to the health as it is, in every mode and with the infinite armor too; the bar is not touched and no malfunction starts. The arrows and the hit marker still
   tell the hit, and the health's regeneration waits as after any damage.
 - The filters are asked by priority (the higher first, then in the order of registration); the first one that answers `"ignore"` or `"bypass"` wins and the others are not asked. Any other
   answer (nothing, `true`, another text) is "no opinion".
 - A filter runs under `GryMod.API.SafeCall`: one that raises an error is skipped for that hit, and five errors in a row switch it off (one console line). Adding the same id again replaces it
   and arms it again. It is asked once per hit, whatever number of the suit's parts need the answer. It returns `true`, or `false` and why (`"invalid id"`, `"invalid function"`,
-  `"invalid priority"`). A player in god mode takes no damage and the filters are not asked.
+  `"invalid priority"`). A player in god mode takes no damage and the armor handler does not ask the filters; the radar's handler (which decides whether the NPC that struck is marked) asks them without checking god mode.
 - Without any filter nothing changes: the suit's behaviour is the one before this existed.
 
 ### Keep the suit at a respawn in place: `GryMod_CanResetOnSpawn(ply)`
@@ -166,7 +167,7 @@ The suit works in a vehicle as it does on foot: no refusal, no cut of the camouf
 | `GryMod_EnergyUsed(ply)` | energy was used (the new name of `GryUseEnergy`, which keeps firing too) |
 | `GryMod_SuitEnabled(ply)`, `GryMod_SuitDisabled(ply)` | `SetSuitEnabled` changed the state |
 | `GryMod_MalfunctionStart(ply, seconds, reason)`, `GryMod_MalfunctionEnd(ply)` | the suit went down, came back. The client has the same two hooks with only `(ply)`, for every player (see `docs/events.md`) |
-| `GryMod_EMP(pos, radius, seconds)` | you can run this hook yourself to fire an EMP (same as `API.EMP`) |
+| `GryMod_EMP(pos, radius, seconds)` | you can run this hook yourself (`hook.Run`) to fire an EMP: GryMod's own listener calls the same function as `API.EMP`. `API.EMP` does not run the hook, so listeners of `GryMod_EMP` do not hear a call to `API.EMP` |
 | `GryMod_StrengthJump(ply)` | a strength jump was granted on the ground (once per key press). It is paid in energy, or free with the infinite armor. Not fired for the weak jump you get when the bar is too low |
 | `GryMod_Zoom(ply, fov)` | the field of view the server zoom asks of the engine for the player, in degrees; `fov = 0` when the zoom is over |
 | `GryMod_ArmorAbsorbed(ply, absorbed, passed)` | a hit was taken by the armor: `absorbed` points went to the armor, `passed` points went on to the health (`absorbed + passed` is the hit). Only when `absorbed > 0` |
@@ -466,7 +467,7 @@ off with `Set(false, "my_addon")` when its own condition holds, from that same h
 
 A HUD event is a named effect the HUD plays, picture and sound together; GryMod's own triggers call the same events. The full list
 (`boot`, `lost`, `reboot`, `malfunction`, `armor_hit`, `decloak`, `low_health`, `jam`, `mode`, `energy_critical`, `regen_start`,
-`regen_stop`, `dive_in`, `dive_out`, `drown`, `reset`, `disabled`, `enabled`, `message`), their data, what each plays and the options they follow are
+`regen_stop`, `dive_in`, `dive_out`, `drown`, `reset`, `disabled`, `enabled`, `radar_exposure`, `objective`, `message`, `use_feedback`, `night_vision`, `map_open`, `map_close`), their data, what each plays and the options they follow are
 in [events.md](events.md), with examples and the effects test window.
 
 From the server, to one player or a list of players:
@@ -478,7 +479,8 @@ GryMod.API.HUDEvent(player.GetAll(), "boot")
 
 The data is `nil` or a small table: at most 8 fields, names of letters, digits and underscore (24 characters at most), values that
 are finite numbers, strings (128 characters at most) or booleans. The event name has 32 characters at most. A call that breaks
-these limits returns `false` and a reason, and sends nothing (`GryMod.API.HUDEventLimits` tells the limits).
+these limits returns `false` and a reason, and sends nothing (`GryMod.API.HUDEventLimits` tells the limits). That check is made on the server only: the client's
+`HUDEvent` does not check `data`, and the limits apply on the client only to what comes over the network.
 
 On the client, to play one here or to declare your own (the optional third argument describes it for tools: `label`, `variants`,
 `follows`, see events.md):
@@ -585,7 +587,8 @@ beep and the dimming off.
 
 **Groups.** The stock entries for the props, the physboxes and the floor turret you can lift (`PICK UP`) are in the group `"props"`, which the player switches
 with the client convar `gry_usehint_props` (0, off, by default: "you can pick up almost anything"). The convar of a group is named `gry_usehint_<group>`; a
-group that has no convar is always on. A developer can make one: `CreateClientConVar("gry_usehint_terminals", "1", true, false)`.
+group that has no convar is always on. A developer can make one: `CreateClientConVar("gry_usehint_terminals", "1", true, false)`. The convar is looked up once per group and a missing one is
+remembered as "none": create it before the prompt is first asked for that group, or the group stays always on.
 
 The stock entries are registered the same way, with a low priority: yours win. They cover what has a +use action in Half-Life 2 and Garry's Mod and
 is not taken by touch: the ammo crate (`TAKE AMMO`), the wall chargers and the wheels (`USE (HOLD)`), vehicles (`ENTER VEHICLE`), ladders (`CLIMB`, only with
@@ -610,7 +613,8 @@ GryMod.API.UnregisterPickupIcon("ammo", "MyAmmo")
 ```
 
 The icons are `Riffle`, `socom`, `shootgun`, `missle`, `rocket`, `FY71`, `Hurricane`, `LAW`, `TACGun`, `GaussRifle`, `DSG1`, `MOAR`, `MOAC`,
-`Flashbang`, `SmokeGrenade`, `Sleep` and `AVMine`.
+`Flashbang`, `SmokeGrenade`, `Sleep`, `AVMine` and `New` (the blank frame of the movie, with no picture: the 17 above plus this one make 18 icons that
+`RegisterPickupIcon` accepts).
 
 ## Weapons
 
@@ -627,7 +631,7 @@ A weapon is described by a **definition**, a table of optional fields. A field y
 | `fire` | `"auto"`, `"semi"`, `"burst"`, `"none"`, or `function(wep)` returning one of them | the fire mode shown in the weapon slot (`"none"`: no gun icon, for a melee weapon) |
 | `burst` | integer, 2 to 32 | the size of a burst, when `fire` is `"burst"` |
 | `ammo` | ammo type name | the primary ammo (default: `Primary.Ammo`, then the engine's ammo of the weapon) |
-| `counter` | `"clip"`, `"none"`, or `function(wep)` returning a text | what the counter shows (default `"clip"`; `"none"` when `CustomAmmoDisplay` says `Draw = false`) |
+| `counter` | `"clip"`, `"none"`, or a function | what the counter shows (default `"clip"`; `"none"` when `CustomAmmoDisplay` says `Draw = false`). A function is stored and returned by `ResolveWeapon` as it is: nothing calls it |
 | `alt` | `"none"`, `"grenade"`, `"energy"`, `"zoom"`, `"doublebarrel"`, `"shoot"`, `"throwlow"`, `"melee"` | what the secondary fire (right click) is; `"zoom"` also makes the binoculars end the weapon's zoom when they open (client and server read the registry) |
 | `altAmmo` | ammo type name | the ammo the secondary counts (`"SMG1_Grenade"` for a grenade launcher, `"AR2AltFire"` for the energy ball) |
 | `altShoots` | boolean | true when the secondary fires a shot or is a blow (`"melee"` with `altShoots = true`). The camouflage ends on a right click that does. Default: true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow` (not `melee`: say it) |
@@ -685,7 +689,7 @@ end
 - `ResolveWeapon(wep)` is what the HUD uses: the final description of a weapon entity (or of a class name, then without the things only
   an entity can tell), `nil` for an invalid weapon. `ResolveWeapon(wep, true)` gives only what is declared, with no default.
   `WeaponValue(wep, field)` gives one field without building a table.
-- A function you give for `fire` or `counter` runs under `SafeCall` (see above): a broken one never breaks the HUD.
+- A function you give for `fire` runs under `SafeCall` (see above): a broken one never breaks the HUD. A function given for `counter` is never called.
 
 ### Which side uses which field
 
@@ -712,7 +716,7 @@ entry (it answers `GetWeapon` and `ResolveWeapon` too) and does nothing with it.
 
 For each field, the first of these that says something wins:
 
-1. the registry entry of the weapon's class, or of the nearest base class that has one;
+1. the registry entry of the weapon's class, or of the nearest base class that has one (one entry only: an entry is never completed with fields of its base class's entry);
 2. the `SWEP.GryHUD` table of the weapon;
 3. the weapon adapters (below);
 4. the defaults read from the weapon: `Primary.Automatic` (auto or semi), `Primary.Ammo` and `Secondary.Ammo` (or the engine's ammo of
@@ -768,7 +772,7 @@ end)
 
 GryMod.API.RemoveWeaponMenuProvider("my_addon")
 GryMod.API.GetWeaponMenu(weapon)     -- the opener of the first provider that has one, or nil
-GryMod.API.OpenWeaponMenu(weapon)    -- runs it, true when there was a menu to open
+GryMod.API.OpenWeaponMenu(weapon)    -- runs it: what pcall returns (true and what the opener returns, or false and the error message); plain false when there is no menu
 ```
 
 A provider must be cheap (the quick menu asks it while it is open), runs under `SafeCall` (five errors in a row switch it off) and the same id replaces it. An opener that raises an
@@ -1065,13 +1069,13 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `relation` | `"auto"` (default), `"ally"`, `"neutral"`, `"hostile"`, or `function(ply, ent)` | what it is to the player; `"auto"`: the NPC's real attitude |
 | `type` | `"human"`, `"flying"`, `"machine"`, `"device"` or 1, 2, 3, 4 | the icon of the radar: a soldier, a flying unit, a machine or a vehicle (a rectangle with a square), a device (a rectangle with a disc: GryMod's Combine mine); nothing: the class decides (unknown classes are `"human"`) |
 | `size` | `"normal"`, `"big"` | `"big"` draws the icon twice the size (the Strider's); nothing: the class decides |
-| `label` | text, or `function(ent)` | a name for the entity. Stored; no part of the HUD shows it yet |
+| `label` | text, or `function(ent)` | a name for the entity. Stored; no part of the HUD shows it yet. A function is accepted but never called |
 | `shape` | `"unit"` (default), `"dot"`, `"rect"`, `"triangle"` | how it will be drawn on the radar. Accepted and stored, never an error, but nothing reads it yet: the radar draws the icon of `type` (a vehicle is already a rectangle through `type = "machine"`) |
 | `danger` | a table (below) | the entity is a projectile or a trap the player must be warned about (the grenade warning) |
 | `indicator` | `"warning"`, `"marker"`, `"none"` | how a danger shows on the screen. `"warning"` (the default for an entry with `danger`) is the grenade-detect warning: an icon with the label and the distance. `"marker"` and `"none"` are accepted and stored: the warning does not draw them, and no marker is drawn yet |
 | `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
-| `heavy` | boolean or `function(ent) -> boolean` | server: a hit by this entity (attacker or inflictor) that breaks the armor of a player in armor mode puts the suit down for 3 s (`gry_malfunction_impact`). Matched by class, base or `match` |
-| `shock` | `"light"` or `"strong"` | server: a hit by this inflictor is a light shock (flicker, energy drain) or a strong one (suit down for 5 s), whatever the damage type (`gry_malfunction_shock`) |
+| `heavy` | boolean or `function(ent) -> boolean` | server: a hit by this entity (attacker or inflictor) that breaks the armor of a player in armor mode puts the suit down for 3 s (`gry_malfunction_impact`). Matched by class, base or `match` when the malfunction rules are given an entity; given a class name, only an entry that names it in `class` counts, and a `heavy` function then answers false |
+| `shock` | `"light"` or `"strong"` | server: a hit by this inflictor is a light shock (flicker, energy drain) or a strong one (suit down for 5 s), whatever the damage type (`gry_malfunction_shock`). Matched like `heavy`: given a class name, only an entry that names it in `class` counts |
 | `dead` | `function(ent)` | server: `true` when the entity is destroyed: it is not a contact (see "`dead`, `awareness`, `crew` and `facing`") |
 | `awareness` | `function(ent, ply)` | server: `level, exposure, seen, heard`, the registry's equivalent of `ENT:GetGryAwareness` |
 | `crew` | `function(ent)` | server: the occupants of a vehicle (players and NPCs); its relation follows theirs |
@@ -1161,8 +1165,8 @@ class you do not own.
 | `crew = function(ent)` | a list of players and NPCs, the occupants | the relation of the vehicle when its entry gives no `relation` of its own: hostile if one occupant is hostile to the player, else allied if one is allied, else neutral. The player himself does not count |
 | `facing = function(ent)` | a world forward `Vector` | the heading of the contact's icon. Nothing, a null vector or an error: the present rule (the entity's yaw, 90 degrees from it for an engine vehicle) |
 
-Without `crew` a vehicle takes the colour of its DRIVER (`GryMod.API.GetVehicleDriver`, see "Vehicles"). The client may read `facing` and `dead` too (the registry is shared); the server reads them for
-the radar.
+Without `crew` a vehicle takes the colour of its DRIVER (`GryMod.API.GetVehicleDriver`, see "Vehicles"). Only the server reads `facing` and `dead`: the client reads neither. It replaces the yaw the server sent with the entity's own yaw
+(plus 90 degrees for a vehicle) whenever it has the entity and the entity is not dormant (`Radar.Live`), and no client code reads `dead`.
 
 ### Dangers: the grenade warning
 
@@ -1186,7 +1190,8 @@ danger = {
   order of the registry, that matches the entity by class, base or function (the answer for an entity that is found is kept until the registry changes, so the function runs once
   for it); `GetDanger("class")` with a text only knows the entries that name that class. `GryMod.API.DangerNeedsEntity()` tells whether an entry names its entities by a base or a
   function. The client follows an entity from its creation and, while such an entry exists, judges again one frame later an entity it could not place (its fields may only be there
-  then). What stands before the entry is registered is looked for by class only, at the load of the client.
+  then). What stands before the entry is registered is looked for by class only, at the load of the client. `GetDanger(entity)` does not ask `GetTracked` first: when an entry of higher priority
+  without a `danger` is the one `GetTracked` returns for the entity, `GetDanger` still returns the first entry that has a `danger`.
 - `armed(ent)` runs on the **server only**: the client cannot read the engine's internal variables (`m_flDetonateTime`,
   `m_iMineState`...). The server follows every entity that has a danger entry from its creation (`OnEntityCreated`; the ones that
   stand before the entry is registered are not looked for again), asks `armed` five times a second and sends the answer to the
@@ -1221,7 +1226,7 @@ is armed and what the binoculars may tag; the client draws.
 | `priority` | yes | yes | the order of the entries |
 | `heavy`, `shock`, `cloakBlind` | yes | stored | the suit's malfunction rules and the camouflage's AI rule (server only) |
 | `dead`, `awareness`, `crew` | yes | stored | the radar's rules for the entities of other addons (server only) |
-| `facing` | yes | yes | the heading of the contact's icon: the server for the message, the client for what it draws itself |
+| `facing` | yes | stored | the heading of the contact's icon: the server for the message; the client replaces it with the entity's own yaw when it has the entity |
 | `danger.armed` | yes | | the server reads the state and networks it (`GryArmed`) |
 | `danger.ownerOf` | yes | | who threw it (`GryThrower`) |
 | `danger.label` | | yes | the text of the warning |

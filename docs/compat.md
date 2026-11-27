@@ -4,11 +4,20 @@ GryMod works with the stock Half-Life 2 and Garry's Mod game, and with other add
 **hooks** of its public API ([api.md](api.md)). Everything it knows about a game or an addon that is not its own lives in one folder,
 `lua/grymod/compat/`, so that a patch is easy to find, to read, to change and to take away.
 
+## Support level
+
+| Level | Addons | What it means |
+| --- | --- | --- |
+| Full support | **TFA** and **ARC9** | Written and tried with the real weapons in a game: the suit's effects on melee and recoil, the camouflage with the attachments, the fire mode and ammo on the HUD, the weapon menu, third person. Covered by tests. |
+| Best effort | ArcCW, CW 2.0, FA:S 2, M9K, VJ Base, DrGBase, ZBase, Draconic Base, LVS, Glide, simfphys, JMod, Wiremod, PAC3, and the rest of this folder | The minimum that makes the addon behave. Mostly written from reading the addon's source and little tried in a game (the sections below say, for each, what was and was not tried). It may be incomplete and it may break. |
+
+Nothing in the best effort row is a promise. A report that says which addon misbehaves and how is welcome.
+
 ## The rule
 
 A file of `compat/`:
 
-- uses **only the public API** (`GryMod.API.RegisterWeapon`, `RegisterTracked`, `RegisterUsable`, `AddWeaponAdapter`, `GryMod.FlashHUD.AddFireModeResolver`,
+- uses **only the public API** (`GryMod.API.RegisterWeapon`, `RegisterTracked`, `RegisterUsable`, `GryMod.FlashHUD.AddFireModeResolver`,
   the hooks...), exactly as an addon of yours would. It touches no private table of GryMod;
 - is **data or a small reader**, not a feature: what the thing is, not what GryMod does with it. The features read the registries and know no class name;
 - does nothing when the game or the addon it is about is not there: it answers `nil` for what is not its own, and never raises an error;

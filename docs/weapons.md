@@ -24,7 +24,7 @@ A description is a table of optional fields (the list is in [api.md](api.md#desc
 from the weapon itself. For each field, the first of these that says something wins:
 
 1. **the registry**: `GryMod.API.RegisterWeapon(class, def)`, for the class of the weapon or the nearest base class that has an
-   entry (`SWEP.Base`);
+   entry (`SWEP.Base`). Only one entry is used: an entry is never completed with fields of its base class's entry;
 2. **the weapon itself**: its `SWEP.GryHUD` table;
 3. **the adapters**: functions that read a weapon base's own fields (below);
 4. **the defaults**: `Primary.Automatic`, the ammo of the weapon, a secondary ammo that is a grenade type, `CustomAmmoDisplay`.
