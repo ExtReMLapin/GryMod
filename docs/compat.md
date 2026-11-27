@@ -62,3 +62,43 @@ lets the rest through (at least 30 percent, as the original game). What other ad
 
 If your addon is the one that needs a patch, you do not need this folder: describe your weapon with `SWEP.GryHUD`, or register your entities from your own addon
 ([api.md](api.md), [weapons.md](weapons.md)). `compat/` is for what GryMod ships about things it does not own.
+
+## Checklist: supporting a new weapon base or weapon pack
+
+Do every line for each weapon base (a base, not each weapon: the patches detect the base by its markers, never by a class name), with a REAL weapon of the base in a test
+game, and write down what could not be checked (a base that is not installed is "read in the source, not tried"). A line that does not apply to the base is answered "n/a"
+in the commit message, not skipped.
+
+**Seeing the weapon**
+1. **Detect the base** by its markers or its base chain (`weapons.IsBasedOn`), never by class names. Nothing may happen for another base or when the base is not installed.
+2. **Fire mode icon**: `GryMod.FlashHUD.AddFireModeResolver` (cl_<base>.lua). Check each mode the base has, live: single, burst, automatic, safety, under-barrel launcher.
+3. **Ammunition on the HUD**: a weapon without a magazine (a knife, a melee weapon, a bash-only tool) shows no bullets. "Infinite" and a bullet counter must never both show.
+4. **The base's own HUD**: if it draws a HUD of its own (ammo, fire mode, hints) that crowds ours, make hiding it an option on the Compatibility page, not a silent change.
+5. **Weapon menu**: `GryMod.API.AddWeaponMenuProvider` so the weapon icon of the quick menu opens the base's customization / inspection menu.
+
+**Camouflage (first and third person)**
+6. **The weapon and every attachment are covered**: put attachments on the weapon (a scope, a reflex sight, a laser, a silencer, a grip) and look at plain and camouflaged
+   screenshots, one after the other. Attachments drawn by the base itself are not the view model: give them to `GryMod.API.AddWeaponPartsProvider`.
+7. **Attachments changed while camouflaged** (attached, detached, swapped): covered at once, nothing to refresh.
+8. **Optics stay usable**: the picture of a scope, a reticle and the dot of a sight stay readable (the layers keep unlit, translucent, additive and render-target materials).
+9. **The base's own drawing context**: some bases open their own 3D camera, depth range or render targets while drawing the view model (ARC9). Check the camouflage with it
+   on, in iron sights and in the customization menu.
+10. **Camouflage ends on an attack**: bullets are seen by the server; a melee swing, a right click that attacks, a throw and a bash are reported with
+    `GryMod.API.ReportAttack`. Iron sights alone do not end it.
+
+**Strength mode** (costs energy; the weapon base's code must not be edited, only hooked)
+11. **Melee damage and push, from a gun (bash, butt stroke) and from a melee weapon**, multiplied with the energy (`GryMod.SuitWeapons.MeleeScale`).
+12. **Recoil** reduced with the energy (`RecoilScale`); check the kick stat names of the base (some versions rename them).
+13. **Energy**: each shot takes its cost, a melee hit takes its cost, never under 0, nothing while the armor is infinite.
+
+**Speed mode**
+14. **Weapon handling**: draw, holster, raise after a sprint, fire mode switch, melee swing (`SuitWeapons.Rate`). The reload follows `gry_suit_reload_rate` (the original
+    game does not speed it up). Lock-out times must follow the animation: a weapon ready too early or too late is a bug.
+15. **Inspect and other animations** that have their own timing are left alone unless the original speeds them up.
+
+**Shipping**
+16. Settings go on the **Compatibility page, one tab or category for the base** (administrators' settings through the white list), each one optional.
+17. Loader lines (`grymod_shared.lua`), `python tools/check_lua_syntax.py`, `python -m unittest tools.test_loader_coverage`, tests with stand-ins that pin the markers and
+    what is called, plus a live check on the real base, numbers written in the commit message.
+18. Every hook the patch adds is cheap (early return), runs under `pcall` where the base calls it, and answers `nil` when nothing changes.
+19. Document it in the table at the top of this file and in [api.md](api.md) if the API grew.
