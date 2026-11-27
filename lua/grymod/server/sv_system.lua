@@ -380,7 +380,9 @@ end)
 
 hook.Add("Think", "GryCloakThink", function()
 	for _, v in ipairs(GryMod.Players.All()) do
-		if v.Nanosuit_mode == GryMod.Modes.CLOAK and not GryMod.Config.InfiniteArmor then
+		-- a dead player keeps his mode until he respawns (sv_cloak_ai.lua) but pays nothing for it, and the camouflage does not "run out" on a body:
+		-- the cause ENERGY is the one the HUD answers with "Temperature Camo: Disabled!", it is only asked for a player who is alive
+		if v.Nanosuit_mode == GryMod.Modes.CLOAK and not GryMod.Config.InfiniteArmor and v:Alive() then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
 			local amnt = v:GetNW2Float("GryEnergy")
 			local amnt_to_drain = GryMod.Mech.CloakDrain(v:GetVelocity():Length()) * FrameTime()
