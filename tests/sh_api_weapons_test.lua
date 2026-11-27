@@ -820,13 +820,17 @@ return {
 					local def = API.ResolveWeapon(class)
 
 					expect(def.fire).to.equal("none")
-					expect(def.altShoots).to.beFalse()
 					expect(def.altAmmo).to.beNil()
 				end
 
 				expect(API.ResolveWeapon("weapon_physcannon").alt).to.equal("none")
-				expect(API.ResolveWeapon("weapon_crowbar").alt).to.equal("melee")
-				expect(API.ResolveWeapon("weapon_stunstick").alt).to.equal("melee")
+				expect(API.ResolveWeapon("weapon_physcannon").altShoots).to.beFalse()
+
+				-- the right click of the three stock melee weapons is another blow (the other hand for the fists): it ends the camouflage, so it is declared as a "shot"
+				for _, class in ipairs({"weapon_crowbar", "weapon_stunstick", "weapon_fists"}) do
+					expect(API.ResolveWeapon(class).alt).to.equal("melee")
+					expect(API.ResolveWeapon(class).altShoots).to.beTrue()
+				end
 			end
 		},
 		{
