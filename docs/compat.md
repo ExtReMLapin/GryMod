@@ -39,6 +39,7 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_legs_ec2.lua` | Gmod Legs 3 (`LocalPlayer().ShouldDisableLegs`, set only if it was not set) and Enhanced Camera 2 (`EnhancedCameraTwo:ShouldDraw` wrapped once) draw the local player's legs and body with models of their own that the camouflage does not cover: they are **hidden** while the camouflage is on and while it fades out (`GryMod_CloakChanged`, one timer for the end of the fade). Covering them is `AddPlayerPartsProvider`, not done. Stand-ins only. |
 | | `cl_vmanip.lua` | VManip's animations are not started while the binoculars are up (`VManipPrePlayAnim` answers `false`) and the one that plays is ended: the view model is not drawn then, so its `PostDrawViewModel` does not come and the animation would freeze, with its camera angle. Stand-ins only. |
 | | `cl_nvg_others.lua` | `GryMod_CanUseView("nightvision")` answers `false` while another night vision is on, so the key does not stack a second one. Reads NVScript (its `NV_FX` hook; read in two forks of its code) and JMod's goggles (`ply.EZarmor.effects`). Modern Warfare NVGs and Arctic's GCAL are not read (no public source, not installed): add a reader to `GryMod.CompatOtherNV.Sources`. Stand-ins only. |
+| `compat/vehicles/` | `sh_simfphys.lua`, `sv_simfphys.lua`, `cl_simfphys.lua` | simfphys, the physics vehicle base (the base and its armed pack). The car is one class for every vehicle, the player sits on a child seat, the wheels have a +use of their own. Shared: the vehicle provider (the car, not the seat; the driver who sits, never the remote driver), the tracked entries (every car is a vehicle contact once scanned, a tank is a heavy machine, the crew of the car colours it, its own forward turns its icon, a wreck is no contact, the anti-tank mine is a device), the prompts of the wheels and of the mine. Server: a hit filter (what simfphys cancels on a seated player costs the suit nothing; the explosion of the car, which wants its occupants dead, goes through the armor) and the shell of a cannon and the thrown mine ending the camouflage. Client: no prompt on a locked car. **Written from the source of simfphys, tested with stand-ins: see the section below.** |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -131,6 +132,18 @@ The original holds the binoculars in place of the weapon: `gry_binoculars_hide_w
 VJ HUD (health, ammunition, compass and crosshair in `HUDPaint`, hiding the same four game elements) and Crosshair Designer draw a HUD of their own over GryMod's. The patch does **not** hide
 either of them through `AddHudSuppressor`: which HUD the player wants is the player's choice, and GryMod never writes another addon's settings. Turn one off in its own options (VJ HUD:
 `vj_hud_enabled 0`) or GryMod's HUD in the options of GryMod (`gry_hud 0`). ARC9's own HUD is the one exception, with an option (`gry_arc9_hide_hud`).
+## simfphys: how it was written (2026-11-27)
+
+`compat/vehicles/*simfphys.lua` was written from the public source of `simfphys_base` (8d4b1ad) and `simfphys_armed` (53f709f), without simfphys installed, and tested with stand-ins that answer what
+its code answers (`tests/sh_compat_simfphys_test.lua`, `sv_...`, `cl_...`). **What is read, not tried in a game**, to check with the real addon:
+
+- the seats: `Player:GetSimfphys()` is the car, `car:GetDriverSeat()` the seat of the driver who sits (`car:GetDriver()` is the remote driver of `weapon_simremote` when there is one);
+- the damage: simfphys' hook `!!!_simfphys_fix_vehicle_explosion_damage` cancels every hit that is not `DMG_DIRECT` on a seated player (the filter says "ignore" only while that hook is there); the exploding car
+  sets `car.destroyed` and gives each occupant `Health + Armor` as `DMG_DIRECT` (the filter says "bypass" then). A crash (2 or 5 points) is an ordinary hit;
+- the forward of the car (`car.Forward`, or `car.VehicleData.LocalAngForward` of its model), the heavy mass (the tanks weigh 8000 to 20000, the armored cars 4800 and less);
+- the shells (`simfphys_tankprojectile`, made with `Attacker` and `AttackingEnt` set before the spawn, seen a tick after) and the thrown mine (`Thrown`, `CreatedBy`);
+- what is NOT done on purpose: no ring of the radar for the shell and the wreck (the core rings every `util.BlastDamage`; the wreck's gib makes one), no danger of the grenade warning for the shell (it flies at
+  about 13 000 units a second: less than a second of warning at the warning's rate), no camouflage ban and no notarget for a seated player (the owner's decision: the suit works in a vehicle).
 
 ## Adding a patch
 
