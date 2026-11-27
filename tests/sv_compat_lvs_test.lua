@@ -200,8 +200,9 @@ return {
 				expect(LVS.FireBullet).notTo.equal(original)
 				expect(L.WrapFireBullet()).to.beTrue()
 
-				local shooter = player()
-				local data = {Attacker = shooter}
+				local car = vehicle(1)
+				local shooter = player({_vehicle = car})
+				local data = {Attacker = shooter, Entity = car}
 				local a, b = LVS:FireBullet(data, "x")
 
 				expect(a).to.equal("bullet")
@@ -217,6 +218,49 @@ return {
 
 				expect(#calls).to.equal(2)
 				expect(#reports).to.equal(1)
+			end
+		},
+		{
+			-- fails when the suit is told for a gun that is not the one of the player's vehicle: a turret that a player placed (lvs_turret fires by itself with its creator as the attacker,
+			-- lvs_turret.lua: bullet.Attacker = self.Attacker) ended the camouflage of the creator who stood somewhere else (found with the real LVS, 2026-11-27)
+			name = "LVS:FireBullet wrapped: a turret or a vehicle that is not the player's tells nothing; a gun that is a part of his vehicle, or a bullet with no entity, does",
+			func = function()
+				LVS = {FireBullet = function() end}
+				L.WrapFireBullet()
+
+				local car, other = vehicle(1), vehicle(2)
+				local seated = player({_vehicle = car})
+				local onFoot = player()
+				local gun = ent("lvs_base_gunner", {GetParent = function() return car end})
+				local turret = ent("lvs_turret", {GetParent = function() return NULL end})
+
+				-- the creator of a turret, on foot: not his shot
+				LVS:FireBullet({Attacker = onFoot, Entity = turret})
+				expect(#reports).to.equal(0)
+
+				-- the creator of a turret, who sits in a vehicle of his own: the turret still fires by itself
+				LVS:FireBullet({Attacker = seated, Entity = turret})
+				expect(#reports).to.equal(0)
+
+				-- a player named as the attacker of another vehicle's gun
+				LVS:FireBullet({Attacker = seated, Entity = other})
+				expect(#reports).to.equal(0)
+
+				-- his own vehicle
+				LVS:FireBullet({Attacker = seated, Entity = car})
+				expect(#reports).to.equal(1)
+
+				-- a gun that is a child of his vehicle (the gunner's)
+				seated.gryLvsShotAt = nil
+				LVS:FireBullet({Attacker = seated, Entity = gun})
+				expect(#reports).to.equal(2)
+
+				-- no entity in the data: the attacker must at least sit in an LVS vehicle
+				seated.gryLvsShotAt = nil
+				LVS:FireBullet({Attacker = seated})
+				expect(#reports).to.equal(3)
+				LVS:FireBullet({Attacker = onFoot})
+				expect(#reports).to.equal(3)
 			end
 		},
 		{
@@ -287,23 +331,25 @@ return {
 			func = function()
 				local bases = {t_pack_missile = "lvs_missile"}
 
+				-- the engine's scripted_ents.IsBasedOn(class, base) is false for a class and itself (found with the real LVS: the plain lvs_missile and lvs_bomb were not looked at)
 				scripted_ents.IsBasedOn = function(class, base)
-					return class == base or bases[class] == base
+					return bases[class] == base
 				end
 
-				local shooter = player()
+				local car = vehicle(1)
+				local shooter = player({_vehicle = car})
 
 				L.OnEntityCreated(ent("prop_physics"))
 				L.OnEntityCreated(ent("lvs_missile_countermeasure"))
 				expect(#scheduled).to.equal(0)
 
-				local rocket = ent("lvs_missile", {GetAttacker = function() return shooter end})
-				local bomb = ent("lvs_bomb", {GetAttacker = function() return shooter end})
-				local custom = ent("t_pack_missile", {GetAttacker = function() return shooter end})
+				local function projectile(class)
+					return ent(class, {GetAttacker = function() return shooter end, GetParent = function() return car end})
+				end
 
-				L.OnEntityCreated(rocket)
-				L.OnEntityCreated(bomb)
-				L.OnEntityCreated(custom)
+				L.OnEntityCreated(projectile("lvs_missile"))
+				L.OnEntityCreated(projectile("lvs_bomb"))
+				L.OnEntityCreated(projectile("t_pack_missile"))
 
 				expect(#scheduled).to.equal(3)
 				expect(scheduled[1][1]).to.equal(0)
@@ -313,6 +359,51 @@ return {
 
 				expect(#reports).to.equal(1)
 				expect(reports[1][1]).to.equal(shooter)
+
+				-- the plain bomb and a pack's class are told too (each shot is one tell: the player's quarter second is over)
+				shooter.gryLvsShotAt = nil
+				scheduled[2][2]()
+				expect(#reports).to.equal(2)
+
+				shooter.gryLvsShotAt = nil
+				scheduled[3][2]()
+				expect(#reports).to.equal(3)
+			end
+		},
+		{
+			-- fails when a missile that left a vehicle (Enable gives the vehicle as the engine owner and takes the parent away, lvs_missile.lua) is not told, or when a projectile whose
+			-- attacker sits in another vehicle, or on foot, is
+			name = "a projectile is the shot of the player who sits in the vehicle it left (parent before Enable, owner after); one named after a player who is elsewhere tells nothing",
+			func = function()
+				scripted_ents.IsBasedOn = function(class, base) return false end
+
+				local car, other = vehicle(1), vehicle(2)
+				local seated = player({_vehicle = car})
+				local elsewhere = player({_vehicle = other})
+				local onFoot = player()
+
+				local function launched(attacker, parent, owner)
+					local p = ent("lvs_missile", {
+						GetAttacker = function() return attacker end,
+						GetParent = function() return parent or NULL end,
+						GetOwner = function() return owner or NULL end
+					})
+
+					L.OnEntityCreated(p)
+					scheduled[#scheduled][2]()
+				end
+
+				launched(seated, nil, car) -- after Enable
+				expect(#reports).to.equal(1)
+
+				seated.gryLvsShotAt = nil
+				launched(seated, car, nil) -- before Enable
+				expect(#reports).to.equal(2)
+
+				launched(elsewhere, car, car) -- the attacker sits in another vehicle
+				launched(onFoot, car, car)
+				launched(seated, nil, other) -- fired by another vehicle with his name on it
+				expect(#reports).to.equal(2)
 			end
 		},
 		{

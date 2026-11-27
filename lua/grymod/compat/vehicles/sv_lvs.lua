@@ -83,7 +83,52 @@ function L.ReportShot(ply)
 	return (API.ReportShot or API.ReportAttack)(ply, false) == true
 end
 
--- LVS:FireBullet(data) is the one place its machine guns, cannons and lasers go through: data.Attacker is the driver or the gunner.
+-- Whether the entity is the LVS vehicle the player sits in, or a part of it (the gun of a gunner is a child of the vehicle): the parents are followed a few steps.
+function L.IsPartOfVehicleOf(ply, ent)
+	local vehicle = L.VehicleOf(ply)
+
+	if not vehicle then
+		return false
+	end
+
+	for _ = 1, 4 do
+		if ent == vehicle then
+			return true
+		end
+
+		if not IsValid(ent) or not isfunction(ent.GetParent) then
+			return false
+		end
+
+		ent = ent:GetParent()
+	end
+
+	return false
+end
+
+-- A bullet of LVS: the player named as its attacker fired it only when the gun is his vehicle's. A turret that a player placed (lvs_turret) and a vehicle without a driver also carry a
+-- player as the attacker (the creator, the last driver), who is somewhere else and has not shot. A bullet with no gun in its data counts when the attacker sits in an LVS vehicle at least.
+function L.ReportBullet(data)
+	local attacker = playerOf(data.Attacker)
+
+	if not attacker then
+		return false
+	end
+
+	local gun = data.Entity
+
+	if IsValid(gun) then
+		if not L.IsPartOfVehicleOf(attacker, gun) then
+			return false
+		end
+	elseif not L.VehicleOf(attacker) then
+		return false
+	end
+
+	return L.ReportShot(attacker)
+end
+
+-- LVS:FireBullet(data) is the one place its machine guns, cannons and lasers go through: data.Attacker is the driver or the gunner, data.Entity the vehicle or the gun that fires.
 function L.WrapFireBullet()
 	if not L.Present() then
 		return false
@@ -108,7 +153,7 @@ function L.WrapFireBullet()
 
 	local function wrapper(self, data, ...)
 		if istable(data) then
-			pcall(L.ReportShot, data.Attacker)
+			pcall(L.ReportBullet, data)
 		end
 
 		return current(self, data, ...)
@@ -120,7 +165,7 @@ function L.WrapFireBullet()
 	return true
 end
 
--- A missile or a bomb of LVS: the class, or a class built on lvs_missile / lvs_bomb (a pack's own).
+-- A missile or a bomb of LVS: the class, or a class built on lvs_missile / lvs_bomb (a pack's own). scripted_ents.IsBasedOn(class, base) is false for the base itself.
 local projectileClasses = {}
 
 function L.IsProjectileClass(class)
@@ -131,19 +176,38 @@ function L.IsProjectileClass(class)
 	local known = projectileClasses[class]
 
 	if known == nil then
-		known = scripted_ents.IsBasedOn(class, "lvs_missile") or scripted_ents.IsBasedOn(class, "lvs_bomb") or false
+		known = class == "lvs_missile" or class == "lvs_bomb" or scripted_ents.IsBasedOn(class, "lvs_missile") or scripted_ents.IsBasedOn(class, "lvs_bomb") or false
 		projectileClasses[class] = known
 	end
 
 	return known
 end
 
+-- The shot of the player named as the attacker, when the projectile left his vehicle: a missile hangs under its vehicle (the parent) until Enable, which gives the vehicle as the
+-- engine owner and takes the parent away (lvs_missile.lua, lvs_bomb.lua). With neither, the attacker must at least sit in an LVS vehicle.
 local function launched(ent)
 	if not IsValid(ent) or not isfunction(ent.GetAttacker) then
 		return
 	end
 
-	L.ReportShot(ent:GetAttacker())
+	local attacker = playerOf(ent:GetAttacker())
+
+	if not attacker then
+		return
+	end
+
+	local parent = isfunction(ent.GetParent) and ent:GetParent() or nil
+	local owner = isfunction(ent.GetOwner) and ent:GetOwner() or nil
+
+	if IsValid(parent) or IsValid(owner) then
+		if not (L.IsPartOfVehicleOf(attacker, parent) or L.IsPartOfVehicleOf(attacker, owner)) then
+			return
+		end
+	elseif not L.VehicleOf(attacker) then
+		return
+	end
+
+	L.ReportShot(attacker)
 end
 
 -- Every projectile is looked at once, one frame after it exists: LVS sets its attacker right after Spawn. Nothing runs at any other time.
