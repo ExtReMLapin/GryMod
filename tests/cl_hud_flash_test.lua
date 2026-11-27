@@ -853,6 +853,49 @@ return {
 			end
 		},
 		{
+			-- fails when M9K is only recognised by the weapon's DIRECT base: a weapon pack that has a base of its own built on an M9K base (very common) is then not seen as an M9K weapon,
+			-- and shows the generic icon. No weapon class is written anywhere: the chain of bases decides
+			name = "M9K: a weapon whose base derives from an M9K base, through any number of bases of a pack, is an M9K weapon (the chain is followed; no class is named)",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local chain = {m9k_pack_gun = "pack_base", pack_base = "pack_root", pack_root = "bobs_gun_base", pack_shotty = "pack_shotty_base", pack_shotty_base = "bobs_shotty_base", other_gun = "weapon_base"}
+				local real = weapons.IsBasedOn
+
+				weapons.IsBasedOn = function(name, base)
+					local parent = chain[name]
+
+					while parent do
+						if parent == base then
+							return true
+						end
+
+						parent = chain[parent]
+					end
+
+					return false
+				end
+
+				local function gun(class, base, automatic)
+					return {Base = base, GetClass = function() return class end, Primary = {Automatic = not automatic}, GetAutomatic = function() return automatic end}
+				end
+
+				local ok, err = pcall(function()
+					expect(M.FireModeFor(gun("m9k_pack_gun", "pack_base", true))).to.equal("Auto")
+					expect(M.FireModeFor(gun("m9k_pack_gun", "pack_base", false))).to.equal("Single")
+					expect(M.FireModeFor(gun("pack_shotty", "pack_shotty_base", false))).to.equal("Shotgun")
+
+					-- a weapon that has no M9K base in its chain (and no GetAutomatic) is not an M9K weapon
+					expect(M.FireModeFor({Base = "weapon_base", GetClass = function() return "other_gun" end, Primary = {Automatic = true}, GetAutomatic = function() return false end})).to.equal("Auto")
+				end)
+
+				weapons.IsBasedOn = real
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "CW 2.0 and FA:S 2.0 keep the mode as a string",
 			func = function(state)
 				local M = GryMod.FlashHUD
