@@ -63,7 +63,7 @@ return {
 				local npc = zbaseNpc("zb_hunter", "npc_hunter")
 
 				npc.GetClass = function() error("broken") end
-				API.ClassOf(npc)
+				pcall(API.ClassOf, npc) -- (the entity's own GetClass raises the error again after the provider gave up)
 
 				expect(_G.ZBASE_SkipClassNameWrapper).to.equal(false)
 			end

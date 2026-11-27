@@ -27,10 +27,10 @@ return {
 				local meta = FindMetaTable("Player") -- (DrGBase puts its function on the player's metatable, which an entity's own field does not hide)
 
 				stub(meta, "DrG_IsPossessing", function() return true end)
-				expect(GryMod.API.IsCameraOwned(ply)).to.beTrue()
+				expect(GryMod.API.IsCameraOwned(ply, true)).to.beTrue()
 
 				meta.DrG_IsPossessing = function() return false end
-				expect(GryMod.API.IsCameraOwned(ply)).to.beFalse()
+				expect(GryMod.API.IsCameraOwned(ply, true)).to.beFalse()
 			end
 		},
 		{
@@ -40,7 +40,7 @@ return {
 				local ply = LocalPlayer()
 
 				stub(FindMetaTable("Player"), "DrG_IsPossessing", nil)
-				expect(GryMod.API.IsCameraOwned(ply)).to.beFalse()
+				expect(GryMod.API.IsCameraOwned(ply, true)).to.beFalse()
 			end
 		}
 	}

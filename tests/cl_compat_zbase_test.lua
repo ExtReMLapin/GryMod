@@ -44,13 +44,15 @@ return {
 			-- fails when no camera owner is registered, or when it says yes for a player who controls nothing
 			name = "the player who controls a ZBase NPC has another camera, the player who does not has not",
 			func = function()
-				local ply = LocalPlayer()
+				-- (a stand-in for the player: the owners only ask what they need)
+				local controlling = false
+				local ply = {GetNWEntity = function(self, key) if key == "ZBASE_ControllerCamEnt" and controlling then return LocalPlayer() end return NULL end}
 
-				stub(ply, "GetNWEntity", function(self, key) if key == "ZBASE_ControllerCamEnt" then return game.GetWorld() end return NULL end)
-				expect(GryMod.API.IsCameraOwned(ply)).to.beTrue()
+				controlling = true
+				expect(GryMod.API.IsCameraOwned(ply, true)).to.beTrue()
 
-				ply.GetNWEntity = function() return NULL end
-				expect(GryMod.API.IsCameraOwned(ply)).to.beFalse()
+				controlling = false
+				expect(GryMod.API.IsCameraOwned(ply, true)).to.beFalse()
 			end
 		},
 		{

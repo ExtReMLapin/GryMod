@@ -1,6 +1,6 @@
 -- Tests of the Draconic Base patches, client side (lua/grymod/compat/weapons/cl_draconic.lua), GLuaTest format, client realm. Draconic is a weapon base that keeps its fire mode in a networked
--- integer (CurFireMode: 1 semi-automatic, 2 automatic, 3 burst), has melee weapons (the fists, IsMelee) and draws a crosshair of its own (the hook HUDPaint "drc_crosshair") over the one of GryMod.
--- The cases use stand-ins for the weapon and for Draconic's hook (the real weapons are tried in the game, see the report). Each case names the change that makes it fail.
+-- integer (CurFireMode: 1 semi-automatic, 2 automatic, 3 burst) and has melee weapons (the fists, IsMelee).
+-- The cases use stand-ins for the weapon (the real weapons are tried in the game, see the report). Each case names the change that makes it fail.
 
 local saved = {}
 
@@ -65,88 +65,6 @@ return {
 				function other:GetNW2Int() error("asked") end
 
 				expect(GryMod.FlashHUD.FireModeFor(other)).to.equal("Auto")
-			end
-		},
-		{
-			-- fails when the option does not exist, is not saved, is off by default (two crosshairs one over the other) or has no check box on the Draconic tab of the Compatibility page
-			name = "gry_draconic_hide_crosshair: a saved client setting, on by default",
-			func = function()
-				local cvar = GetConVar("gry_draconic_hide_crosshair")
-
-				expect(cvar ~= nil).to.beTrue()
-				expect(cvar:GetDefault()).to.equal("1")
-				expect(cvar:GetFlags()).to.equal(GetConVar("gry_binoculars_no_fire"):GetFlags())
-			end
-		},
-		{
-			-- fails when Draconic's crosshair is still drawn with the option on and GryMod's crosshair up, when it is hidden with the option off, with GryMod's HUD off, with the crosshair
-			-- element switched off by the player (no crosshair at all), or when the wrapper is put on the wrapper at a second install
-			name = "Draconic's crosshair is not drawn with the option on and GryMod's crosshair up, and is drawn in every other case",
-			func = function()
-				local H = GryMod.DraconicHUD
-				local drawn = 0
-				local table_ = hook.GetTable().HUDPaint
-				local before = table_ and table_["drc_crosshair"]
-				local before_original = H.original
-
-				hook.Add("HUDPaint", "drc_crosshair", function() drawn = drawn + 1 end)
-				H.original = nil
-				expect(H.Install()).to.beTrue()
-				expect(H.Install()).to.beTrue() -- idempotent
-
-				local hudUp, crosshairOn = true, true
-
-				stub(GryMod.FlashHUD, "Enabled", function() return hudUp end)
-				stub(GryMod.HUDOptions, "Enabled", function(name) return name ~= "crosshair" or crosshairOn end)
-
-				local cvar = GetConVar("gry_draconic_hide_crosshair")
-				local was = cvar:GetString()
-				local ok, err = pcall(function()
-					local function draw()
-						drawn = 0
-						hook.GetTable().HUDPaint["drc_crosshair"]()
-
-						return drawn
-					end
-
-					cvar:SetString("1")
-					expect(draw()).to.equal(0)
-
-					cvar:SetString("0")
-					expect(draw()).to.equal(1)
-
-					cvar:SetString("1")
-					hudUp = false
-					expect(draw()).to.equal(1)
-
-					hudUp, crosshairOn = true, false
-					expect(draw()).to.equal(1)
-				end)
-
-				cvar:SetString(was)
-				hook.Add("HUDPaint", "drc_crosshair", before)
-				H.original = before_original
-
-				if not before then hook.Remove("HUDPaint", "drc_crosshair") end
-				if not ok then error(err, 0) end
-			end
-		},
-		{
-			-- fails when Install raises an error or does something when Draconic is not installed (no hook of that name)
-			name = "without Draconic's hook the install does nothing and says so",
-			func = function()
-				local H = GryMod.DraconicHUD
-				local table_ = hook.GetTable().HUDPaint
-				local before = table_ and table_["drc_crosshair"]
-
-				hook.Remove("HUDPaint", "drc_crosshair")
-
-				local ok, result = pcall(H.Install)
-
-				if before then hook.Add("HUDPaint", "drc_crosshair", before) end
-
-				expect(ok).to.beTrue()
-				expect(result).to.beFalse()
 			end
 		}
 	}

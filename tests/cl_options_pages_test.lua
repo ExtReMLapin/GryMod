@@ -123,7 +123,6 @@ box:gry_cloak_shader
 box:gry_cloak_transition
 box:gry_compass_intercardinals
 box:gry_decloak_glitch
-box:gry_draconic_hide_crosshair
 box:gry_grenade_los
 box:gry_grenade_own_warn
 box:gry_hit_shake
