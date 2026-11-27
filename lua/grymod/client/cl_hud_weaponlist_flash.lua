@@ -9,7 +9,7 @@
 -- Nothing runs between two weapon changes. The HUD's own feed (cl_hud_flash.lua) already compares the weapon at each paint and calls
 -- GryMod.FlashWeaponList.OnWeaponChanged when it really changed; a paint hook of our own exists only while a list is on.
 --
--- The silhouette of a weapon comes from the weapon registry (field listIcon, docs/weapons.md; the stock weapons are data in sh_api_weapons_hl2.lua),
+-- The silhouette of a weapon comes from the weapon registry (field listIcon, docs/weapons.md; the stock weapons are data in compat/hl2/sh_weapons.lua),
 -- else from the kind of its hand grenade. A weapon with neither gets a row with its NAME written: never a wrong silhouette, and never the
 -- movie's first frame ("emtpy"), which is a forbidden sign.
 --

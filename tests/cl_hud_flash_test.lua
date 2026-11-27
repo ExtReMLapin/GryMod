@@ -738,6 +738,58 @@ return {
 			end
 		},
 		{
+			-- fails when a resolver file that is loaded twice (a hot reload, an addon that includes it again) is asked twice and the list piles up, or when a key does not
+			-- replace the earlier resolver of the same key, or two different keys do not both stay
+			name = "AddFireModeResolver with a key: the same key replaces the earlier resolver (a reloaded file does not pile up), another key adds one, the returned function takes it away",
+			func = function(state)
+				local M = GryMod.FlashHUD
+				local calls = {first = 0, second = 0, other = 0}
+				local function resolver(name)
+					return function(weapon)
+						calls[name] = calls[name] + 1
+
+						return weapon.says
+					end
+				end
+
+				local gun = {GetClass = function() return "t_keyed" end, says = "Burst"}
+				local removeFirst = M.AddFireModeResolver(resolver("first"), "test.key")
+				local removeSecond = M.AddFireModeResolver(resolver("second"), "test.key")
+				local removeOther = M.AddFireModeResolver(resolver("other"), "test.other")
+
+				expect(M.FireModeFor(gun)).to.equal("Burst")
+				expect(calls.first).to.equal(0) -- replaced
+				expect(calls.second).to.equal(1)
+				expect(calls.other).to.equal(0) -- the first one that answers wins
+
+				-- taking the second away leaves the other key's
+				removeSecond()
+				expect(M.FireModeFor(gun)).to.equal("Burst")
+				expect(calls.other).to.equal(1)
+
+				-- the old remover of a replaced resolver does nothing to the new one
+				removeFirst()
+				removeOther()
+				expect(M.FireModeFor(gun)).to.equal("Single")
+			end
+		},
+		{
+			-- fails when the way a text mode ("auto", "3burst", "Safe"...) becomes an icon is not public: an addon's resolver would have to copy it
+			name = "FireModeFromName: a mode kept as text becomes an icon label (burst, auto, anything else a single shot, a value that is no text a single shot)",
+			func = function()
+				local M = GryMod.FlashHUD
+
+				expect(M.FireModeFromName("auto")).to.equal("Auto")
+				expect(M.FireModeFromName("Automatic")).to.equal("Auto")
+				expect(M.FireModeFromName("3burst")).to.equal("Burst")
+				expect(M.FireModeFromName("BURST")).to.equal("Burst")
+				expect(M.FireModeFromName("semi")).to.equal("Single")
+				expect(M.FireModeFromName("Safe")).to.equal("Single")
+				expect(M.FireModeFromName(nil)).to.equal("Single")
+				expect(M.FireModeFromName(5)).to.equal("Single")
+			end
+		},
+		{
 			name = "ARC9: Mode below 0 is automatic, 0 and 1 single shot, above 1 a burst, the grenade launcher shows grenades",
 			func = function(state)
 				local M = GryMod.FlashHUD

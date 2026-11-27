@@ -1,4 +1,4 @@
--- Tests of the stock Half-Life 2 entries of the registry of tracked entities (lua/grymod/sh_api_tracked_hl2.lua), GLuaTest format,
+-- Tests of the stock Half-Life 2 entries of the registry of tracked entities (lua/grymod/compat/hl2/sh_tracked.lua), GLuaTest format,
 -- runs in the server AND in the client realm. They are plain data registered through the public API (RegisterTracked), exactly as an
 -- addon would: the radar's icon classes (flying, machines, big ones) and the dangers of the grenade warning (labels, which
 -- projectiles are the player's own missiles, how the server reads that one is armed). Design: docs/superpowers/specs/2026-11-21-extension-api-design.md,

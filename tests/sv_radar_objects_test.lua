@@ -1,4 +1,4 @@
--- Tests of the vehicles and the mines on the radar (GryMod.Radar, sv_radar.lua; the stock entries are in sh_api_tracked_hl2.lua), GLuaTest
+-- Tests of the vehicles and the mines on the radar (GryMod.Radar, sv_radar.lua; the stock entries are in compat/hl2/sh_tracked.lua), GLuaTest
 -- format, server realm. In the original radar the vehicles are the rectangle icons of the movie (type 3: grey for a vehicle with
 -- nobody or a driver that is neither friend nor foe, blue for a friend, red for a hostile driver, the colour of its DRIVER) and they
 -- are on the radar once tagged, which the binoculars' scan does. The mine uses the movie's type 4, a rectangle with a disc, an icon the

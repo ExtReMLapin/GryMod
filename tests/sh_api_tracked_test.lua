@@ -387,7 +387,7 @@ return {
 
 				local e = {IsValid = function() return true end, GetClass = function() asked = asked + 1 return "t_npc_one" end}
 
-				-- the stock entries (sh_api_tracked_hl2.lua) are in the registry: it is emptied for this test and filled again
+				-- the stock entries (compat/hl2/sh_tracked.lua) are in the registry: it is emptied for this test and filled again
 				local order = API._trackedOrder
 				local saved = {}
 

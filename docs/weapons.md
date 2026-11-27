@@ -6,7 +6,7 @@ reference, with the table of fields); here you find what the HUD does with each 
 exist today.
 
 The HUD never knows a weapon by its class name. It asks the weapon registry what the weapon is. The stock Half-Life 2 and Garry's Mod
-weapons are in the registry as plain data (`lua/grymod/sh_api_weapons_hl2.lua`), registered with the same call your addon uses.
+weapons are in the registry as plain data (`lua/grymod/compat/hl2/sh_weapons.lua`), registered with the same call your addon uses.
 
 Everything below is checked by running it in a game with GryMod loaded.
 
@@ -230,7 +230,7 @@ end
 ```
 
 The client hook `GryMod_WeaponListShown(ply, wep)` runs each time the list is shown (the return value is ignored). The stock Half-Life 2
-weapons are mapped as data in `lua/grymod/sh_api_weapons_hl2.lua`: the pistol and the .357 `SOCOM`, the SMG `SMG`, the AR2 `SCAR`, the shotgun
+weapons are mapped as data in `lua/grymod/compat/hl2/sh_weapons.lua`: the pistol and the .357 `SOCOM`, the SMG `SMG`, the AR2 `SCAR`, the shotgun
 `Shotgun`, the RPG `LAW`, the crossbow `DSG1`, the grenade `Grenade_Explosive`, the crowbar, the stun baton and the fists `Fists`, the SLAM
 `AVMine`, the medkit `RepairKit`. The gravity gun, the physics gun, the tool gun, the camera and the bug bait show their name.
 
@@ -288,7 +288,7 @@ end
 
 ## The stock weapons (data, nothing special)
 
-The 19 classes registered in `lua/grymod/sh_api_weapons_hl2.lua`:
+The 19 classes registered in `lua/grymod/compat/hl2/sh_weapons.lua`:
 
 | Class | What it says |
 | --- | --- |
@@ -315,8 +315,8 @@ Weapon bases keep their fire mode in their own fields. Two mechanisms exist, and
 ### What exists today: fire-mode resolvers (icon only)
 
 The HUD reads the fire-mode icon of these bases already, through resolvers written from their source code: ARC9, ArcCW, TFA, M9K
-(`bobs_gun_base`, `bobs_scoped_base`, `bobs_shotty_base`), CW 2.0 and FA:S 2.0. They give the icon of the weapon slot only: nothing
-about the secondary fire.
+(`bobs_gun_base`, `bobs_scoped_base`, `bobs_shotty_base`), CW 2.0 and FA:S 2.0. They are one file each in `lua/grymod/compat/weapons/` (see
+[compat.md](compat.md)). They give the icon of the weapon slot only: nothing about the secondary fire.
 
 A resolver is consulted only when nothing declares the icon (`icon`, `slotIcon` or `fire`, in the registry, in `SWEP.GryHUD` or from an adapter).
 You can add one for your own base:
@@ -329,11 +329,14 @@ local remove = GryMod.FlashHUD.AddFireModeResolver(function(wep)
 	end
 
 	return wep:GetFireModeName() == "burst" and "Burst" or "Auto"
-end)
+end, "my_addon.fire_mode") -- the key is optional: the same key replaces the earlier resolver, so a file that is loaded twice does not pile it up
 
 -- later, to take it away:
 remove()
 ```
+
+A base that keeps its mode as text ("auto", "3burst", "Safe") can use `GryMod.FlashHUD.FireModeFromName(text)`, which gives `"Burst"`, `"Auto"` or
+`"Single"`.
 
 It returns one of the icon keys, or `nil`. It runs under `pcall`. `GryMod.FlashHUD` is the HUD module and is not part of the
 versioned `GryMod.API`: it may change without a version bump.

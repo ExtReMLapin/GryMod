@@ -23,7 +23,7 @@ local INTERVAL = 0.5
 
 -- The classes that keep a player who cloaked in the middle of a fight for good (see above) are the entries of the registry of tracked
 -- entities with `cloakBlind = true` (GryMod.API.RegisterTracked; the strider, hunter and manhack are stock entries in
--- sh_api_tracked_hl2.lua). This list holds more classes, added by code that predates the registry; it is empty by default.
+-- compat/hl2/sh_tracked.lua). This list holds more classes, added by code that predates the registry; it is empty by default.
 CloakAI.Classes = {}
 
 -- The classes to search at a tick: the registry's, then the ones of CloakAI.Classes that it does not have (a class once).

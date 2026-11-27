@@ -61,7 +61,7 @@ local OPEN_LAST_FRAME = 27
 
 -- Which projectiles are dangerous, what they are called, which ones the player fires, how far each is warned about: all of it is
 -- the registry's `danger` field (GryMod.API.RegisterTracked, sh_api_tracked.lua), the stock Half-Life 2 ones are registered as data
--- in sh_api_tracked_hl2.lua and an addon's own go through the same code. The entry that names the class, or nil: none, or no
+-- in compat/hl2/sh_tracked.lua and an addon's own go through the same code. The entry that names the class, or nil: none, or no
 -- registry (a hot reload of this file).
 local function dangerEntry(class)
 	local API = GryMod.API

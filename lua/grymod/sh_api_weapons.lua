@@ -7,7 +7,7 @@
 --   2. the SWEP.GryHUD table of the weapon (a third-party weapon can declare itself without calling us),
 --   3. the adapters (GryMod.API.AddWeaponAdapter: function(wep) return partialDefinition end, through SafeCall),
 --   4. the defaults read from the SWEP (Primary, Secondary, the engine's ammo ids) and from CustomAmmoDisplay.
--- The stock Half-Life 2 weapons are registered through RegisterWeapon like any other weapon, in sh_api_weapons_hl2.lua.
+-- The stock Half-Life 2 weapons are registered through RegisterWeapon like any other weapon, in compat/hl2/sh_weapons.lua.
 
 GryMod = GryMod or {}
 

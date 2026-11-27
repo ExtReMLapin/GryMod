@@ -4,7 +4,7 @@
 -- false for an inert one lying around (the spawn menu makes them inert, a Half-Life 2 grenade is only armed when
 -- thrown or picked up). Which classes are dangerous and what "active" means for each one is the registry's (the `danger`
 -- field of an entry of GryMod.API.RegisterTracked, sh_api_tracked.lua): the Half-Life 2 ones are registered as data in
--- sh_api_tracked_hl2.lua (what "active" means for each class was measured on live entities, see
+-- compat/hl2/sh_tracked.lua (what "active" means for each class was measured on live entities, see
 -- docs/superpowers/plans/2026-11-21-grenade-entities.md), an addon's mine or missile is registered the same way and goes
 -- through the same code here. An entry without an `armed` reader is dangerous as soon as it exists.
 --

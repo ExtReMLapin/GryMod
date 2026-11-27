@@ -465,7 +465,7 @@ The icons are `Riffle`, `socom`, `shootgun`, `missle`, `rocket`, `FY71`, `Hurric
 ## Weapons
 
 `GryMod.API.Has("weapons")` is true. The HUD never knows a weapon by its class name: it asks the weapon registry what the weapon is.
-The stock Half-Life 2 weapons are registered in the registry as data (`lua/grymod/sh_api_weapons_hl2.lua`), with the same call your
+The stock Half-Life 2 weapons are registered in the registry as data (`lua/grymod/compat/hl2/sh_weapons.lua`), with the same call your
 addon uses: there is no private table and no special case for them.
 
 ### Describe a weapon
@@ -679,7 +679,7 @@ For a projectile or a trap (a grenade, a mine, a missile): that it is a **danger
 how the server knows it is armed. An entity that is not registered behaves as it always did: the radar reads its class and its
 attitude.
 
-Everything the HUD knows about Half-Life 2 entities is registered here as plain data (`lua/grymod/sh_api_tracked_hl2.lua`: the icon
+Everything the HUD knows about Half-Life 2 entities is registered here as plain data (`lua/grymod/compat/hl2/sh_tracked.lua`: the icon
 classes of the radar and the six dangerous projectiles), with the same call your addon uses. There is no private table and no special
 case: the radar and the grenade warning only read the registry.
 

@@ -36,7 +36,7 @@ jobs:
       - name: The compiled shaders match their sources
         run: python dev_resources/shaders/check_compiled.py
       - name: Tests of the release tools and of the shipped resources
-        run: python -m unittest tools.test_prepare_release tools.test_check_lua_syntax tools.test_shipped_resources tools.test_sound_files
+        run: python -m unittest tools.test_prepare_release tools.test_check_lua_syntax tools.test_shipped_resources tools.test_sound_files tools.test_loader_coverage
       - name: Tests of the shader tools
         run: python -m unittest discover -s dev_resources/shaders
       - name: Tests of the campaign data tools, and the shipped campaign data against the addon's own check

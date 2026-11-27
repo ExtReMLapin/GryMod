@@ -1,5 +1,5 @@
 -- Tests of the weapon registry of the extension API (lua/grymod/sh_api_weapons.lua, and the data of the stock weapons in
--- sh_api_weapons_hl2.lua), GLuaTest format, runs in the server AND in the client realm: RegisterWeapon / GetWeapon /
+-- compat/hl2/sh_weapons.lua), GLuaTest format, runs in the server AND in the client realm: RegisterWeapon / GetWeapon /
 -- UnregisterWeapon, the validation of a definition, ResolveWeapon (registry, base class, SWEP.GryHUD, adapters, defaults read
 -- from the SWEP and from CustomAmmoDisplay) and what the Half-Life 2 weapons say about their secondary fire.
 -- Design: docs/superpowers/specs/2026-11-21-extension-api-design.md, part 4.
@@ -330,7 +330,7 @@ return {
 			end
 		},
 		{
-			-- Fails without the listIcon data in sh_api_weapons_hl2.lua (the stock weapons say nothing: nil)
+			-- Fails without the listIcon data in compat/hl2/sh_weapons.lua (the stock weapons say nothing: nil)
 			name = "the stock Half-Life 2 weapons are mapped to a silhouette of the list as data; the ones with no look-alike have none (a text row)",
 			func = function()
 				local MAP = {

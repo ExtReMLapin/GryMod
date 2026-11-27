@@ -90,7 +90,7 @@ end
 
 -- The icon of the original: 1 infantry, 2 helicopters, 3 other vehicles and machines, and whether it is drawn twice the size (the
 -- original doubles the Hunter and the Alien warrior). Which class has which is the registry's (the `type` and `size` fields of
--- GryMod.API.RegisterTracked, sh_api_tracked.lua): the Half-Life 2 classes are registered as data in sh_api_tracked_hl2.lua and
+-- GryMod.API.RegisterTracked, sh_api_tracked.lua): the Half-Life 2 classes are registered as data in compat/hl2/sh_tracked.lua and
 -- an addon's own go through the same code. A class that no entry names is a ground unit.
 Radar.Flying, Radar.Machines, Radar.Big = nil, nil, nil -- the old class tables: a hot reload keeps the table of the earlier copy
 

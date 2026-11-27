@@ -636,7 +636,7 @@ end
 local FIRE_MODE_ICONS = GryMod.API and GryMod.API.WeaponIcons or {}
 
 -- What a weapon says about itself comes from the weapon registry (GryMod.API, sh_api_weapons.lua): the stock weapons are registered
--- there as data (sh_api_weapons_hl2.lua) like any addon's, and nothing in this file knows a class. Without the registry a weapon
+-- there as data (compat/hl2/sh_weapons.lua) like any addon's, and nothing in this file knows a class. Without the registry a weapon
 -- is a plain one.
 local function weaponValue(weapon, field, explicit)
 	local read = GryMod.API and GryMod.API.WeaponValue
@@ -648,68 +648,47 @@ end
 local FIRE_LABEL = {auto = "Auto", semi = "Single", burst = "Burst", none = "NoGun"}
 
 local resolvers = {}
+local keyed = {}
 
--- Weapon bases that keep their fire mode in their own fields can say how to read it: fn(weapon) returns one
--- of the movie's icon labels, or nil when this weapon is not theirs. Returns a function that removes it.
-function Module.AddFireModeResolver(fn)
-	resolvers[#resolvers + 1] = fn
+local function removeResolver(fn)
+	for i, other in ipairs(resolvers) do
+		if other == fn then
+			table.remove(resolvers, i)
 
-	return function()
-		for i, other in ipairs(resolvers) do
-			if other == fn then
-				table.remove(resolvers, i)
-
-				return
-			end
+			return
 		end
 	end
 end
 
--- Readers for the weapon bases that keep their fire mode in their own fields (read from their source code).
--- A safety catch shows the single shot icon: the weapon is not an automatic one at that moment.
+-- Weapon bases that keep their fire mode in their own fields can say how to read it: fn(weapon) returns one
+-- of the movie's icon labels, or nil when this weapon is not theirs. Returns a function that removes it.
+-- `key` (optional, any value) names the resolver: adding another one with the same key replaces the first, so a file that is loaded twice (a hot reload) does not pile
+-- its resolver up. The function a replaced resolver returned takes nothing away any more.
+function Module.AddFireModeResolver(fn, key)
+	if key ~= nil then
+		local old = keyed[key]
 
--- ARC9: GetCurrentFiremode() is the Mode number: below 0 automatic, 0 safety, 1 semi, above 1 a burst.
-Module.AddFireModeResolver(function(weapon)
-	if weapon.ARC9 ~= true or not weapon.GetCurrentFiremode then
-		return nil
+		if old then
+			removeResolver(old)
+		end
+
+		keyed[key] = fn
 	end
 
-	if weapon.GetUBGL and weapon:GetUBGL() then
-		return "Grenade"
+	resolvers[#resolvers + 1] = fn
+
+	return function()
+		removeResolver(fn)
+
+		if key ~= nil and keyed[key] == fn then
+			keyed[key] = nil
+		end
 	end
+end
 
-	local mode = weapon:GetCurrentFiremode()
-
-	if mode < 0 then
-		return "Auto"
-	end
-
-	return mode > 1 and "Burst" or "Single"
-end)
-
--- ArcCW: GetCurrentFiremode() is a table whose Mode is the other way round: 2 or more automatic, 1 semi,
--- 0 safety, negative a burst.
-Module.AddFireModeResolver(function(weapon)
-	if weapon.ArcCW ~= true or not weapon.GetCurrentFiremode then
-		return nil
-	end
-
-	if weapon.GetInUBGL and weapon:GetInUBGL() then
-		return "Grenade"
-	end
-
-	local current = weapon:GetCurrentFiremode()
-	local mode = current and current.Mode or 1
-
-	if mode >= 2 then
-		return "Auto"
-	end
-
-	return mode < 0 and "Burst" or "Single"
-end)
-
--- A mode kept as a string ("auto", "3burst", "Automatic", "Safe"...): TFA, CW 2.0 and FA:S 2.0.
-local function modeFromName(name)
+-- A mode kept as a string ("auto", "3burst", "Automatic", "Safe"...) as the icon label of the weapon slot: "Burst", "Auto", or "Single" for anything else (a safety
+-- catch, a semi-automatic mode, a value that is no text). For the readers of the weapon bases that keep their mode as text (TFA, CW 2.0, FA:S 2.0, an addon's).
+function Module.FireModeFromName(name)
 	if not isstring(name) then
 		return "Single"
 	end
@@ -727,38 +706,7 @@ local function modeFromName(name)
 	return "Single"
 end
 
--- TFA: GetFireMode() is an index into FireModes, a list of names.
-Module.AddFireModeResolver(function(weapon)
-	if weapon.IsTFAWeapon ~= true or not weapon.GetFireMode or not weapon.FireModes then
-		return nil
-	end
-
-	return modeFromName(weapon.FireModes[weapon:GetFireMode()])
-end)
-
--- M9K: GetAutomatic(); its shotguns have their own base.
-local M9K_BASES = {bobs_gun_base = true, bobs_scoped_base = true, bobs_shotty_base = true}
-
-Module.AddFireModeResolver(function(weapon)
-	if not M9K_BASES[weapon.Base] or not weapon.GetAutomatic then
-		return nil
-	end
-
-	if weapon.Base == "bobs_shotty_base" then
-		return "Shotgun"
-	end
-
-	return weapon:GetAutomatic() and "Auto" or "Single"
-end)
-
--- CW 2.0 and FA:S 2.0: FireMode is a string the server sends when the player changes it (nil until it arrives).
-Module.AddFireModeResolver(function(weapon)
-	if weapon.CW20Weapon ~= true and weapon.IsFAS2Weapon ~= true then
-		return nil
-	end
-
-	return modeFromName(weapon.FireMode)
-end)
+-- (the readers of the weapon bases are in lua/grymod/compat/weapons/, one file each, loaded after this file)
 
 -- The icon for what the player holds: what the weapon registry declares for it (icon, slotIcon or the fire mode), else what a
 -- registered base says, else the generic SWEP rule (Primary.Automatic: automatic, otherwise one shot at a time).

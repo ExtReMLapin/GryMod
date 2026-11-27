@@ -74,7 +74,7 @@ return {
 				expect(GetConVar("gry_grenade_armed_only"):GetInt()).to.equal(1)
 				expect(GetConVar("gry_grenade_armed_only"):IsFlagSet(FCVAR_REPLICATED)).to.beTrue()
 
-				-- the classes are the registry's: stock entries with danger (sh_api_tracked_hl2.lua), no table of the grenade module
+				-- the classes are the registry's: stock entries with danger (compat/hl2/sh_tracked.lua), no table of the grenade module
 				for _, class in ipairs({"npc_grenade_frag", "grenade_ar2", "rpg_missile", "grenade_helicopter", "combine_mine", "prop_combine_ball"}) do
 					expect(GryMod.API.GetDanger(class)).toNot.beNil()
 				end

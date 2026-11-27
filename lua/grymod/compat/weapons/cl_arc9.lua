@@ -1,0 +1,28 @@
+-- ARC9: the fire mode icon of the weapon slot, read from the base's own fields (read from its source code). Part of the compatibility patches
+-- (lua/grymod/compat/, docs/compat.md): it only uses the public GryMod.FlashHUD.AddFireModeResolver, answers nil for a weapon that is not this base's, and
+-- does nothing when the base is not installed. A safety catch shows the single shot icon: the weapon is not an automatic one at that moment.
+
+local HUD = GryMod.FlashHUD
+
+if not HUD or not HUD.AddFireModeResolver then
+	return -- cl_hud_flash.lua is included first (grymod_shared.lua)
+end
+
+-- ARC9: GetCurrentFiremode() is the Mode number: below 0 automatic, 0 safety, 1 semi, above 1 a burst.
+HUD.AddFireModeResolver(function(weapon)
+	if weapon.ARC9 ~= true or not weapon.GetCurrentFiremode then
+		return nil
+	end
+
+	if weapon.GetUBGL and weapon:GetUBGL() then
+		return "Grenade"
+	end
+
+	local mode = weapon:GetCurrentFiremode()
+
+	if mode < 0 then
+		return "Auto"
+	end
+
+	return mode > 1 and "Burst" or "Single"
+end, "compat.arc9")

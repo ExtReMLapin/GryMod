@@ -21,7 +21,7 @@ local OptionConVar = CreateClientConVar("gry_zoom_cancel_weapon", "1", true, fal
 local HideConVar = CreateClientConVar("gry_zoom_hide_crosshair", "1", true, false, "The crosshair of the HUD is hidden while the weapon in hand is zoomed (the crossbow's right click, or any weapon declared with alt = \"zoom\"), as it is while the binoculars are up (off: it stays)")
 
 -- The weapons whose zoom the binoculars end are the ones whose registry entry says that the right click zooms (alt = "zoom", the
--- crossbow's entry in sh_api_weapons_hl2.lua, or any other addon's weapon declared that way); the server asks the registry the same way.
+-- crossbow's entry in compat/hl2/sh_weapons.lua, or any other addon's weapon declared that way); the server asks the registry the same way.
 
 -- a field of view this much below the normal one is a zoom (degrees)
 WeaponZoom.TOLERANCE = 0.5

@@ -21,7 +21,7 @@ local WeaponZoom = GryMod.WeaponZoom or {}
 GryMod.WeaponZoom = WeaponZoom
 
 -- The weapons whose zoom the binoculars end are the ones whose registry entry says that the right click zooms (alt = "zoom": the
--- crossbow's entry in sh_api_weapons_hl2.lua, or any other addon's weapon declared that way); the client asks the registry the same way.
+-- crossbow's entry in compat/hl2/sh_weapons.lua, or any other addon's weapon declared that way); the client asks the registry the same way.
 
 WeaponZoom.LIMIT = 5 -- requests per player per window
 WeaponZoom.WINDOW = 1 -- seconds

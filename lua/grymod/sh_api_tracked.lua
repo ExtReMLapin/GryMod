@@ -8,7 +8,7 @@
 -- of cost: the first two are looked up in a cache by class, built when a class is first asked about and dropped at every
 -- RegisterTracked / UnregisterTracked. GetTracked is asked for every NPC at every tick of the radar: it allocates nothing and
 -- does nothing at all while the registry is empty. The entries are tried by priority (the higher first), then in the order of
--- registration; the stock Half-Life 2 entries (sh_api_tracked_hl2.lua) have a low one, so that any addon's entry beats them.
+-- registration; the stock Half-Life 2 entries (compat/hl2/sh_tracked.lua) have a low one, so that any addon's entry beats them.
 --
 -- The same file of declarations runs in both realms: the server decides (the radar, the relation, which projectile is armed) and
 -- the client draws. A field that a realm does not use is stored and ignored there (docs/api.md has the table of who uses what).
