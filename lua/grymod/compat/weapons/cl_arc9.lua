@@ -31,6 +31,11 @@ HUD.AddFireModeResolver(function(weapon)
 		return "NoGun"
 	end
 
+	-- a throwable (a grenade, a flare, a claymore) has no fire mode: the grenade icon, not a gun's single shot
+	if weapon.Throwable == true then
+		return "Grenade"
+	end
+
 	if weapon.GetSafe and weapon:GetSafe() then
 		return "Single"
 	end

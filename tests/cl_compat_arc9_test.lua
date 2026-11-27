@@ -338,6 +338,21 @@ return {
 			end
 		},
 		{
+			-- fails when a throwable (ARC9's Throwable: a grenade, a flare, a claymore) shows the single shot icon of a gun: it has no fire mode, the grenade icon is what the movie has
+			name = "fire mode icon: a throwable weapon shows the grenade icon, not a gun's single shot; a gun with Throwable false keeps its mode",
+			func = function()
+				local M = GryMod.FlashHUD
+				local function nade(throwable)
+					return {ARC9 = true, IsValid = function() return true end, Throwable = throwable, GetCurrentFiremode = function() return 1 end,
+						GetUBGL = function() return false end, GetSafe = function() return false end}
+				end
+
+				expect(M.FireModeFor(nade(true))).to.equal("Grenade")
+				expect(M.FireModeFor(nade(false))).to.equal("Single")
+				expect(M.FireModeFor(nade(nil))).to.equal("Single")
+			end
+		},
+		{
 			-- fails when the patch does not work with the real ARC9 base (a name or a field that is not what the patch reads): the real weapon the test player holds is asked
 			name = "a real ARC9 weapon (when ARC9 is installed and the test player holds one): its parts are read without an error and are the models of its VModel",
 			func = function()

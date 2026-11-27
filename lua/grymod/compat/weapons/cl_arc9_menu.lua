@@ -19,6 +19,11 @@ API.AddWeaponMenuProvider("compat.arc9", function(weapon)
 		return nil
 	end
 
+	-- a knife, a machete or a grenade: the base gives it an empty Attachments table, there is nothing to customize and the menu would open on an empty screen
+	if istable(weapon.Attachments) and next(weapon.Attachments) == nil then
+		return nil
+	end
+
 	return open
 end)
 

@@ -62,6 +62,21 @@ return {
 			end
 		},
 		{
+			-- fails when a knife, a machete or a grenade (the base gives them an empty Attachments table: nothing to customize) gets the customization menu, which would open an empty screen;
+			-- a weapon with at least one slot, or one that does not declare the table at all, keeps it
+			name = "ARC9: a weapon with no attachment slot (knife, grenade) gets no weapon menu; one with a slot, or with no table, keeps it",
+			func = function()
+				local API = GryMod.API
+				local function arc9(attachments)
+					return weapon({ARC9 = true, Attachments = attachments, ToggleCustomize = function() end})
+				end
+
+				expect(API.GetWeaponMenu(arc9({}))).to.beNil()
+				expect(API.GetWeaponMenu(arc9({{PrintName = "Optic"}}))).to.beA("function")
+				expect(API.GetWeaponMenu(arc9(nil))).to.beA("function")
+			end
+		},
+		{
 			-- fails when ArcCW's menu is offered while the server disables the customization (arccw_enable_customization -1), or the command sent is not arccw_toggle_inv
 			name = "ArcCW: an ArcCW weapon opens with arccw_toggle_inv, unless arccw_enable_customization is -1",
 			func = function()
