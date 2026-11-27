@@ -55,6 +55,7 @@ return {
 		-- the originals are taken here, for every case: a case that did not stub them must not leave them nil for the tests that follow
 		saved.LocalVehicle = GryMod.GlideCompat and GryMod.GlideCompat.LocalVehicle
 		saved.NightVisionKey = GryMod.GlideCompat and GryMod.GlideCompat.NightVisionKey
+		saved.LocalSeat = GryMod.GlideCompat and GryMod.GlideCompat.LocalSeat
 	end,
 	afterEach = function()
 		API.CloakLevel = saved.CloakLevel
@@ -62,10 +63,11 @@ return {
 
 		if GryMod.GlideCompat then
 			GryMod.GlideCompat.LocalVehicle, GryMod.GlideCompat.NightVisionKey = saved.LocalVehicle, saved.NightVisionKey
+			GryMod.GlideCompat.LocalSeat = saved.LocalSeat
 		end
 
 		for name, value in pairs(saved) do
-			if name ~= "CloakLevel" and name ~= "LocalVehicle" and name ~= "NightVisionKey" and GetConVar(name) then
+			if name ~= "CloakLevel" and name ~= "LocalVehicle" and name ~= "NightVisionKey" and name ~= "LocalSeat" and GetConVar(name) then
 				GetConVar(name):SetString(value)
 			end
 		end
@@ -130,6 +132,72 @@ return {
 				GryMod.GlideCompat.NightVisionKey = function() return KEY_N end
 				expect(hook.Run("GryMod_CanUseView", "zoom", "key")).to.beNil()
 				expect(hook.Run("GryMod_CanUseView", "nightvision", "bind")).to.beNil()
+			end
+		},
+		{
+			-- fails when the key is refused for every Glide vehicle: Glide reads the buttons of a seat by groups (the base classes: general + land for a car, a motorcycle, a tank or a boat, general +
+			-- aircraft for a helicopter or a plane, general only for a passenger), and N, the neutral gear, is a land control: the night vision of a pilot or of a passenger was refused for nothing
+			-- (found with the real Glide, where ENT:GetInputGroups is a server function: the client works the groups out from VehicleType and the seat)
+			name = "the night vision key is refused only where Glide reads it: N belongs to the land vehicles' driver, not to an aircraft's pilot nor to a passenger",
+			func = function()
+				expect(GryMod.GlideCompat).to.exist()
+
+				Glide = {Config = {binds = {general_controls = {headlights = KEY_H}, land_controls = {shift_neutral = KEY_N}, aircraft_controls = {landing_gear = KEY_G}}}}
+
+				-- autorun/sh_glide.lua: CAR 1, MOTORCYCLE 2, HELICOPTER 3, PLANE 4, TANK 5, BOAT 6
+				local function ofType(vehicleType)
+					local v = car()
+
+					v.VehicleType = vehicleType
+
+					return v
+				end
+
+				local land, air = ofType(1), ofType(4)
+				local key, seat, current = KEY_N, 1, land
+
+				GryMod.GlideCompat.NightVisionKey = function() return key end
+				GryMod.GlideCompat.LocalSeat = function() return seat end
+				GryMod.GlideCompat.LocalVehicle = function() return current end
+
+				-- the driver of a car: N is his neutral gear
+				expect(hook.Run("GryMod_CanUseView", "nightvision", "key")).to.equal(false)
+
+				-- the pilot: N does nothing in the air
+				current = air
+				expect(hook.Run("GryMod_CanUseView", "nightvision", "key")).to.beNil()
+
+				-- the pilot's own keys are still Glide's
+				key = KEY_G
+				expect(hook.Run("GryMod_CanUseView", "nightvision", "key")).to.equal(false)
+
+				-- a passenger of a car: only the general controls are his
+				key, seat, current = KEY_N, 2, land
+				expect(hook.Run("GryMod_CanUseView", "nightvision", "key")).to.beNil()
+
+				-- a vehicle of a type the adapter does not know (none, or an addon's own): every group counts, as before
+				seat, current = 1, car()
+				expect(hook.Run("GryMod_CanUseView", "nightvision", "key")).to.equal(false)
+			end
+		},
+		{
+			-- fails when a trailer shows "ENTER VEHICLE": it has no seat, and Glide's override of IsVehicle makes it a vehicle for the stock entry of the use prompt (found with the real Glide)
+			name = "a Glide trailer has no use prompt; a car has",
+			func = function()
+				local realBased = scripted_ents.IsBasedOn
+
+				scripted_ents.IsBasedOn = function(class, base) return class == "t_glide_trailer" and base == "base_glide_trailer" end
+
+				local trailer = {IsValid = function() return true end, GetClass = function() return "t_glide_trailer" end, IsGlideVehicle = true}
+				local me = player("me", false)
+
+				local ok, err = pcall(function()
+					expect(API.UsableFiltered(trailer, me)).to.beTrue()
+					expect(API.UsableFiltered(car(), me)).to.beFalse()
+				end)
+
+				scripted_ents.IsBasedOn = realBased
+				assert(ok, err)
 			end
 		},
 		{

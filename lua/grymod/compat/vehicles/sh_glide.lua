@@ -181,6 +181,8 @@ local function isTrailer(ent)
 	return ok and based == true
 end
 
+Compat.IsTrailer = isTrailer -- (cl_glide.lua takes the prompt of the trailers away: Glide's IsVehicle makes them vehicles for the stock entry)
+
 local function enterable(ent)
 	return ent.IsGlideVehicle == true and not isTrailer(ent)
 end
