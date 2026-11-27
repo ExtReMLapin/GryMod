@@ -61,7 +61,7 @@ end
 local lineConVars = {}
 
 for key, line in pairs(Messages.Lines) do
-	lineConVars[key] = CreateClientConVar(line.convar, "1", true, false, line.help)
+	lineConVars[key] = CreateClientConVar(line.convar, line.default or "1", true, false, line.help)
 end
 
 -- Whether the player wants this line of the suit (a key of GryMod.Messages.Lines).

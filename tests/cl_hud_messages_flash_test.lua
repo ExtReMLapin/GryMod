@@ -101,6 +101,17 @@ return {
 	end,
 	cases = {
 		{
+			-- fails when the message "you killed a friendly" is on by default (the owner finds it a nuisance: it is off until the player turns it on), or when another line of the suit
+			-- (the camouflage's) is off by default
+			name = "the suit's lines are on by default, except \"you killed a friendly\", which is off until the player turns it on",
+			func = function()
+				expect(GetConVar("gry_msg_killed_friend")).to.exist()
+				expect(GetConVar("gry_msg_killed_friend"):GetDefault()).to.equal("0")
+				expect(GetConVar("gry_msg_cloak_disabled"):GetDefault()).to.equal("1")
+				expect(GetConVar("gry_msg_cloak_health"):GetDefault()).to.equal("1")
+			end
+		},
+		{
 			-- fails without the event registration or without API.ShowMessage
 			name = "the event exists and GryMod.API.ShowMessage runs it with checked data; a bad text or option never reaches it",
 			func = function()

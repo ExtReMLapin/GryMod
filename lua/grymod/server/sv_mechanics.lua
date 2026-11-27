@@ -132,9 +132,10 @@ hook.Add("Think", "GryMod run speed", function()
 end)
 
 -- The speed the suit counts for a player, in units a second: his own, except in a vehicle, where he counts as still (the owner's decision: Crysis does not use more
--- energy in a vehicle, and the vehicle's speed is not the player's). The camouflage's drain reads it.
+-- energy in a vehicle, and the vehicle's speed is not the player's), and in no clip, which is a tool of the game and not a way of moving that the suit counts (the owner's decision:
+-- the drain is then the one of a player standing still). The camouflage's drain reads it.
 function Mech.CloakSpeed(ply)
-	if ply:InVehicle() then
+	if ply:InVehicle() or ply:GetMoveType() == MOVETYPE_NOCLIP then
 		return 0
 	end
 

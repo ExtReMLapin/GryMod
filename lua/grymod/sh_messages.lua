@@ -54,8 +54,9 @@ Messages.Lines = {
 		help = "The camouflage ran out of energy and the suit went back to armor"},
 	cloak_health = {text = "Temperature Camo: Health too low!", lane = "status", convar = "gry_msg_cloak_health", label = "Message: camouflage, health too low",
 		help = "The camouflage was refused because the health is too low (the server's gry_cloak_min_health)"},
-	killed_friend = {text = "YOU KILLED A FRIENDLY!", lane = "middle", convar = "gry_msg_killed_friend", label = "Message: killed a friendly",
-		help = "You killed an ally (a player of your team, or an NPC that likes you)"}
+	-- (off by default: the owner finds it a nuisance; the player turns it on in the options)
+	killed_friend = {text = "YOU KILLED A FRIENDLY!", lane = "middle", convar = "gry_msg_killed_friend", label = "Message: killed a friendly", default = "0",
+		help = "You killed an ally (a player of your team, or an NPC that likes you). Off by default"}
 }
 
 -- The keys of the lines, sorted (for tools and tests).

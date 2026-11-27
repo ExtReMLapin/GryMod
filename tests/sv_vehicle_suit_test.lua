@@ -16,6 +16,7 @@ local function fakePlayer(seated, speed, fields)
 	function p:IsPlayer() return true end
 	function p:IsWeapon() return false end
 	function p:InVehicle() return seated end
+	function p:GetMoveType() return MOVETYPE_WALK end
 	function p:GetVelocity() return Vector(speed, 0, 0) end
 	function p:IsSprinting() return true end
 	function p:IsOnGround() return true end
@@ -100,6 +101,20 @@ return {
 		end
 	end,
 	cases = {
+		{
+			-- fails when a player in no clip drains the camouflage with the speed of his flight (the owner's rule: no clip is a tool of the game, not a way of moving the suit counts; the drain is
+			-- the one of a player who stands still), or when another move type (a ladder, the water, walking) stops counting
+			name = "Mech.CloakSpeed: a player in no clip counts as speed 0; every other move type counts his own speed",
+			func = function()
+				local flying = fakePlayer(false, 2000, {GetMoveType = function() return MOVETYPE_NOCLIP end})
+
+				expect(GryMod.Mech.CloakSpeed(flying)).to.equal(0)
+				expect(GryMod.Mech.CloakSpeed(fakePlayer(false, 300, {GetMoveType = function() return MOVETYPE_FLY end}))).to.equal(300)
+				expect(GryMod.Mech.CloakSpeed(fakePlayer(false, 300, {GetMoveType = function() return MOVETYPE_WALK end}))).to.equal(300)
+				-- the drain of a flying player is the one of a player standing still
+				expect(GryMod.Mech.CloakDrain(GryMod.Mech.CloakSpeed(flying))).to.equal(GryMod.Mech.CloakDrain(0))
+			end
+		},
 		{
 			-- fails when a seated player's speed is the vehicle's: the camouflage would drain with the car's speed
 			name = "Mech.CloakSpeed: a seated player counts as speed 0, a player on foot as his own speed",

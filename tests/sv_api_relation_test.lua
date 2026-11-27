@@ -104,9 +104,15 @@ return {
 				-- (the provider of an adapter that GryMod ships for another addon is there only when that addon is: it is put aside for the count)
 				local adapter = GryMod.VJBase
 				local hadAdapter = adapter and adapter.ProviderAdded
+				local lvs = GryMod.CompatLVS
+				local hadLvs = lvs and lvs.Present and lvs.Present() -- (LVS is installed in some games: its adapter has a provider then)
 
 				if hadAdapter then
 					adapter.TeardownServer()
+				end
+
+				if hadLvs then
+					lvs.UninstallServer()
 				end
 
 				local ok, err = pcall(function()
@@ -117,6 +123,10 @@ return {
 
 				if hadAdapter then
 					adapter.SetupServer()
+				end
+
+				if hadLvs then
+					lvs.InstallServer()
 				end
 
 				expect(ok).to.beTrue()
