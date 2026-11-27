@@ -66,6 +66,12 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		return
 	end
 
+	-- a player in god mode (an admin mod's "god", the engine's flag) takes no damage: the suit pays nothing for a hit that costs nothing, and the arrows, the hit
+	-- sound and the reports are not told for damage that never comes
+	if ply:HasGodMode() then
+		return
+	end
+
 	local amt = dmginfo:GetDamage()
 
 	-- the armor below can take all of the hit and the hooks run in no fixed order: the damage arrows and the hit marker

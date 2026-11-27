@@ -196,6 +196,33 @@ function API.EMP(pos, radius, seconds)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
+-- Attacks that are not bullets
+-- ---------------------------------------------------------------------------------------------------------
+
+-- The camouflage ends when the player attacks. The server sees every BULLET (the hook EntityFireBullets, sv_system.lua), so the weapons that fire bullets need nothing.
+-- What it cannot see is an attack that is not a bullet: a swing of a knife, a thrown or launched grenade, a beam. A weapon that knows it just made one (or a patch for a
+-- weapon base, lua/grymod/compat/) tells it here. `rightClick` is true when the attack came from the secondary fire: the player may have turned that rule off
+-- (gry_cloak_altfire), and then it does not count. Returns true when the player was camouflaged (his client is told and ends the camouflage), or false and why not
+-- ("invalid player", "not camouflaged"). Nothing is raised, whatever is given.
+function API.ReportAttack(ply, rightClick)
+	if not isPlayer(ply) then
+		return false, "invalid player"
+	end
+
+	if ply.Nanosuit_mode ~= Modes.CLOAK then
+		return false, "not camouflaged"
+	end
+
+	net.Start("gry_cloak_shot")
+	net.WriteBool(rightClick == true)
+	net.Send(ply)
+
+	return true
+end
+
+API.AddFeature("attackreport")
+
+-- ---------------------------------------------------------------------------------------------------------
 -- Relation: ally, neutral or hostile, decided in ONE place
 -- ---------------------------------------------------------------------------------------------------------
 

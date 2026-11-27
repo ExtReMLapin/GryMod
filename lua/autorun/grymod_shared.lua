@@ -199,6 +199,7 @@ if SERVER then
 	include("grymod/server/sv_server_options.lua")
 	include("grymod/server/sv_zonemap.lua")
 	include("grymod/server/sv_api.lua")
+	include("grymod/compat/weapons/sv_tfa.lua")
 	include("grymod/server/sv_debug_cmd.lua")
 	include("grymod/compat/hl2/sh_tracked.lua")
 	include("grymod/sh_objectives.lua")

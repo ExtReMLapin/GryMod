@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"attackreport"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -49,12 +49,28 @@ GryMod.API.SetMode(ply, GryMod.Modes.SPEED)   -- ARMOR, SPEED, CLOAK or STRENGTH
 GryMod.API.GetMode(ply)
 GryMod.API.StartMalfunction(ply, 5, "my reason")   -- the suit goes down for 5 seconds
 GryMod.API.EMP(pos, 400, 10)         -- every suit within 400 units goes down for 10 s, returns how many
+GryMod.API.ReportAttack(ply, true)   -- an attack that is not a bullet (a swing, a thrown grenade...): ends the camouflage, see below
 ```
 
 An energy command counts as a use of the energy: the recharge starts again after its usual delay.
 
 `SetMode` returns `false` and a reason when it does not change the mode: `"invalid mode"`, `"dead"`, `"malfunction"` (the suit is
 down, so it stays in armor), `"disabled"` (the suit is off, see below) or `"vetoed"`.
+
+### Attacks that end the camouflage
+
+The camouflage ends when the player attacks. The server already sees every **bullet** (the hook `EntityFireBullets`): a weapon that fires bullets needs nothing, whatever
+its rules. What it cannot see is an attack that is not a bullet: a knife's swing, a grenade thrown or launched, a beam. A weapon that knows it just made one tells GryMod:
+
+```lua
+-- server, in the weapon's attack code, or from a hook of its base
+GryMod.API.ReportAttack(ply, true)    -- true: it came from the right click (the player may have turned that rule off: gry_cloak_altfire)
+GryMod.API.ReportAttack(ply, false)   -- any other attack
+```
+
+It returns `true` when the player was camouflaged (his client ends the camouflage), or `false` and why (`"invalid player"`, `"not camouflaged"`); nothing is raised,
+whatever you give it. `GryMod.API.Has("attackreport")` tells whether it exists. Weapons that are not yours: GryMod ships patches for some weapon bases (TFA, see
+[compat.md](compat.md)).
 
 ### The suit on or off
 

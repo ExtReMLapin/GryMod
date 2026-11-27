@@ -26,7 +26,25 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `sh_tracked.lua` | The stock NPCs, vehicles and projectiles: the radar icon, the heavy machines, the dangerous projectiles of the grenade warning. |
 | | `sh_usable.lua` | What the +use key acts on in the stock game (doors, buttons, ladders, chargers, props, vehicles...), each class checked in the SDK code. |
 | `compat/weapons/` | `cl_arc9.lua`, `cl_arccw.lua`, `cl_tfa.lua`, `cl_m9k.lua`, `cl_cw2_fas2.lua` | One reader for each third-party weapon base: how to read the fire mode it keeps in its own fields, for the icon of the weapon slot. |
+| | `sv_tfa.lua` | TFA's attacks that are not bullets (a knife's right click, a bash, a grenade's low throw) end the camouflage, through TFA's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
+
+## Damage: living with the addons that change it
+
+The suit's armor is one hook, `EntityTakeDamage` named `"Grymod damage handeling"` (`sv_health.lua`). In armor mode it takes the damage it **sees** out of the energy bar and
+lets the rest through (at least 30 percent, as the original game). What other addons need to know:
+
+- **The order of two addons' hooks cannot be chosen.** `hook.Add` has no priority in this version of the game and `hook.Call` walks the hooks with `pairs`. If another addon
+  scales the damage (a difficulty mod, a damage multiplier), the armor pays for the scaled damage when its hook runs after, and for the original damage when it runs before: a
+  hit of 30 doubled by such a mod costs the bar 60 in the first case and 30 in the second (`tests/sv_damage_compat_test.lua` states it). Neither is an error. If you write
+  such a mod and want the armor to pay for your final damage, scale in `GM:ScalePlayerDamage` (it runs before `EntityTakeDamage`, for bullet damage) or do the scaling
+  before the hit is applied.
+- **GryMod never stops the hooks after it:** its hook returns nothing. Return nothing yourself unless you really block the hit (`true`: the others, and the gamemode, do not run).
+- **God mode** (an admin mod's "god", `Player:GodEnable`): the suit takes no energy, the damage is left as it is and nothing is told (no arrows, no sound, no
+  `GryMod_ArmorAbsorbed`).
+- **Energy is kept between 0 and 100** and the damage that goes on is never negative, whatever a mod does to it before or after.
+- The reports for addons are `GryMod_ArmorAbsorbed(ply, absorbed, passed)` (after the damage was changed: do not call `TakeDamage` from it) and the suit's other hooks in
+  [api.md](api.md).
 
 ## Adding a patch
 

@@ -10,6 +10,14 @@ weapons are in the registry as plain data (`lua/grymod/compat/hl2/sh_weapons.lua
 
 Everything below is checked by running it in a game with GryMod loaded.
 
+## The camouflage and the attacks that are not bullets
+
+The camouflage ends when the player attacks. Every **bullet** is seen by the server (`EntityFireBullets`), so the weapons that fire bullets, TFA, ArcCW, ARC9, M9K, CW 2.0,
+FA:S and your own, end it whatever their rules. A **left click** is judged on the client from the numbers of the weapon (it fires when the weapon may fire). A **right click**
+is not guessed: it counts when the weapon is in the registry with `altShoots` (the stock weapons), or when the weapon says so with
+`GryMod.API.ReportAttack(ply, true)` (a knife's stab, a launcher, a grenade: [api.md](api.md#attacks-that-end-the-camouflage)). TFA is done: GryMod listens to its hooks (see
+[compat.md](compat.md)); for the other bases, call `ReportAttack` from your own patch.
+
 ## Three ways to describe a weapon
 
 A description is a table of optional fields (the list is in [api.md](api.md#describe-a-weapon)). A field you leave out is read
