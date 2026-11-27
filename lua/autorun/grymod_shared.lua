@@ -2,7 +2,7 @@ if not GryMod then
 	GryMod = {}
 end
 
-GryMod.WSID = 153963150
+GryMod.WSID = 3846743387
 GryMod.Workshop = false
 
 GryMod.Modes = {
