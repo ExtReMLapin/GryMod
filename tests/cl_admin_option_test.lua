@@ -49,8 +49,12 @@ local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gr
 -- the server settings that are on the Compatibility page (cl_options_compat.lua, the TFA tab): not in the Config menu either
 local COMPAT_MENU = {gry_suit_handling = true, gry_suit_reload_rate = true, gry_suit_shot_cost = true, gry_suit_shot_cost_by_ammo = true, gry_suit_melee_cost = true, gry_suit_strength_melee = true, gry_suit_strength_recoil = true}
 
+-- the server settings that are in the white list but that no page of the options panel shows YET (the menu is being reworked in another branch, feature/options-rework: its request is in the
+-- ecosystem bus, core-options-requests.md). The setting works from the console and from the API; remove it from this list when a page gets its control.
+local NO_MENU_YET = {gry_radar_blast_rings = true}
+
 local function notInConfig(name)
-	return RADAR_MENU[name] == true or COMPAT_MENU[name] == true
+	return RADAR_MENU[name] == true or COMPAT_MENU[name] == true or NO_MENU_YET[name] == true
 end
 
 -- how many settings of the white list the Config menu holds (the others are in the Radar and map menu)
@@ -581,7 +585,7 @@ return {
 						local inRadar = radar.GryAdminControls[setting.name] ~= nil
 						local inCompat = compat.GryAdminControls[setting.name] ~= nil
 
-						expect((inConfig and 1 or 0) + (inRadar and 1 or 0) + (inCompat and 1 or 0)).to.equal(1)
+						expect((inConfig and 1 or 0) + (inRadar and 1 or 0) + (inCompat and 1 or 0)).to.equal(NO_MENU_YET[setting.name] and 0 or 1)
 						expect(inRadar).to.equal(RADAR_MENU[setting.name] == true)
 						expect(inCompat).to.equal(COMPAT_MENU[setting.name] == true)
 					end
