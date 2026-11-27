@@ -388,7 +388,7 @@ local wasAlive = false
 
 -- The HUD changes its state: the game says so by calling the HUD events (a malfunction is "lost", its end "reboot"). A return to
 -- normal while nothing was wrong is no reboot. 2 is the flicker of a light shock.
-hook.Add("GryMod_HUDStatus", "GRYBOOT", function(status)
+hook.Add("GryMod_HUDStatus", "GRYBOOT", function(status, why)
 	local API = GryMod.API
 
 	if not (API and API.HUDEvent) then
@@ -397,7 +397,8 @@ hook.Add("GryMod_HUDStatus", "GRYBOOT", function(status)
 
 	if status == 1 then
 		API.HUDEvent("lost")
-	elseif status == 0 and malfunctioning then
+	elseif status == 0 and malfunctioning and why ~= "gone" then
+		-- (the reason "gone": the HUD is dropped, not rebooted; this file's own paint ends what was on, cl_hud_flash.lua TellGone)
 		API.HUDEvent("reboot")
 	end
 end)
