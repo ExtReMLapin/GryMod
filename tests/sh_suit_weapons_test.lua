@@ -159,9 +159,9 @@ return {
 			end
 		},
 		{
-			-- fails when a melee blow is free (the owner saw a knife in the strength mode cost nothing), when the price is not the original's (10 of 100 in the strength mode, 7.5 in the speed
-			-- mode: 20 and 15 of its 200), when another mode pays, or when the setting does not scale it (0 = free)
-			name = "MeleeCost: 10 of the bar for a blow in the strength mode, 7.5 in the speed mode, nothing in the other modes, scaled by gry_suit_melee_cost (0 = free)",
+			-- fails when a melee blow is free (the owner saw a knife in the strength mode cost nothing), when the price is not the demo's (20 of 100 in the strength mode, 10 in the speed
+			-- mode: 40 and 20 of its 200), when another mode pays, or when the setting does not scale it (0 = free)
+			name = "MeleeCost: 20 of the bar for a blow in the strength mode, 10 in the speed mode, nothing in the other modes, scaled by gry_suit_melee_cost (0 = free)",
 			func = function()
 				local convar = GetConVar("gry_suit_melee_cost")
 
@@ -170,13 +170,13 @@ return {
 				local before = convar:GetString()
 				local ok, err = pcall(function()
 					convar:SetString("1")
-					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(10)
-					expect(SW.MeleeCost(Modes.SPEED)).to.equal(7.5)
+					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(20)
+					expect(SW.MeleeCost(Modes.SPEED)).to.equal(10)
 					expect(SW.MeleeCost(Modes.ARMOR)).to.equal(0)
 					expect(SW.MeleeCost(Modes.CLOAK)).to.equal(0)
 
 					convar:SetString("2")
-					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(20)
+					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(40)
 
 					convar:SetString("0")
 					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(0)

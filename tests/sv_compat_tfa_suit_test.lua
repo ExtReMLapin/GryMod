@@ -219,7 +219,7 @@ return {
 			end
 		},
 		{
-			-- fails when a melee swing costs nothing (a knife, the right click of a melee weapon, the quick melee of a gun): the strength mode takes 10 of the bar and the speed mode 7.5 for
+			-- fails when a melee swing costs nothing (a knife, the right click of a melee weapon, the quick melee of a gun): the strength mode takes 20 of the bar and the speed mode 10 for
 			-- each blow, the other modes nothing; a gun's right click that is only the sights costs nothing
 			name = "a melee blow costs energy: the swing of a melee weapon, its right click and the bash of a gun pay the melee price in the strength and speed modes only",
 			func = function()
@@ -242,14 +242,14 @@ return {
 					end
 
 					ply:SetNW2Int("GryMode", Modes.STRENGTH)
-					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(10)
-					expect(paid("TFA_PostSecondaryAttack", knife)).to.equal(10)
-					expect(paid("TFA_PostBash", gun)).to.equal(10)
+					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(20)
+					expect(paid("TFA_PostSecondaryAttack", knife)).to.equal(20)
+					expect(paid("TFA_PostBash", gun)).to.equal(20)
 					expect(paid("TFA_PostSecondaryAttack", gun)).to.equal(0) -- the sights of a gun are not a blow
 
 					ply:SetNW2Int("GryMode", Modes.SPEED)
-					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(7.5)
-					expect(paid("TFA_PostBash", gun)).to.equal(7.5)
+					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(10)
+					expect(paid("TFA_PostBash", gun)).to.equal(10)
 
 					ply:SetNW2Int("GryMode", Modes.ARMOR)
 					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(0)
@@ -305,10 +305,10 @@ return {
 					hook.Run("TFA_PostPrimaryAttack", gun)
 					expect(ply:GetNW2Float("GryEnergy")).to.equal(0)
 
-					-- a melee weapon's swing pays the melee price (10 in the strength mode), not the price of a shot
+					-- a melee weapon's swing pays the melee price (20 in the strength mode), not the price of a shot
 					ply:SetNW2Float("GryEnergy", 100)
 					hook.Run("TFA_PostPrimaryAttack", weapon(ply, {IsMelee = true}))
-					expect(ply:GetNW2Float("GryEnergy")).to.equal(90)
+					expect(ply:GetNW2Float("GryEnergy")).to.equal(80)
 
 					ply:SetNW2Float("GryEnergy", 100)
 					ply:SetNW2Int("GryMode", Modes.SPEED)

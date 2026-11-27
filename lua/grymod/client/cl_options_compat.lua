@@ -49,7 +49,7 @@ local function suitEffects(root, Panel, base)
 
 	GryMod.AdminOption(Panel, "Melee: energy of a blow", "gry_suit_melee_cost", "choice", {
 		into = strength,
-		help = "Each melee blow takes energy in the strength mode (10 of the bar) and in the speed mode (7.5), like the original game.",
+		help = "Each melee blow takes energy in the strength mode (20 of the bar) and in the speed mode (10), like the original game's demo.",
 		choices = {
 			{"Free", "0"},
 			{"Half the original's", "0.5"},

@@ -285,7 +285,7 @@ return {
 			end
 		},
 		{
-			-- fails when a bash (a knife swing, the stab, the butt stroke) costs nothing in the strength and speed modes: 10 and 7.5 of the bar
+			-- fails when a bash (a knife swing, the stab, the butt stroke) costs nothing in the strength and speed modes: 20 and 10 of the bar
 			name = "ARC9_Hook_Bash: a blow takes the melee price in the strength and speed modes, nothing in the others",
 			func = function()
 				local added = {}
@@ -296,8 +296,8 @@ return {
 				hook.GetTable().ARC9_Hook_Bash["GryMod compat arc9 suit"](weapon(fakePlayer(Modes.SPEED, 100)), {})
 				hook.GetTable().ARC9_Hook_Bash["GryMod compat arc9 suit"](weapon(fakePlayer(Modes.ARMOR, 100)), {})
 				expect(#added).to.equal(2)
-				expect(near(added[1], -10)).to.beTrue()
-				expect(near(added[2], -7.5)).to.beTrue()
+				expect(near(added[1], -20)).to.beTrue()
+				expect(near(added[2], -10)).to.beTrue()
 			end
 		},
 		{
