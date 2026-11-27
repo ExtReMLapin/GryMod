@@ -1174,6 +1174,11 @@ hook.Add("HUDShouldDraw", "GRYCROSSHAIRHIDE", function(name)
 			return
 		end
 
+		-- in the third person ours is not drawn (a camera addon has its own crosshair): hiding this one too would leave the player with none
+		if IsValid(ply) and ply:ShouldDrawLocalPlayer() then
+			return
+		end
+
 		return false
 	end
 end)

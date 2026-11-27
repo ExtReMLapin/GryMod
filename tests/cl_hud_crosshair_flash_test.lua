@@ -859,6 +859,45 @@ return {
 			end
 		},
 		{
+			-- fails when the base crosshair is hidden in the third person: our Flash crosshair is not drawn there (the camera addon's own one is what the player has), so hiding the base
+			-- one as well leaves the player without any crosshair
+			name = "the base crosshair is left to the camera addon in the third person (ours is not drawn there), hidden in the first",
+			func = function()
+				local ply = LocalPlayer()
+
+				if not IsValid(ply) or not ply:Alive() then
+					return
+				end
+
+				local hud = GetConVar("gry_hud"):GetString()
+				local option = GetConVar("gry_hud_crosshair")
+				GetConVar("gry_hud"):SetString("1")
+				option:SetString("1")
+
+				local hider = hook.GetTable().HUDShouldDraw["GRYCROSSHAIRHIDE"]
+				-- the method is the engine's: a function put on the entity's own table does not replace it, the metatable's is what is called (restored whatever happens)
+				local meta = FindMetaTable("Player")
+				local before = meta.ShouldDrawLocalPlayer
+				local first, third
+
+				local ok, err = pcall(function()
+					meta.ShouldDrawLocalPlayer = function() return false end
+					first = hider and hider("CHudCrosshair")
+
+					meta.ShouldDrawLocalPlayer = function() return true end
+					third = hider and hider("CHudCrosshair")
+				end)
+
+				meta.ShouldDrawLocalPlayer = before
+				option:SetString("1")
+				GetConVar("gry_hud"):SetString(hud)
+
+				expect(ok).to.beTrue()
+				expect(first).to.equal(false)
+				expect(third).to.beNil()
+			end
+		},
+		{
 			name = "the server's hit message blinks the crosshair and its damage message starts the arcs, each only while its switch is on",
 			func = function(state)
 				local C = GryMod.FlashCrosshair

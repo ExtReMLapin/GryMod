@@ -131,6 +131,8 @@ return {
 	groupName = "GryMod compat: addons that take the view (client)",
 	beforeEach = function()
 		world()
+		-- an addon that is really installed in the game of the test (ARC9, PAC3...) is hidden for the length of the case: it would add its owner to the counts
+		clear({"ctp", "pac", "pace", "ARC9"})
 		dropOwners()
 	end,
 	afterEach = function()
@@ -141,6 +143,8 @@ return {
 			end
 		end)
 		restore()
+		-- the owners of the addons that are really there were taken away with the others: put them back
+		pcall(install)
 	end,
 	cases = {
 		{

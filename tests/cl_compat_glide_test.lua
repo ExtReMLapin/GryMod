@@ -52,6 +52,9 @@ return {
 		saved.CloakLevel = API.CloakLevel
 		API.CloakLevel = function(ply) return ply.cloak or 0 end
 		hadGlide, realGlide = Glide ~= nil, Glide
+		-- the originals are taken here, for every case: a case that did not stub them must not leave them nil for the tests that follow
+		saved.LocalVehicle = GryMod.GlideCompat and GryMod.GlideCompat.LocalVehicle
+		saved.NightVisionKey = GryMod.GlideCompat and GryMod.GlideCompat.NightVisionKey
 	end,
 	afterEach = function()
 		API.CloakLevel = saved.CloakLevel

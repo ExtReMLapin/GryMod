@@ -865,6 +865,9 @@ return {
 				local ply = fakePlayer()
 				G.Candidates(ply, {})
 				recordSearch()
+				-- an entity of the game made a moment ago (with entries by base or by function in the registry every creation waits for the next frame) may already have armed the
+				-- frame's timer: settle it so that the case starts from "no timer waiting"
+				G.Settle()
 				local timers = {}
 				stub(timer, "Simple", function(delay, fn) timers[#timers + 1] = {delay = delay, fn = fn} end)
 				local ent, other = fakeEntity("class C_BaseEntity"), fakeEntity("class C_BaseEntity")

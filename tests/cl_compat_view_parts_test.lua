@@ -3,6 +3,9 @@
 -- the addon's public source (the file and line are in the patch), put in place of the game's own functions for the length of the case and put back afterwards. A real addon is not
 -- touched, no convar of anybody is written. Each case names the change whose absence makes it fail.
 
+-- the game's own function, taken when the file is loaded (the cases put a stand-in in its place)
+local realLocalPlayer = LocalPlayer
+
 local saved = {}
 local fakeHooks
 local ply
@@ -339,6 +342,9 @@ return {
 				local NV = GryMod.NightVision
 
 				setHook("RenderScreenspaceEffects", "NV_FX")
+
+				-- GryMod's night vision reads the real player (alive, health, suit): not the stand-in of the other cases (put back with the others by restore)
+				stub(_G, "LocalPlayer", realLocalPlayer)
 
 				-- hook.Run is the game's: our handler must be in the game's own table to be reached
 				local before = hook.Run("GryMod_CanUseView", "nightvision", "query")

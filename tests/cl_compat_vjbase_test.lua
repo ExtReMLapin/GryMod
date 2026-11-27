@@ -6,6 +6,8 @@ return {
 	cases = {
 		{
 			name = "the NPC controller of VJ Base is a camera owner: the view is the NPC's while ply.VJ_Controlling is true (VJ sets it on the client itself)",
+			-- the adapter does nothing without VJ Base (the owner is put by Setup only when VJ is there): this case needs it in the game
+			when = VJ ~= nil,
 			func = function()
 				local API = GryMod.API
 				local me = LocalPlayer()
