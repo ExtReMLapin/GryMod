@@ -719,6 +719,56 @@ local function validWeapon(weapon)
 	return weapon
 end
 
+-- Whether the weapon is a shotgun, told by what every base has in common and not by a name: it fires several pellets at once (SWEP.Num of ARC9 and ArcCW, Primary.NumShots of TFA) or its
+-- primary ammunition is a shotgun one (the ammunition's name: buckshot, a gauge, a shotgun shell). A value that is no number, or a call that fails, is no information.
+local SHOTGUN_AMMO = {"buck", "gauge", "shotgun"}
+
+function Module.IsShotgun(weapon)
+	if not weapon then
+		return false
+	end
+
+	local pellets = weapon.Num
+
+	if isnumber(pellets) and pellets > 1 then
+		return true
+	end
+
+	local primary = weapon.Primary
+	local shots = istable(primary) and primary.NumShots or nil
+
+	if isnumber(shots) and shots > 1 then
+		return true
+	end
+
+	local okType, id = pcall(function() return weapon:GetPrimaryAmmoType() end)
+
+	if okType and isnumber(id) and id > 0 then
+		local okName, name = pcall(game.GetAmmoName, id)
+
+		if okName and isstring(name) then
+			name = string.lower(name)
+
+			for _, word in ipairs(SHOTGUN_AMMO) do
+				if string.find(name, word, 1, true) then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+-- A pump or semi-automatic shotgun shows the Shotgun icon instead of the single shot icon of a rifle; an automatic one keeps Auto and a burst Burst (the icon tells the rate of fire there).
+local function shotgunOr(weapon, label)
+	if label == "Single" and Module.IsShotgun(weapon) then
+		return "Shotgun"
+	end
+
+	return label
+end
+
 function Module.FireModeFor(weapon)
 	weapon = validWeapon(weapon)
 
@@ -736,11 +786,11 @@ function Module.FireModeFor(weapon)
 		local ok, label = pcall(resolver, weapon)
 
 		if ok and FIRE_MODE_ICONS[label] then
-			return label
+			return shotgunOr(weapon, label)
 		end
 	end
 
-	return FIRE_LABEL[weaponValue(weapon, "fire")] or "Single"
+	return shotgunOr(weapon, FIRE_LABEL[weaponValue(weapon, "fire")] or "Single")
 end
 
 -- The ammo the weapon's secondary fire counts in the grenade slot, or nil: a grenade launcher (the SMG's grenade) or the energy ball

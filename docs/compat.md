@@ -330,3 +330,8 @@ Draconic with `DRC_GunDamageMod`: the armor pays for the scaled or the original 
 Two core tests are red only while DrGBase (or any addon with an entry that names its entities by a base or a function) is installed in the test game: `sh_api_danger_test` ("DangerNeedsEntity: false with class dangers
 only") and `cl_hud_grenade_flash_test` ("a projectile that has no class yet ... looked at again one frame on"), and `sh_api_tracked_test` ("the cache: the base of a class is worked out once") counts the
 `IsBasedOn` calls. They pass with the adapter's entries taken away (`GryMod.DrGBaseCompat.Uninstall()` in both realms): the tests assume a registry with no such entry.
+
+## Shotguns and the crosshair of the weapons that draw their own
+
+- **Shotgun icon.** A weapon that would show the single shot icon shows the Shotgun icon when it is a shotgun, told by what every base has in common: several pellets for one trigger pull (`SWEP.Num` of ARC9 and ArcCW, `Primary.NumShots` of TFA) or a shotgun ammunition (the name of its primary ammunition: buckshot, a gauge, a shotgun shell). An automatic shotgun keeps Auto, a burst one Burst. `GryMod.FlashHUD.IsShotgun(weapon)`.
+- **Crosshair.** TFA and ARC9 draw their crosshair in `SWEP:DoDrawCrosshair`, which the game calls from its crosshair element (`CHudCrosshair`). While the binoculars are up (first person) or the quick menu is open, GryMod hides that element (`HUDShouldDraw`, id `GRYCROSSHAIRHIDE`), so the crosshair of any weapon goes with it; otherwise it is left to the weapon.

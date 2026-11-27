@@ -898,6 +898,62 @@ return {
 			end
 		},
 		{
+			-- fails when the crosshair of a weapon that draws its own (TFA and ARC9 draw theirs in DoDrawCrosshair, which the game calls from its crosshair element) stays on while the binoculars
+			-- are up (their own reticle is on the screen), or when it is hidden while they are not (the weapon's own crosshair is what the player has then)
+			name = "the game's crosshair element, where a weapon draws its own crosshair, is hidden while the binoculars are up and left to the weapon otherwise",
+			func = function()
+				local C, B = GryMod.FlashCrosshair, GryMod.FlashBinoculars
+				local hider = hook.GetTable().HUDShouldDraw["GRYCROSSHAIRHIDE"]
+				local realUp, realVanilla, realEnabled = B.IsUp, C.VanillaHiddenFor, C.Enabled
+				local up, down, otherElement
+
+				B.IsUp = function() return true end
+				C.VanillaHiddenFor = function() return false end -- the weapon draws its own crosshair
+				C.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					up = hider("CHudCrosshair")
+					otherElement = hider("CHudHealth")
+					B.IsUp = function() return false end
+					down = hider("CHudCrosshair")
+				end)
+
+				B.IsUp, C.VanillaHiddenFor, C.Enabled = realUp, realVanilla, realEnabled
+				assert(ok, err)
+
+				expect(up).to.equal(false)
+				expect(down).to.beNil()
+				expect(otherElement).to.beNil()
+			end
+		},
+		{
+			-- fails when the crosshair of a weapon that draws its own stays on over the quick menu (it is drawn above the menu), or when it is hidden once the menu is closed
+			name = "the game's crosshair element, where a weapon draws its own crosshair, is hidden while the quick menu is open and left to the weapon once it is closed",
+			func = function()
+				local C, M, B = GryMod.FlashCrosshair, GryMod.FlashMenu, GryMod.FlashBinoculars
+				local hider = hook.GetTable().HUDShouldDraw["GRYCROSSHAIRHIDE"]
+				local realOpen, realVanilla, realEnabled, realUp = M.IsOpen, C.VanillaHiddenFor, C.Enabled, B.IsUp
+				local open, closed
+
+				M.IsOpen = function() return true end
+				B.IsUp = function() return false end
+				C.VanillaHiddenFor = function() return false end -- the weapon draws its own crosshair
+				C.Enabled = function() return true end
+
+				local ok, err = pcall(function()
+					open = hider("CHudCrosshair")
+					M.IsOpen = function() return false end
+					closed = hider("CHudCrosshair")
+				end)
+
+				M.IsOpen, C.VanillaHiddenFor, C.Enabled, B.IsUp = realOpen, realVanilla, realEnabled, realUp
+				assert(ok, err)
+
+				expect(open).to.equal(false)
+				expect(closed).to.beNil()
+			end
+		},
+		{
 			name = "the server's hit message blinks the crosshair and its damage message starts the arcs, each only while its switch is on",
 			func = function(state)
 				local C = GryMod.FlashCrosshair

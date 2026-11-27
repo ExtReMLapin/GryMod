@@ -1167,6 +1167,25 @@ hook.Add("HUDPaint", "GRYFLASHCROSSHAIR", Cross.Paint)
 
 -- the Half-Life 2 crosshair stays away while ours is on
 hook.Add("HUDShouldDraw", "GRYCROSSHAIRHIDE", function(name)
+	-- while the binoculars are up their own reticle is the one on the screen, and while the quick menu is open the crosshair would be drawn above it: the game's crosshair element goes too,
+	-- which is where a weapon that draws its own crosshair draws it (TFA, ARC9...: SWEP:DoDrawCrosshair is called from that element). The binoculars have no view in the third person
+	if name == "CHudCrosshair" then
+		local binoculars = GryMod.FlashBinoculars and GryMod.FlashBinoculars.IsUp()
+		local menu = GryMod.FlashMenu and GryMod.FlashMenu.IsOpen()
+
+		if menu then
+			return false
+		end
+
+		if binoculars then
+			local viewer = LocalPlayer()
+
+			if not (IsValid(viewer) and viewer:ShouldDrawLocalPlayer()) then
+				return false
+			end
+		end
+	end
+
 	if name == "CHudCrosshair" and Cross.Enabled() then
 		local ply = LocalPlayer()
 
