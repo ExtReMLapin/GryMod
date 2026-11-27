@@ -286,6 +286,8 @@ return {
 		},
 		{
 			name = "the melee slow of VJ keeps the speeds of the NEW mode to give back (the stored ones were the old mode's)",
+			-- the adapter's hook does nothing without VJ Base (as every adapter): the case needs it in the game
+			when = VJ ~= nil,
 			func = function()
 				local p = ply()
 

@@ -104,14 +104,17 @@ return {
 			-- fails when a caller cannot tell whether a danger needs the entity (the client then judges an entity that has no answer yet again one frame later)
 			name = "DangerNeedsEntity: false with class dangers only, true while an entry with a base or a match function has a danger",
 			func = function()
+				-- the adapters of the game (LVS, Glide, GB5...) may already have entries by base or by function: the case compares with what was there before
+				local before = API.DangerNeedsEntity()
+
 				API.RegisterTracked("t_dng_a", {class = "t_dng_c1", danger = {}})
-				expect(API.DangerNeedsEntity()).to.beFalse()
+				expect(API.DangerNeedsEntity()).to.equal(before) -- a class danger changes nothing
 
 				API.RegisterTracked("t_dng_b", {base = "t_dng_base", danger = {}})
 				expect(API.DangerNeedsEntity()).to.beTrue()
 
 				API.UnregisterTracked("t_dng_b")
-				expect(API.DangerNeedsEntity()).to.beFalse()
+				expect(API.DangerNeedsEntity()).to.equal(before)
 			end
 		},
 		{

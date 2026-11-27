@@ -135,6 +135,8 @@ return {
 		},
 		{
 			name = "a VJ melee weapon is described with no gun icon, a gun with its Primary.Automatic",
+			-- the adapter registers its entries only when VJ Base is in the game
+			when = VJ ~= nil,
 			func = function()
 				local API = GryMod.API
 				local entry = API.GetWeapon("weapon_vj_base")

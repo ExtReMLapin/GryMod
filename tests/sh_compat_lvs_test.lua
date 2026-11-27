@@ -203,7 +203,9 @@ return {
 				expect(tank.type).to.equal(3)
 				expect(plane.radar).to.equal("hostile")
 				expect(API.GetTracked(ent("prop_vehicle_prisoner_pod"))).to.beNil()
-				expect(API.GetTracked(ent("lvs_missile"))).to.beNil()
+				-- a missile is not a radar contact of a vehicle: at most the warning entry of its own (the registry gives every danger a tracked entry)
+				local missileEntry = API.GetTracked(ent("lvs_missile"))
+				expect(missileEntry == nil or missileEntry.key == "lvs_missiles").to.beTrue()
 			end
 		},
 		{
@@ -301,7 +303,7 @@ return {
 				end
 
 				expect(API.GetDanger(ent("lvs_item_mine"))).to.beNil()
-				expect(API.GetDanger(ent("npc_grenade_frag"))).to.beNil()
+				expect(API.GetDanger(ent("prop_physics"))).to.beNil() -- (not npc_grenade_frag: the game's own registry warns for it)
 			end
 		},
 		{
@@ -388,7 +390,7 @@ return {
 				expect(entry).notTo.beNil()
 				expect(entry.icon).to.equal("enter")
 				expect(entry.use).to.equal("repeat")
-				expect(API.GetUsable(ent("prop_physics"))).to.beNil()
+				expect(API.GetUsable(ent("info_target"))).to.beNil() -- (not prop_physics: the game's own entry gives the props a prompt)
 
 				for _, class in ipairs({"weapon_lvsrepair", "weapon_lvsfuelfiller", "weapon_lvsmines", "weapon_lvsspikestrip"}) do
 					expect(API.GetWeapon(class).fire).to.equal("none")

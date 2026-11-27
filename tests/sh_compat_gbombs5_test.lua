@@ -45,11 +45,12 @@ return {
 		local var = GetConVar("gb5_easyuse") or CreateConVar("gb5_easyuse", "1")
 
 		easyWas = var:GetBool()
-		var:SetBool(true)
+		-- (a replicated setting cannot be written from the client: it keeps the server's value, which is 1 here)
+		pcall(function() var:SetBool(true) end)
 		include("grymod/compat/tools/sh_gbombs5.lua")
 	end,
 	afterEach = function()
-		GetConVar("gb5_easyuse"):SetBool(easyWas)
+		pcall(function() GetConVar("gb5_easyuse"):SetBool(easyWas) end)
 	end,
 	cases = {
 		{
@@ -116,7 +117,7 @@ return {
 			name = "what is not a bomb has no prompt",
 			func = function()
 				expect(API.GetUsable(ent("gb5_shockwave_ent"))).to.beNil()
-				expect(API.GetUsable(ent("prop_physics"))).to.beNil()
+				expect(API.GetUsable(ent("info_target"))).to.beNil() -- (not prop_physics: the stock entry of the game gives the props a prompt)
 			end
 		}
 	}

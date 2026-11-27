@@ -73,9 +73,12 @@ local function mine(fields)
 	return m
 end
 
+-- list.Get of a list that does not exist (simfphys is not installed) gives a new empty table at every call: the entry is put with list.Set, and taken away the same way
+local listProxy = setmetatable({}, {__newindex = function(_, key, value) list.Set("simfphys_vehicles", key, value) end})
+
 local function listEntry(name, mass)
-	saved[#saved + 1] = {list.Get("simfphys_vehicles"), name, list.Get("simfphys_vehicles")[name]}
-	list.Get("simfphys_vehicles")[name] = {Members = {Mass = mass}}
+	saved[#saved + 1] = {listProxy, name, list.Get("simfphys_vehicles")[name]}
+	list.Set("simfphys_vehicles", name, {Members = {Mass = mass}})
 end
 
 return {
