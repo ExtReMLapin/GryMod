@@ -17,6 +17,14 @@ Key = GryMod.KeyBinder.New{
 	text = "It is where you change the mode of the suit (armor, speed, cloak, strength).\nPress the key you want to open it with, now. You can change it later in the GryMod options\n(or bind a key to +crysishud in the console).",
 	heading = "Your suit's quick menu has no key yet",
 	modal = true,
+	-- "do not ask me again": saved (gry_menu_key_dontask), and the options panel can undo it
+	silence = "gry_menu_key_dontask",
+	-- the binoculars' zoom key, optional, in the same prompt (only while the binoculars' own zoom is on)
+	extra = function() return GryMod.SuitZoom ~= nil and GryMod.SuitZoom.Wanted() and GryMod.SuitZoom.Key or nil end,
+	extraLabel = "Binoculars zoom key (optional, not the same as the game's own zoom key)",
+	-- never the key of the game's own zoom (+zoom, the Half-Life 2 suit zoom): two zooms on one key
+	extraRefuse = function(code) return input.LookupKeyBinding(code) == "+zoom" end,
+	extraRefuseText = "That key is the game's own zoom key: choose another one.",
 	-- the chosen key goes down or up: the menu opens or applies
 	press = function(down)
 		local chosen = Key.Chosen()

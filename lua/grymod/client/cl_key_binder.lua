@@ -239,13 +239,16 @@ function Binder.New(options)
 	end
 
 	-- Saves the key; Escape, "no key" and the keys the owner refuses are not taken. Closes the prompt.
-	function Key.SetKey(code)
+	function Key.SetKey(code, keepPrompt)
 		if not code or code <= 0 or code == KEY_ESCAPE or (options.refuse and options.refuse(code)) then
 			return false
 		end
 
 		convar:SetInt(code)
-		Key.HidePrompt()
+
+		if not keepPrompt then
+			Key.HidePrompt()
+		end
 
 		return true
 	end
@@ -261,7 +264,8 @@ function Binder.New(options)
 	-- The modal prompt (options.modal: the quick menu, which a new player must find): a big frame in the middle of the screen with a heading, the text, a key picker that ALREADY waits
 	-- for the key (the player presses the key he wants, no click needed) and a Later button (asked again at the next spawn).
 	local function showModalPrompt()
-		local w, h = math.min(560, ScrW() - 40), 250
+		local extraKey = options.extra and options.extra() or nil
+		local w, h = math.min(560, ScrW() - 40), extraKey and 380 or 290
 		local frame = vgui.Create("DFrame")
 
 		frame:SetTitle(options.title)
@@ -289,19 +293,79 @@ function Binder.New(options)
 		label:SetPos(20, 96)
 
 		local binder = vgui.Create("DBinder", frame)
+		local top = 150
 
-		binder:SetSize(w - 160, 36)
-		binder:SetPos(20, h - 60)
+		binder:SetSize(w - 40, 36)
+		binder:SetPos(20, top)
 		binder.OnChange = function(_, code)
-			Key.SetKey(code)
+			-- the prompt stays up when the second key is still to be asked: only a quick menu key that was taken closes it, after the optional key had its chance
+			if Key.SetKey(code, extraKey ~= nil) and extraKey == nil then
+				Key.HidePrompt()
+			end
+		end
+
+		-- an optional second key (the binoculars' zoom): the picker waits for a click, the key must not be the quick menu's nor the game's zoom key (the factory of that key refuses them)
+		if extraKey then
+			local extraLabel = vgui.Create("DLabel", frame)
+
+			extraLabel:SetText(options.extraLabel or "Another key (optional)")
+			extraLabel:SetPos(20, top + 50)
+			extraLabel:SizeToContents()
+
+			local second = vgui.Create("DBinder", frame)
+
+			second:SetSize(w - 40, 32)
+			second:SetPos(20, top + 72)
+			local warning = vgui.Create("DLabel", frame)
+
+			warning:SetText("")
+			warning:SetTextColor(Color(255, 120, 120))
+			warning:SetPos(20, top + 106)
+			warning:SetWide(w - 40)
+
+			second.OnChange = function(_, code)
+				-- a key that the second key must not be (the game's own zoom key for the binoculars' zoom): not taken, and said
+				if options.extraRefuse and code and code > 0 and options.extraRefuse(code) then
+					warning:SetText(options.extraRefuseText or "That key cannot be used here.")
+
+					return
+				end
+
+				warning:SetText("")
+				extraKey.SetKey(code)
+			end
+
+			top = top + 78
+		end
+
+		-- the owner's rule: a player who really wants to be left alone can say so, and it is saved ("change your mind in the GryMod options")
+		if Key.silenceConVar then
+			local box = vgui.Create("DCheckBoxLabel", frame)
+
+			box:SetText("Do not ask me again (you can still set it in the GryMod options, Keys)")
+			box:SetPos(20, h - 82)
+			box:SizeToContents()
+			box:SetChecked(Key.silenceConVar:GetBool())
+			box.OnChange = function(_, checked)
+				Key.silenceConVar:SetBool(checked)
+			end
 		end
 
 		local later = vgui.Create("DButton", frame)
 
 		later:SetText("Later")
-		later:SetSize(110, 36)
-		later:SetPos(w - 130, h - 60)
+		later:SetSize(110, 32)
+		later:SetPos(w - 130, h - 48)
 		later.DoClick = function()
+			Key.HidePrompt()
+		end
+
+		local done = vgui.Create("DButton", frame)
+
+		done:SetText("Done")
+		done:SetSize(110, 32)
+		done:SetPos(w - 250, h - 48)
+		done.DoClick = function()
 			Key.HidePrompt()
 		end
 
@@ -357,9 +421,18 @@ function Binder.New(options)
 
 	-- Asks for a key when there is none (and the owner wants it asked).
 	function Key.MaybePrompt()
-		if (options.active == nil or options.active()) and not Key.IsBound() then
+		if (options.active == nil or options.active()) and not Key.IsBound() and not Key.Silenced() then
 			Key.ShowPrompt()
 		end
+	end
+
+	-- The player said "do not ask me again" (options.silence: the name of a saved client setting).
+	function Key.Silenced()
+		return Key.silenceConVar ~= nil and Key.silenceConVar:GetBool()
+	end
+
+	if options.silence then
+		Key.silenceConVar = GetConVar(options.silence) or CreateClientConVar(options.silence, "0", true, false, "Do not ask for the key of " .. tostring(options.title) .. " at the start (0 = ask while there is no key)")
 	end
 
 	Binder.Keys[options.convar] = Key

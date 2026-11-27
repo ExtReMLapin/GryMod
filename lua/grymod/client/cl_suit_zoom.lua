@@ -66,6 +66,14 @@ function Zoom.MaybePrompt()
 		return
 	end
 
+	-- the quick menu's prompt asks for this key too (an optional second picker) and has the "do not ask me again" box: while the menu key has no key it is the one that asks, and a
+	-- player who said "stop" is not asked here either
+	local menu = GryMod.MenuKey
+
+	if menu and (menu.Silenced() or not menu.IsBound()) then
+		return
+	end
+
 	Zoom.asked = true
 	Key.ShowPrompt()
 end

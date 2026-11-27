@@ -139,7 +139,7 @@ return {
 				for _, child in ipairs(frame:GetChildren()) do
 					if child.ClassName == "DBinder" then
 						binder = child
-					elseif child.ClassName == "DButton" then
+					elseif child.ClassName == "DButton" and child:GetText() == "Later" then
 						later = child
 					end
 				end
@@ -155,6 +155,71 @@ return {
 				made.ShowPrompt()
 				expect(made.panel:GetWide() < 400).to.beTrue()
 				made.HidePrompt()
+			end
+		},
+		{
+			-- fails when the modal prompt has no way for a player to say "stop asking" (the owner: "even if I did not bind, go away": it is saved), when that choice does not silence
+			-- the prompt at the next spawn, or when an optional second key (the binoculars' zoom) is not offered in the same prompt
+			name = "a modal prompt can offer a second, optional key and a \"do not ask again\" box: ticking it is saved and the prompt stays away",
+			func = function(state)
+				local second = GryMod.KeyBinder.New{convar = "gry_test_binder_key2", description = "test", command = "+gry_test_binder2", title = "Second", text = "second"}
+				local silence = "gry_test_binder_silence"
+				local lookup = input.LookupBinding
+
+				make({modal = true, silence = silence, extra = function() return second end, extraLabel = "Binoculars zoom key (optional)", extraRefuse = function(code) return code == KEY_F7 end, extraRefuseText = "No"})
+
+				local ok, err = pcall(function()
+					input.LookupBinding = function() return nil end
+					expect(GetConVar(silence):GetBool()).to.beFalse()
+					made.MaybePrompt()
+					expect(IsValid(made.panel)).to.beTrue()
+
+					local binders, box = {}
+
+					local function walk(panel)
+						for _, child in ipairs(panel:GetChildren()) do
+							if child.ClassName == "DBinder" then
+								binders[#binders + 1] = child
+							elseif child.ClassName == "DCheckBoxLabel" then
+								box = child
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(made.panel)
+					expect(#binders).to.equal(2) -- the key of the menu and the optional second one
+					expect(box ~= nil).to.beTrue()
+
+					-- the second picker sets the second key; Escape and 0 are refused as for any key
+					binders[2]:OnChange(KEY_F8)
+					expect(second.Chosen()).to.equal(KEY_F8)
+
+					-- a key that the second one must not be (the game's own zoom key) is not taken
+					binders[2]:OnChange(KEY_F7)
+					expect(second.Chosen()).to.equal(KEY_F8)
+
+					-- ticking the box is saved at once, and the prompt does not come back
+					box:SetChecked(true)
+					box:OnChange(true)
+					expect(GetConVar(silence):GetBool()).to.beTrue()
+					made.HidePrompt()
+					made.MaybePrompt()
+					expect(IsValid(made.panel)).to.beFalse()
+
+					-- and it can be changed back (the options panel's box): the prompt asks again
+					RunConsoleCommand(silence, "0")
+				end)
+
+				input.LookupBinding = lookup
+				RunConsoleCommand(silence, "0")
+				RunConsoleCommand("gry_test_binder_key2", "0")
+				made.HidePrompt()
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		{
