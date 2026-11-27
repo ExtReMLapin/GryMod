@@ -6,6 +6,20 @@
 
 local API = GryMod.API
 local made
+local saved = {}
+
+local function stub(tbl, key, value)
+	saved[#saved + 1] = {tbl, key, tbl[key]}
+	tbl[key] = value
+end
+
+local function restore()
+	for i = #saved, 1, -1 do
+		saved[i][1][saved[i][2]] = saved[i][3]
+	end
+
+	saved = {}
+end
 
 local function model(fields)
 	local ent = ClientsideModel("models/props_junk/PopCan01a.mdl", RENDERGROUP_OTHER)
@@ -44,6 +58,8 @@ return {
 		made = {}
 	end,
 	afterEach = function()
+		restore()
+
 		pcall(function()
 			for _, ent in ipairs(made) do
 				if IsValid(ent) then
@@ -151,6 +167,174 @@ return {
 
 				expect(API.IsPlainView(other)).to.beFalse()
 				expect(API.IsPlainView({IsValid = function() return true end, ARC9 = true})).to.beFalse()
+			end
+		},
+		{
+			-- fails when the option does not exist, is not saved, is off by default (the owner's HUD would still be crowded) or has no check box on the ARC9 tab of the Compatibility page
+			name = "gry_arc9_hide_hud: a saved client setting, on by default, with a check box on the ARC9 tab of the Compatibility page",
+			func = function()
+				local cvar = GetConVar("gry_arc9_hide_hud")
+
+				expect(cvar ~= nil).to.beTrue()
+				expect(cvar:GetDefault()).to.equal("1")
+				expect(cvar:GetFlags()).to.equal(GetConVar("gry_binoculars_no_fire"):GetFlags()) -- saved, like the other client settings
+
+				local found = false
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.CompatOptionsPanel(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button and child.Button.m_strConVar == "gry_arc9_hide_hud" then
+								found = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found).to.beTrue()
+			end
+		},
+		{
+			-- fails when ARC9's HUD is still asked for with the option on and the HUD of GryMod up (the owner's report: it sits under the minimap), when it is hidden with the option off,
+			-- with the HUD of GryMod off, or in ARC9's customization menu (its hints and its menu stay), or when ARC9's own answer is changed in any other case
+			name = "ARC9's ShouldDrawHUD answers nothing (its hints stay, its HUD goes) with the option on and GryMod's HUD up, and ARC9's own answer in every other case",
+			func = function()
+				local weapon = {ARC9 = true, IsValid = function() return true end, customizing = false}
+
+				function weapon:GetCustomize() return self.customizing end
+				stub(_G, "ARC9", {ShouldDrawHUD = function() return true end})
+				stub(_G, "LocalPlayer", function() return {IsValid = function() return true end, GetActiveWeapon = function() return weapon end} end)
+
+				local hudUp = true
+
+				stub(GryMod.FlashHUD, "Enabled", function() return hudUp end)
+				stub(GryMod.ARC9HUD, "original", GryMod.ARC9HUD.original) -- the real one comes back (the cases put a stand-in of ARC9's function there)
+				expect(GryMod.ARC9HUD.Install()).to.beTrue()
+
+				local cvar = GetConVar("gry_arc9_hide_hud")
+				local saved = cvar:GetString()
+				local ok, err = pcall(function()
+					cvar:SetString("1")
+					expect(ARC9.ShouldDrawHUD()).to.beNil()
+
+					weapon.customizing = true
+					expect(ARC9.ShouldDrawHUD()).to.equal(true)
+					weapon.customizing = false
+
+					hudUp = false
+					expect(ARC9.ShouldDrawHUD()).to.equal(true)
+					hudUp = true
+
+					cvar:SetString("0")
+					expect(ARC9.ShouldDrawHUD()).to.equal(true)
+				end)
+
+				cvar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails when installing twice wraps the wrapper (a hot reload: ARC9's own function would be called twice, and its answer lost when the option is off)
+			name = "installing again (a reload) wraps ARC9's own function once: it is asked once, and a file loaded again does not lose it",
+			func = function()
+				local asked = 0
+
+				stub(_G, "ARC9", {ShouldDrawHUD = function() asked = asked + 1 return "own" end})
+				stub(_G, "LocalPlayer", function() return {IsValid = function() return true end, GetActiveWeapon = function() return NULL end} end)
+				stub(GryMod.FlashHUD, "Enabled", function() return true end)
+				stub(GryMod.ARC9HUD, "original", GryMod.ARC9HUD.original)
+
+				expect(GryMod.ARC9HUD.Install()).to.beTrue()
+				expect(GryMod.ARC9HUD.Install()).to.beTrue()
+
+				local cvar = GetConVar("gry_arc9_hide_hud")
+				local saved = cvar:GetString()
+				local ok, err = pcall(function()
+					cvar:SetString("0")
+					expect(ARC9.ShouldDrawHUD()).to.equal("own")
+					expect(asked).to.equal(1)
+				end)
+
+				cvar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails when the patch raises an error or invents ARC9 when it is not installed, or when a version of ARC9 without the function is patched
+			name = "nothing to do without ARC9 (no table, or none that has ShouldDrawHUD): Install says false and raises no error",
+			func = function()
+				stub(_G, "ARC9", nil)
+				expect(GryMod.ARC9HUD.Install()).to.beFalse()
+
+				stub(_G, "ARC9", {})
+				expect(GryMod.ARC9HUD.Install()).to.beFalse()
+				expect(ARC9.ShouldDrawHUD).to.beNil()
+			end
+		},
+		{
+			-- fails when a weapon on safety shows the icon of its automatic or burst mode (it cannot fire: the file's own comment says it shows the single shot icon, the code did not do it),
+			-- or when the launcher no longer comes first
+			name = "fire mode icon: a weapon on safety shows the single shot icon whatever its mode; the launcher under the barrel still shows grenades, and a weapon off safety shows its mode",
+			func = function()
+				local function gun(mode, safe, launcher)
+					return {ARC9 = true, IsValid = function() return true end, GetCurrentFiremode = function() return mode end, GetUBGL = function() return launcher end, GetSafe = function() return safe end}
+				end
+
+				local M = GryMod.FlashHUD
+
+				expect(M.FireModeFor(gun(-1, true))).to.equal("Single")
+				expect(M.FireModeFor(gun(3, true))).to.equal("Single")
+				expect(M.FireModeFor(gun(-1, false))).to.equal("Auto")
+				expect(M.FireModeFor(gun(3, false))).to.equal("Burst")
+				expect(M.FireModeFor(gun(1, false))).to.equal("Single")
+				expect(M.FireModeFor(gun(-1, true, true))).to.equal("Grenade")
+
+				-- a version of ARC9 without GetSafe still reads its mode
+				local old = gun(-1, false)
+
+				old.GetSafe = nil
+				expect(M.FireModeFor(old)).to.equal("Auto")
+			end
+		},
+		{
+			-- fails when a knife (ARC9's PrimaryBash: the weapon only bashes) shows the single shot icon of a gun: the stock crowbar shows NoGun, and the ammunition of a weapon with no
+			-- magazine is the infinity icon alone (Clip1 is -1, no bullets, no counter)
+			name = "fire mode icon: a weapon that only bashes (a knife) shows no gun, like the crowbar; the processed value is read first (an attachment can change it), then the plain field",
+			func = function()
+				local M = GryMod.FlashHUD
+				local function knife(processed, plain)
+					local w = {ARC9 = true, IsValid = function() return true end, PrimaryBash = plain, GetCurrentFiremode = function() return 1 end,
+						GetUBGL = function() return false end, GetSafe = function() return false end}
+
+					if processed ~= nil then
+						w.GetProcessedValue = function(_, name) return name == "PrimaryBash" and processed or nil end
+					end
+
+					return w
+				end
+
+				expect(M.FireModeFor(knife(true, false))).to.equal("NoGun")
+				expect(M.FireModeFor(knife(nil, true))).to.equal("NoGun")
+				expect(M.FireModeFor(knife(false, true))).to.equal("Single") -- the processed value wins: an attachment turned the bash off
+				expect(M.FireModeFor(knife(nil, false))).to.equal("Single")
 			end
 		},
 		{
