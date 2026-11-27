@@ -459,6 +459,125 @@ return {
 			end
 		},
 		{
+			-- fails when the guard does not exist, when a model over the limit is not told heavy (the engine's dynamic vertex buffer holds 32768 vertices: the sonar grenade's view model of
+			-- ARC9's CS:GO pack, 102240 listed vertices, froze the game under a material override), when a light one is, when the count is asked again for a model already measured,
+			-- when 0 does not turn the guard off, or when an unknown model or an error is taken for a heavy one
+			name = "ModelTooHeavy: told by the listed vertices of the model (over gry_cloak_vertex_limit), measured once, 0 = no guard, an unknown model or an error is not heavy",
+			func = function(state)
+				local F = GryMod.CloakFX
+
+				expect(isfunction(F.ModelTooHeavy)).to.beTrue()
+
+				local sizes = {["models/t_heavy.mdl"] = 102240, ["models/t_light.mdl"] = 12615}
+				local calls = 0
+
+				stub(util, "GetModelMeshes", function(model)
+					calls = calls + 1
+
+					if model == "models/t_broken.mdl" then error("no such model") end
+
+					local n = sizes[model]
+
+					if not n then return nil end
+
+					local list = {}
+
+					for i = 1, n do list[i] = true end
+
+					return {{triangles = list}}
+				end)
+
+				F.ForgetModelWeights()
+				expect(F.ModelTooHeavy("models/t_heavy.mdl")).to.beTrue()
+				expect(F.ModelTooHeavy("models/t_light.mdl")).to.beFalse()
+				expect(calls).to.equal(2)
+
+				F.ModelTooHeavy("models/t_heavy.mdl")
+				F.ModelTooHeavy("models/t_light.mdl")
+				expect(calls).to.equal(2) -- measured once
+
+				expect(F.ModelTooHeavy("models/t_unknown.mdl")).to.beFalse()
+				expect(F.ModelTooHeavy("models/t_broken.mdl")).to.beFalse()
+				expect(F.ModelTooHeavy("")).to.beFalse()
+				expect(F.ModelTooHeavy(nil)).to.beFalse()
+
+				local var = GetConVar("gry_cloak_vertex_limit")
+				local before = var:GetString()
+
+				var:SetString("0")
+				local off = F.ModelTooHeavy("models/t_heavy.mdl")
+				var:SetString("200000")
+				local high = F.ModelTooHeavy("models/t_heavy.mdl")
+				var:SetString(before)
+				F.ForgetModelWeights()
+
+				expect(off).to.beFalse()
+				expect(high).to.beFalse()
+			end
+		},
+		{
+			-- fails when a view model too heavy for the dynamic vertex buffer is drawn by hand with a material override (the refraction layer): the game froze. The engine's own draw is
+			-- made over it (invisible or part transparent) and the render state is back at the end
+			name = "first person: a view model too heavy for the engine's dynamic vertex buffer gets no material override and no draw by hand",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function vm:GetModel() return "models/t_heavy_vm.mdl" end
+				function me:GetViewModel() return vm end
+				stub(util, "GetModelMeshes", function()
+					local list = {}
+
+					for i = 1, 102240 do list[i] = true end
+
+					return {{triangles = list}}
+				end)
+				F.ForgetModelWeights()
+				setState(me, 0.4)
+
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				F.ForgetModelWeights()
+
+				expect(vm.draws).to.equal(0)
+
+				for _, material in ipairs(log.override) do
+					expect(material).to.equal(false) -- only the "no override" calls
+				end
+
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
+			-- fails when a body or a weapon model too heavy for the dynamic vertex buffer is drawn through the refraction material (the same freeze in the third person)
+			name = "PlayerDraw: a model too heavy for the engine's dynamic vertex buffer is drawn plain at its opacity, never through a material override",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				function ply:GetModel() return "models/t_heavy_body.mdl" end
+				stub(util, "GetModelMeshes", function()
+					local list = {}
+
+					for i = 1, 102240 do list[i] = true end
+
+					return {{triangles = list}}
+				end)
+				F.ForgetModelWeights()
+				setState(ply, 1)
+				translucent()
+				F.ForgetModelWeights()
+
+				for _, material in ipairs(log.override) do
+					expect(material).to.equal(false)
+				end
+
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
 			name = "PlayerDraw: fully camouflaged and still, only the refraction is drawn, not the plain model",
 			func = function(state)
 				local log = recordRender()

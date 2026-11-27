@@ -31,6 +31,60 @@ function F.Enabled()
 	return convar:GetBool()
 end
 
+-- A model drawn through a material override (the refraction layer, the sparks, the scan lines) goes through the engine's DYNAMIC vertex buffer, which holds 32768 vertices: a model with more
+-- (the view model of the sonar grenade of ARC9's CS:GO pack: 36684, "Too many verts for a dynamic vertex buffer") makes the engine retry for ever and the game freezes. Such a model is drawn
+-- plain, at the opacity of the camouflage, with no override. The size is the number of listed vertices of the model's first level of detail (util.GetModelMeshes: about 2.8 of them per
+-- vertex of the buffer's size... measured: 102240 listed for 36684 in the buffer), kept per model; 60000 keeps a margin (the heaviest weapon view model measured is 51000). 0 = no guard.
+local vertexLimit = GetConVar("gry_cloak_vertex_limit") or CreateClientConVar("gry_cloak_vertex_limit", "60000", true, false,
+	"Models with more listed vertices than this are drawn plain by the camouflage (no refraction layer): the engine freezes on a model that is too big for its dynamic vertex buffer. 0 = no guard", 0, 1000000)
+
+local modelWeights = F.modelWeights or {}
+F.modelWeights = modelWeights
+
+function F.ForgetModelWeights()
+	for model in pairs(modelWeights) do
+		modelWeights[model] = nil
+	end
+end
+
+-- Whether drawing this model through a material override would overflow the dynamic vertex buffer.
+function F.ModelTooHeavy(model)
+	local limit = vertexLimit:GetInt()
+
+	if limit <= 0 or not isstring(model) or model == "" then
+		return false
+	end
+
+	local weight = modelWeights[model]
+
+	if weight == nil then
+		weight = 0
+
+		local ok, meshes = pcall(util.GetModelMeshes, model, 0)
+
+		if ok and istable(meshes) then
+			for _, mesh in ipairs(meshes) do
+				weight = weight + #(mesh.triangles or {})
+			end
+		end
+
+		modelWeights[model] = weight
+	end
+
+	return weight > limit
+end
+
+-- The entity's model is too big for a material override (a missing method or an error is "no").
+local function heavyEntity(ent)
+	if not IsValid(ent) or not isfunction(ent.GetModel) then
+		return false
+	end
+
+	local ok, model = pcall(ent.GetModel, ent)
+
+	return ok and F.ModelTooHeavy(model)
+end
+
 local transition = GetConVar("gry_cloak_transition") or CreateClientConVar("gry_cloak_transition", "1", true, false,
 	"1: the camouflage fades in and out progressively, in first and third person; 0: it switches at once", 0, 1)
 
@@ -423,9 +477,41 @@ local function drawPlain(ent)
 	drawing = false
 end
 
+-- The sparks' shader and the scan lines draw the entity through overrides too: not for a model that is too big.
+local function shaderDraw(shader, ent, strength, amount, plain, ...)
+	if heavyEntity(ent) then return end
+
+	return shader.Draw(ent, strength, amount, plain, ...)
+end
+
+local function linesDraw(ent, flash, plain, ...)
+	if heavyEntity(ent) then return end
+
+	return F.Lines.Draw(ent, flash, plain, ...)
+end
+
 local function drawLayers(ent, refract, base, spark, level)
 	local refractMat, edgeMat = materials()
 	drawing = true
+
+	-- a model too big for the dynamic vertex buffer: the plain model at the opacity, no override (see gry_cloak_vertex_limit)
+	if heavyEntity(ent) then
+		local ok, err = pcall(function()
+			render.MaterialOverride(nil)
+
+			if base >= F.Invisible then
+				render.SetBlend(base)
+				ent:DrawModel()
+			end
+		end)
+
+		render.MaterialOverride(nil)
+		render.SetColorModulation(1, 1, 1)
+		render.SetBlend(1)
+		drawing = false
+
+		return ok, err
+	end
 
 	-- The refraction layer's own pixel shader (cl_cloak_refract.lua): the plain model first, opaque as the engine always draws it, then the layer
 	-- blended over it with the alpha the model has lost, then the outline. Under the opacity where the plain model is not worth drawing, the layer
@@ -632,7 +718,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 					strength = distance <= F.DetailDistance and F.SparkStrength(s.amount, s.speed) or 0
 
 					if strength > 0 then
-						shader.Draw(ply, strength, s.amount, drawPlain)
+						shaderDraw(shader, ply, strength, s.amount, drawPlain)
 					end
 				else
 					drawLayers(ply, refract, base, spark, s.amount)
@@ -641,7 +727,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 					local flash = F.TransitionSpark(s.amount)
 
 					if distance <= F.DetailDistance and flash > 0.02 and F.Lines then
-						F.Lines.Draw(ply, flash, drawPlain)
+						linesDraw(ply, flash, drawPlain)
 					end
 				end
 
@@ -655,7 +741,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 					drawLayers(held, refract, base, 0, s.amount)
 
 					if shader and strength > 0 then
-						shader.Draw(held, strength, s.amount, drawPlain)
+						shaderDraw(shader, held, strength, s.amount, drawPlain)
 					end
 				elseif not IsValid(weapon) then
 					F.ClearWeaponProxy(ply)
@@ -669,7 +755,7 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 						drawLayers(worn[i], refract, base, 0, s.amount)
 
 						if shader and strength > 0 then
-							shader.Draw(worn[i], strength, s.amount, drawPlain)
+							shaderDraw(shader, worn[i], strength, s.amount, drawPlain)
 						end
 					end
 				end
@@ -725,6 +811,15 @@ local function startFirstPerson(ent, ply)
 
 	s.firstPerson = true
 
+	-- a view model too big for the dynamic vertex buffer (gry_cloak_vertex_limit): no refraction, no override; the engine's own draw only, at the opacity (the Post hook adds nothing)
+	if heavyEntity(ent) then
+		if base < F.NearlyPlain then
+			render.SetBlend(base >= F.Invisible and base or 0)
+		end
+
+		return
+	end
+
 	-- The refraction layer's own pixel shader: the engine draws the arms opaque, as it always does, and the layer is blended over them in the Post
 	-- hook; here only the picture behind is copied, before the model is on it (once per frame, for the view model: the hands come right after it).
 	if F.Refract and F.Refract.Active() then
@@ -764,6 +859,9 @@ end
 -- attachments): the refraction with the alpha the plain model has lost, the sparks of the shader or the outline of the older layer, the scan lines of the start
 -- of the change. One function for every such model, so that the arms, the gun and a sight on it are treated the same.
 local function firstPersonOver(ent, s)
+	-- (a model too big for the dynamic vertex buffer gets no layer: see startFirstPerson)
+	if heavyEntity(ent) then return end
+
 	local _, layerBase, edge = firstPersonLayers(s)
 
 	-- the engine draws the view model in the first tenth of the depth (so that it never goes into a wall). A weapon base that draws the view
@@ -784,7 +882,7 @@ local function firstPersonOver(ent, s)
 			local strength = F.SparkStrength(s.amount, s.speed)
 
 			if strength > 0 then
-				F.Shader.Draw(ent, strength, s.amount, drawPlain, true)
+				shaderDraw(F.Shader, ent, strength, s.amount, drawPlain, true)
 			end
 		end
 
@@ -811,7 +909,7 @@ local function firstPersonOver(ent, s)
 	local flash = F.TransitionSpark(s.amount)
 
 	if flash > 0.02 and F.Lines and IsValid(ent) then
-		F.Lines.Draw(ent, flash, drawPlain, true)
+		linesDraw(ent, flash, drawPlain, true)
 	end
 end
 
