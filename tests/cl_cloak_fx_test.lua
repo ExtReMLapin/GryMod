@@ -906,6 +906,77 @@ return {
 			end
 		},
 		{
+			-- fails when a scripted weapon (TFA, ARC9...: its own DrawWorldModel places the model at the hand with its bone changes and draws its attachments) is rebuilt from its model
+			-- alone (a client model bone-merged on the player: TFA's ends at the feet, ARC9's loses its attachments and looks like another model); when the draw does not lift the
+			-- server's hiding (EF_NODRAW) around the call, or does not put it back (the engine would draw the weapon plain), also on an error; or when the real weapon is removed with the proxy
+			name = "WeaponProxy: a scripted weapon is drawn by its own DrawWorldModel (the hiding flag lifted around the call and put back), no client model; the real weapon is never removed",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local made = {}
+
+				stub(_G, "ClientsideModel", function(model)
+					made[#made + 1] = model
+
+					return {IsValid = function() return true end, SetNoDraw = function() end, SetParent = function() end, AddEffects = function() end, SetSkin = function() end,
+						SetBodygroup = function() end, Remove = function() end}
+				end)
+
+				local ply = fakePlayer(0)
+				local function scripted(model, drawFails)
+					local w = fakePlayer(0)
+					w.nodraw, w.calls, w.nodrawAtCall, w.removed = true, 0, nil, false
+					function w:GetModel() return model end
+					function w:GetSkin() return 0 end
+					function w:GetNumBodyGroups() return 0 end
+					function w:GetBodygroup() return 0 end
+					function w:IsEffectActive(flag) return flag == EF_NODRAW and self.nodraw end
+					function w:RemoveEffects(flag) if flag == EF_NODRAW then self.nodraw = false end end
+					function w:AddEffects(flag) if flag == EF_NODRAW then self.nodraw = true end end
+					function w:Remove() self.removed = true end
+					local own = function(self, flags)
+						self.calls = self.calls + 1
+						self.nodrawAtCall = self.nodraw
+
+						if drawFails then error("the weapon's own draw failed") end
+					end
+					w.GetTable = function() return {DrawWorldModel = own} end
+					w.DrawWorldModel = own
+
+					return w
+				end
+
+				local weapon = scripted("models/weapons/tfa_ins2/w_famas.mdl")
+				local held = F.WeaponProxy(ply, weapon)
+
+				expect(held ~= nil).to.beTrue()
+				expect(held ~= weapon).to.beTrue() -- a stand-in with its own DrawModel, not the entity
+				expect(#made).to.equal(0) -- no model is made from the weapon's model
+				expect(IsValid(held)).to.beTrue()
+				expect(held:GetModel()).to.equal("models/weapons/tfa_ins2/w_famas.mdl") -- the rest is the weapon's
+
+				held:DrawModel()
+				expect(weapon.calls).to.equal(1)
+				expect(weapon.nodrawAtCall).to.beFalse() -- lifted while it draws
+				expect(weapon.nodraw).to.beTrue() -- and put back
+
+				-- the same weapon next frame: the same stand-in; another weapon: another
+				expect(F.WeaponProxy(ply, weapon)).to.equal(held)
+				expect(F.WeaponProxy(ply, scripted("models/weapons/w_other.mdl")) ~= held).to.beTrue()
+
+				-- an error in its draw does not leave the weapon showing, and is not raised into the render hook
+				local failing = scripted("models/weapons/w_fails.mdl", true)
+				local stand = F.WeaponProxy(ply, failing)
+				local ok = pcall(function() stand:DrawModel() end)
+
+				expect(ok).to.beTrue()
+				expect(failing.nodraw).to.beTrue()
+
+				-- taking the proxy away must not remove the weapon
+				F.ClearWeaponProxy(ply)
+				expect(failing.removed).to.beFalse()
+			end
+		},
+		{
 			name = "PlayerDraw: the weapon is drawn through its proxy when there is one (the real one is not drawn), with the shader's sparks too; and the proxy goes when the player's state does",
 			func = function(state)
 				local F = GryMod.CloakFX
@@ -937,6 +1008,42 @@ return {
 				stub(_G, "FrameTime", function() return 10 end)
 				F.Update(ply)
 				expect(cleared[1]).to.equal(ply)
+			end
+		},
+		{
+			-- fails when a scripted weapon (it draws its own world model and attachments: TFA, ARC9...) goes through the per-material refraction layer (the override by index of the model's
+			-- materials did not take on what such a weapon draws: its gun stayed black and opaque, and the attachments it draws itself were not covered at all); the body keeps the layer
+			name = "PlayerDraw: a weapon that draws itself is drawn through a whole material override, not the per-material layer, so that what it draws itself is covered too",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				local weapon, stand = fakePlayer(0), fakePlayer(0)
+				weapon.center, stand.center = Vector(300, 0, 0), Vector(300, 0, 0)
+				stand.GryOwnDraw = true
+				function ply:GetActiveWeapon() return weapon end
+				stub(F, "WeaponProxy", function() return stand end)
+
+				local layered = {}
+				stub(F.Refract, "Active", function() return true end)
+				stub(F.Refract, "Draw", function(ent) layered[ent] = true return true end)
+
+				setState(ply, 0.5)
+				translucent()
+
+				expect(layered[ply]).to.beTrue() -- the body keeps the per-material layer
+				expect(layered[stand]).to.beNil() -- the weapon that draws itself does not
+
+				local overridden = false
+
+				for _, d in ipairs(log.drawn) do
+					if d.ent == stand and d.material then
+						overridden = true
+					end
+				end
+
+				expect(overridden).to.beTrue() -- it was drawn through a whole override
+				expect(leftClean(log)).to.beTrue()
 			end
 		},
 		{

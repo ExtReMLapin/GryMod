@@ -548,7 +548,9 @@ local function drawLayers(ent, refract, base, spark, level)
 	-- The refraction layer's own pixel shader (cl_cloak_refract.lua): the plain model first, opaque as the engine always draws it, then the layer
 	-- blended over it with the alpha the model has lost, then the outline. Under the opacity where the plain model is not worth drawing, the layer
 	-- alone covers what is behind.
-	if level and F.Refract and F.Refract.Active() then
+	-- (a weapon that draws itself, TFA, ARC9...: the override by index of the model's materials does not take on what it draws, and its attachments are other models: the whole override of
+	-- the older layer below covers everything it draws)
+	if level and F.Refract and F.Refract.Active() and ent.GryOwnDraw ~= true then
 		local ok, err = pcall(function()
 			if base >= F.Invisible then
 				render.MaterialOverride(nil)
@@ -635,10 +637,61 @@ function F.ClearWeaponProxy(ply)
 	if entry then
 		proxies[ply] = nil
 
-		if IsValid(entry.ent) then
+		-- (a stand-in for a scripted weapon is not an entity of ours: the weapon is the game's and is never removed)
+		if not entry.own and IsValid(entry.ent) then
 			entry.ent:Remove()
 		end
 	end
+end
+
+-- Whether the weapon has a DrawWorldModel of its own (written by a SWEP, not the engine's method that every weapon entity has).
+local function hasOwnDraw(weapon)
+	if not isfunction(weapon.GetTable) then
+		return false
+	end
+
+	local ok, tbl = pcall(weapon.GetTable, weapon)
+
+	return ok and istable(tbl) and isfunction(tbl.DrawWorldModel)
+end
+
+-- A stand-in for the weapon whose DrawModel is the weapon's own world model draw: the NODRAW flag the server set is lifted around the call and put back (the engine refuses to draw a
+-- flagged entity), an error in the weapon's draw is not raised into the render hook, and every other question goes to the weapon.
+local function ownDrawStandIn(weapon)
+	-- (GryOwnDraw: the layers draw it through a whole material override, see drawLayers)
+	local stand = {GryOwnDraw = true}
+
+	function stand.DrawModel(_, flags)
+		if not IsValid(weapon) then return end
+
+		local tbl = weapon:GetTable()
+		local lifted = weapon:IsEffectActive(EF_NODRAW)
+
+		if lifted then
+			weapon:RemoveEffects(EF_NODRAW)
+		end
+
+		local ok, err = pcall(tbl.DrawWorldModel, weapon, flags or STUDIO_RENDER)
+
+		if lifted then
+			weapon:AddEffects(EF_NODRAW)
+		end
+
+		if not ok and not stand.reported then
+			stand.reported = true
+			MsgC(Color(255, 170, 0), "[GryMod] The world model draw of " .. tostring(weapon) .. " failed under the camouflage: " .. tostring(err) .. "\n")
+		end
+	end
+
+	return setmetatable(stand, {__index = function(_, key)
+		local value = weapon[key]
+
+		if isfunction(value) then
+			return function(_, ...) return value(weapon, ...) end
+		end
+
+		return value
+	end})
 end
 
 -- The entity to draw for `weapon` (the player's active weapon), or nil when it has no world model to copy (then the weapon itself is drawn).
@@ -658,6 +711,23 @@ function F.WeaponProxy(ply, weapon)
 	end
 
 	local entry = proxies[ply]
+
+	-- A scripted weapon (TFA, ARC9, ArcCW...: it has its own DrawWorldModel) draws its world model itself: the bones it moves to put the model at the hand, the attachments it draws, the
+	-- model it swaps. A model rebuilt from its model alone is another thing (TFA's ends at the feet, ARC9's has lost its attachments). It is drawn by that function, through a stand-in
+	-- whose DrawModel does it (the layers draw it as they draw any entity); the server's hiding of the weapon (EF_NODRAW) is lifted for the length of the call only.
+	if hasOwnDraw(weapon) then
+		if entry and entry.own == weapon and IsValid(entry.ent) then
+			return entry.ent
+		end
+
+		F.ClearWeaponProxy(ply)
+
+		local stand = ownDrawStandIn(weapon)
+
+		proxies[ply] = {ent = stand, own = weapon}
+
+		return stand
+	end
 
 	if entry and entry.model == model and IsValid(entry.ent) then
 		return entry.ent
