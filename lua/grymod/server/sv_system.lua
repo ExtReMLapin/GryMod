@@ -218,6 +218,7 @@ function meta:SetNanosuitMode(mode, networked, reason)
 	end
 
 	self.Nanosuit_mode = mode
+	self:SetNW2Int("GryMode", mode) -- both sides know the mode (sh_suit_weapons.lua: the weapons' adapters)
 	hook.Run("GryNanosuitMode", self, mode) -- sv_cloak_ai.lua: the NPCs forget a camouflaged player
 
 	reason = reason or GryMod.ModeReasons.OTHER
