@@ -41,6 +41,7 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_nvg_others.lua` | `GryMod_CanUseView("nightvision")` answers `false` while another night vision is on, so the key does not stack a second one. Reads NVScript (its `NV_FX` hook; read in two forks of its code) and JMod's goggles (`ply.EZarmor.effects`). Modern Warfare NVGs and Arctic's GCAL are not read (no public source, not installed): add a reader to `GryMod.CompatOtherNV.Sources`. Stand-ins only. |
 | `compat/vehicles/` | `sh_simfphys.lua`, `sv_simfphys.lua`, `cl_simfphys.lua` | simfphys, the physics vehicle base (the base and its armed pack). The car is one class for every vehicle, the player sits on a child seat, the wheels have a +use of their own. Shared: the vehicle provider (the car, not the seat; the driver who sits, never the remote driver), the tracked entries (every car is a vehicle contact once scanned, a tank is a heavy machine, the crew of the car colours it, its own forward turns its icon, a wreck is no contact, the anti-tank mine is a device), the prompts of the wheels and of the mine. Server: a hit filter (what simfphys cancels on a seated player costs the suit nothing; the explosion of the car, which wants its occupants dead, goes through the armor) and the shell of a cannon and the thrown mine ending the camouflage. Client: no prompt on a locked car. **Written from the source of simfphys, tested with stand-ins: see the section below.** |
 | `compat/vehicles/` | `sh_lvs.lua`, `sv_lvs.lua`, `cl_lvs.lua` | **LVS** (the framework `lvs_base` of SpaxscE and the packs built on it). The vehicle of a player, its driver and its kind (`AddVehicleProvider`); the radar entries (flying unit or machine, relation by LVS team, a wreck is no contact, the occupants, the heading, what an AI vehicle knows of the player); the grenade warning for `lvs_missile` / `lvs_bomb` and the classes built on them (only for the player the missile is aimed at); the use prompt of a vehicle (not for a locked or wrecked one); the icon of LVS's tools; the hits an occupant takes (`AddHitFilter`: what LVS cancels is ignored, the explosion's kill goes through the bar); the shots of LVS's weapons end the camouflage (`LVS:FireBullet` is wrapped, `ReportAttack`); the view LVS owns (`AddCameraOwner`). **Read in LVS's code, not tried in a game** (LVS was not installed when it was written): see below. |
+| `compat/vehicles/` | `sh_glide.lua`, `sv_glide.lua`, `cl_glide.lua` | Glide (StyledStrike's vehicle base): its vehicles on the radar, heavy for the suit, a danger for its missiles, the ENTER VEHICLE prompt, a camera owner, the respawn that keeps the suit, the lock-on that does not see a camouflaged driver. See "Glide" below. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -159,6 +160,29 @@ exist, and installs itself when LVS announces itself (`LVS:Initialize`) or at `I
 
 Not done on purpose (the owner decides): hiding GryMod's radar and status panels while seated in an LVS vehicle (LVS draws its own health at the bottom left and its speed at the bottom right: `AddHudSuppressor`), a `heavy` entry for the hits of LVS vehicles
 (a suit put down by a tank shell: an effect Crysis does not have), a warning for `lvs_item_mine`.
+## Glide: what is read and what was tried
+
+Glide (https://github.com/StyledStrike/gmod-glide) is a vehicle base made of scripted entities. A vehicle is not an engine vehicle (`IsVehicle()` is false) and the player sits on a
+seat that is a child of it (`Player:GetVehicle()` answers the seat, `ply:GlideGetVehicle()` the vehicle). Everything the adapter knows was **read in Glide's code** (commit 5fd934e of
+2026-11-26: its wiki documents its functions, not its hooks) and tested with **stand-ins** (`tests/sh_compat_glide_test.lua`, `sv_compat_glide_test.lua`, `cl_compat_glide_test.lua`):
+**no test with the real Glide was made yet** (it is not installed). The adapter does nothing without Glide.
+
+| What | How | Setting |
+| --- | --- | --- |
+| The vehicle of a player, its driver, its kind (air for helicopters and planes, water for boats) | `AddVehicleProvider("glide", ...)` | |
+| On the radar once scanned (the rectangle; the flying unit for aircraft; not trailers; not wrecks), heavy for the suit (not motorcycles), the colour of its crew, facing +X | `RegisterTracked` on `base_glide` and its bases | |
+| The missiles (`glide_missile` and the ones built on it) in the grenade warning, only for the player they follow | `RegisterTracked` with `danger` (`base`, `ownerOf = ent.attacker`, `warnFor`) | |
+| ENTER VEHICLE under the crosshair (not for trailers, dimmed while locked) | `RegisterUsable` | |
+| Glide's camera has the view: no view of GryMod, the heading from the drawn view | `AddCameraOwner("glide", ...)` | |
+| A player who gets up from a ragdoll keeps his suit (Glide gets him back with `Player:Spawn()`) | `GryMod_CanResetOnSpawn`, with the hook `Glide_PrePlayerUnRagdoll` | |
+| A camouflaged driver is not locked on by a missile (half of the camouflage on) | the hook `Glide_CanLockOn` | server: `gry_glide_cloak_lockon` (1) |
+| A missile or a shell fired from the hands or the vehicle ends the camouflage (bullets are seen by the engine's hook) | `OnEntityCreated` on the classes built on `glide_missile` / `glide_projectile`, `GryMod.API.ReportAttack` | |
+| The name Glide writes over a camouflaged player is `???` | the hook `Glide_PlayerTagColor` | `gry_glide_tag_cloak` (1) |
+| Glide's dashboard (the dial in the bottom right) | the hook `Glide_CanDrawHUD` | `gry_glide_hide_hud` (0) |
+| The night vision key that Glide also uses (N is its neutral gear) does nothing in its vehicles | `GryMod_CanUseView("nightvision", "key")` | `gry_glide_nv_key` (1) |
+
+Not done, and why: a blast of Glide (`Glide.CreateExplosion`, `util.BlastDamageInfo`) gives no radar ring while the core wraps `util.BlastDamage` only; a bullet that a vehicle fires
+with no driver and a turret placed by a player carry their creator as the attacker, so the core's `data.Attacker` rule may end that creator's camouflage.
 
 ## Adding a patch
 
