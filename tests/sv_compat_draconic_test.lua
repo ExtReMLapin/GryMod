@@ -14,6 +14,37 @@ local function player_()
 	return player.GetAll()[1]
 end
 
+-- the request of the weapon menu: a player stand-in holding a Draconic weapon stand-in (inspecting: the weapon is already in inspection mode; can: what CanCustomize(true) answers)
+local function menuWeapon(fields)
+	fields = fields or {}
+
+	local w = {Draconic = fields.Draconic ~= false}
+
+	function w:IsValid() return true end
+	function w:CanCustomize(bypass) return fields.can ~= false and bypass == true end
+	function w:GetNW2Bool(key) return key == "Inspecting" and fields.inspecting == true end
+
+	return w
+end
+
+local function menuPlayer(weapon, fields)
+	fields = fields or {}
+
+	local p = {}
+
+	function p:IsValid() return true end
+	function p:IsPlayer() return true end
+	function p:Alive() return fields.alive ~= false end
+	function p:GetActiveWeapon() return weapon or NULL end
+
+	return p
+end
+
+-- the throttle remembers the last request of each player; a new stand-in is a new player, but the clock is shared with the other cases
+local function resetThrottle()
+	GryMod.DraconicSV.LastCustomize = {}
+end
+
 local function entHook(name)
 	return hook.GetTable()[name]["GryMod compat draconic"]
 end
@@ -226,6 +257,111 @@ return {
 				S.PatchWeapon({})
 				S.PatchWeapon(nil)
 				expect(other.ShouldFixFOV).to.equal(original)
+			end
+		},
+		{
+			-- fails when the request of the quick menu is not received (the weapon icon would do nothing)
+			name = "the request of the weapon menu has a network message and a receiver",
+			func = function()
+				expect(net.Receivers["gry_draconic_customize"]).to.beA("function")
+			end
+		},
+		{
+			-- fails when the server does not call Draconic's own entry (DRC:ForceAttachmentMenu, the one of its attachment shelf), or calls it with other arguments
+			name = "the request opens Draconic's menu through DRC:ForceAttachmentMenu for the weapon in hand",
+			func = function()
+				local calls = {}
+				local weapon = menuWeapon()
+				local ply = menuPlayer(weapon)
+
+				stub(_G, "DRC", {SV = {drc_inspections = 1}, ForceAttachmentMenu = function(self, p, w) calls[#calls + 1] = {self, p, w} end})
+				stub(_G, "CurTime", function() return 100 end)
+				resetThrottle()
+
+				expect(GryMod.DraconicSV.OpenCustomize(ply)).to.beTrue()
+				expect(#calls).to.equal(1)
+				expect(calls[1][1]).to.equal(_G.DRC)
+				expect(calls[1][2]).to.equal(ply)
+				expect(calls[1][3]).to.equal(weapon)
+			end
+		},
+		{
+			-- fails when a weapon already in inspection mode is toggled OFF by the request (ToggleInspectMode toggles: the menu would come with the weapon put down); the menu is only told to open
+			name = "a weapon already inspecting is not toggled: only the menu is told to open",
+			func = function()
+				local forced, started, sent = 0, {}, 0
+				local weapon = menuWeapon({inspecting = true})
+				local ply = menuPlayer(weapon)
+
+				stub(_G, "DRC", {SV = {drc_inspections = 1}, ForceAttachmentMenu = function() forced = forced + 1 end})
+				stub(_G, "CurTime", function() return 200 end)
+				stub(net, "Start", function(name) started[#started + 1] = name end)
+				stub(net, "WriteEntity", function() end)
+				stub(net, "Send", function() sent = sent + 1 end)
+				resetThrottle()
+
+				expect(GryMod.DraconicSV.OpenCustomize(ply)).to.beTrue()
+				expect(forced).to.equal(0)
+				expect(started[1]).to.equal("DRC_WeaponAttachForceOpen")
+				expect(sent).to.equal(1)
+			end
+		},
+		{
+			-- fails when something that is not a customizable Draconic weapon in the hand of a living player reaches Draconic's function (the net message is open to any client)
+			name = "nothing is opened for a weapon that is not Draconic's, that cannot be customized, a dead player, or when the server forbids the inspection",
+			func = function()
+				local forced = 0
+
+				stub(_G, "DRC", {SV = {drc_inspections = 1}, ForceAttachmentMenu = function() forced = forced + 1 end})
+				stub(_G, "CurTime", function() return 300 end)
+
+				local S = GryMod.DraconicSV
+
+				resetThrottle()
+				expect(S.OpenCustomize(menuPlayer(menuWeapon({Draconic = false})))).to.beFalse()
+				resetThrottle()
+				expect(S.OpenCustomize(menuPlayer(menuWeapon({can = false})))).to.beFalse()
+				resetThrottle()
+				expect(S.OpenCustomize(menuPlayer(menuWeapon(), {alive = false}))).to.beFalse()
+				resetThrottle()
+				expect(S.OpenCustomize(menuPlayer(nil))).to.beFalse()
+				resetThrottle()
+				_G.DRC.SV.drc_inspections = 0
+				expect(S.OpenCustomize(menuPlayer(menuWeapon()))).to.beFalse()
+				_G.DRC.SV.drc_inspections = 1
+				_G.DRC.ForceAttachmentMenu = nil
+				resetThrottle()
+				expect(S.OpenCustomize(menuPlayer(menuWeapon()))).to.beFalse()
+				expect(forced).to.equal(0)
+			end
+		},
+		{
+			-- fails when a client can send the request many times a second (the weapon would be toggled each time), or when an error of Draconic's function reaches the caller
+			name = "a second request within half a second is ignored, and an error of Draconic is caught",
+			func = function()
+				local forced, now = 0, 400
+				local ply = menuPlayer(menuWeapon())
+
+				stub(_G, "DRC", {SV = {drc_inspections = 1}, ForceAttachmentMenu = function() forced = forced + 1 end})
+				stub(_G, "CurTime", function() return now end)
+				resetThrottle()
+
+				local S = GryMod.DraconicSV
+
+				expect(S.OpenCustomize(ply)).to.beTrue()
+				now = 400.2
+				expect(S.OpenCustomize(ply)).to.beFalse()
+				now = 400.6
+				expect(S.OpenCustomize(ply)).to.beTrue()
+				expect(forced).to.equal(2)
+
+				_G.DRC.ForceAttachmentMenu = function() error("broken base") end
+				now = 410
+
+				local ok, result = pcall(S.OpenCustomize, ply)
+
+				expect(ok).to.beTrue()
+				expect(result).to.beFalse()
 			end
 		}
 	}

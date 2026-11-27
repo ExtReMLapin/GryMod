@@ -111,6 +111,7 @@ The client cannot read some facts, so it asks and the server answers one player.
 | `gry_mass` | server to one player | the answer to `gry_mass_ask`, only for an entity that has a physics object | `UInt(13)` entity index, `Float` mass in kilograms (all the physics objects added) | The use prompt offers "pick up" for a prop of 35 kg or less |
 | `gry_class_ask` | client to server | the crosshair is on an entity whose client class name is generic, such as a `func_button` (`lua/grymod/client/cl_usable_class.lua`) | `UInt(13)` entity index | The server answers with `gry_class`. 10 questions a second at most (`lua/grymod/server/sv_usable_class.lua`) |
 | `gry_class` | server to one player | the answer to `gry_class_ask` | `UInt(13)` entity index, `String` the class name the map gave the entity | The client keeps it for 20 s and the registry of usable things matches on it |
+| `gry_draconic_customize` | client to server | the weapon icon of the quick menu is chosen while a Draconic weapon is in hand (`lua/grymod/compat/weapons/cl_draconic_menu.lua`) | none (the weapon is the one in the sender's hand) | The server runs Draconic's own entry for its customization menu (`DRC:ForceAttachmentMenu`), only for a living player holding a Draconic weapon that can be customized, when the server allows the inspection. One request every half second per player (`lua/grymod/compat/weapons/sv_draconic.lua`) |
 
 ### Zoom messages
 

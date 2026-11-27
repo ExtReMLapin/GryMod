@@ -193,3 +193,76 @@ end
 
 install()
 hook.Add("InitPostEntity", KEY, install)
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The weapon menu of the quick menu
+-- ---------------------------------------------------------------------------------------------------------
+
+-- Draconic opens its customization menu (the attachments, the camouflages) from the SERVER: DRC:ForceAttachmentMenu puts the weapon in inspection mode (the base's own state, held in the
+-- networked boolean "Inspecting") and tells the client to open the menu; it is the entry that the attachment shelf of the base uses. The client of the quick menu cannot do that alone: it sends
+-- this request, and the server runs the base's entry for the weapon in the player's hand.
+util.AddNetworkString("gry_draconic_customize")
+
+S.LastCustomize = S.LastCustomize or setmetatable({}, {__mode = "k"}) -- [player] = time of the last request, so that a client cannot ask many times a second
+local CUSTOMIZE_PAUSE = 0.5
+
+-- Opens the menu for the weapon in the player's hand. True when the base was asked. Nothing for a weapon that is not Draconic's, that has nothing to customize, a dead player, a server that
+-- forbids the inspection, or a request that comes less than half a second after the last one.
+function S.OpenCustomize(ply)
+	local drc = _G.DRC
+
+	if not istable(drc) or not istable(drc.SV) or drc.SV.drc_inspections == 0 or not isfunction(drc.ForceAttachmentMenu) then
+		return false
+	end
+
+	if ply == nil or not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then
+		return false
+	end
+
+	local weapon = ply:GetActiveWeapon()
+
+	if weapon == nil or not IsValid(weapon) or weapon.Draconic ~= true or not isfunction(weapon.CanCustomize) then
+		return false
+	end
+
+	local now = CurTime()
+
+	if now - (S.LastCustomize[ply] or -math.huge) < CUSTOMIZE_PAUSE then
+		return false
+	end
+
+	local ok, can = pcall(weapon.CanCustomize, weapon, true)
+
+	if not ok or can ~= true then
+		return false
+	end
+
+	S.LastCustomize[ply] = now
+
+	local ran, err
+	local inspecting = weapon:GetNW2Bool("Inspecting", false) == true
+
+	if inspecting then
+		-- ForceAttachmentMenu TOGGLES the inspection mode (ToggleInspectMode): for a weapon that is already inspecting it would put the inspection away with the menu. Only the menu is asked for.
+		ran, err = pcall(function()
+			net.Start("DRC_WeaponAttachForceOpen")
+			net.WriteEntity(ply)
+			net.WriteEntity(weapon)
+			net.Send(ply)
+		end)
+	else
+		ran, err = pcall(drc.ForceAttachmentMenu, drc, ply, weapon)
+	end
+
+	if not ran then
+		ErrorNoHalt("[GryMod] Draconic weapon menu: " .. tostring(err) .. "\n")
+
+		return false
+	end
+
+	return true
+end
+
+net.Receive("gry_draconic_customize", function(_, ply)
+	S.OpenCustomize(ply)
+end)
