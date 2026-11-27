@@ -703,6 +703,20 @@ local function startFirstPerson(ent, ply)
 
 	if not s or s.amount <= 0 then return end
 
+	-- the binoculars hide the view model and the hands: their hook on this very event returns true, and the engine then skips the Post hook too, which would put the render
+	-- state back. Nothing is prepared here (and what a frame before left on is put back).
+	local Bino = GryMod.FlashBinoculars
+
+	if Bino and Bino.HideWeapon() == true then
+		if s.firstPerson then
+			s.firstPerson = false
+			render.MaterialOverride(nil)
+			render.SetBlend(1)
+		end
+
+		return
+	end
+
 	-- the weapon's own screen has the view (a customization menu): the gun is drawn plain there, the picture behind it is not the one the layer would copy
 	if GryMod.API.IsPlainView(ply:GetActiveWeapon()) then return end
 

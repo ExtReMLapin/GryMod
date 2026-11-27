@@ -342,11 +342,18 @@ local situation = {}
 -- Open and close
 -- ---------------------------------------------------------------------------------------------------------
 
+-- An addon whose own view must not be disturbed (a camera, a cinematic) refuses the zoom through the hook GryMod_CanUseView("zoom", reason) by returning false
+-- (SHARED-VIEW-VETO-1). `reason` is what asks ("key", "bind", or "query" for a question that opens nothing). Only the opening is asked: an open zoom is closed by
+-- the camera owners (GryMod.API.AddCameraOwner), see Zoom.Reason.
+local function vetoed(reason)
+	return hook.Run("GryMod_CanUseView", "zoom", reason) == false
+end
+
 -- Opens the zoom when nothing in the world prevents it. Returns whether it did.
-local function open()
+local function open(reason)
 	local sit = Zoom.Read(situation)
 
-	if Zoom.Reason(sit, false) ~= nil then
+	if Zoom.Reason(sit, false) ~= nil or vetoed(reason) then
 		return false
 	end
 
@@ -358,7 +365,7 @@ end
 
 -- Whether a zoom could open now (the same conditions, nothing changes).
 function Zoom.CanEnter()
-	return Zoom.Reason(Zoom.Read(situation), false) == nil
+	return Zoom.Reason(Zoom.Read(situation), false) == nil and not vetoed("query")
 end
 
 -- THE way to close the zoom, safe to call from anywhere, as often as wanted. A key that is still down stays blocked until it is
@@ -422,7 +429,7 @@ function Zoom.Press(source, down)
 		local action = Zoom.PressAction(Zoom.Mode(), S.active)
 
 		if action == "open" then
-			open()
+			open(source)
 		elseif action == "close" then
 			Zoom.Exit("toggle")
 		end

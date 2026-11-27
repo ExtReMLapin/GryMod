@@ -705,6 +705,12 @@ function GryMod.CloackAttack(ply, key)
 		return
 	end
 
+	-- a player in a vehicle whose weapons are stowed does not shoot with the click: it changes the gear (simfphys), fires the vehicle's own weapon or does nothing. A shot of the
+	-- vehicle's weapon is seen by the server (GryMod.CloakShot): it ends the camouflage there, with the player as attacker.
+	if ply:InVehicle() and not ply:GetAllowWeaponsInVehicle() then
+		return
+	end
+
 	if key == IN_ATTACK then
 		local weapon = ply:GetActiveWeapon()
 
@@ -766,9 +772,9 @@ local function applyHUD(enabled)
 
 	-- the vanilla HUD is only hidden when ours is really drawn (a missing movie must not leave no HUD at all)
 	if enabled and drawn then
-		hook.Add("HUDShouldDraw", "How to: HUD Example HUD hider", HUDShouldDraw)
+		hook.Add("HUDShouldDraw", "GRYHUDHIDE", HUDShouldDraw)
 	else
-		hook.Remove("HUDShouldDraw", "How to: HUD Example HUD hider")
+		hook.Remove("HUDShouldDraw", "GRYHUDHIDE")
 	end
 end
 

@@ -262,13 +262,21 @@ end
 
 local world = {}
 
--- The reason it cannot be switched on now, or nil: option, server, invalid, dead, suit, malfunction, empty.
-function NV.Refusal()
-	return NV.Refuse(NV.ReadWorld(world))
+-- The reason it cannot be switched on now, or nil: option, server, invalid, dead, suit, malfunction, empty, or "veto": an addon whose own view must not be disturbed (a
+-- camera, a cinematic) refused it through the hook GryMod_CanUseView("nightvision", reason), by returning false (SHARED-VIEW-VETO-1). `reason` is what asks to switch it
+-- on ("key", "toggle", "api", "event", or "query" for a question that switches nothing). Only the switching on is asked: a night vision that is on stays on.
+function NV.Refusal(reason)
+	local why = NV.Refuse(NV.ReadWorld(world))
+
+	if why == nil and hook.Run("GryMod_CanUseView", "nightvision", reason or "query") == false then
+		return "veto"
+	end
+
+	return why
 end
 
 function NV.CanTurnOn()
-	return NV.Refusal() == nil
+	return NV.Refusal("query") == nil
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -478,7 +486,7 @@ function NV.Set(on, reason)
 	end
 
 	if on then
-		local why = NV.Refusal()
+		local why = NV.Refusal(reason or "api")
 
 		if why then
 			return false, why
@@ -536,7 +544,7 @@ local function eventHandler(data)
 		return
 	end
 
-	if S.on == on or (on and NV.Refusal()) then
+	if S.on == on or (on and NV.Refusal("event")) then
 		return
 	end
 

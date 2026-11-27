@@ -279,6 +279,100 @@ return {
 			end
 		},
 		{
+			-- fails when the crosshair stays at the middle of the screen in third person, where it no longer shows what the player aims at (view-H1)
+			name = "the Flash crosshair is hidden in third person (ShouldDrawLocalPlayer), and still shown on foot",
+			func = function()
+				local Cross = GryMod.FlashCrosshair
+				local function body(third) return {InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return third end} end
+
+				expect(Cross.IsHidden(body(true))).to.beTrue()
+				expect(Cross.IsHidden(body(false))).to.beFalse()
+			end
+		},
+		{
+			-- fails when the radar's view cone is still the player's own field of view (a camera owner's zoom, a vehicle's view would not move it), or when a missing answer is not nil (view-H7)
+			name = "GetViewFov: the field of view of the view drawn (the render's fov_unscaled), nil when the render does not know it; the radar's cone of the local player reads it",
+			func = function()
+				local real = render.GetViewSetup
+				local setup
+
+				local ok, err = pcall(function()
+					render.GetViewSetup = function() return setup end
+
+					setup = {fov = 43.1, fov_unscaled = 33}
+					expect(API.Has("viewfov")).to.beTrue()
+					expect(API.GetViewFov()).to.equal(33)
+					expect(GryMod.FlashRadar.ViewFov(LocalPlayer())).to.equal(33)
+
+					setup = {fov = 0, fov_unscaled = 0}
+					expect(API.GetViewFov()).to.beNil()
+
+					setup = nil
+					expect(API.GetViewFov()).to.beNil()
+
+					-- another player (a stand-in) keeps the old rule
+					setup = {fov_unscaled = 33}
+					expect(GryMod.FlashRadar.ViewFov({GetFOV = function() return 100 end})).to.equal(100)
+				end)
+
+				render.GetViewSetup = real
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails when a view of GryMod's is made from the arguments of the hook alone: the gamemode's CalcView (a weapon's own CalcView, its view bob) would never run while the binoculars are up (view-2)
+			name = "GryMod.View.Compose gives the view of GAMEMODE:CalcView (origin, angles, fov), and the arguments as they came when the gamemode gives nothing or fails; the binoculars' view is made ON it",
+			func = function()
+				local View = GryMod.View
+				local own = rawget(GAMEMODE, "CalcView") -- (the gamemode's own field, or nothing: the base one is inherited)
+				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
+				local given = {origin = Vector(7, 8, 9), angles = Angle(1, 1, 1), fov = 70, drawviewer = true}
+				local answer = given
+
+				local ok, err = pcall(function()
+					GAMEMODE.CalcView = function() return answer end
+
+					local o, a, f, zn, zf, base = View.Compose(player(), origin, angles, 90, 3, 8000)
+					expect(o).to.equal(given.origin)
+					expect(a).to.equal(given.angles)
+					expect(f).to.equal(70)
+					expect(zn).to.equal(3)
+					expect(zf).to.equal(8000)
+					expect(base).to.equal(given)
+
+					answer = nil
+					o, a, f = View.Compose(player(), origin, angles, 90, 3, 8000)
+					expect(o).to.equal(origin)
+					expect(a).to.equal(angles)
+					expect(f).to.equal(90)
+
+					GAMEMODE.CalcView = function() error("broken gamemode view") end
+					expect(select(3, View.Compose(player(), origin, angles, 90, 3, 8000))).to.equal(90)
+
+					-- the binoculars' view is made on the gamemode's: its origin and angles, the stage's field of view
+					GAMEMODE.CalcView = function() return {origin = Vector(7, 8, 9), angles = Angle(1, 1, 1), fov = 70} end
+
+					withBinoculars(function(M)
+						local view = M.CalcView(player({zoomKey = true}), origin, angles, 100, 3, 8000)
+
+						expect(view).toNot.beNil()
+						expect(view.origin).to.equal(Vector(7, 8, 9))
+						expect(view.angles).to.equal(Angle(1, 1, 1))
+						expect(view.fov).to.aboutEqual(100, 1e-6) -- the stage's own (the first frame of the opening: the base field of view)
+					end)
+				end)
+
+				GAMEMODE.CalcView = own
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails when the own zoom of the suit can open or stay open while a camera owner has the view (it would zoom the owner's camera)
 			name = "the suit's own zoom: a camera owner is a hard reason to close it (cameraowner), and the situation tells it",
 			func = function()

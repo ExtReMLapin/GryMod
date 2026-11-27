@@ -273,6 +273,43 @@ return {
 			end
 		},
 		{
+			-- fails when no handler of GryMod_CanUseView is asked, when the kind or the reason is not told, when a refusal does not stop the key, or when it also switches off a night vision that is on
+			name = "the hook GryMod_CanUseView(\"nightvision\", reason): a handler that returns false refuses the switching on (Refusal gives \"veto\", the key does nothing), any other answer or another kind is no opinion, and one that is already on stays on",
+			func = function(state)
+				local NV = GryMod.NightVision
+				local asked = {}
+
+				hook.Add("GryMod_CanUseView", "GRYTESTNVVETO", function(kind, reason) asked[#asked + 1] = {kind, reason} if kind == "nightvision" then return false end end)
+
+				local ok, err = pcall(function()
+					expect(NV.CanTurnOn()).to.beFalse()
+					expect(NV.Refusal("key")).to.equal("veto")
+					expect(asked[#asked][1]).to.equal("nightvision")
+					expect(asked[#asked][2]).to.equal("key")
+					expect(NV.Set(true, "key")).to.beFalse()
+					expect(select(2, NV.Set(true, "toggle"))).to.equal("veto")
+					expect(NV.IsOn()).to.beFalse()
+					NV.Press(true)
+					expect(NV.IsOn()).to.beFalse()
+
+					-- no opinion: another kind, nothing returned, true
+					hook.Add("GryMod_CanUseView", "GRYTESTNVVETO", function(kind) if kind == "zoom" then return false end return true end)
+					expect(NV.Set(true, "key")).to.beTrue()
+
+					-- on: a veto that comes later does not switch it off
+					hook.Add("GryMod_CanUseView", "GRYTESTNVVETO", function() return false end)
+					NV.Guard()
+					expect(NV.IsOn()).to.beTrue()
+				end)
+
+				hook.Remove("GryMod_CanUseView", "GRYTESTNVVETO")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "the energy is lazy: on for 10 seconds it reads 25 (bar 83.3) at the time it is asked, nothing ticks; off again it recovers 2 a second from where it was, and a long rest gives it back whole",
 			func = function(state)
 				local NV = GryMod.NightVision

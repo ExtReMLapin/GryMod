@@ -360,7 +360,7 @@ Holo.entries = {}
 local nextRefresh = 0
 
 local function liveNpc(ent)
-	return ent:IsNPC() and ent:Health() > 0
+	return GryMod.API.IsCreature(ent) and ent:Health() > 0
 end
 
 -- Looks for the entities in view: hostile-looking NPCs within the range, weapons within theirs, always the entity aimed at and the one scanned.

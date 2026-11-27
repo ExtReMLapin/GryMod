@@ -467,7 +467,7 @@ function Cross.IsFriendly(ent, ply, known)
 		return ent ~= ply and ply ~= nil and team == ply:Team() and team ~= 1001 and team ~= 1002
 	end
 
-	return ent:IsNPC() and known == true
+	return GryMod.API.IsCreature(ent) and known == true
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -938,11 +938,13 @@ net.Receive("gry_damage_dir", function()
 	Cross.NotifyDamage(net.ReadNormal())
 end)
 
--- The crosshair is not wanted while the suit is down, the quick menu is up, or the player is in a vehicle.
+-- The crosshair is not wanted while the suit is down, the quick menu is up, the player is in a vehicle, or he sees himself from behind (third person: the crosshair sits
+-- at the middle of the screen, which is no longer where he aims).
 local function hidden(ply)
 	return (GryMod.FlashBoot and GryMod.FlashBoot.IsLost())
 		or (GryMod.FlashMenu and GryMod.FlashMenu.IsOpen())
 		or ply:InVehicle()
+		or ply:ShouldDrawLocalPlayer()
 end
 
 -- Whether the crosshair is hidden for this player (the Lost animation, the quick menu, a vehicle): what hangs on it, such as the use
@@ -1040,7 +1042,7 @@ local function scan(ply)
 	local known = nil
 
 	-- an NPC's attitude comes from the server: asked only for what is aimed at
-	if aimed and IsValid(aimed) and aimed:IsNPC() then
+	if aimed and IsValid(aimed) and GryMod.API.IsCreature(aimed) then
 		known = Cross.Relation(aimed, now)
 	end
 

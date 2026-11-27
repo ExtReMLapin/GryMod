@@ -781,3 +781,32 @@ function API.UsableFiltered(ent, ply)
 end
 
 API.AddFeature("usablefilter")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The field of view of the view that is really drawn
+-- ---------------------------------------------------------------------------------------------------------
+-- Player:GetFOV is the player's own field of view: it does not follow what an addon's CalcView gives (a vehicle's zoom, a drone's camera, the binoculars' stages). The render
+-- knows the one that is drawn. Measured: with a CalcView that gives 33, render.GetViewSetup().fov_unscaled is 33 (and .fov 43.1, scaled for the width of the screen).
+--
+--   GryMod.API.GetViewFov()   the horizontal field of view in degrees as CalcView gives it (4:3, like Player:GetFOV), of the view drawn at the last render; nil when the render
+--                             does not know it yet (the first frames of a map)
+--
+-- Valid in any hook (it is the setup of the last main render). Used by the radar's view cone.
+function API.GetViewFov()
+	local setup = render.GetViewSetup()
+	local fov = istable(setup) and setup.fov_unscaled
+
+	if isnumber(fov) and fov == fov and fov > 0 then
+		return fov
+	end
+
+	return nil
+end
+
+API.AddFeature("viewfov")
+
+-- The hook GryMod_CanUseView(kind, reason) lets an addon whose own view must not be disturbed (a camera, a cinematic, a scripted scene) refuse the player's night vision (kind
+-- "nightvision", cl_nightvision.lua) and the suit's own zoom (kind "zoom", cl_suit_zoom.lua) when they are about to switch on or open: a handler that returns false refuses; any
+-- other answer is no opinion. `reason` is what asks ("key", "bind", "toggle", "api", "event", or "query" for a question that changes nothing). It is only asked at the moment of
+-- switching on. For a view that is already there use GryMod.API.AddCameraOwner, which also closes them. Announced by Has("viewveto").
+API.AddFeature("viewveto")

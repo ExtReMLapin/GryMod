@@ -971,6 +971,34 @@ return {
 			end
 		},
 		{
+			-- fails when the camouflage prepares the view model (a refraction draw, a blend below 1) while the binoculars hide it: their PreDrawViewModel returns true and the engine skips the
+			-- PostDrawViewModel, so the render state the camouflage set is never put back (view-J5)
+			name = "first person: while the binoculars hide the weapon (their PreDrawViewModel returns true, so no Post hook runs) the camouflage prepares nothing and sets no blend",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				setState(me, 0.4)
+				stub(GryMod.FlashBinoculars, "HideWeapon", function() return true end)
+
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
+				expect(vm.draws).to.equal(0)
+				expect(#log.override).to.equal(0)
+				expect(#log.blend).to.equal(0)
+				expect(log.refreshed).to.equal(0)
+
+				-- the binoculars down: the same call prepares the view model as before
+				stub(GryMod.FlashBinoculars, "HideWeapon", function() return nil end)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(vm.draws).to.equal(1)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(leftClean(log)).to.beTrue()
+			end
+		},
+		{
 			name = "first person, at the very start of the change: the arms are still almost opaque (no jump to the refraction)",
 			func = function(state)
 				local log = recordRender()

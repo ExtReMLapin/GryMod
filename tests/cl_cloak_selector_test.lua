@@ -62,6 +62,8 @@ local function fakePlayer(mode, activeClass)
 
 	function ply:GetWeapons() return self.weapons end
 	function ply:GetActiveWeapon() return self.active end
+	function ply:InVehicle() return false end
+	function ply:GetAllowWeaponsInVehicle() return false end
 	function ply:KeyDown(key) return key == IN_ATTACK and self.held == true end
 	function ply:GetAmmoCount() return 100 end
 	function ply:SetNanosuitMode(newMode, networked)

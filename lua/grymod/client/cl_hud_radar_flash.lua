@@ -225,6 +225,15 @@ end
 -- the player's own field of view, GetFOV, does not move), so while they are up the cone follows their eased value, the one the view was given this frame;
 -- otherwise it is GetFOV (also what the suit's own zoom changes).
 function Radar.ViewFov(ply)
+	-- the local player: the view that is really drawn (another addon's camera, a vehicle's zoom, the binoculars' stages), read from the render (GryMod.API.GetViewFov)
+	if ply == LocalPlayer() and GryMod.API and GryMod.API.GetViewFov then
+		local fov = GryMod.API.GetViewFov()
+
+		if fov then
+			return fov
+		end
+	end
+
 	local Bino = GryMod.FlashBinoculars
 	local zoom = Bino and Bino.ZoomState
 
