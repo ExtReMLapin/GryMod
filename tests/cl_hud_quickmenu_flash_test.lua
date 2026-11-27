@@ -739,6 +739,80 @@ return {
 			end
 		},
 		{
+			-- fails when the per frame check cancels the menu because the key it was opened with is up: a key chosen in the options (gry_menu_key) is read once a frame by the key factory, and this
+			-- check can run first in the same frame (measured in the game: the order of the frames is T C T C C, think then create move), so the release of the key was taken for a lost release and
+			-- the choice was dropped (the owner: the menu opens, and when the key goes up with a mode selected nothing happens). A key that is simply up applies the choice, as its release does;
+			-- a key that is up with the cursor shown, the player typing or the console open is a release that never comes: that one still cancels
+			name = "the per frame check applies the choice when the key it was opened with is up (the release came first), and still cancels when a panel, the chat or the console is in the way",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local API = GryMod.API
+				local meta = FindMetaTable("Player")
+				local K = GryMod.MenuKey
+				local cmd = {
+					GetMouseX = function() return 0 end,
+					GetMouseY = function() return 0 end,
+					GetButtons = function() return 0 end,
+					SetButtons = function() end,
+					SetViewAngles = function() end,
+					SetMouseX = function() end,
+					SetMouseY = function() end
+				}
+				local real = {cursor = vgui.CursorVisible, typing = meta.IsTyping, console = gui.IsConsoleVisible, down = input.IsButtonDown, pressed = K.pressed,
+					get = API.GetWeaponMenu, open = API.OpenWeaponMenu}
+				local fake = {cursor = false, typing = false, console = false, down = true}
+				local opened = 0
+
+				vgui.CursorVisible = function() return fake.cursor end
+				meta.IsTyping = function() return fake.typing end
+				gui.IsConsoleVisible = function() return fake.console end
+				input.IsButtonDown = function() return fake.down end
+				API.GetWeaponMenu = function() return function() end end
+				API.OpenWeaponMenu = function() opened = opened + 1 return true end
+
+				local ok, err = pcall(function()
+					local frame = hook.GetTable().CreateMove["GRYQUICKMENU"]
+
+					local function openOnWeapon(change)
+						fake.cursor, fake.typing, fake.console, fake.down = false, false, false, true
+						M.Reset()
+						expect(M.Begin()).to.beTrue()
+						M.GetMenu():Select("Weapon")
+						K.pressed = KEY_F7
+						change()
+						frame(cmd)
+
+						return M.IsOpen()
+					end
+
+					-- the key is up and nothing is in the way: the choice is applied (the weapon's menu opens), the menu is closed
+					opened = 0
+					expect(openOnWeapon(function() fake.down = false end)).to.beFalse()
+					expect(opened).to.equal(1)
+
+					-- the key is held: nothing happens yet
+					opened = 0
+					expect(openOnWeapon(function() end)).to.beTrue()
+					expect(opened).to.equal(0)
+
+					-- a release that never comes (a panel has the cursor, the chat, the console): cancelled, nothing applied
+					for _, field in ipairs({"cursor", "typing", "console"}) do
+						opened = 0
+						expect(openOnWeapon(function() fake.down = false fake[field] = true end)).to.beFalse()
+						expect(opened).to.equal(0)
+					end
+				end)
+
+				vgui.CursorVisible, meta.IsTyping, gui.IsConsoleVisible, input.IsButtonDown, K.pressed = real.cursor, real.typing, real.console, real.down, real.pressed
+				API.GetWeaponMenu, API.OpenWeaponMenu = real.get, real.open
+				M.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "the arrow does not flutter at a high frame rate: the previous rule turns back 60 times a second at 240 fps, the film pointer under 30, at every rate",
 			func = function(state)
 				local M = GryMod.FlashMenu

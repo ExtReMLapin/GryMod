@@ -699,10 +699,20 @@ hook.Add("CreateMove", "GRYQUICKMENU", function(cmd)
 	reasons.cursor = vgui.CursorVisible()
 	reasons.typing = IsValid(ply) and ply:IsTyping()
 	reasons.console = gui.IsConsoleVisible()
-	reasons.keyUp = key ~= nil and not input.IsButtonDown(key)
+	-- The key that opened the menu is no longer down. A key chosen in the options is read once a frame by the key factory (a Think), and this check can run first in the same
+	-- frame (measured: the order is think, create move, think, create move, create move...): the release is then still waiting to be passed on. It is not a lost release, so the choice
+	-- is applied, as the release does; only when a panel, the chat or the console is in the way (the release never comes) is the menu cancelled.
+	local keyUp = key ~= nil and not input.IsButtonDown(key)
+	reasons.keyUp = false
 
 	if Menu.ShouldCancel(ply, gui.IsGameUIVisible(), reasons) then
 		Menu.Cancel()
+
+		return
+	end
+
+	if keyUp then
+		Menu.Finish()
 
 		return
 	end
