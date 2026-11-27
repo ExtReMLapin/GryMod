@@ -24,3 +24,16 @@ for _, name in ipairs({"gry_movement", "gry_move_walk", "gry_move_run", "gry_mov
 		Movement.ApplyAll()
 	end, "GryMovement")
 end
+
+-- The take-off of a jump: the jump key pressed on the ground brings a faster horizontal speed down to the limit (sh_movement.lua: gry_jump_speed_cap). One event, no Think.
+hook.Add("KeyPress", "GryMod jump speed limit", function(ply, key)
+	if key ~= IN_JUMP or not IsValid(ply) or not ply:Alive() then
+		return
+	end
+
+	local delta = Movement.JumpDelta(ply:GetVelocity(), ply:OnGround())
+
+	if delta then
+		ply:SetVelocity(delta)
+	end
+end)

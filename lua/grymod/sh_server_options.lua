@@ -21,6 +21,7 @@ Settings.List = {
 	{name = "gry_cloak_fade_seconds", kind = "choice", values = {"0", "0.5", "1", "2", "3", "5"}},
 	{name = "gry_radar_allies_always", kind = "bool"},
 	{name = "gry_movement", kind = "choice", values = {"0", "1", "2"}},
+	{name = "gry_jump_speed_cap", kind = "choice", values = {"0", "1", "1.2", "1.5", "2"}},
 	{name = "gry_radar_objects", kind = "bool"},
 	{name = "gry_radar_pings", kind = "bool"},
 	{name = "gry_radar_blast_rings", kind = "bool"},

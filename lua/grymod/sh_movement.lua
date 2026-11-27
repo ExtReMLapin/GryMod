@@ -67,6 +67,11 @@ local function clampSpeed(v)
 	return math.Clamp(v, Movement.MIN_SPEED, Movement.MAX_SPEED)
 end
 
+-- The limit of the horizontal speed at the take-off of a jump. The engine keeps the whole speed of the run in a jump, so a jump in the speed mode (sprint 600) threw the player forward
+-- much faster than in any other mode. The limit is a multiple of the PLAIN sprint of the movement setting (400 by default, 266 with the original game's speeds): gry_jump_speed_cap, 1.2 by
+-- default, 0 = no limit. Not relative to the mode's own top speed: the engine's rule against bunny hops is, and it does nothing here.
+local jumpCap = CreateConVar("gry_jump_speed_cap", "1.2", flags, "Limit of the horizontal speed at the take-off of a jump, as a multiple of the plain sprint (the speed mode's sprint is faster and a jump kept all of it: a huge leap). 0 = no limit", 0, 4)
+
 -- The walk and run speeds of a mode of the suit.
 function Movement.Speeds(mode)
 	local setting = Movement.Mode()
@@ -92,6 +97,50 @@ function Movement.Speeds(mode)
 	end
 
 	return Movement.GMOD_WALK, Movement.GMOD_RUN
+end
+
+-- The speed (units a second) that a take-off is brought down to, or nil when the limit is off.
+function Movement.JumpCapSpeed()
+	local factor = jumpCap:GetFloat()
+
+	if factor ~= factor or factor <= 0 then
+		return nil
+	end
+
+	local _, run = Movement.Speeds(GryMod.Modes.ARMOR)
+
+	return run * factor
+end
+
+-- The horizontal speed (vx, vy) brought down to `limit` in the same direction; a slower one is kept as it is.
+function Movement.CapSpeed(vx, vy, limit)
+	local speed = math.sqrt(vx * vx + vy * vy)
+
+	if speed <= limit or speed == 0 then
+		return vx, vy
+	end
+
+	local scale = limit / speed
+
+	return vx * scale, vy * scale
+end
+
+-- The push (a Vector to ADD to the velocity: Player:SetVelocity adds) that brings the take-off of a jump down to the limit, or nil when nothing is to be done (in the air, under the
+-- limit, the limit off). The height is not touched.
+function Movement.JumpDelta(velocity, onGround)
+	local limit = Movement.JumpCapSpeed()
+
+	if not limit or not onGround then
+		return nil
+	end
+
+	local x, y = Movement.CapSpeed(velocity.x, velocity.y, limit)
+
+	if x == velocity.x and y == velocity.y then
+		return nil
+	end
+
+	return Vector(x - velocity.x, y - velocity.y, 0)
 end
 
 -- The plain sprint and the speed mode's top sprint: the line the speed mode's multipliers are put on (Mech.SpeedRunSpeed).

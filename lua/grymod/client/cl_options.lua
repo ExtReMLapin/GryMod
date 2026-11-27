@@ -571,6 +571,17 @@ local function adminSuitRules(root, Panel)
 		}
 	})
 	root:ControlHelp("Crysis vanilla: the original game's walk 177 and sprint 266 units a second, the speed mode's sprint climbing to 757 in a second. Ratios: GMod's walk 200 and sprint 400 with the same increases in the speed mode. Both also use the original's energy rules.")
+	GryMod.AdminOption(Panel, "Jump speed limit", "gry_jump_speed_cap", "choice", {
+		into = root,
+		help = "A jump keeps the speed of the run: in the speed mode it threw the player forward far faster than in other modes. The limit is a multiple of the plain sprint.",
+		choices = {
+			{"No limit", "0"},
+			{"Plain sprint (x1)", "1"},
+			{"x1.2 (default)", "1.2"},
+			{"x1.5", "1.5"},
+			{"x2", "2"}
+		}
+	})
 	GryMod.AdminOption(Panel, "Suit malfunctions", "gry_malfunction", "bool", {into = root, help = "EMP, electric hits and heavy impacts put the suit down."})
 	-- the two toggles of the console (gry_Health, gry_Armor) are settings of the server too: check boxes that show the state (sv_system.lua)
 	GryMod.AdminOption(Panel, "Health regeneration", "gry_health_regen", "bool", {into = root, help = "The suit repairs the health over time. Off: no regeneration."})
