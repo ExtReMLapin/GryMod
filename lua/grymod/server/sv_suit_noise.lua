@@ -66,8 +66,8 @@ hook.Add("GryMod_ModeChanged", "GryMod suit noise", function(ply, mode, oldMode,
 	end
 end)
 
--- Whose shot: the player's, or the scripted weapon's whose owner is a player.
-local function shooter(ent)
+-- Whose shot: the player's, or the scripted weapon's whose owner is a player, or, for a vehicle that fires on the player's behalf, the player named as `data.Attacker`.
+local function shooter(ent, data)
 	if not IsValid(ent) then
 		return nil
 	end
@@ -80,11 +80,15 @@ local function shooter(ent)
 		return ent
 	end
 
+	if istable(data) and IsValid(data.Attacker) and data.Attacker:IsPlayer() then
+		return data.Attacker
+	end
+
 	return nil
 end
 
 hook.Add("EntityFireBullets", "GryMod suit noise", function(ent, data)
-	local ply = shooter(ent)
+	local ply = shooter(ent, data)
 
 	if not ply or GryMod.API.CloakLevel(ply) <= 0 then
 		return

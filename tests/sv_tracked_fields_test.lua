@@ -299,6 +299,9 @@ return {
 				local cloaked = {
 					IsValid = function() return true end,
 					Alive = function() return true end,
+					-- (the camouflage's timer also keeps the notarget flag right: a player on foot who has it)
+					InVehicle = function() return false end,
+					IsFlagSet = function() return true end,
 					Nanosuit_mode = GryMod.Modes.CLOAK
 				}
 
@@ -373,6 +376,9 @@ return {
 				local cloaked = {
 					IsValid = function() return true end,
 					Alive = function() return true end,
+					-- (the camouflage's timer also keeps the notarget flag right: a player on foot who has it)
+					InVehicle = function() return false end,
+					IsFlagSet = function() return true end,
 					Nanosuit_mode = GryMod.Modes.CLOAK
 				}
 

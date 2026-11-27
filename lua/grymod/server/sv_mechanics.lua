@@ -99,7 +99,7 @@ end
 
 -- Whether the player holds the sprint key and moves (a field so that a test can say it): the climb of the speed mode's sprint counts from there.
 function Mech.SprintHeld(ply)
-	return ply:KeyDown(IN_SPEED) and ply:GetVelocity():Length2DSqr() > 100
+	return not ply:InVehicle() and ply:KeyDown(IN_SPEED) and ply:GetVelocity():Length2DSqr() > 100
 end
 
 -- The run speed of a player in the speed mode follows the energy at every frame (the one place that sets it while in the mode:
@@ -130,6 +130,16 @@ hook.Add("Think", "GryMod run speed", function()
 		end
 	end
 end)
+
+-- The speed the suit counts for a player, in units a second: his own, except in a vehicle, where he counts as still (the owner's decision: Crysis does not use more
+-- energy in a vehicle, and the vehicle's speed is not the player's). The camouflage's drain reads it.
+function Mech.CloakSpeed(ply)
+	if ply:InVehicle() then
+		return 0
+	end
+
+	return ply:GetVelocity():Length()
+end
 
 -- Energy per second of the cloak: half of 10 per metre a second moving (speed in units a second), at least 0.5.
 function Mech.CloakDrain(speed)
@@ -186,6 +196,11 @@ end
 
 -- Whether a player is on the move (the game's threshold: 0.1 metre a second on the flat).
 function Mech.IsMoving(ply)
+	-- a seated player is still, whatever the vehicle does
+	if ply:InVehicle() then
+		return false
+	end
+
 	local velocity = ply:GetVelocity()
 
 	return velocity:Length2D() > 0.1 * 52.49

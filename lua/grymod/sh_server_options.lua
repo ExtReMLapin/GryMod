@@ -23,6 +23,7 @@ Settings.List = {
 	{name = "gry_movement", kind = "choice", values = {"0", "1", "2"}},
 	{name = "gry_radar_objects", kind = "bool"},
 	{name = "gry_radar_pings", kind = "bool"},
+	{name = "gry_radar_blast_rings", kind = "bool"},
 	{name = "gry_radar_teammates", kind = "bool"},
 	{name = "gry_radar_detect", kind = "bool"},
 	{name = "gry_zonemap", kind = "bool"},

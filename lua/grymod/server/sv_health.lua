@@ -272,7 +272,7 @@ function GryMod.EnergyRate(ply)
 
 	-- GryCloakThink (sv_system.lua)
 	if ply.Nanosuit_mode == GryMod.Modes.CLOAK then
-		local drain = Mech.CloakDrain(ply:GetVelocity():Length())
+		local drain = Mech.CloakDrain(Mech.CloakSpeed(ply))
 
 		if drain * FrameTime() > energy or Mech.CloakFailsAt(energy) then
 			return 0

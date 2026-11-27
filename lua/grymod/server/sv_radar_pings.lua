@@ -8,6 +8,9 @@
 --   * the things that explode WITHOUT an env_explosion (the hand grenade, the SMG grenade, the satchel, the AR2 ball, a destroyed manhack: MEASURED, the engine
 --     draws their blast as an effect) ping when they are removed (Radar.ExplosiveClasses, below).
 --     gry_radar_pings (the administrators' option) turns the automatic ones off; the API call always works.
+--   * the blasts of util.BlastDamage (an addon's rocket, a vehicle's shell, a tool's bomb: they make no env_explosion) ring the radar too, from 150 units of radius up. The core wraps
+--     util.BlastDamage ONCE (Radar.InstallBlast); the option gry_radar_blast_rings (under gry_radar_pings) turns it off; the hook GryMod_Explosion(pos, radius, inflictor, attacker) is told for
+--     every blast, ring or not. A blast and an env_explosion of the same place and moment ring once.
 -- The hook GryMod_RadarPing(pos, size, automatic) tells that a ping was accepted (its return value is not read).
 
 util.AddNetworkString("gry_radar_ping")
@@ -21,6 +24,9 @@ local S = GryMod.RadarShared
 
 local automatic = CreateConVar("gry_radar_pings", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
 	"The explosions (env_explosion: grenades, rockets, barrels) ping the radar of the players within 250 m with a ring; 0 turns the automatic pings off (the API call still works)")
+
+local blastRings = CreateConVar("gry_radar_blast_rings", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
+	"The blasts made by util.BlastDamage (other addons' rockets, shells and bombs) of 150 units or more ping the radar too, like an env_explosion (needs gry_radar_pings); 0 turns them off")
 
 -- No more pings than this a second in all: a chain of explosions must not flood the net (the client keeps 16 rings anyway).
 local MAX_PER_SECOND = 20
@@ -123,13 +129,152 @@ end
 
 -- The tick after an env_explosion was made: its place and its keys are set, and the explosion has gone off (the engine's ExplosionCreate fires it at once;
 -- one that an addon fires later still pings once, at its place).
+-- ---------------------------------------------------------------------------------------------------------
+-- The blasts of util.BlastDamage. A blast and an env_explosion at the same place and in the same moment (an addon often does both) are ONE explosion: each kind remembers its rings for a
+-- tenth of a second, and the other kind does not ring again near them. Two env_explosions at the same place stay two rings (the engine's chain), as before.
+-- ---------------------------------------------------------------------------------------------------------
+
+local SAME_SECONDS, SAME_DISTANCE2 = 0.1, 100 * 100
+local BLAST_MIN_RADIUS = 150
+local recent = {}
+
+function Radar.ResetBlastMemory()
+	recent = {}
+end
+
+local function remember(pos, kind, now)
+	for i = #recent, 1, -1 do
+		if now - recent[i].time > SAME_SECONDS or now < recent[i].time then
+			table.remove(recent, i)
+		end
+	end
+
+	if #recent >= 32 then
+		table.remove(recent, 1)
+	end
+
+	recent[#recent + 1] = {pos = pos, time = now, kind = kind}
+end
+
+-- Whether a ring of this kind was made near `pos` a moment ago
+local function ringedNear(pos, kind, now)
+	for i = 1, #recent do
+		local r = recent[i]
+
+		if r.kind == kind and now >= r.time and now - r.time <= SAME_SECONDS and r.pos:DistToSqr(pos) <= SAME_DISTANCE2 then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function explosionPing(ent)
 	if not IsValid(ent) or not automatic:GetBool() then
 		return
 	end
 
-	Radar.ReportPing(ent:GetPos(), Radar.ExplosionSize(ent), true)
+	local pos, now = ent:GetPos(), CurTime()
+
+	-- a blast of util.BlastDamage rang for this explosion already
+	if ringedNear(pos, "blast", now) then
+		return
+	end
+
+	remember(pos, "env", now)
+	Radar.ReportPing(pos, Radar.ExplosionSize(ent), true)
 end
+
+Radar.ExplosionPing = explosionPing
+
+-- What GryMod does for a blast (called by the wrapper of util.BlastDamage, after the original ran, under pcall: it can never break the blast).
+function Radar.OnBlast(pos, radius, inflictor, attacker)
+	if not isvector(pos) or not isnumber(radius) or radius ~= radius then
+		return
+	end
+
+	-- a handler of another addon that fails must not keep the radar from ringing
+	local ok, err = pcall(hook.Run, "GryMod_Explosion", pos, radius, inflictor, attacker)
+
+	if not ok then
+		ErrorNoHalt("[GryMod] A handler of GryMod_Explosion failed: " .. tostring(err) .. "\n")
+	end
+
+	if radius < BLAST_MIN_RADIUS or not blastRings:GetBool() or not automatic:GetBool() then
+		return
+	end
+
+	local now = CurTime()
+
+	-- an env_explosion rang for this explosion already
+	if ringedNear(pos, "env", now) then
+		return
+	end
+
+	remember(pos, "blast", now)
+	Radar.ReportPing(pos, S.PingSizeOfRadius(radius), true)
+end
+
+-- Wraps util.BlastDamage once. Installing again does nothing while the wrapper is the function in place; when the wrapper was replaced or wrapped by another addon, this wraps what is
+-- there now (the chain may hold an earlier wrapper: the shared flag util.GryBlastBusy makes only the outermost one work, so a blast is never told twice). The wrapper calls the original
+-- first and returns what it returns, and any error of it is raised again as it was; only GryMod's own part is under pcall.
+function Radar.InstallBlast()
+	if util.GryBlastWrapper ~= nil and util.BlastDamage == util.GryBlastWrapper then
+		return false
+	end
+
+	local original = util.BlastDamage
+
+	if not isfunction(original) then
+		return false
+	end
+
+	local function wrapper(...)
+		if util.GryBlastBusy then
+			return original(...)
+		end
+
+		util.GryBlastBusy = true
+
+		local ok, a, b, c = pcall(original, ...)
+
+		util.GryBlastBusy = false
+
+		if not ok then
+			error(a, 0)
+		end
+
+		-- (inflictor, attacker, position, radius, damage)
+		local inflictor, attacker, pos, radius = ...
+		local told, err = pcall(GryMod.Radar.OnBlast, pos, radius, inflictor, attacker)
+
+		if not told then
+			ErrorNoHalt("[GryMod] The radar's blast ring failed: " .. tostring(err) .. "\n")
+		end
+
+		return a, b, c
+	end
+
+	Radar.BlastOriginal = original
+	util.GryBlastWrapper = wrapper
+	util.BlastDamage = wrapper
+
+	return true
+end
+
+-- Puts the original back (the tests): only when the wrapper is the function in place.
+function Radar.UninstallBlast()
+	if util.GryBlastWrapper ~= nil and util.BlastDamage == util.GryBlastWrapper then
+		util.BlastDamage = Radar.BlastOriginal
+		util.GryBlastWrapper = nil
+
+		return true
+	end
+
+	return false
+end
+
+Radar.InstallBlast()
 
 function Radar.OnEntityCreated(ent)
 	if not IsValid(ent) or not automatic:GetBool() or ent:GetClass() ~= "env_explosion" then
