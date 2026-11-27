@@ -22,17 +22,18 @@ GryMod.ModeReasons = {
 	DISABLED = "disabled", -- the suit was switched off (also when a mode is refused because it is off)
 	OTHER = "other", -- a caller that gave no cause
 	VETOED = "vetoed", -- the server refused a request and tells the client the real mode (the client undoes its optimistic change)
-	SYNC = "sync" -- the server's answer to gry_client_ready: the client learns the real mode when it arrives
+	SYNC = "sync", -- the server's answer to gry_client_ready: the client learns the real mode when it arrives
+	RESTORE = "restore" -- the player was brought back by Player:Spawn and an addon vetoed the reset (GryMod_CanResetOnSpawn): the mode is put on again, in silence
 }
 
--- The cause goes through the network as a small integer (an enum), not as text: the position in this list minus 1 (0..8). The client turns it back into
+-- The cause goes through the network as a small integer (an enum), not as text: the position in this list minus 1 (0..9). The client turns it back into
 -- the string before it calls the hook. The list is built from the constants above, so a string cannot be written twice; ONLY ADD AT THE END (the ids
 -- are the wire format: a server and a client of two versions must agree on them).
 local Reasons = GryMod.ModeReasons
 
 GryMod.ModeReasonList = {
 	Reasons.SPAWN, Reasons.PLAYER, Reasons.API, Reasons.ENERGY, Reasons.MALFUNCTION,
-	Reasons.DISABLED, Reasons.OTHER, Reasons.VETOED, Reasons.SYNC
+	Reasons.DISABLED, Reasons.OTHER, Reasons.VETOED, Reasons.SYNC, Reasons.RESTORE
 }
 
 GryMod.ModeReasonIds = {}
@@ -41,7 +42,7 @@ for i, reason in ipairs(GryMod.ModeReasonList) do
 	GryMod.ModeReasonIds[reason] = i - 1
 end
 
--- bits of the cause in a net message (4 bits hold 16 causes; the list has 9)
+-- bits of the cause in a net message (4 bits hold 16 causes; the list has 10)
 GryMod.ModeReasonBits = 4
 
 

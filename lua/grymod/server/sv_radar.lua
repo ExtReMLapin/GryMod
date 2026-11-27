@@ -733,6 +733,11 @@ hook.Add("EntityTakeDamage", "GryMod radar", function(victim, dmg)
 		return
 	end
 
+	-- a hit that a filter of another addon makes the suit ignore (GryMod.API.AddHitFilter) marks nobody
+	if GryMod.API.HitVerdict and GryMod.API.HitVerdict(victim, dmg) == "ignore" then
+		return
+	end
+
 	local attacker = dmg:GetAttacker()
 
 	if IsValid(attacker) and attacker:IsNPC() then
@@ -741,6 +746,11 @@ hook.Add("EntityTakeDamage", "GryMod radar", function(victim, dmg)
 end)
 
 hook.Add("PlayerSpawn", "GryMod radar", function(ply)
+	-- a restore in place (GryMod_CanResetOnSpawn) keeps the tags and the markers: the same life goes on
+	if GryMod.KeepStateOnSpawn and GryMod.KeepStateOnSpawn(ply) then
+		return
+	end
+
 	Radar.Reset(ply)
 end)
 
