@@ -8,6 +8,9 @@
 --
 -- The wrapper gives no view while the binoculars have the view (the zoom is open, or the picture is on screen: opening, up, closing), so the chain goes on to ours. The drag of the camera
 -- is only left out for that time; the base's own function runs as before the rest of the time.
+--
+-- The same file hides the base's crosshair while the binoculars are on screen or the quick menu is open, as GryMod does for the game's crosshair (HUDShouldDraw "CHudCrosshair", which is
+-- where TFA and ARC9 draw theirs): the base draws its own in a HUDPaint hook, "drc_crosshair" (draconic/cl/hud.lua), that this hide does not reach.
 
 local API = GryMod.API
 
@@ -69,10 +72,72 @@ function V.Install()
 	return true
 end
 
--- Installed when the file loads (a reload in a running game) and when the game is up (Draconic adds its hook when its own files load, which is before this one: alphabetical order of the
--- autorun files, but the check costs nothing).
-V.Install()
+-- Whether the base's crosshair must not be drawn now: the binoculars' picture is on screen (they have no view in the third person, where the base's crosshair is the one to show), or the
+-- quick menu is open.
+function V.HideCrosshair()
+	local menu, bino = GryMod.FlashMenu, GryMod.FlashBinoculars
 
-hook.Add("InitPostEntity", "GryMod compat draconic view", function()
+	if menu ~= nil and menu.IsOpen() == true then
+		return true
+	end
+
+	if bino ~= nil and bino.IsUp() == true then
+		local viewer = LocalPlayer()
+
+		return not (IsValid(viewer) and viewer:ShouldDrawLocalPlayer())
+	end
+
+	return false
+end
+
+local CROSSHAIR_ID = "drc_crosshair"
+
+-- Puts the wrapper on the crosshair hook of the base. True when it is there (also when it already was), false when Draconic is not installed or its hook is not there.
+function V.InstallCrosshair()
+	if not istable(_G.DRC) then
+		return false
+	end
+
+	local paint = hook.GetTable().HUDPaint
+	local current = paint ~= nil and paint[CROSSHAIR_ID] or nil
+
+	if not isfunction(current) then
+		API.WarnPatchMissing("Draconic Base", "the HUDPaint hook " .. CROSSHAIR_ID, function()
+			local t = hook.GetTable().HUDPaint
+
+			return istable(_G.DRC) and not (t ~= nil and isfunction(t[CROSSHAIR_ID]))
+		end)
+
+		return false
+	end
+
+	if V.wrappers[current] then
+		return true
+	end
+
+	local original = current
+
+	local function wrapper(...)
+		if V.HideCrosshair() then
+			return nil
+		end
+
+		return original(...)
+	end
+
+	V.wrappers[wrapper] = true
+	hook.Add("HUDPaint", CROSSHAIR_ID, wrapper)
+
+	return true
+end
+
+-- Installed when the file loads (a reload in a running game) and when the game is up (Draconic adds its hooks when its own files load, which is before this one: alphabetical order of the
+-- autorun files, but the check costs nothing).
+local function install()
 	V.Install()
-end)
+	V.InstallCrosshair()
+end
+
+install()
+
+hook.Add("InitPostEntity", "GryMod compat draconic view", install)

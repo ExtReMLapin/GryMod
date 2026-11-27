@@ -134,6 +134,81 @@ return {
 				expect(told[1][1]).to.equal("Draconic Base")
 				expect(told[1][2]).to.contain("!DrcLerp")
 			end
+		},
+		{
+			-- fails when the crosshair of the base stays while the binoculars' picture is up (it does not go through the game's crosshair element, which GryMod already hides) or while the quick
+			-- menu is open, when it goes in the third person (where the binoculars have no view and the base's crosshair is the one to show), or when it goes at other times
+			name = "the base's crosshair is hidden while the binoculars are up or the quick menu is open, and only then",
+			func = function()
+				local V = GryMod.DraconicView
+				local up, menu, third = false, false, false
+
+				stub(GryMod.FlashBinoculars, "IsUp", function() return up end)
+				stub(GryMod.FlashMenu, "IsOpen", function() return menu end)
+				stub(_G, "LocalPlayer", function() return {IsValid = function() return true end, ShouldDrawLocalPlayer = function() return third end} end)
+
+				expect(V.HideCrosshair()).to.beFalse()
+				up = true
+				expect(V.HideCrosshair()).to.beTrue()
+				third = true
+				expect(V.HideCrosshair()).to.beFalse()
+				up, third, menu = false, false, true
+				expect(V.HideCrosshair()).to.beTrue()
+			end
+		},
+		{
+			-- fails when the base's HUDPaint hook is not wrapped, when it still draws while the crosshair must be hidden, or when it stops drawing the rest of the time
+			name = "the crosshair wrapper skips the base's drawing while hidden and runs it otherwise",
+			func = function()
+				local V = GryMod.DraconicView
+				local hide, calls = false, 0
+				local original = function() calls = calls + 1 end
+				local calc, added = hookTable({})
+				local paint = {["drc_crosshair"] = original}
+
+				stub(hook, "GetTable", function() return {CalcView = calc, HUDPaint = paint} end)
+				stub(hook, "Add", function(event, id, fn) added[#added + 1] = {event, id, fn} paint[id] = fn end)
+				stub(V, "HideCrosshair", function() return hide end)
+				stub(_G, "DRC", {})
+
+				expect(V.InstallCrosshair()).to.beTrue()
+				expect(#added).to.equal(1)
+				expect(added[1][1]).to.equal("HUDPaint")
+				expect(added[1][2]).to.equal("drc_crosshair")
+
+				paint["drc_crosshair"]()
+				expect(calls).to.equal(1)
+
+				hide = true
+				paint["drc_crosshair"]()
+				expect(calls).to.equal(1)
+
+				-- once only
+				hide = false
+				expect(V.InstallCrosshair()).to.beTrue()
+				expect(#added).to.equal(1)
+			end
+		},
+		{
+			-- fails when the base's crosshair hook is missing and the patch adds one or raises an error, or the owner is not told
+			name = "no crosshair wrapper without the base's hook, and the owner is told",
+			func = function()
+				local V = GryMod.DraconicView
+				local told = {}
+
+				stub(hook, "GetTable", function() return {HUDPaint = {}} end)
+				stub(hook, "Add", function() error("must not add") end)
+				stub(_G, "DRC", {})
+				stub(GryMod.API, "WarnPatchMissing", function(addon, what) told[#told + 1] = {addon, what} end)
+
+				expect(V.InstallCrosshair()).to.beFalse()
+				expect(#told).to.equal(1)
+				expect(told[1][2]).to.contain("drc_crosshair")
+
+				stub(_G, "DRC", nil)
+				expect(V.InstallCrosshair()).to.beFalse()
+				expect(#told).to.equal(1)
+			end
 		}
 	}
 }
