@@ -375,6 +375,11 @@ function Cross.UsableFor(ent, ply, dist)
 		return 0
 	end
 
+	-- an addon that knows who may use it (a prop protection, a locked vehicle) can refuse: GryMod.API.AddUsableFilter
+	if API.UsableFiltered and API.UsableFiltered(ent, ply) then
+		return 0
+	end
+
 	if dist and dist > API.UsableRange(entry) then
 		return 0
 	end
@@ -473,7 +478,7 @@ local ASK_EVERY = 1 -- an NPC that is still aimed at is asked again after this m
 local TRUST_FOR = 2 -- an answer older than this is dropped (the server limits the questions: no answer, no cross)
 local ASK_GAP = 0.2 -- two questions are at least this far apart, the server answers 5 a second to a player
 
-local relations = {} -- [entity index] = {friendly = bool, answered = time, asked = time}
+local relations = {} -- [entity index] = {friendly = bool, relation = "ally"|"neutral"|"hostile", answered = time, asked = time}
 local lastAsk = -math.huge
 
 -- Asks the server whether the NPC of this index is an ally (replaceable by the tests).
@@ -483,9 +488,9 @@ function Cross.AskServer(index)
 	net.SendToServer()
 end
 
--- What the server answered for the NPC at `now`: true (ally), false (not), nil (not known, or too old). Asks the server
--- when the NPC is new or its answer is a second old.
-function Cross.Relation(ent, now)
+-- The entry of the entity's answer at `now` when it is there and fresh, else nil. Asks the server when the entity is new or its answer is a second old (at most one
+-- question every ASK_GAP seconds in all, whoever asks: the crosshair, GryMod.API.ClientRelation).
+local function answerOf(ent, now)
 	local index = ent:EntIndex()
 	local entry = relations[index]
 
@@ -498,16 +503,34 @@ function Cross.Relation(ent, now)
 	end
 
 	if entry and entry.answered and now - entry.answered <= TRUST_FOR then
-		return entry.friendly
+		return entry
 	end
 
 	return nil
 end
 
--- The server's answer.
-function Cross.OnAnswer(index, friendly, now)
+-- What the server answered for the NPC at `now`: true (ally), false (not), nil (not known, or too old).
+function Cross.Relation(ent, now)
+	local entry = answerOf(ent, now)
+
+	return entry and entry.friendly
+end
+
+-- The same answer as a word: "ally", "neutral" or "hostile", nil when it is not known or too old. A server that only says whether it is an ally (the older message) gives
+-- "ally" or "neutral".
+function Cross.RelationName(ent, now)
+	local entry = answerOf(ent, now)
+
+	return entry and entry.relation
+end
+
+local RELATION_NAMES = {[0] = "neutral", "ally", "hostile"}
+
+-- The server's answer (`relation`: the word, when the server sends it).
+function Cross.OnAnswer(index, friendly, now, relation)
 	local entry = relations[index] or {asked = now}
 	entry.friendly, entry.answered = friendly and true or false, now
+	entry.relation = (relation == "ally" or relation == "neutral" or relation == "hostile") and relation or (friendly and "ally" or "neutral")
 	relations[index] = entry
 end
 
@@ -516,11 +539,40 @@ function Cross.ForgetRelations()
 	lastAsk = -math.huge
 end
 
-net.Receive("gry_friendly", function()
-	local index = net.ReadUInt(13)
+-- Reads the message of the server from `reader` (the net library): the index, whether it is an ally, and the relation as a code (0 neutral, 1 ally, 2 hostile) when the
+-- server wrote one after the bool (nil for the older message, which ends there).
+function Cross.ReadAnswer(reader)
+	local index = reader.ReadUInt(13)
+	local friendly = reader.ReadBool()
+	local _, bits = reader.BytesLeft()
+	local code
 
-	Cross.OnAnswer(index, net.ReadBool(), RealTime())
+	if bits and bits > 0 then
+		code = reader.ReadUInt(2)
+	end
+
+	return index, friendly, RELATION_NAMES[code]
+end
+
+net.Receive("gry_friendly", function()
+	local index, friendly, relation = Cross.ReadAnswer(net)
+
+	Cross.OnAnswer(index, friendly, RealTime(), relation)
 end)
+
+-- What a player is to the local player, from the teams (the server's built-in rule): "ally" for a player of the same team when the game has teams (not unassigned 1001, nor
+-- spectator 1002), never the player himself; "neutral" otherwise.
+function Cross.PlayerRelation(ent, ply)
+	if ent ~= ply and ply ~= nil then
+		local team = ent:Team()
+
+		if team == ply:Team() and team ~= 1001 and team ~= 1002 then
+			return "ally"
+		end
+	end
+
+	return "neutral"
+end
 
 -- A crosshair from a converted movie (nil when the movie is missing).
 function Cross.New(movie, theme)

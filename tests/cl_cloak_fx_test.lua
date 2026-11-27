@@ -662,6 +662,51 @@ return {
 			end
 		},
 		{
+			-- fails when the models an addon gives for a player (GryMod.API.AddPlayerPartsProvider: armor, a backpack) are left plain on a camouflaged player, or are drawn with other layers than the body
+			name = "PlayerDraw: the parts the providers give for the player (armor, a backpack) follow the body like the weapon: the refraction and the plain model at the same opacity, only the refraction once done, nothing far away",
+			func = function(state)
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				local armor, pack = fakePlayer(0), fakePlayer(0)
+				local asked = {}
+
+				GryMod.API.AddPlayerPartsProvider("test.cloakparts", function(who, out)
+					asked[#asked + 1] = who
+					out[#out + 1] = armor
+					out[#out + 1] = pack
+				end)
+
+				local ok, err = pcall(function()
+					setState(ply, 0.5)
+					translucent()
+					expect(ply.draws).to.equal(3)
+					expect(armor.draws).to.equal(2) -- refraction, plain model (no sparks)
+					expect(pack.draws).to.equal(2)
+					expect(asked[1]).to.equal(ply)
+					expect(leftClean(log)).to.beTrue()
+
+					armor.draws, pack.draws = 0, 0
+					setState(ply, 1)
+					translucent()
+					expect(armor.draws).to.equal(1)
+					expect(pack.draws).to.equal(1)
+
+					-- far away: the body only (the detail distance), and the provider is not even asked
+					armor.draws, pack.draws, asked = 0, 0, {}
+					ply.center = Vector(GryMod.CloakFX.DetailDistance + 500, 0, 0)
+					translucent()
+					expect(armor.draws).to.equal(0)
+					expect(#asked).to.equal(0)
+				end)
+
+				GryMod.API.RemovePlayerPartsProvider("test.cloakparts")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "WeaponProxy: the weapon the server hides (EF_NODRAW: the engine then refuses to draw it, whoever asks) is drawn through a client model of its world model, bone-merged on the player, made once and kept while the weapon is the same, replaced when it changes, gone with the player's state",
 			func = function(state)
 				local F = GryMod.CloakFX

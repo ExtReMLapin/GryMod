@@ -226,22 +226,24 @@ local function drawable(ent)
 	return (isentity(ent) or istable(ent)) and IsValid(ent)
 end
 
-function API.GetWeaponParts(weapon, out)
+-- Runs the providers of a list on `subject` and gathers what they give into `out` (the caller's table, emptied first): a provider that failed gives nothing, what it
+-- gave is checked (valid entities only) and compacted onto the parts kept so far, and `max` parts at most are kept. Returns out and the count.
+local function gatherParts(providers, subject, out, max)
 	out = out or {}
 
 	for i = #out, 1, -1 do
 		out[i] = nil
 	end
 
-	if not drawable(weapon) then
+	if not drawable(subject) then
 		return out, 0
 	end
 
-	local count, max = 0, API.MAX_WEAPON_PARTS
+	local count = 0
 
-	for i = 1, #partsProviders do
-		local provider = partsProviders[i]
-		local ok = API.SafeCall(provider.callId, provider.fn, weapon, out)
+	for i = 1, #providers do
+		local provider = providers[i]
+		local ok = API.SafeCall(provider.callId, provider.fn, subject, out)
 		local top = #out
 
 		-- what the provider appended is checked and compacted onto the parts kept so far; a provider that failed gives nothing
@@ -264,7 +266,72 @@ function API.GetWeaponParts(weapon, out)
 	return out, count
 end
 
+function API.GetWeaponParts(weapon, out)
+	return gatherParts(partsProviders, weapon, out, API.MAX_WEAPON_PARTS)
+end
+
 API.AddFeature("weaponparts")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Player parts: the models a player wears
+-- ---------------------------------------------------------------------------------------------------------
+
+-- A player can wear models of his own that the engine does not know as part of him (armor, a backpack, an outfit of a mod): the camouflage of another player (or of the local
+-- player in third person) would leave them plain. A provider says which they are, for a player, at the moment it is asked, exactly like the weapon parts above: the camouflage
+-- lays its layers on them, with the same fade as on the body, for a player who is camouflaged, close enough to be drawn in detail. An addon that draws its parts itself hides
+-- them instead, at the hook GryMod_CloakChanged(ply, on, level) (cl_cloak_fx.lua), which is run for every player at each change of his camouflage.
+--
+--   GryMod.API.AddPlayerPartsProvider(id, function(ply, out) ... end)   the function appends the entities (client side models) to `out`
+--   GryMod.API.RemovePlayerPartsProvider(id)
+--   GryMod.API.GetPlayerParts(ply, out)                                 fills `out` (the caller's table, reused) and returns it with the count
+--
+-- A provider runs under SafeCall (five errors in a row switch it off; adding it again re-arms it), what it gives is checked (valid entities only) and the list holds
+-- MAX_PLAYER_PARTS at most. It is asked at every frame for each camouflaged player that is drawn in detail, and only when there is one: keep it cheap. The same id replaces the provider.
+API.MAX_PLAYER_PARTS = 16
+
+local playerProviders = API._playerPartsProviders or {} -- {{id, fn, callId}, ...} in the order they were added
+API._playerPartsProviders = playerProviders
+
+function API.AddPlayerPartsProvider(id, fn)
+	if not isstring(id) or id == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "playerparts:" .. id
+
+	API.SafeCallReset(callId)
+
+	for _, provider in ipairs(playerProviders) do
+		if provider.id == id then
+			provider.fn = fn
+
+			return true
+		end
+	end
+
+	playerProviders[#playerProviders + 1] = {id = id, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemovePlayerPartsProvider(id)
+	for i, provider in ipairs(playerProviders) do
+		if provider.id == id then
+			table.remove(playerProviders, i)
+			API.SafeCallReset(provider.callId)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+function API.GetPlayerParts(ply, out)
+	return gatherParts(playerProviders, ply, out, API.MAX_PLAYER_PARTS)
+end
+
+API.AddFeature("playerparts")
 
 -- ---------------------------------------------------------------------------------------------------------
 -- Weapon menus (client)
@@ -511,3 +578,206 @@ function API.IsCameraOwned(ply, fresh)
 end
 
 API.AddFeature("cameraowner")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- HUD suppressors (client)
+-- ---------------------------------------------------------------------------------------------------------
+-- An addon that draws a HUD of its own (a vehicle's dashboard, a drone's screen, a cinematic) can hide an element of GryMod's HUD while its own is up. A suppressor says,
+-- for an element, whether to hide it now. The names are the ones of GryMod.HUDOptions.List ("radar", "crosshair", "status"...). A hidden element is not drawn and does nothing;
+-- the player's own switch (gry_hud_<name>) is never written, so the element is back as soon as the suppressor says no. A suppressor cannot show what the player switched off.
+--
+--   GryMod.API.AddHudSuppressor(key, function(element, ply) return true end)   true hides the element; anything else leaves it
+--   GryMod.API.RemoveHudSuppressor(key)
+--   GryMod.API.IsHudSuppressed(element)                                        true while any suppressor hides it (what GryMod.HUDOptions.Enabled asks)
+--
+-- A suppressor runs under SafeCall (five errors in a row switch it off; adding it again re-arms it) and must be cheap. It is asked once per frame and element (the answer is kept
+-- for the frame), and only when there is one: with no suppressor this costs a table length. The same key replaces the suppressor.
+local hudSuppressors = API._hudSuppressors or {} -- {{key, fn, callId}, ...} in the order they were added
+API._hudSuppressors = hudSuppressors
+
+local hudFrame, hudAnswers = -1, {}
+
+local function forgetHud()
+	hudFrame = -1
+end
+
+function API.AddHudSuppressor(key, fn)
+	if not isstring(key) or key == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "hudsuppress:" .. key
+
+	API.SafeCallReset(callId)
+	forgetHud()
+
+	for _, suppressor in ipairs(hudSuppressors) do
+		if suppressor.key == key then
+			suppressor.fn = fn
+
+			return true
+		end
+	end
+
+	hudSuppressors[#hudSuppressors + 1] = {key = key, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemoveHudSuppressor(key)
+	for i, suppressor in ipairs(hudSuppressors) do
+		if suppressor.key == key then
+			table.remove(hudSuppressors, i)
+			API.SafeCallReset(suppressor.callId)
+			forgetHud()
+
+			return true
+		end
+	end
+
+	return false
+end
+
+-- Whether a suppressor hides this element. `fresh` (tests) asks them again in the same frame.
+function API.IsHudSuppressed(element, fresh)
+	local count = #hudSuppressors
+
+	if count == 0 then
+		return false
+	end
+
+	local frame = FrameNumber()
+
+	if frame ~= hudFrame or fresh then
+		hudFrame = frame
+
+		for name in pairs(hudAnswers) do
+			hudAnswers[name] = nil
+		end
+	elseif hudAnswers[element] ~= nil then
+		return hudAnswers[element]
+	end
+
+	local ply, hidden = LocalPlayer(), false
+
+	for i = 1, count do
+		local suppressor = hudSuppressors[i]
+		local ok, answer = API.SafeCall(suppressor.callId, suppressor.fn, element, ply)
+
+		if ok and answer == true then
+			hidden = true
+
+			break
+		end
+	end
+
+	hudAnswers[element] = hidden
+
+	return hidden
+end
+
+API.AddFeature("hudsuppress")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The relation of an entity, as the client knows it
+-- ---------------------------------------------------------------------------------------------------------
+-- The relation chain (GryMod.API.Relation) only exists on the server: an NPC's attitude (Disposition) and the providers of the addons are not known to a client. The
+-- crosshair's friendly cross already asks the server about the NPC it aims at; this is the same question for an addon's client code (a prompt that must not show on an
+-- enemy, a marker). It goes through the crosshair's own rate limits, and the answers are kept for two seconds.
+--
+--   GryMod.API.ClientRelation(ent)   "ally", "neutral" or "hostile", or nil while the server has not answered yet (the question goes out in the background, at most five a second
+--                                    in all, and the next call finds the answer; nil also for what is not an entity)
+--
+-- A player is answered at once, from the teams (the server's built-in rule). A client side entity that the server does not know (an index of 0 or less) is "neutral". Ask it
+-- for the entity under the crosshair or a few at a time, not for a whole map in one frame: one question leaves every 0.2 s. Announced by Has("clientrelation").
+function API.ClientRelation(ent)
+	if not (isentity(ent) or istable(ent)) or not IsValid(ent) then
+		return nil
+	end
+
+	local Cross = GryMod.FlashCrosshair
+
+	if not Cross then
+		return nil
+	end
+
+	if ent:IsPlayer() then
+		return Cross.PlayerRelation(ent, LocalPlayer())
+	end
+
+	local index = ent:EntIndex()
+
+	if index <= 0 or index > 8191 then
+		return "neutral"
+	end
+
+	return Cross.RelationName(ent, RealTime())
+end
+
+API.AddFeature("clientrelation")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Usable filters (client)
+-- ---------------------------------------------------------------------------------------------------------
+-- The registry of usable entities (GryMod.API.RegisterUsable) says what the use key does, not who may use it: a prop protection (FPP, NADMOD), a locked vehicle, a door that only
+-- its owner opens. The crosshair opens its "usable" state, and the use prompt comes up, for what the registry names. A filter lets an addon take the prompt away for an entity
+-- this player may not use. It never adds one: an entity the registry does not call usable stays not usable.
+--
+--   GryMod.API.AddUsableFilter(id, function(ent, ply) return false end)   false: no prompt for this entity; anything else (nil, true...) is no opinion
+--   GryMod.API.RemoveUsableFilter(id)
+--   GryMod.API.UsableFiltered(ent, ply)                                   true when a filter says false (what the crosshair asks)
+--
+-- A filter runs under SafeCall (an error is no opinion; five errors in a row switch it off; adding it again re-arms it) and must be cheap: it is asked ten times a second at
+-- most, for the one entity the player aims at, and only when the registry already calls it usable. The same id replaces the filter.
+local usableFilters = API._usableFilters or {} -- {{id, fn, callId}, ...} in the order they were added
+API._usableFilters = usableFilters
+
+function API.AddUsableFilter(id, fn)
+	if not isstring(id) or id == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "usablefilter:" .. id
+
+	API.SafeCallReset(callId)
+
+	for _, filter in ipairs(usableFilters) do
+		if filter.id == id then
+			filter.fn = fn
+
+			return true
+		end
+	end
+
+	usableFilters[#usableFilters + 1] = {id = id, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemoveUsableFilter(id)
+	for i, filter in ipairs(usableFilters) do
+		if filter.id == id then
+			table.remove(usableFilters, i)
+			API.SafeCallReset(filter.callId)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+function API.UsableFiltered(ent, ply)
+	for i = 1, #usableFilters do
+		local filter = usableFilters[i]
+		local ok, answer = API.SafeCall(filter.callId, filter.fn, ent, ply)
+
+		if ok and answer == false then
+			return true
+		end
+	end
+
+	return false
+end
+
+API.AddFeature("usablefilter")
