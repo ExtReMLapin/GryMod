@@ -731,7 +731,7 @@ local function firstPersonOver(ent, s)
 	-- the refraction layer over the arms the engine has just drawn, with the alpha the plain model has lost; at the end of the change (the plain
 	-- model nearly all there) nothing
 	if F.Refract and F.Refract.Active() and layerBase < F.NearlyPlain and IsValid(ent) then
-		F.Refract.Draw(ent, F.Refract.BumpScale(s.amount), F.Refract.Alpha(layerBase), drawPlain)
+		F.Refract.Draw(ent, F.Refract.BumpScale(s.amount), F.Refract.Alpha(layerBase), drawPlain, true)
 	end
 
 	-- the sparks of the original's pixel shader instead of the outline and of the scan lines (which are in the shader)
@@ -741,7 +741,7 @@ local function firstPersonOver(ent, s)
 			local strength = F.SparkStrength(s.amount, s.speed)
 
 			if strength > 0 then
-				F.Shader.Draw(ent, strength, s.amount, drawPlain)
+				F.Shader.Draw(ent, strength, s.amount, drawPlain, true)
 			end
 		end
 

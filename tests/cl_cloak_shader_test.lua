@@ -425,6 +425,56 @@ return {
 			end
 		},
 		{
+			-- fails when the sparks are drawn over the picture of a scope or the dot of a sight in first person (the sparks of the shader covered the lens too), or when the third
+			-- person, which has no `keep`, is changed (a player's unlit parts must be covered: nobody is to see a glowing part of a camouflaged player)
+			name = "Draw with keep: the sparks are put on the covered materials one by one and the kept ones (a scope's lens, a sight's dot) get none; without keep the one override of before",
+			func = function()
+				local S = GryMod.CloakFX.Shader
+				local R = GryMod.CloakFX.Refract
+				stub(S, "works", true)
+				GetConVar(OPTION):SetString("1")
+
+				local material = {sets = {}}
+				function material:SetFloat(k, v) self.sets[k] = v end
+				stub(S, "Material", function() return material end)
+				stub(R, "KeptParts", function() return {false, true, false, true} end)
+
+				local whole, byIndex = {}, {}
+				stub(render, "MaterialOverride", function(m) whole[#whole + 1] = m or false end)
+				stub(render, "MaterialOverrideByIndex", function(index, m) byIndex[#byIndex + 1] = {index = index, material = m or false} end)
+
+				local seen = {}
+				local ent = fakeEntity()
+
+				expect(S.Draw(ent, 0.7, 0.5, function() for _, o in ipairs(byIndex) do seen[#seen + 1] = o.index end end, true)).to.beTrue()
+
+				-- before the draw: the body parts (0 and 2) are given the material, the lens and the dot (1 and 3) are not
+				table.sort(seen)
+				expect(table.concat(seen, ",")).to.equal("0,2")
+
+				-- they are all taken off again afterwards and no whole override was made
+				local off = 0
+
+				for _, o in ipairs(byIndex) do
+					if o.material == false then
+						off = off + 1
+					end
+				end
+
+				expect(off).to.equal(4)
+
+				for _, m in ipairs(whole) do
+					expect(m ~= material).to.beTrue()
+				end
+
+				-- without keep (the third person): one override with the material, none by index
+				whole, byIndex = {}, {}
+				expect(S.Draw(ent, 0.7, 0.5, function() end)).to.beTrue()
+				expect(whole[1]).to.equal(material)
+				expect(#byIndex).to.equal(0)
+			end
+		},
+		{
 			name = "Draw: a constant that has not changed is not set again (the same numbers a frame later set nothing, a new strength sets only the strength), and everything is set again after a second",
 			func = function()
 				local S = GryMod.CloakFX.Shader

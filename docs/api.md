@@ -613,7 +613,9 @@ GryMod.API.GetWeaponParts(weapon, out)      -- fills your table (reused) and ret
 ```
 
 The suit asks at every frame it draws the camouflaged gun in first person, and puts the same layers over each part as over the view model, so an attachment that the player changes
-during the camouflage is the next frame's list: nothing to refresh. A provider runs under `SafeCall` (five errors in a row switch it off), what it gives is checked (valid entities
+during the camouflage is the next frame's list: nothing to refresh. The layers leave alone what the player aims with, found by what the materials ARE and not by any name: an
+unlit material (a reticle, a holographic sight), a translucent or additive one (the glass of a lens, with the dot of a red dot sight painted on it), and a material whose texture is
+not a file (the picture a scope shows, a render target). The body of the weapon and of its attachments, opaque and lit, is camouflaged. A provider runs under `SafeCall` (five errors in a row switch it off), what it gives is checked (valid entities
 only), at most `GryMod.API.MAX_WEAPON_PARTS` (16), and the same id replaces the provider. The patch for TFA is in `lua/grymod/compat/weapons/cl_tfa_parts.lua` ([compat.md](compat.md)).
 
 ## Radar markers (client)

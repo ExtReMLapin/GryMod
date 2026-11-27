@@ -252,6 +252,116 @@ return {
 			end
 		},
 		{
+			-- fails when the layer covers the lens of a scope or the dot of a red dot sight: in first person the picture a scope shows (a render target on its lens) and a
+			-- reticle (an unlit material) are what the player aims with; covered by the refraction they were blurred away. A surface lit by the world (a vertex lit material with a
+			-- texture file) is the body and is covered; an unlit material, or a material whose texture is no file (a render target, a procedural picture) is not. An error material
+			-- is not an optic
+			name = "Keeps: an unlit, translucent or additive material, or one whose texture is not a file (the picture of a scope: a render target), is left as it is; a lit opaque surface, a missing material and a material with no texture are covered",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				local id = math.random(1, 1e9)
+				local rtName = "gry_test_keep_rt_" .. id
+
+				GetRenderTarget(rtName, 16, 16)
+
+				local lit = CreateMaterial("gry_test_keep_lit_" .. id, "VertexLitGeneric", {["$basetexture"] = "models/debug/debugwhite"})
+				local unlit = CreateMaterial("gry_test_keep_unlit_" .. id, "UnlitGeneric", {["$basetexture"] = "models/debug/debugwhite"})
+				local scope = CreateMaterial("gry_test_keep_scope_" .. id, "VertexLitGeneric", {["$basetexture"] = rtName})
+				local bare = CreateMaterial("gry_test_keep_bare_" .. id, "VertexLitGeneric", {})
+				-- glass: a lit material that is translucent or additive (the lens of a red dot sight with the dot painted on it, a hologram)
+				local glass = CreateMaterial("gry_test_keep_glass_" .. id, "VertexLitGeneric", {["$basetexture"] = "models/debug/debugwhite", ["$translucent"] = "1"})
+				local glow = CreateMaterial("gry_test_keep_glow_" .. id, "VertexLitGeneric", {["$basetexture"] = "models/debug/debugwhite", ["$additive"] = "1"})
+
+				expect(R.Keeps("!" .. lit:GetName())).to.beFalse()
+				expect(R.Keeps("!" .. unlit:GetName())).to.beTrue()
+				expect(R.Keeps("!" .. scope:GetName())).to.beTrue()
+				expect(R.Keeps("!" .. bare:GetName())).to.beFalse()
+				expect(R.Keeps("!" .. glass:GetName())).to.beTrue()
+				expect(R.Keeps("!" .. glow:GetName())).to.beTrue()
+				expect(R.Keeps("gry_test_keep_does_not_exist_" .. id)).to.beFalse()
+				expect(R.Keeps("")).to.beFalse()
+				expect(R.Keeps(nil)).to.beFalse()
+			end
+		},
+		{
+			-- fails when keeping is the default (the third person body, the old behaviour, would leave unlit parts of a player plain), when a kept part is overridden, when a covered
+			-- part is not, or when a model with nothing to keep is told apart from one that has
+			name = "Draw with keep: the parts that Keeps names get no override and the others do; without keep every part is overridden as before",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				stub(R, "works", true)
+				GetConVar(OPTION):SetString("1")
+
+				local material = {}
+				function material:SetFloat() end
+				stub(R, "Part", function() return {material = material, tiling = 1} end)
+				stub(R, "Keeps", function(path) return path == "lens" or path == "reticle" end)
+
+				local overrides = {}
+				stub(render, "MaterialOverrideByIndex", function(index, m) overrides[#overrides + 1] = {index = index, material = m} end)
+
+				local ent = {}
+				function ent:IsValid() return true end
+				function ent:GetMaterials() return {"body", "lens", "rail", "reticle"} end
+				local model = "models/test_keep_" .. math.random(1, 1e9) .. ".mdl"
+				function ent:GetModel() return model end
+
+				local seen = {}
+
+				R.Draw(ent, 1.5, 0.7, function() for _, o in ipairs(overrides) do seen[#seen + 1] = o.index end end, true)
+
+				-- before the draw: the body (0) and the rail (2) only
+				table.sort(seen)
+				expect(table.concat(seen, ",")).to.equal("0,2")
+
+				-- every override is taken off again, the kept parts' too (nothing to leave on)
+				local takenOff = {}
+
+				for _, o in ipairs(overrides) do
+					if o.material == nil then
+						takenOff[o.index] = true
+					end
+				end
+
+				expect(takenOff[0] and takenOff[2]).to.beTrue()
+
+				-- without keep: all four, as before
+				overrides, seen = {}, {}
+				R.Draw(ent, 1.5, 0.7, function() for _, o in ipairs(overrides) do seen[#seen + 1] = o.index end end)
+				table.sort(seen)
+				expect(table.concat(seen, ",")).to.equal("0,1,2,3")
+			end
+		},
+		{
+			-- fails when a model that has something to keep is not told to the shader's layer, or a model that has nothing to keep gets the slower per part path
+			name = "KeptParts: the list of the kept parts of a model (one entry for each material), nil when the model has nothing to keep",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+
+				stub(R, "Keeps", function(path) return path == "lens" end)
+				stub(R, "Part", function() return {material = {}, tiling = 1} end)
+
+				local function entity(materials)
+					local ent = {}
+					local model = "models/test_kept_" .. math.random(1, 1e9) .. ".mdl"
+
+					function ent:IsValid() return true end
+					function ent:GetMaterials() return materials end
+					function ent:GetModel() return model end
+
+					return ent
+				end
+
+				local kept = R.KeptParts(entity({"body", "lens"}))
+
+				expect(kept ~= nil).to.beTrue()
+				expect(#kept).to.equal(2)
+				expect(kept[1]).to.beFalse()
+				expect(kept[2]).to.beTrue()
+				expect(R.KeptParts(entity({"body", "rail"}))).to.beNil()
+			end
+		},
+		{
 			name = "Draw: a constant that has not changed is not set again (the same numbers a frame later set nothing, a new alpha sets only the alpha), each part keeps its own tiling, and everything is set again after a second",
 			func = function()
 				local R = GryMod.CloakFX.Refract

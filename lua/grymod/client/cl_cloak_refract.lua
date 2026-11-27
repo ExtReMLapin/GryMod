@@ -288,36 +288,96 @@ end
 -- Drawing
 --------------------------------------------------------------------------------------------------------------------
 
--- The parts (one for each material of the model) of an entity, resolved once for each model.
-local modelParts = {}
+-- Whether the layer leaves a material as it is, in first person (the view model, the hands and the models a weapon draws itself). What the player aims with is not the
+-- body of the weapon: the picture of a scope (a render target on its lens), the dot or the reticle of a sight (an unlit material, drawn as it is whatever the light),
+-- the glass of a lens. Covered by the refraction they were blurred away and the weapon could not be aimed. The body is an opaque surface lit by the world (a vertex lit
+-- material with a texture file) and is covered. So an optic is found by what its materials ARE, for any weapon of any base: no weapon, no attachment and no material is
+-- named. A material is kept when it is unlit (a reticle, a holographic sight), translucent or additive (glass: the lens of a red dot sight has its dot painted on a
+-- translucent lit material), or when its texture is not a file (a render target, a picture made by the game: no .vtf of that name in the game). A missing material and one
+-- with no texture are covered. Answered once for each material.
+local FLAG_ADDITIVE, FLAG_TRANSLUCENT = 128, 2097152 -- MATERIAL_VAR_ADDITIVE (1 << 7) and MATERIAL_VAR_TRANSLUCENT (1 << 21) of the engine's material flags
+local kept = {}
+
+function R.Keeps(path)
+	if not isstring(path) or path == "" then
+		return false
+	end
+
+	local known = kept[path]
+
+	if known ~= nil then
+		return known
+	end
+
+	local keeps = false
+	local material = Material(path)
+
+	if material and not material:IsError() then
+		if material:GetShader() == "UnlitGeneric" or bit.band(material:GetInt("$flags"), FLAG_ADDITIVE + FLAG_TRANSLUCENT) ~= 0 then
+			keeps = true
+		else
+			local texture = material:GetTexture("$basetexture")
+
+			if texture and not texture:IsErrorTexture() and not file.Exists("materials/" .. texture:GetName() .. ".vtf", "GAME") then
+				keeps = true
+			end
+		end
+	end
+
+	kept[path] = keeps
+
+	return keeps
+end
+
+-- The parts (one for each material of the model) of an entity, resolved once for each model, and the list of the materials that are kept (false when there is none).
+local modelParts, modelKept = {}, {}
 
 local function partsOf(ent)
-	local model = ent:GetModel()
-	local list = modelParts[R.PIXEL .. R.VERTEX .. model]
+	local key = R.PIXEL .. R.VERTEX .. ent:GetModel()
+	local list = modelParts[key]
 
 	if not list then
 		list = {}
 
+		local keptList, any = {}, false
+
 		for index, path in ipairs(ent:GetMaterials()) do
+			local keeps = R.Keeps(path) == true
+
 			list[index] = R.Part(path)
+			keptList[index] = keeps
+			any = any or keeps
 		end
 
-		modelParts[R.PIXEL .. R.VERTEX .. model] = list
+		modelParts[key] = list
+		modelKept[key] = any and keptList or false
 	end
 
-	return list
+	return list, modelKept[key]
+end
+
+-- The materials of a model that the layers leave as they are (one entry for each material, true for a kept one), or nil when the model has none.
+function R.KeptParts(ent)
+	local _, keptList = partsOf(ent)
+
+	return keptList or nil
 end
 
 -- Draws `ent` through the layer: the bend (`bump`, from R.BumpScale of the cloak's level) and the alpha (R.Alpha of the plain model's opacity). The
 -- picture behind has to be copied before the model is drawn (render.UpdateScreenEffectTexture). `draw` draws the entity in a way its own draw
 -- hook lets through (cl_cloak_fx.lua). Every part of the model has its own material for the length of the draw; whatever happens the overrides come
--- off. Returns whether it drew.
+-- off. `keep` (first person: the view model, the hands, the parts of a weapon) leaves the materials that R.Keeps names as they are. Returns whether it drew.
 local drawConstants
 
-function R.Draw(ent, bump, alpha, draw)
+function R.Draw(ent, bump, alpha, draw, keep)
 	if not R.Active() or alpha < R.MIN_ALPHA or not IsValid(ent) then return false end
 
-	local list = partsOf(ent)
+	local list, keptList = partsOf(ent)
+
+	if not keep then
+		keptList = nil
+	end
+
 	local curtime, w, h = CurTime(), ScrW(), ScrH()
 
 	-- the same numbers for every part but the tiling of its relief map: one set of tables, kept from a draw to the next, with the tiling put in for each part
@@ -325,9 +385,11 @@ function R.Draw(ent, bump, alpha, draw)
 	drawConstants = constants
 
 	for index, part in ipairs(list) do
-		constants[3][1] = part.tiling
-		setConstants(part.material, constants)
-		render.MaterialOverrideByIndex(index - 1, part.material)
+		if not (keptList and keptList[index]) then
+			constants[3][1] = part.tiling
+			setConstants(part.material, constants)
+			render.MaterialOverrideByIndex(index - 1, part.material)
+		end
 	end
 
 	local ok = pcall(draw or ent.DrawModel, ent)

@@ -305,10 +305,11 @@ end
 
 -- Draws `ent` through the shader, added to the picture, with the strength of the sparks (0 to 1; the original's max(speed, transition ^ 2))
 -- and the camouflage's level `amount` (0 to 1). `draw` draws the entity in a way its own draw hook lets through (cl_cloak_fx.lua).
--- Whatever happens, the material override comes off. Returns whether it drew.
+-- Whatever happens, the material override comes off. `keep` (first person) leaves the materials that the refraction layer keeps (the picture of a scope, the dot of a
+-- sight: GryMod.CloakFX.Refract.Keeps) without sparks. Returns whether it drew.
 local drawConstants
 
-function Sh.Draw(ent, strength, amount, draw)
+function Sh.Draw(ent, strength, amount, draw, keep)
 	if not Sh.Active() or strength < Sh.MIN_STRENGTH or not IsValid(ent) then return false end
 
 	local material = Sh.Material()
@@ -317,12 +318,31 @@ function Sh.Draw(ent, strength, amount, draw)
 	drawConstants = Sh.Constants(CurTime(), amount, strength, ScrH(), ent:EntIndex(), Sh.Drift(ent), ent:GetPos(), ent:GetAngles(), drawConstants)
 	setConstants(material, drawConstants)
 
+	-- a model with something to keep gets the material part by part; any other model, and the third person, the one override as before
+	local Refract = GryMod.CloakFX and GryMod.CloakFX.Refract
+	local keptList = keep and Refract and Refract.KeptParts and Refract.KeptParts(ent) or nil
+
 	local ok = pcall(function()
-		render.MaterialOverride(material)
+		if keptList then
+			for index = 1, #keptList do
+				if not keptList[index] then
+					render.MaterialOverrideByIndex(index - 1, material)
+				end
+			end
+		else
+			render.MaterialOverride(material)
+		end
+
 		draw(ent)
 	end)
 
 	render.MaterialOverride(nil)
+
+	if keptList then
+		for index = 1, #keptList do
+			render.MaterialOverrideByIndex(index - 1, nil)
+		end
+	end
 
 	return ok
 end

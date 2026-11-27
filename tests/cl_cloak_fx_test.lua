@@ -1083,6 +1083,59 @@ return {
 			end
 		},
 		{
+			-- fails when the first person layers cover everything of the weapon: the picture of a scope and the dot of a sight are what the player aims with and were blurred away
+			-- (reported by the owner with a scope and a red dot sight on a TFA weapon). The layers are told to keep them for the view model, the hands and each part of the weapon
+			name = "first person: the refraction and the sparks layers are told to keep the optics (the view model, the hands and the parts of the weapon)",
+			func = function(state)
+				local log = recordRender()
+				local F = GryMod.CloakFX
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands, sight = fakePlayer(0), fakePlayer(0), fakePlayer(0)
+				local gun = {IsValid = function() return true end}
+				local refractCalls, shaderCalls = {}, {}
+
+				function me:GetViewModel() return vm end
+				function me:GetActiveWeapon() return gun end
+				setState(me, 0.5)
+				stub(F.Refract, "Active", function() return true end)
+				stub(F.Refract, "Draw", function(ent, bump, alpha, draw, keep) refractCalls[#refractCalls + 1] = {ent = ent, keep = keep} return true end)
+				stub(F.Shader, "Active", function() return true end)
+				stub(F.Shader, "Draw", function(ent, strength, amount, draw, keep) shaderCalls[#shaderCalls + 1] = {ent = ent, keep = keep} return true end)
+				GryMod.API.AddWeaponPartsProvider("test.cloak", function(_, out) out[#out + 1] = sight end)
+
+				local ok, err = pcall(function()
+					hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+					hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+					hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+					hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+
+					-- the view model, its part, and the hands: all three, every time with keep
+					expect(#refractCalls).to.equal(3)
+
+					for _, call in ipairs(refractCalls) do
+						expect(call.keep).to.beTrue()
+					end
+
+					expect(refractCalls[1].ent).to.equal(vm)
+					expect(refractCalls[2].ent).to.equal(sight)
+					expect(refractCalls[3].ent).to.equal(hands)
+
+					for _, call in ipairs(shaderCalls) do
+						expect(call.keep).to.beTrue()
+					end
+
+					expect(#shaderCalls > 0).to.beTrue()
+				end)
+
+				GryMod.API.RemoveWeaponPartsProvider("test.cloak")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails when a part that cannot be drawn (a model that raises an error) leaves the material or the opacity on for what is drawn next, or stops the other parts
 			name = "first person: a part whose drawing fails leaves nothing on and does not stop the next part",
 			func = function(state)
