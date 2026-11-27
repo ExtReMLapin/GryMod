@@ -11,7 +11,7 @@ local SCREENS = {{3840, 2160}, {3440, 1440}, {1920, 1080}, {1280, 720}}
 
 -- Draws a started sequence with the mesh calls replaced by recorders and returns the bounding box of every vertex
 -- (screen pixels): minX, minY, maxX, maxY.
-local function boundsOf(sequence, w, h)
+local function boundsOf(sequence, w, h, placement)
 	local originals = {mesh = {}, render = {}}
 	local names = {mesh = {"Begin", "Position", "TexCoord", "Color", "AdvanceVertex", "End"}, render = {"SetMaterial", "OverrideBlend"}}
 	local current
@@ -40,7 +40,7 @@ local function boundsOf(sequence, w, h)
 
 	local ignored = Flash.IgnoreBlendModes
 	Flash.IgnoreBlendModes = true
-	local x, y, scale = Boot.Placement(w, h)
+	local x, y, scale = (placement or Boot.Placement)(w, h)
 	local ok, err = pcall(sequence.Draw, sequence, x, y, scale)
 	Flash.IgnoreBlendModes = ignored
 
@@ -99,6 +99,50 @@ return {
 					expect(math.abs((x0 + x1) / 2 / screen[1] - 0.5) < 0.03).to.beTrue()
 					local centre = (y0 + y1) / 2 / screen[2]
 					expect(centre > 0.76 and centre < 0.84).to.beTrue()
+				end
+			end
+		},
+		{
+			-- fails without Boot.PlacementFor, the setting gry_hud_lost_centered and the shift of the Lost screen
+			name = "gry_hud_lost_centered: the Lost screen (only that one) goes to the middle of the screen, still centred across; off, it stays low as in its movie",
+			func = function(state)
+				local convar = GetConVar("gry_hud_lost_centered")
+				expect(convar).toNot.beNil()
+				expect(convar:GetDefault()).to.equal("0")
+
+				local saved = convar:GetString()
+
+				local ok, err = pcall(function()
+					for _, screen in ipairs(SCREENS) do
+						local lost = function(w, h) return Boot.PlacementFor("lost", w, h) end
+
+						convar:SetString("0")
+						local x0, y0, x1, y1 = boundsOf(started("lost", 2.5), screen[1], screen[2], lost)
+						local low = (y0 + y1) / 2 / screen[2]
+						expect(low > 0.76 and low < 0.84).to.beTrue()
+
+						convar:SetString("1")
+						x0, y0, x1, y1 = boundsOf(started("lost", 2.5), screen[1], screen[2], lost)
+						local centre = (y0 + y1) / 2 / screen[2]
+						expect(x0 >= 0 and x1 <= screen[1] and y0 >= 0 and y1 <= screen[2]).to.beTrue()
+						expect(math.abs((x0 + x1) / 2 / screen[1] - 0.5) < 0.03).to.beTrue()
+						expect(math.abs(centre - 0.5) < 0.03).to.beTrue()
+
+						-- the two other sequences keep the stage where it was, whatever the setting
+						for _, kind in ipairs({"initialize", "reboot"}) do
+							local px, py, pscale = Boot.PlacementFor(kind, screen[1], screen[2])
+							local bx, by, bscale = Boot.Placement(screen[1], screen[2])
+							expect(px).to.equal(bx)
+							expect(py).to.equal(by)
+							expect(pscale).to.equal(bscale)
+						end
+					end
+				end)
+
+				convar:SetString(saved)
+
+				if not ok then
+					error(err, 0)
 				end
 			end
 		}
