@@ -312,7 +312,7 @@ end
 -- installs (API.UsableClassResolver, cl_usable_class.lua: it asks the server) gives the real class, or nil while it is not known, and the generic name
 -- stays (it matches no entry). A resolver that fails is ignored.
 function API.UsableClassOf(ent)
-	local class = ent:GetClass()
+	local class = API.ClassOf(ent) or ent:GetClass() -- the real class (SHARED-CLASS-1)
 	local resolve = API.UsableClassResolver
 
 	if resolve and string.find(class, "class C_", 1, true) == 1 then

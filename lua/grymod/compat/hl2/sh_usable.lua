@@ -154,7 +154,7 @@ register("hl2_tanks", {
 local TALKERS = {npc_citizen = true, npc_barney = true, npc_alyx = true, npc_vortigaunt = true}
 
 register("hl2_talkers", {
-	match = function(ent) return ask(ent, "IsNPC") == true and TALKERS[ent:GetClass()] == true and (ask(ent, "Health") or 0) > 0 end,
+	match = function(ent) return ask(ent, "IsNPC") == true and TALKERS[GryMod.API.ClassOf(ent) or ent:GetClass()] == true and (ask(ent, "Health") or 0) > 0 end,
 	icon = "use", text = "TALK", use = "repeat", cooldown = 1
 })
 

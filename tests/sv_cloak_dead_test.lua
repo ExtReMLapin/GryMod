@@ -27,6 +27,7 @@ local function fakePlayer(alive, energy)
 
 	function ply:IsValid() return true end
 	function ply:Alive() return self.alive end
+	function ply:InVehicle() return false end
 	function ply:GetVelocity() return Vector(0, 0, 0) end
 	function ply:GetNW2Float(name, default) if name == "GryEnergy" then return self.energy end return default end
 	function ply:SetNW2Float(name, value) if name == "GryEnergy" then self.energy = value end end

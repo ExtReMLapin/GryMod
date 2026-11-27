@@ -519,7 +519,7 @@ return {
 					expect(table.concat(names, ",")).to.equal("gry_suit_handling,gry_suit_melee_cost,gry_suit_reload_rate,gry_suit_shot_cost,gry_suit_shot_cost_by_ammo,gry_suit_strength_melee,gry_suit_strength_recoil")
 
 					-- the radar tab of the Server page has the radar ones and the reset action
-					for _, name in ipairs({"gry_radar_allies_always", "gry_radar_detect", "gry_radar_objects", "gry_radar_pings", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh", "action:gry_zonemap_reset"}) do
+					for _, name in ipairs({"gry_radar_allies_always", "gry_radar_blast_rings", "gry_radar_detect", "gry_radar_objects", "gry_radar_pings", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh", "action:gry_zonemap_reset"}) do
 						expect(server.GryAdminControls[name] ~= nil).to.beTrue()
 					end
 				end)

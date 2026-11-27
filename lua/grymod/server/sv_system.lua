@@ -54,8 +54,55 @@ local selectableModes = {
 	[GryMod.Modes.STRENGTH] = true
 }
 
+-- Does an addon that brought the player back with Player:Spawn (a ragdoll that gets up, a respawn in place) want the suit to keep its state? The hook
+-- GryMod_CanResetOnSpawn(ply) is the veto: a handler that answers false keeps the energy, the mode and the camouflage (put on again in silence, see below),
+-- the radar's tags, a malfunction in progress and the delays of the regeneration. Every PlayerSpawn hook of GryMod that resets something asks here (they run in
+-- no fixed order), and the handlers are asked ONCE for a spawn: the answer is kept for the tick. A player who has no mode yet (his first spawn) has nothing to keep.
+-- A handler that raises an error is not a veto and does not break the spawn.
+GryMod.SpawnRestore = GryMod.SpawnRestore or {}
+
+function GryMod.SpawnRestore.Reset(ply)
+	if IsValid(ply) then
+		ply.gryKeepSpawn = nil
+	end
+end
+
+function GryMod.KeepStateOnSpawn(ply)
+	if not IsValid(ply) or ply.Nanosuit_mode == nil then
+		return false
+	end
+
+	local asked = ply.gryKeepSpawn
+	local tick, now = engine.TickCount(), CurTime()
+
+	if asked and asked.tick == tick and asked.time == now then
+		return asked.keep
+	end
+
+	local ok, answer = pcall(hook.Run, "GryMod_CanResetOnSpawn", ply)
+
+	if not ok then
+		ErrorNoHalt("[GryMod] A handler of GryMod_CanResetOnSpawn failed: " .. tostring(answer) .. "\n")
+		answer = nil
+	end
+
+	local keep = answer == false
+
+	ply.gryKeepSpawn = {tick = tick, time = now, keep = keep}
+
+	return keep
+end
+
 --CreateConVar( "GryMod", 1, false, false )
 hook.Add("PlayerSpawn", "GryModSpawn", function(ply)
+	if GryMod.KeepStateOnSpawn(ply) then
+		-- the engine's Spawn erased the notarget flag, the material and the run speed: the mode that the player had is put on again, with no start-up of the HUD, no
+		-- message (the client's mode did not change) and no announcement (it is the same mode)
+		ply:SetNanosuitMode(ply.Nanosuit_mode, false, GryMod.ModeReasons.RESTORE)
+
+		return
+	end
+
 	-- the energy first: a handler of GryMod_ModeChanged (cause SPAWN) runs inside SetNanosuitMode and must see the full bar of the new life
 	ply:SetNW2Float("GryEnergy", 100)
 	ply:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.SPAWN)
@@ -137,6 +184,32 @@ end)
 -- `reason` (one of GryMod.ModeReasons, OTHER when left out) is the 4th argument of GryMod_ModeChanged, which runs when the mode changes and at EVERY
 -- respawn (cause SPAWN, even armor to armor); with `networked` it is also sent to the client, which runs the same hook for its own player (cl_hud.lua). When the suit cannot take the mode asked (down or
 -- off) it goes to armor and the reason is the real one (malfunction, disabled), not the asker's.
+-- The notarget flag (FL_NOTARGET) of the camouflage. It is set while the player is camouflaged AND on foot: a camouflaged player who sits in a vehicle is a vehicle that moves, and the
+-- AI must not ignore it (the owner's decision); the source of truth is Player:InVehicle(), true for a seat of any base. GryMod only takes off what it set itself (`GryOwnsNoTarget`): a
+-- notarget of the engine's command or of another addon is never erased, and one that was already there when the camouflage began stays when it ends.
+-- Sync brings the flag to the state that is wanted; it is asked at every mode change, by the engine's vehicle hooks and by the half-second timer of the camouflage's AI (sv_cloak_ai.lua).
+GryMod.NoTarget = GryMod.NoTarget or {}
+
+function GryMod.NoTarget.Wanted(ply)
+	return ply.Nanosuit_mode == GryMod.Modes.CLOAK and ply:Alive() and not ply:InVehicle()
+end
+
+function GryMod.NoTarget.Sync(ply)
+	if not IsValid(ply) then
+		return
+	end
+
+	if GryMod.NoTarget.Wanted(ply) then
+		if not ply:IsFlagSet(FL_NOTARGET) then
+			ply:SetNoTarget(true)
+			ply.GryOwnsNoTarget = true
+		end
+	elseif ply.GryOwnsNoTarget then
+		ply.GryOwnsNoTarget = nil
+		ply:SetNoTarget(false)
+	end
+end
+
 function meta:SetNanosuitMode(mode, networked, reason)
 	if not self:Alive() then
 		return false, "dead"
@@ -192,7 +265,6 @@ function meta:SetNanosuitMode(mode, networked, reason)
 		end
 
 		self:SetNW2Bool("GryCloak", true)
-		self:SetNoTarget(true)
 		self:DrawWorldModel(false)
 	else
 		if reason == GryMod.ModeReasons.SPAWN then
@@ -212,11 +284,12 @@ function meta:SetNanosuitMode(mode, networked, reason)
 			hands:SetMaterial("")
 		end
 
-		self:SetNoTarget(false)
 		self:DrawWorldModel(true)
 	end
 
+	-- (a respawn comes here too, in armor: what GryMod set in the old life is taken off, the engine's Spawn having cleared it already)
 	self.Nanosuit_mode = mode
+	GryMod.NoTarget.Sync(self)
 	self:SetNW2Int("GryMode", mode) -- both sides know the mode (sh_suit_weapons.lua: the weapons' adapters)
 	hook.Run("GryNanosuitMode", self, mode) -- sv_cloak_ai.lua: the NPCs forget a camouflaged player
 
@@ -242,13 +315,19 @@ end
 --
 -- Whose shot is this: the player's, or a scripted weapon's whose owner is a player; and only in the camouflage. Returns the player and whether it is an
 -- alt fire (the right click alone is down), or nothing.
-function GryMod.CloakShooter(ent)
+-- `data` is the table of the bullets (EntityFireBullets): a vehicle that fires on behalf of the player (LVS, Glide, simfphys: the entity that fires is the vehicle or its gun) names him
+-- as `data.Attacker`. The shooter is looked for first in the entity (the player, or the weapon he holds), then in the attacker: one shot is one shooter, never counted twice.
+function GryMod.CloakShooter(ent, data)
 	if not IsValid(ent) then return nil end
 
 	local ply = ent
 
 	if ent:IsWeapon() then
 		ply = ent:GetOwner()
+	end
+
+	if not (IsValid(ply) and ply:IsPlayer()) and istable(data) and IsValid(data.Attacker) and data.Attacker:IsPlayer() then
+		ply = data.Attacker
 	end
 
 	if not IsValid(ply) or not ply:IsPlayer() or ply.Nanosuit_mode ~= GryMod.Modes.CLOAK then
@@ -260,7 +339,7 @@ end
 
 -- Every bullet of the server goes through here: the check is cheap and nothing is returned (the bullets are left as they are).
 hook.Add("EntityFireBullets", "GryCloakShot", function(ent, data)
-	local ply, alt = GryMod.CloakShooter(ent)
+	local ply, alt = GryMod.CloakShooter(ent, data)
 
 	if not ply then return end
 
@@ -276,6 +355,11 @@ net.Receive("gry_empty_energy", function(len, ply)
 end)
 
 function GryMod.SuperJump(ply, key)
+	-- the jump key in a vehicle is not a jump (and costs nothing)
+	if ply:InVehicle() then
+		return
+	end
+
 	if key == IN_JUMP and ply:Alive() and ply.Nanosuit_mode == GryMod.Modes.SPEED and ply:OnGround() and not GryMod.Config.InfiniteArmor then
 		-- a jump in speed mode costs a little energy in the original game
 		local speedCost = GryMod.Mech.JumpCost(GryMod.Modes.SPEED)
@@ -331,7 +415,7 @@ hook.Add("KeyRelease", "keyreleasestrengthgry", GryMod.RSuperJump)
 -- Is the player really using the Speed mode (sprinting fast enough, on the ground or swimming)? The one test of the
 -- sprint drain below and of the rate told to the client (GryMod.EnergyRate in sv_health.lua).
 function GryMod.IsSpeedSprinting(ply)
-	return ply:IsSprinting() == true and ply:GetVelocity():LengthSqr() > GryMod.Movement.SprintSpeedSqr() and (ply:IsOnGround() or ply:WaterLevel() > 1) and ply.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor
+	return not ply:InVehicle() and ply:IsSprinting() == true and ply:GetVelocity():LengthSqr() > GryMod.Movement.SprintSpeedSqr() and (ply:IsOnGround() or ply:WaterLevel() > 1) and ply.Nanosuit_mode == GryMod.Modes.SPEED and not GryMod.Config.InfiniteArmor
 end
 
 hook.Add("Think", "GrySpeedThink", function()
@@ -378,7 +462,7 @@ hook.Add("Think", "GryCloakThink", function()
 		if v.Nanosuit_mode == GryMod.Modes.CLOAK and not GryMod.Config.InfiniteArmor and v:Alive() then
 			v:DrawWorldModel(false) -- Because the WeaponEquip/Switch is not working
 			local amnt = v:GetNW2Float("GryEnergy")
-			local amnt_to_drain = GryMod.Mech.CloakDrain(v:GetVelocity():Length()) * FrameTime()
+			local amnt_to_drain = GryMod.Mech.CloakDrain(GryMod.Mech.CloakSpeed(v)) * FrameTime()
 
 			if amnt_to_drain > amnt or GryMod.Mech.CloakFailsAt(amnt) then
 				v:SetNanosuitMode(GryMod.Modes.ARMOR, true, GryMod.ModeReasons.ENERGY)

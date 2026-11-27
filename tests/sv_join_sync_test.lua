@@ -64,6 +64,8 @@ local function fakePlayer(log, mode)
 	function ply:SetRunSpeed() end
 	function ply:SetJumpPower() end
 	function ply:SetNoTarget() end
+	function ply:InVehicle() return false end
+	function ply:IsFlagSet() return false end
 	function ply:DrawWorldModel() end
 	function ply:SetMaterial() end
 

@@ -6,6 +6,12 @@
 -- change, suit failure, death, disconnect) they get their old attitude back. Only what was changed is given back: an
 -- NPC that was not hostile, or that another addon made friendly or neutral, is never touched.
 --
+-- A camouflaged player who SITS in a vehicle is not hidden (the owner's decision: the AI sees a vehicle move and must not ignore it): the three are not made neutral to
+-- him while he is seated, and the notarget flag is off (sv_system.lua, GryMod.NoTarget); when he gets out still camouflaged both are back. The source of truth is
+-- Player:InVehicle(), true for a seat of any base (the Half-Life 2 seats, simfphys, LVS, Glide). The engine's hooks PlayerEnteredVehicle / PlayerLeaveVehicle make the change AT ONCE;
+-- the half-second timer below, which runs as long as somebody is camouflaged (seated or not), catches a base that puts a player in without them (SetParent, an exotic EnterVehicle)
+-- and a flag that was lost (a possession that ended), within half a second.
+--
 -- Cost: nothing while nobody is camouflaged (no timer). Otherwise one timer every half second that searches the
 -- listed classes only (ents.FindByClass, never every entity).
 
@@ -51,8 +57,14 @@ end
 -- [npc] = {[player] = the disposition it had before we made it neutral}; weak so that a removed NPC or player goes away
 local changed = setmetatable({}, {__mode = "k"})
 
+-- In the camouflage mode, alive (seated or not)
 local function isCloaked(ply)
 	return IsValid(ply) and ply:Alive() and ply.Nanosuit_mode == GryMod.Modes.CLOAK
+end
+
+-- Camouflaged and on foot: the one the NPCs must forget
+local function isHidden(ply)
+	return isCloaked(ply) and not ply:InVehicle()
 end
 
 local function anyCloaked()
@@ -119,15 +131,25 @@ function CloakAI.Tick()
 
 	local hidden = {}
 
+	local anyone = false
+
 	for _, ply in ipairs(player.GetAll()) do
 		if isCloaked(ply) then
-			hidden[#hidden + 1] = ply
+			anyone = true
+			-- the catch-up: the notarget flag follows the state that is wanted (camouflaged and on foot), whatever made it differ
+			GryMod.NoTarget.Sync(ply)
+
+			if isHidden(ply) then
+				hidden[#hidden + 1] = ply
+			else
+				release(ply)
+			end
 		else
 			release(ply)
 		end
 	end
 
-	if #hidden == 0 then
+	if not anyone then
 		stopTimer()
 
 		return
@@ -153,9 +175,36 @@ local function refresh()
 	CloakAI.Tick()
 end
 
+-- Called when the player's seat changes (and by the tests)
+CloakAI.Refresh = refresh
+
 hook.Add("GryNanosuitMode", "GryCloakAI", function()
 	refresh()
 end)
+
+-- A camouflaged player gets in or out of a vehicle: at once, not at the next mode change nor the next tick. (The engine tells it with the player still in or already out depending on
+-- the path that was taken, so the state is also asked again on the next frame.)
+local function seatChanged(ply)
+	if not IsValid(ply) then
+		return
+	end
+
+	GryMod.NoTarget.Sync(ply)
+
+	if ply.Nanosuit_mode == GryMod.Modes.CLOAK then
+		refresh()
+
+		timer.Simple(0, function()
+			if IsValid(ply) then
+				GryMod.NoTarget.Sync(ply)
+				refresh()
+			end
+		end)
+	end
+end
+
+hook.Add("PlayerEnteredVehicle", "GryCloakAI", seatChanged)
+hook.Add("PlayerLeaveVehicle", "GryCloakAI", seatChanged)
 
 -- A dead player keeps his mode until he respawns: he is not hidden any more
 hook.Add("PostPlayerDeath", "GryCloakAI", function(ply)

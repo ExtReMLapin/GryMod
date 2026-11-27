@@ -30,6 +30,11 @@ function Mech.RepairSoundPlaying(ply, now)
 end
 
 hook.Add("PlayerSpawn", "GryMod_ENER_HLT_VARS", function(ply)
+	-- an addon that restores the player in place (GryMod_CanResetOnSpawn) keeps the delays and the base of the recharge as they are
+	if GryMod.KeepStateOnSpawn and GryMod.KeepStateOnSpawn(ply) then
+		return
+	end
+
 	ply.last_repair_sound = nil
 	ply.next_health_regen = CurTime()
 	ply.health_on_dmg = ply:Health()
@@ -72,6 +77,14 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		return
 	end
 
+	-- the hit filters of the other addons (GryMod.API.AddHitFilter, sv_api.lua): "ignore" is a hit the suit has nothing to do with (a vehicle's own crash damage, a
+	-- fall that another addon handles), "bypass" a hit that goes to the health whatever the bar holds
+	local verdict = GryMod.API.HitVerdict and GryMod.API.HitVerdict(ply, dmginfo)
+
+	if verdict == "ignore" then
+		return
+	end
+
 	local amt = dmginfo:GetDamage()
 
 	-- the armor below can take all of the hit and the hooks run in no fixed order: the damage arrows and the hit marker
@@ -80,13 +93,13 @@ hook.Add("EntityTakeDamage", "Grymod damage handeling", function(ply, dmginfo)
 		GryMod.Feedback.OnHit(ply, dmginfo:GetAttacker(), amt)
 	end
 
-	-- electric hits burn energy and heavy impacts can put the suit down (sv_malfunction.lua)
-	if GryMod.Malfunction then
+	-- electric hits burn energy and heavy impacts can put the suit down (sv_malfunction.lua); a hit that goes round the bar burns nothing
+	if GryMod.Malfunction and verdict ~= "bypass" then
 		GryMod.Malfunction.OnDamage(ply, dmginfo)
 	end
 
 	-- a suit that is off (GryMod.API.SetSuitEnabled) has no armor: the hit goes through and the bar is not touched
-	local armorOn = ply.Nanosuit_mode == GryMod.Modes.ARMOR and not ply:GetNW2Bool("GryDisabled", false)
+	local armorOn = verdict ~= "bypass" and ply.Nanosuit_mode == GryMod.Modes.ARMOR and not ply:GetNW2Bool("GryDisabled", false)
 
 	if armorOn then
 		local energy = ply:GetNW2Float("GryEnergy")
@@ -259,7 +272,7 @@ function GryMod.EnergyRate(ply)
 
 	-- GryCloakThink (sv_system.lua)
 	if ply.Nanosuit_mode == GryMod.Modes.CLOAK then
-		local drain = Mech.CloakDrain(ply:GetVelocity():Length())
+		local drain = Mech.CloakDrain(Mech.CloakSpeed(ply))
 
 		if drain * FrameTime() > energy or Mech.CloakFailsAt(energy) then
 			return 0

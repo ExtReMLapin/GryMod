@@ -87,6 +87,11 @@ end)
 
 -- a new life starts with a full bar (sv_system.lua): the next time it empties is a new event
 hook.Add("PlayerSpawn", "GryMod API energy", function(ply)
+	-- a restore in place (GryMod_CanResetOnSpawn) keeps the bar: the event of an empty bar is not armed again
+	if GryMod.KeepStateOnSpawn and GryMod.KeepStateOnSpawn(ply) then
+		return
+	end
+
 	ply.gryApiEnergyEmpty = false
 end)
 
@@ -321,6 +326,99 @@ function API.Relation(ply, ent)
 
 	return GryMod.Friendly.BuiltinRelation(ply, ent)
 end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Hit filters: an addon says what the suit does with ONE hit on a player
+-- ---------------------------------------------------------------------------------------------------------
+
+-- A filter is fn(ply, dmginfo) -> nil | "ignore" | "bypass". nil (or anything else): the suit does what it always does. "ignore": the suit does NOTHING for
+-- this hit (no energy, no arrows, no hit marker, no malfunction, no sound, no marker on the radar). "bypass": the whole damage goes to the health and the bar is
+-- not touched. The filters are asked by priority (the higher first, then in the order of registration) and the first real answer wins. They run under
+-- SafeCall (an error skips the filter, the fifth in a row switches it off), once per hit: the suit's hooks that need the verdict (the armor, the radar's
+-- marker) all ask API.HitVerdict, which keeps the answer of the hit it was last asked about.
+local hitFilters = {} -- sorted
+local hitSeq = 0
+
+local function sortHitFilters()
+	table.sort(hitFilters, function(a, b)
+		if a.priority ~= b.priority then
+			return a.priority > b.priority
+		end
+
+		return a.seq < b.seq
+	end)
+end
+
+-- Adds (or replaces, with the same id) a filter. The default priority is 0. Returns true, or false and why not.
+function API.AddHitFilter(id, fn, priority)
+	if not isstring(id) or id == "" then
+		return false, "invalid id"
+	end
+
+	if not isfunction(fn) then
+		return false, "invalid function"
+	end
+
+	if priority ~= nil and (not isnumber(priority) or priority ~= priority) then
+		return false, "invalid priority"
+	end
+
+	API.RemoveHitFilter(id)
+	API.SafeCallReset("hitfilter:" .. id)
+
+	hitSeq = hitSeq + 1
+	hitFilters[#hitFilters + 1] = {id = id, fn = fn, priority = priority or 0, seq = hitSeq, callId = "hitfilter:" .. id}
+	sortHitFilters()
+
+	return true
+end
+
+-- Removes a filter; returns whether there was one.
+function API.RemoveHitFilter(id)
+	for i, filter in ipairs(hitFilters) do
+		if filter.id == id then
+			table.remove(hitFilters, i)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+local lastHit = {}
+
+-- What the filters say about this hit: "ignore", "bypass" or nil. Free (no call at all) while no filter is registered.
+function API.HitVerdict(ply, dmginfo)
+	if hitFilters[1] == nil then
+		return nil
+	end
+
+	local now = CurTime()
+
+	if lastHit.info == dmginfo and lastHit.ply == ply and lastHit.time == now then
+		return lastHit.verdict
+	end
+
+	local verdict
+
+	for i = 1, #hitFilters do
+		local filter = hitFilters[i]
+		local ok, answer = API.SafeCall(filter.callId, filter.fn, ply, dmginfo)
+
+		if ok and (answer == "ignore" or answer == "bypass") then
+			verdict = answer
+
+			break
+		end
+	end
+
+	lastHit.info, lastHit.ply, lastHit.time, lastHit.verdict = dmginfo, ply, now, verdict
+
+	return verdict
+end
+
+API.AddFeature("hitfilter")
 
 -- ---------------------------------------------------------------------------------------------------------
 -- HUD events: the server asks a client to play a HUD effect (the client side is cl_api.lua)

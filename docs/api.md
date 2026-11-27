@@ -83,6 +83,74 @@ Off means: armor mode and no mode change, the armor takes no hit (the whole dama
 recharges, the suit cannot go down in a malfunction, and the HUD is hidden on that player's screen. It is a flag
 (`GryDisabled`, a networked boolean), not a malfunction. It stays through death and respawn until you set `true`.
 
+### Hit filters: what the suit does with one hit
+
+Some damage is not the suit's business: a vehicle's own crash damage that your addon handles, a fall your addon already cushions, a hit that must go through whatever the
+bar holds. A filter says what the suit does with ONE hit on a player:
+
+```lua
+-- server
+GryMod.API.AddHitFilter("my_addon", function(ply, dmginfo)
+	if dmginfo:IsDamageType(DMG_VEHICLE) and MyAddon.OwnsCrash(dmginfo) then
+		return "ignore"   -- the suit does NOTHING for this hit
+	end
+
+	if MyAddon.IsLethalFall(ply, dmginfo) then
+		return "bypass"   -- the whole damage goes to the health, the bar is not touched
+	end
+
+	-- return nothing: the suit does what it always does
+end, 10)                  -- priority, 0 by default
+
+GryMod.API.RemoveHitFilter("my_addon")
+GryMod.API.Has("hitfilter")
+```
+
+- `"ignore"`: no energy taken, no damage arrows, no hit marker, no malfunction, no armor sound, no "armor absorbed" report, and the radar does not mark the NPC that struck. The damage
+  is left exactly as it came (another addon may still scale it).
+- `"bypass"`: the damage goes to the health as it is, in every mode and with the infinite armor too; the bar is not touched and no malfunction starts. The arrows and the hit marker still
+  tell the hit, and the health's regeneration waits as after any damage.
+- The filters are asked by priority (the higher first, then in the order of registration); the first one that answers `"ignore"` or `"bypass"` wins and the others are not asked. Any other
+  answer (nothing, `true`, another text) is "no opinion".
+- A filter runs under `GryMod.API.SafeCall`: one that raises an error is skipped for that hit, and five errors in a row switch it off (one console line). Adding the same id again replaces it
+  and arms it again. It is asked once per hit, whatever number of the suit's parts need the answer. It returns `true`, or `false` and why (`"invalid id"`, `"invalid function"`,
+  `"invalid priority"`). A player in god mode takes no damage and the filters are not asked.
+- Without any filter nothing changes: the suit's behaviour is the one before this existed.
+
+### Keep the suit at a respawn in place: `GryMod_CanResetOnSpawn(ply)`
+
+Every spawn resets the suit: a full bar, armor mode, the HUD's start-up. An addon that brings a player back with `Player:Spawn()` (a ragdoll that gets up, a respawn in place, a seat
+that releases him) wants none of that. It says so with a veto:
+
+```lua
+hook.Add("GryMod_CanResetOnSpawn", "my_addon", function(ply)
+	if ply.MyAddonGettingUp then
+		return false   -- keep the suit as it is
+	end
+end)
+```
+
+A handler that returns `false` keeps the state at that `PlayerSpawn`: the energy, the radar's tags and markers, a malfunction in progress and the recharge delays stay; the mode and
+the camouflage the player had are put on again in silence (the engine's Spawn erased the notarget flag, the material and the run speed); the HUD plays no start-up and the client is told
+nothing (its mode did not change). The mode is put back with the cause `GryMod.ModeReasons.RESTORE` (`"restore"`, see above), and `GryMod_ModeChanged` is not fired (the mode did not change).
+The handlers are asked ONCE per spawn, whatever number of the suit's parts need the answer; a handler that raises an error is not a veto. A player who has no suit state yet (his first
+spawn) is reset as usual. Without a handler that says `false` every spawn is what it always was.
+
+### The suit in a vehicle
+
+The suit works in a vehicle as it does on foot: no refusal, no cut of the camouflage when the player gets in. Some rules follow from the vehicle being a machine that moves:
+
+- **A seated player counts as still**: the camouflage drains as for a player who stands still (not by the speed of the vehicle), a seated player is not "moving" for the recharge and the health's
+  regeneration, the speed sprint does not run and the jump key is not a jump (no energy). The test is `Player:InVehicle()`, true for a seat of any base (Half-Life 2, simfphys, LVS, Glide
+  or one that does not exist yet).
+- **The AI does not ignore a camouflaged player in a vehicle** ("they see a vehicle move"). While he is seated GryMod takes off the notarget flag it had set, and the classes with
+  `cloakBlind` are not made blind to him; when he gets out and is still camouflaged the flag is put back. It happens at once (`PlayerEnteredVehicle` / `PlayerLeaveVehicle`), and the half-second
+  timer that runs while somebody is camouflaged corrects a base that puts a player in without those hooks (the delay is half a second at most). Going camouflaged while seated does not set
+  the flag; ending the camouflage while seated puts nothing back at the exit. Your adapter must NOT set a notarget for a seated player.
+- **GryMod only undoes what it set.** A notarget set by the engine's `notarget` command or by another addon (a possession, a tool) is never taken off by a mode change or by the vehicle logic.
+- **A vehicle's bullets are the player's**: a bullet fired with the player as `data.Attacker` (`EntityFireBullets`: LVS, Glide, simfphys weapons) ends the camouflage like a shot on foot and makes the
+  noise of a shot (`cloak_fire`, see "Suit noises"). A shot is one shot: the weapon he holds and its owner are not counted twice.
+
 ## Suit events (hooks)
 
 | Hook | When |
@@ -98,6 +166,7 @@ recharges, the suit cannot go down in a malfunction, and the HUD is hidden on th
 | `GryMod_ArmorAbsorbed(ply, absorbed, passed)` | a hit was taken by the armor: `absorbed` points went to the armor, `passed` points went on to the health (`absorbed + passed` is the hit). Only when `absorbed > 0` |
 | `GryMod_SprintStart(ply)`, `GryMod_SprintEnd(ply)` | the speed-mode sprint began, ended |
 | `GryMod_SuitNoise(ply, pos, radius, kind)` | the suit made a noise that an AI could hear (see "Suit noises" below) |
+| `GryMod_Explosion(pos, radius, inflictor, attacker)` | an addon blew something up with `util.BlastDamage` (see "Explosion rings"); told for every blast, with or without a ring |
 | `GryMod_TargetSpotted(ply, ent, relation)` | the player's binoculars spotted `ent` (the scan ended on it and the radar shows it from now on). Once, the first time the entity is tagged for this player. `relation` is `"ally"`, `"neutral"` or `"hostile"` (the relation chain below) |
 
 The other hooks of this table run on the server only. `GryMod_ModeChanged` also runs on the client, for the local player. The old hooks `GryNanosuitMode(ply, mode)` and `GryUseEnergy(ply)` still fire (on the server).
@@ -117,6 +186,7 @@ The 4th argument of `GryMod_ModeChanged` is one of these plain strings, on the s
 | `GryMod.ModeReasons.OTHER` | `"other"` | a caller of `Player:SetNanosuitMode` that gave no cause |
 | `GryMod.ModeReasons.VETOED` | `"vetoed"` | the server refused a request (a veto, or something that is not a mode) and sends back the mode it really keeps |
 | `GryMod.ModeReasons.SYNC` | `"sync"` | the server's answer when the client has finished loading: the client learns the real mode |
+| `GryMod.ModeReasons.RESTORE` | `"restore"` | a respawn in place that an addon vetoed (`GryMod_CanResetOnSpawn`): the mode is put on again in silence; it is not announced (the mode did not change) and never crosses the network today. Id 9 on the wire (added at the end of the list) |
 
 A respawn is always announced (`reason == SPAWN`), also from armor to armor (`mode == oldMode == GryMod.Modes.ARMOR`), also the first spawn of a new
 player. When the mode was not armor, `oldMode` is the mode the player died in. For the other causes the hook runs only when the mode changes: the same
@@ -249,6 +319,59 @@ GryMod.API.RemoveRelationProvider("my_addon")
 
 A provider returns one of the three words, or `nil` for no opinion; any other value is ignored. Adding an id again replaces its
 provider. A provider is never asked about an invalid player or entity.
+
+## Vehicles (server and client)
+
+A car of another addon is not an engine vehicle with a seat: a simfphys car is a scripted entity and the player sits on a separate seat, an LVS or a Glide vehicle has its own seats,
+and `Player:GetVehicle()` answers the SEAT, or nothing. The radar must not list the car the player sits in, the colour of a vehicle comes from its real driver, the binoculars must not scan
+what you sit in. Tell GryMod once how to find the vehicle of a player (a shared file, both realms ask):
+
+```lua
+GryMod.API.AddVehicleProvider("my_addon", {
+	ofPlayer = function(ply) return MyAddon.GetCar(ply) end,   -- required: the vehicle entity or nil
+	driver = function(vehicle) return vehicle:GetDriverPlayer() end, -- optional: the player (or NPC) at the wheel, or nil
+	kind = "ground"                                           -- optional: "ground" (default), "air" or "water"
+})
+
+GryMod.API.RemoveVehicleProvider("my_addon")
+
+GryMod.API.GetVehicleOf(ply)        -- the vehicle the player is in, or nil
+GryMod.API.GetVehicleDriver(vehicle) -- the player or NPC at the wheel, or nil
+GryMod.API.GetVehicleKind(vehicle)   -- "ground", "air" or "water"
+GryMod.API.Has("vehicles")
+```
+
+- `GetVehicleOf` asks the providers in the order they were added; the first that answers a valid entity wins. When none does it falls back on the engine's `Player:GetVehicle()` (the Half-Life 2
+  vehicles). `GetVehicleDriver` asks the providers that have a `driver`, then the entity's own `GetDriver`.
+- `GetVehicleKind` is the `kind` of the provider that found the vehicle (a provider with both `driver` and `kind` also claims a vehicle nobody asked about yet when its `driver` answers for it).
+  `kind` may also be a function `fn(vehicle)` that answers one of the three words. A vehicle no provider knows is `"air"` when its registry entry has `type = "flying"`, `"ground"` otherwise.
+  The radar's range for each kind stays a matter of the registry (`RegisterTracked`).
+- Every function of a provider runs under `GryMod.API.SafeCall`: an error is "no answer", and five in a row switch that function off (adding the provider again arms it again). Adding a key again
+  replaces the provider and keeps its place.
+- `AddVehicleProvider` returns `true`, or `false` and why (`"invalid key"`, `"the spec must be a table"`, `"ofPlayer must be a function"`, `"driver must be a function"`, `"kind must be ..."`).
+- GryMod itself uses them: the radar does not list the vehicle the player sits in, and the colour of a vehicle on the radar is the one of its driver (server); the binoculars and the HUD read them on the
+  client.
+
+## Class and creature providers (server and client)
+
+Two questions about an entity that other addons answer in their own way. Both are shared; every per-class lookup of GryMod (the registry of tracked entities, the radar's icon, the `heavy` and
+`shock` rules, the use prompt's registry) asks the first.
+
+```lua
+-- ZBase replaces Entity:GetClass: its NPCs answer the class of their wrapper. Say what the real class is.
+GryMod.API.AddClassProvider("my_addon", function(ent) return ent.RealClass end)   -- a class name, or nil for no opinion
+GryMod.API.RemoveClassProvider("my_addon")
+GryMod.API.ClassOf(ent)        -- the real class: the first provider that answers a non-empty text, else ent:GetClass(); nil for what is not a valid entity
+
+-- a DrGBase nextbot is not an NPC for the engine; for GryMod it is a living creature
+GryMod.API.AddCreatureProvider("my_addon", function(ent) return ent.IsMyCreature == true end)
+GryMod.API.RemoveCreatureProvider("my_addon")
+GryMod.API.IsCreature(ent)     -- true for an NPC (Entity:IsNPC) or when a provider answers exactly `true`
+GryMod.API.Has("class")  GryMod.API.Has("creature")
+```
+
+Providers are asked in the order they were added, under `GryMod.API.SafeCall` (an error is "no answer"; five in a row switch the provider off; adding it again arms it again). With no provider
+`ClassOf` is `Entity:GetClass()` and nothing more. `IsCreature` is what the guards that used to test `IsNPC()` ask (the radar's contacts, the crosshair's living target, the NPC that hurt the player).
 
 ## Binoculars: spotting and the hologram
 
@@ -740,6 +863,20 @@ same second. A ring of more than 4 m makes one echo, as the original does. The s
 automatic pings off; a report through the function always goes out. The player's `gry_hud_radarpings` hides the rings. The rings are drawn through the
 marker sources above (key `gry_pings`).
 
+### Blasts of `util.BlastDamage`
+
+A rocket, a shell or a bomb that another addon makes with `util.BlastDamage` creates no `env_explosion`, so it never rang the radar. GryMod wraps `util.BlastDamage` ONCE at load (installing
+again does not stack; the original runs first with the arguments it was given and its results are returned; only GryMod's own part is protected) and rings the radar for a blast of **150 units of radius or
+more**, with the size of its radius (the same rule as an `env_explosion`). A blast and an `env_explosion` of the same place and the same moment (an addon often does both) ring ONCE, in either order; two
+`env_explosion` at the same place still ring twice. The server's `gry_radar_blast_rings` (administrators, on by default, under `gry_radar_pings`: with that one off nothing rings) turns the rings of blasts
+off. Your adapters must NOT call `ReportRadarPing` for a blast any more.
+
+```lua
+hook.Add("GryMod_Explosion", "my_addon", function(pos, radius, inflictor, attacker)
+	-- server: told for every util.BlastDamage, ring or not (the option and the radius do not matter). The return value is not read; an error is shown and never breaks the blast.
+end)
+```
+
 ### Team mates
 
 In a team game (at least two teams with players: `Player:Team()` is neither the unassigned, the spectator nor the connecting team) the living players of
@@ -816,6 +953,10 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
 | `heavy` | boolean | server: a hit by this entity (attacker or inflictor) that breaks the armor of a player in armor mode puts the suit down for 3 s (`gry_malfunction_impact`). Matched by class, base or `match` |
 | `shock` | `"light"` or `"strong"` | server: a hit by this inflictor is a light shock (flicker, energy drain) or a strong one (suit down for 5 s), whatever the damage type (`gry_malfunction_shock`) |
+| `dead` | `function(ent)` | server: `true` when the entity is destroyed: it is not a contact (see "`dead`, `awareness`, `crew` and `facing`") |
+| `awareness` | `function(ent, ply)` | server: `level, exposure, seen, heard`, the registry's equivalent of `ENT:GetGryAwareness` |
+| `crew` | `function(ent)` | server: the occupants of a vehicle (players and NPCs); its relation follows theirs |
+| `facing` | `function(ent)` | the world forward `Vector` of the entity, for the heading of its icon |
 | `cloakBlind` | boolean, needs a `class` | server: this NPC keeps a camouflaged player in mind for good, so the server makes it neutral to him and makes it forget him while he is camouflaged (`gry_cloak_ai`) |
 
 A vehicle or a device (an entity that is neither an NPC nor a nextbot) is a radar contact when its entry gives it a `radar` rule (the stock entries
@@ -889,6 +1030,21 @@ end
 - Your class must still be a radar contact: register it with `GryMod.API.RegisterTracked("my_addon_soldier", {class = "my_soldier", radar = "hostile"})`.
 - Every other entity keeps exactly today's rule.
 
+### `dead`, `awareness`, `crew` and `facing`: for entities that cannot carry a method
+
+Four optional functions, all run under `GryMod.API.SafeCall` (an error is "no answer"; five in a row switch the function off). They exist for the vehicles and entities of other addons, whose
+class you do not own.
+
+| Field | Answers | The radar uses it to |
+| --- | --- | --- |
+| `dead = function(ent)` | `true` when the entity is destroyed | not list it (and forget its tag), not let the binoculars tag it, not count it for the danger bar. A wrecked vehicle is not a contact |
+| `awareness = function(ent, ply)` | `level, exposure, seen, heard`, like `ENT:GetGryAwareness` | the same as the method does (see above); the method wins when the entity has both |
+| `crew = function(ent)` | a list of players and NPCs, the occupants | the relation of the vehicle when its entry gives no `relation` of its own: hostile if one occupant is hostile to the player, else allied if one is allied, else neutral. The player himself does not count |
+| `facing = function(ent)` | a world forward `Vector` | the heading of the contact's icon. Nothing, a null vector or an error: the present rule (the entity's yaw, 90 degrees from it for an engine vehicle) |
+
+Without `crew` a vehicle takes the colour of its DRIVER (`GryMod.API.GetVehicleDriver`, see "Vehicles"). The client may read `facing` and `dead` too (the registry is shared); the server reads them for
+the radar.
+
 ### Dangers: the grenade warning
 
 An entry with a `danger` table makes the entity a danger: the HUD warns the player about it with the grenade-detect icon (its label,
@@ -939,6 +1095,8 @@ is armed and what the binoculars may tag; the client draws.
 | `shape` | stored | stored | nothing reads it yet; the radar draws the icon of `type` |
 | `priority` | yes | yes | the order of the entries |
 | `heavy`, `shock`, `cloakBlind` | yes | stored | the suit's malfunction rules and the camouflage's AI rule (server only) |
+| `dead`, `awareness`, `crew` | yes | stored | the radar's rules for the entities of other addons (server only) |
+| `facing` | yes | yes | the heading of the contact's icon: the server for the message, the client for what it draws itself |
 | `danger.armed` | yes | | the server reads the state and networks it (`GryArmed`) |
 | `danger.ownerOf` | yes | | who threw it (`GryThrower`) |
 | `danger.label` | | yes | the text of the warning |

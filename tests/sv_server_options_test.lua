@@ -8,7 +8,7 @@
 
 local WHITELIST = {
 	"gry_campaign_objectives", "gry_campaign_secrets", "gry_cloak_ai", "gry_cloak_fade_seconds", "gry_drown_rules", "gry_energy_net", "gry_grenade_armed_only", "gry_health_regen", "gry_infinite_armor", "gry_malfunction",
-	"gry_mechanics", "gry_movement", "gry_objectives", "gry_radar_allies_always", "gry_radar_detect", "gry_radar_objects", "gry_radar_pings", "gry_radar_teammates", "gry_realistic_fall", "gry_suit_handling", "gry_suit_melee_cost",
+	"gry_mechanics", "gry_movement", "gry_objectives", "gry_radar_allies_always", "gry_radar_blast_rings", "gry_radar_detect", "gry_radar_objects", "gry_radar_pings", "gry_radar_teammates", "gry_realistic_fall", "gry_suit_handling", "gry_suit_melee_cost",
 	"gry_suit_reload_rate", "gry_suit_shot_cost", "gry_suit_shot_cost_by_ammo", "gry_suit_strength_melee", "gry_suit_strength_recoil", "gry_sv_nightvision", "gry_zonemap", "gry_zonemap_navmesh"
 }
 

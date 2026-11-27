@@ -88,7 +88,7 @@ local function asAdmin(isAdmin, fn)
 	end
 end
 
-local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_radar_pings", "gry_radar_detect", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh"}
+local SERVER_BOXES = {"gry_radar_allies_always", "gry_radar_objects", "gry_radar_pings", "gry_radar_blast_rings", "gry_radar_detect", "gry_radar_teammates", "gry_zonemap", "gry_zonemap_navmesh"}
 
 -- what must not be in the Config menu any more: the settings of the radar, the compass and the maps
 local RADAR_CONVARS = {
