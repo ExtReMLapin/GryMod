@@ -35,6 +35,7 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_arc9_hud.lua` | ARC9's own HUD (weapon name, ammunition, fire mode) crowds the bottom left corner: `gry_arc9_hide_hud` (on by default, ARC9 tab of the Compatibility page) hides it while GryMod's HUD is up. Its key hints and customization menu stay, none of its settings is changed. |
 | | `sh_tfa_suit.lua`, `sv_tfa_suit.lua`, `sh_arc9_suit.lua`, `sv_arc9_suit.lua` | What the suit does to a TFA or ARC9 weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each, the same for both bases. |
 | | `sv_tfa.lua`, `sv_arc9.lua` | The attacks of TFA and ARC9 that are not bullets (a knife's stab, a bash, a grenade's throw, ARC9's launcher under the barrel) end the camouflage, through the base's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
+| `compat/vehicles/` | `sh_glide.lua`, `sv_glide.lua`, `cl_glide.lua` | Glide (StyledStrike's vehicle base): its vehicles on the radar, heavy for the suit, a danger for its missiles, the ENTER VEHICLE prompt, a camera owner, the respawn that keeps the suit, the lock-on that does not see a camouflaged driver. See "Glide" below. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -121,6 +122,30 @@ The original holds the binoculars in place of the weapon: `gry_binoculars_hide_w
 | 16. Settings | The ARC9 tab: its HUD, and the suit's server settings (the same as TFA's). |
 | 17. Shipping | Loader lines, syntax check and loader test, stand-in tests (`tests/cl_compat_arc9_test.lua`, `tests/sv_compat_arc9_suit_test.lua`, ...) and the live checks above. |
 | 18. Hooks | ARC9's own global hooks (`ARC9_<Stat>Hook`, `ARC9_Hook_...`), `pcall`, `nil` when nothing changes; nothing of ARC9 is replaced but `ARC9.ShouldDrawHUD` (a wrapper, for the HUD option). |
+
+## Glide: what is read and what was tried
+
+Glide (https://github.com/StyledStrike/gmod-glide) is a vehicle base made of scripted entities. A vehicle is not an engine vehicle (`IsVehicle()` is false) and the player sits on a
+seat that is a child of it (`Player:GetVehicle()` answers the seat, `ply:GlideGetVehicle()` the vehicle). Everything the adapter knows was **read in Glide's code** (commit 5fd934e of
+2026-11-26: its wiki documents its functions, not its hooks) and tested with **stand-ins** (`tests/sh_compat_glide_test.lua`, `sv_compat_glide_test.lua`, `cl_compat_glide_test.lua`):
+**no test with the real Glide was made yet** (it is not installed). The adapter does nothing without Glide.
+
+| What | How | Setting |
+| --- | --- | --- |
+| The vehicle of a player, its driver, its kind (air for helicopters and planes, water for boats) | `AddVehicleProvider("glide", ...)` | |
+| On the radar once scanned (the rectangle; the flying unit for aircraft; not trailers; not wrecks), heavy for the suit (not motorcycles), the colour of its crew, facing +X | `RegisterTracked` on `base_glide` and its bases | |
+| The missiles (`glide_missile` and the ones built on it) in the grenade warning, only for the player they follow | `RegisterTracked` with `danger` (`base`, `ownerOf = ent.attacker`, `warnFor`) | |
+| ENTER VEHICLE under the crosshair (not for trailers, dimmed while locked) | `RegisterUsable` | |
+| Glide's camera has the view: no view of GryMod, the heading from the drawn view | `AddCameraOwner("glide", ...)` | |
+| A player who gets up from a ragdoll keeps his suit (Glide gets him back with `Player:Spawn()`) | `GryMod_CanResetOnSpawn`, with the hook `Glide_PrePlayerUnRagdoll` | |
+| A camouflaged driver is not locked on by a missile (half of the camouflage on) | the hook `Glide_CanLockOn` | server: `gry_glide_cloak_lockon` (1) |
+| A missile or a shell fired from the hands or the vehicle ends the camouflage (bullets are seen by the engine's hook) | `OnEntityCreated` on the classes built on `glide_missile` / `glide_projectile`, `GryMod.API.ReportAttack` | |
+| The name Glide writes over a camouflaged player is `???` | the hook `Glide_PlayerTagColor` | `gry_glide_tag_cloak` (1) |
+| Glide's dashboard (the dial in the bottom right) | the hook `Glide_CanDrawHUD` | `gry_glide_hide_hud` (0) |
+| The night vision key that Glide also uses (N is its neutral gear) does nothing in its vehicles | `GryMod_CanUseView("nightvision", "key")` | `gry_glide_nv_key` (1) |
+
+Not done, and why: a blast of Glide (`Glide.CreateExplosion`, `util.BlastDamageInfo`) gives no radar ring while the core wraps `util.BlastDamage` only; a bullet that a vehicle fires
+with no driver and a turret placed by a player carry their creator as the attacker, so the core's `data.Attacker` rule may end that creator's camouflage.
 
 ## Adding a patch
 

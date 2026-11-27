@@ -97,7 +97,7 @@ return {
 
 				local names = tabNames(sheet)
 
-				expect(table.concat(names, ",")).to.equal("Suit effects,TFA,ARC9,Other weapon bases")
+				expect(table.concat(names, ",")).to.equal("Suit effects,TFA,ARC9,Other weapon bases,Glide")
 			end
 		},
 		{
