@@ -239,6 +239,16 @@ return {
 					hook.Run("TFA_PostPrimaryAttack", gun)
 					expect(ply:GetNW2Float("GryEnergy")).to.equal(92.5)
 
+					-- the calibre: an SMG round costs 0.75 of the rifle's price, a magnum round 1.5
+					ply:SetNW2Float("GryEnergy", 100)
+					hook.Run("TFA_PostPrimaryAttack", weapon(ply, {GetStatL = function(_, stat) if stat == "Primary.Ammo" then return "smg1" end end}))
+					expect(math.abs(ply:GetNW2Float("GryEnergy") - (100 - 7.5 * 0.75)) < 0.001).to.beTrue()
+					ply:SetNW2Float("GryEnergy", 100)
+					hook.Run("TFA_PostPrimaryAttack", weapon(ply, {GetStatL = function(_, stat) if stat == "Primary.Ammo" then return "357" end end}))
+					expect(math.abs(ply:GetNW2Float("GryEnergy") - (100 - 7.5 * 1.5)) < 0.001).to.beTrue()
+					ply:SetNW2Float("GryEnergy", 100)
+					hook.Run("TFA_PostPrimaryAttack", gun)
+
 					ply:SetNW2Float("GryEnergy", 3)
 					hook.Run("TFA_PostPrimaryAttack", gun)
 					expect(ply:GetNW2Float("GryEnergy")).to.equal(0)

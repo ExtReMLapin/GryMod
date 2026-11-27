@@ -61,7 +61,10 @@ hook.Add("TFA_PostPrimaryAttack", KEY, function(weapon)
 			return
 		end
 
-		local cost = SW.ShotCost(SW.ModeOf(ply))
+		-- the calibre: TFA names the weapon's kind of ammunition in its Primary.Ammo stat
+		local stat = weapon.GetStatL
+		local ammo = isfunction(stat) and stat(weapon, "Primary.Ammo") or nil
+		local cost = SW.ShotCost(SW.ModeOf(ply), ammo)
 
 		if cost > 0 then
 			API.AddEnergy(ply, -cost)

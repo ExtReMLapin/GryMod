@@ -44,6 +44,8 @@ local function tfaTab(root, Panel)
 		}
 	})
 
+	GryMod.AdminOption(Panel, "Strength mode: the calibre counts", "gry_suit_shot_cost_by_ammo", "bool", {into = strength, help = "A shot costs more energy with a bigger calibre: pistol and SMG rounds less, magnum, sniper and buckshot more. Off: the same price for every weapon, like the original game."})
+
 	local speed = GryMod.OptionsCategory(root, "Speed mode", true)
 
 	GryMod.AdminOption(Panel, "Speed mode: faster weapon handling", "gry_suit_handling", "bool", {into = speed, help = "Like the original game: a weapon is drawn, put away and raised faster (x1.75) and a melee swing is faster (x1.5)."})

@@ -47,7 +47,7 @@ local INTERACTIVE = {DCheckBoxLabel = true, DButton = true, DComboBox = true, DN
 local RADAR_MENU = {gry_radar_allies_always = true, gry_radar_objects = true, gry_radar_pings = true, gry_radar_detect = true, gry_radar_teammates = true, gry_zonemap = true, gry_zonemap_navmesh = true}
 
 -- the server settings that are on the Compatibility page (cl_options_compat.lua, the TFA tab): not in the Config menu either
-local COMPAT_MENU = {gry_suit_handling = true, gry_suit_reload_rate = true, gry_suit_shot_cost = true, gry_suit_strength_melee = true, gry_suit_strength_recoil = true}
+local COMPAT_MENU = {gry_suit_handling = true, gry_suit_reload_rate = true, gry_suit_shot_cost = true, gry_suit_shot_cost_by_ammo = true, gry_suit_strength_melee = true, gry_suit_strength_recoil = true}
 
 local function notInConfig(name)
 	return RADAR_MENU[name] == true or COMPAT_MENU[name] == true

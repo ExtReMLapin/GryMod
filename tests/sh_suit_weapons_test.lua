@@ -122,11 +122,48 @@ return {
 			end
 		},
 		{
+			-- fails when the cost of a shot does not follow the calibre (the kind of ammunition): a pistol or SMG round must cost less than a rifle round, a magnum, a sniper round and
+			-- buckshot more; an ammunition the table does not know costs the plain price; the setting at 0 gives the flat price of the original game for every weapon
+			name = "ShotCost: follows the calibre (pistol and SMG rounds cost less than rifle rounds, magnum, sniper and buckshot more), an unknown ammunition costs the plain price, and gry_suit_shot_cost_by_ammo 0 is the original's flat price",
+			func = function()
+				local cost = GetConVar("gry_suit_shot_cost")
+				local by = GetConVar("gry_suit_shot_cost_by_ammo")
+
+				expect(by ~= nil).to.beTrue()
+
+				local before, beforeBy = cost:GetString(), by:GetString()
+				local ok, err = pcall(function()
+					cost:SetString("7.5")
+					by:SetString("1")
+					expect(SW.ShotCost(Modes.STRENGTH, "ar2")).to.equal(7.5)
+					expect(near(SW.ShotCost(Modes.STRENGTH, "smg1"), 7.5 * 0.75)).to.beTrue()
+					expect(near(SW.ShotCost(Modes.STRENGTH, "pistol"), 7.5 * 0.6)).to.beTrue()
+					expect(near(SW.ShotCost(Modes.STRENGTH, "357"), 7.5 * 1.5)).to.beTrue()
+					expect(near(SW.ShotCost(Modes.STRENGTH, "SniperRound"), 7.5 * 2)).to.beTrue() -- the case of the name does not matter
+					expect(SW.ShotCost(Modes.STRENGTH, "some_modded_ammo")).to.equal(7.5)
+					expect(SW.ShotCost(Modes.STRENGTH, nil)).to.equal(7.5)
+					expect(SW.ShotCost(Modes.STRENGTH, 5)).to.equal(7.5)
+					expect(SW.ShotCost(Modes.SPEED, "357")).to.equal(0)
+
+					by:SetString("0")
+					expect(SW.ShotCost(Modes.STRENGTH, "357")).to.equal(7.5)
+					expect(SW.ShotCost(Modes.STRENGTH, "pistol")).to.equal(7.5)
+				end)
+
+				cost:SetString(before)
+				by:SetString(beforeBy)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails when an effect cannot be switched off (everything is optional) or a default is not on: the original's behaviour is the default, a reload that the original does
 			-- not speed up stays at x1
 			name = "every effect has its setting, the original's behaviour is the default, and an effect that is off changes nothing",
 			func = function()
-				for _, name in ipairs({"gry_suit_handling", "gry_suit_strength_melee", "gry_suit_strength_recoil", "gry_suit_shot_cost", "gry_suit_reload_rate"}) do
+				for _, name in ipairs({"gry_suit_handling", "gry_suit_strength_melee", "gry_suit_strength_recoil", "gry_suit_shot_cost", "gry_suit_shot_cost_by_ammo", "gry_suit_reload_rate"}) do
 					expect(GetConVar(name) ~= nil).to.beTrue()
 				end
 

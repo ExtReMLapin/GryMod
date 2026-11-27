@@ -22,6 +22,21 @@ local strengthMelee = CreateConVar("gry_suit_strength_melee", "1", flags, "Stren
 local strengthRecoil = CreateConVar("gry_suit_strength_recoil", "1", flags, "Strength mode: the kick of a shot is smaller, up to x0.375 with a full bar (0 = off)", 0, 1)
 local shotCost = CreateConVar("gry_suit_shot_cost", "7.5", flags, "Strength mode: the energy each shot takes (of 100; the original's 15 of 200). 0 = free", 0, 50)
 
+local shotCostByAmmo = CreateConVar("gry_suit_shot_cost_by_ammo", "1", flags, "Strength mode: a shot costs more energy with a bigger calibre (pistol and SMG rounds less, magnum, sniper and buckshot more). 0 = the same price for every weapon, like the original game", 0, 1)
+
+-- The weight of a kind of ammunition (its calibre) in the price of a shot, by the name of the game's ammunition. The plain price is the rifle's; an ammunition that is not here
+-- (a modded one) costs the plain price.
+local AMMO_WEIGHT = {
+	pistol = 0.6,
+	smg1 = 0.75,
+	ar2 = 1,
+	["357"] = 1.5,
+	buckshot = 1.5,
+	xbowbolt = 1.5,
+	sniperround = 2,
+	sniperpenetratedround = 2
+}
+
 -- The strength slot of each mode with a full bar (0 to 100): the weight the mode gives the strength.
 local STRENGTH_SLOT = {}
 
@@ -87,13 +102,20 @@ function SW.HandlingRate(mode, kind)
 	return 1
 end
 
--- The energy a shot takes in `mode` (of 100).
-function SW.ShotCost(mode)
+-- The energy a shot takes in `mode` (of 100): the setting, times the weight of the weapon's ammunition (`ammo`, the name of the kind of ammunition, when the setting follows the
+-- calibre).
+function SW.ShotCost(mode, ammo)
 	if mode ~= GryMod.Modes.STRENGTH then
 		return 0
 	end
 
-	return math.max(shotCost:GetFloat(), 0)
+	local cost = math.max(shotCost:GetFloat(), 0)
+
+	if shotCostByAmmo:GetBool() and isstring(ammo) then
+		cost = cost * (AMMO_WEIGHT[string.lower(ammo)] or 1)
+	end
+
+	return cost
 end
 
 -- The same rules, with the settings: what an adapter asks.
