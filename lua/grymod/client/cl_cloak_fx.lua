@@ -722,15 +722,10 @@ local function startFirstPerson(ent, ply)
 	end
 end
 
-local function endFirstPerson(ent, ply)
-	local s = States[ply]
-
-	if not s or not s.firstPerson then return end
-
-	s.firstPerson = false
-	render.MaterialOverride(nil)
-	render.SetBlend(1)
-
+-- The layers over a model of the first person view that has just been drawn plain (the engine drew the view model and the hands, the weapon drew its own
+-- attachments): the refraction with the alpha the plain model has lost, the sparks of the shader or the outline of the older layer, the scan lines of the start
+-- of the change. One function for every such model, so that the arms, the gun and a sight on it are treated the same.
+local function firstPersonOver(ent, s)
 	local _, layerBase, edge = firstPersonLayers(s)
 
 	-- the refraction layer over the arms the engine has just drawn, with the alpha the plain model has lost; at the end of the change (the plain
@@ -774,6 +769,34 @@ local function endFirstPerson(ent, ply)
 
 	if flash > 0.02 and F.Lines and IsValid(ent) then
 		F.Lines.Draw(ent, flash, drawPlain, true)
+	end
+end
+
+-- the models the weapon in the hand draws itself (its attachments), asked at each frame: the buffer is kept (no table made per frame)
+local weaponParts = {}
+
+local function endFirstPerson(ent, ply)
+	local s = States[ply]
+
+	if not s or not s.firstPerson then return end
+
+	s.firstPerson = false
+	render.MaterialOverride(nil)
+	render.SetBlend(1)
+
+	firstPersonOver(ent, s)
+
+	-- A weapon draws its attachments itself, in its own draw, between the view model's and this hook: models the engine does not know, which
+	-- were left plain over the camouflaged gun (a sight on a TFA weapon: reported by the owner). They are asked of the weapon at each frame
+	-- (GryMod.API.GetWeaponParts, the providers of lua/grymod/compat/weapons/): an attachment changed during the camouflage is the next frame's list.
+	-- Only with the view model: the hands are not the weapon's.
+	if ent == ply:GetViewModel() then
+		local weapon = ply:GetActiveWeapon()
+		local parts, count = GryMod.API.GetWeaponParts(weapon, weaponParts)
+
+		for i = 1, count do
+			firstPersonOver(parts[i], s)
+		end
 	end
 end
 

@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"attackreport"`, `"weapons"`, `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -593,6 +593,28 @@ in the order the adapters were added; `RemoveWeaponAdapter(id)` removes it. Ther
 weapons: later (the HUD already reads their fire mode, for the icon only, through its own resolvers, `GryMod.FlashHUD.AddFireModeResolver`,
 which is not part of the versioned API). An adapter is asked for a weapon **entity** only: the camouflage rule `AltFireShoots`
 asks by class name, so an adapter cannot answer `alt` or `altShoots`.
+
+### Weapon parts: the models a weapon draws itself (client)
+
+`GryMod.API.Has("weaponparts")` is true. A weapon can draw models of its own that are not its view model: the attachments of a weapon base (a sight, a silencer, a laser).
+The engine does not know them, so the camouflage of the arms and the gun would leave them plain. A **provider** says which they are, for a weapon, at the moment it is asked:
+
+```lua
+-- client side
+GryMod.API.AddWeaponPartsProvider("my_addon", function(weapon, out)
+	if weapon:GetClass() ~= "my_weapon" then return end
+
+	out[#out + 1] = weapon.SightModel       -- client side models the weapon draws, valid entities
+	out[#out + 1] = weapon.LaserModel
+end)
+
+GryMod.API.RemoveWeaponPartsProvider("my_addon")
+GryMod.API.GetWeaponParts(weapon, out)      -- fills your table (reused) and returns it with the count
+```
+
+The suit asks at every frame it draws the camouflaged gun in first person, and puts the same layers over each part as over the view model, so an attachment that the player changes
+during the camouflage is the next frame's list: nothing to refresh. A provider runs under `SafeCall` (five errors in a row switch it off), what it gives is checked (valid entities
+only), at most `GryMod.API.MAX_WEAPON_PARTS` (16), and the same id replaces the provider. The patch for TFA is in `lua/grymod/compat/weapons/cl_tfa_parts.lua` ([compat.md](compat.md)).
 
 ## Radar markers (client)
 

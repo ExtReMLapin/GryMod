@@ -165,3 +165,103 @@ end
 if GryMod.FlashBoot and GryMod.FlashBoot.RegisterEvents then
 	GryMod.FlashBoot.RegisterEvents()
 end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Weapon parts: the models a weapon draws itself
+-- ---------------------------------------------------------------------------------------------------------
+
+-- A weapon can draw models of its own that are not its view model: the attachments of a weapon base (a sight, a silencer, a laser). The engine does not know them, so
+-- the suit's effects (the camouflage of the arms and the gun in first person) would leave them plain. A provider says which they are, for a weapon, at the moment it
+-- is asked: GryMod keeps no list, so an attachment that is changed while the effect runs is the next frame's list. The weapon bases that need this have their provider
+-- in lua/grymod/compat/weapons/ (docs/compat.md); an addon with its own weapons registers its own.
+--
+--   GryMod.API.AddWeaponPartsProvider(id, function(weapon, out) ... end)   the function appends the entities (client side models) to `out`
+--   GryMod.API.RemoveWeaponPartsProvider(id)
+--   GryMod.API.GetWeaponParts(weapon, out)                                 fills `out` (the caller's table, reused) and returns it with the count
+--
+-- A provider runs under SafeCall (five errors in a row switch it off; adding it again re-arms it), what it gives is checked (valid entities only) and the list holds
+-- MAX_WEAPON_PARTS at most. The same id replaces the provider, so a file that is loaded twice does not make every part twice.
+API.MAX_WEAPON_PARTS = 16
+
+local partsProviders = API._weaponPartsProviders or {} -- {{id, fn, callId}, ...} in the order they were added
+API._weaponPartsProviders = partsProviders
+
+function API.AddWeaponPartsProvider(id, fn)
+	if not isstring(id) or id == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "parts:" .. id
+
+	API.SafeCallReset(callId)
+
+	for _, provider in ipairs(partsProviders) do
+		if provider.id == id then
+			provider.fn = fn
+
+			return true
+		end
+	end
+
+	partsProviders[#partsProviders + 1] = {id = id, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemoveWeaponPartsProvider(id)
+	for i, provider in ipairs(partsProviders) do
+		if provider.id == id then
+			table.remove(partsProviders, i)
+			API.SafeCallReset(provider.callId)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+-- Something the effects may draw: an entity that is valid (a table that answers IsValid is accepted for the tests' stand-ins).
+local function drawable(ent)
+	return (isentity(ent) or istable(ent)) and IsValid(ent)
+end
+
+function API.GetWeaponParts(weapon, out)
+	out = out or {}
+
+	for i = #out, 1, -1 do
+		out[i] = nil
+	end
+
+	if not drawable(weapon) then
+		return out, 0
+	end
+
+	local count, max = 0, API.MAX_WEAPON_PARTS
+
+	for i = 1, #partsProviders do
+		local provider = partsProviders[i]
+		local ok = API.SafeCall(provider.callId, provider.fn, weapon, out)
+		local top = #out
+
+		-- what the provider appended is checked and compacted onto the parts kept so far; a provider that failed gives nothing
+		local kept = count
+
+		for j = count + 1, top do
+			local ent = out[j]
+
+			out[j] = nil
+
+			if ok and kept < max and drawable(ent) then
+				kept = kept + 1
+				out[kept] = ent
+			end
+		end
+
+		count = kept
+	end
+
+	return out, count
+end
+
+API.AddFeature("weaponparts")

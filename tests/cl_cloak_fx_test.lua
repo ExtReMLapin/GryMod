@@ -1014,6 +1014,109 @@ return {
 			end
 		},
 		{
+			-- fails when the models a weapon draws itself (the attachments of a weapon base: a sight, a laser) are left plain over a camouflaged weapon: the effect only knew
+			-- the view model. They are asked at each frame (no list is kept: an attachment changed during the camouflage is the next frame's), they get the layers the view model
+			-- gets, after it, and only with the view model (the hands are not the weapon's)
+			name = "first person: the extra models of the weapon get the same layers as the view model, after it, asked at each frame; the hands do not draw them",
+			func = function(state)
+				local log = recordRender()
+				local F = GryMod.CloakFX
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				local sight, laser = fakePlayer(0), fakePlayer(0)
+				local gun = {IsValid = function() return true end}
+				local attached = {sight}
+
+				function me:GetViewModel() return vm end
+				function me:GetActiveWeapon() return gun end
+				setState(me, 0.5)
+				GryMod.API.AddWeaponPartsProvider("test.cloak", function(_, out)
+					for _, ent in ipairs(attached) do
+						out[#out + 1] = ent
+					end
+				end)
+
+				local ok, err = pcall(function()
+					hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+					expect(sight.draws).to.equal(0) -- not before the weapon has drawn them
+					hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+
+					local sightDraws = sight.draws
+
+					expect(sightDraws > 0).to.beTrue()
+					expect(leftClean(log)).to.beTrue()
+
+					-- the layers of the view model and of the part are the same kind: one layer drawn for the view model has one for the part
+					expect(sightDraws).to.equal(vm.draws - 1) -- (the refraction of the Pre hook is the view model's alone)
+
+					-- the player puts a laser on during the camouflage: the next frame draws it too, with no refresh of anything
+					attached[#attached + 1] = laser
+					hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+					hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+					expect(laser.draws > 0).to.beTrue()
+					expect(sight.draws > sightDraws).to.beTrue()
+
+					-- and takes the sight off: it is not drawn any more
+					table.remove(attached, 1)
+
+					local before = sight.draws
+
+					hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+					hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+					expect(sight.draws).to.equal(before)
+
+					-- the hands: no part drawn for them
+					local lasers = laser.draws
+
+					hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+					hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+					expect(laser.draws).to.equal(lasers)
+					expect(leftClean(log)).to.beTrue()
+				end)
+
+				GryMod.API.RemoveWeaponPartsProvider("test.cloak")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails when a part that cannot be drawn (a model that raises an error) leaves the material or the opacity on for what is drawn next, or stops the other parts
+			name = "first person: a part whose drawing fails leaves nothing on and does not stop the next part",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, bad, good = fakePlayer(0), fakePlayer(0), fakePlayer(0)
+				local gun = {IsValid = function() return true end}
+
+				function bad:DrawModel() error("boom") end
+				function me:GetViewModel() return vm end
+				function me:GetActiveWeapon() return gun end
+				setState(me, 0.5)
+				GryMod.API.AddWeaponPartsProvider("test.cloak", function(_, out)
+					out[#out + 1] = bad
+					out[#out + 1] = good
+				end)
+
+				local ok, err = pcall(function()
+					hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+					expect(pcall(hook.GetTable().PostDrawViewModel.GryCloakFX, vm, me, NULL)).to.beTrue()
+					expect(good.draws > 0).to.beTrue()
+					expect(leftClean(log)).to.beTrue()
+					expect(log.blendNow).to.equal(1)
+				end)
+
+				GryMod.API.RemoveWeaponPartsProvider("test.cloak")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "first person: a drawing that fails does not leave the material or the opacity on",
 			func = function(state)
 				local log = recordRender()
