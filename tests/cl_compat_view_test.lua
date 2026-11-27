@@ -106,8 +106,11 @@ end
 local function compatOwners()
 	local found = {}
 
+	-- only the owners of this patch's own readers (other adapters, DrGBase's or ZBase's, have "compat." keys too and are not ours to count or to take away)
+	local readers = GryMod.CompatThirdPerson and GryMod.CompatThirdPerson.Readers or {}
+
 	for _, owner in ipairs(API._cameraOwners or {}) do
-		if string.sub(owner.key, 1, 7) == "compat." then
+		if readers[owner.key] ~= nil then
 			found[#found + 1] = owner.key
 		end
 	end
@@ -343,7 +346,7 @@ return {
 				expect(owned(player())).to.beTrue()
 
 				for _, owner in ipairs(API._cameraOwners) do
-					if string.sub(owner.key, 1, 7) == "compat." then
+					if GryMod.CompatThirdPerson.Readers[owner.key] ~= nil then
 						expect(owner.fn(player())).to.beTrue()
 					end
 				end
