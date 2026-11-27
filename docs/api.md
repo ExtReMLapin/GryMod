@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"weaponmenu"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"weaponmenu"` (client), `"plainview"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -257,6 +257,10 @@ While the binoculars are up (the zoom key, or the own zoom of GryMod) the HUD fo
 
 - **Pace and shot.** No sprint, and the slow walk instead of the jog (`gry_binoculars_walk`, 1); no shooting (`gry_binoculars_no_fire`, 1). Both work on the buttons of
   the player's move, only while the binoculars are up. Holding the right click steps the zoom ONCE, 0.25 s after the key went down (2x, 4x, 8x, then back to 2x; let go and hold again to step again) (`gry_binoculars_hold_zoom`, 1).
+- **The weapon is put away** (`gry_binoculars_hide_weapon`, 1). The original holds the binoculars in place of the weapon, and the game's own zoom already hides the Half-Life 2
+  weapons. A weapon base that draws its view model with a field of view of its own (ARC9: the comment of its code says it must not inherit the zoomed camera; TFA keeps its gun at its
+  size too) left the gun in front of the zoomed world, unzoomed. While the binoculars (or the suit's own zoom) are up the view model and the hands are not drawn, through
+  `PreDrawViewModel` and `PreDrawPlayerHands` hooks that exist only while the binoculars are up. Off: those weapons show their gun.
 - **The hologram** (`gry_binoculars_hologram`, 1; needs `gry_binoculars_silhouette`). What the binoculars spot is drawn with a thin outline and its whole body
   filled with scan lines. A **hostile** NPC in view is lit from the start (`gry_binoculars_baseline`, 1; with 0 only what the scan reaches), in
   the colour of its alert level, as in the original: dark green when it is idle, amber when it is alerted (`NPC_STATE_ALERT`), dark red when it fights
@@ -616,7 +620,7 @@ The suit asks at every frame it draws the camouflaged gun in first person, and p
 during the camouflage is the next frame's list: nothing to refresh. The layers leave alone what the player aims with, found by what the materials ARE and not by any name: an
 unlit material (a reticle, a holographic sight), a translucent or additive one (the glass of a lens, with the dot of a red dot sight painted on it), and a material whose texture is
 not a file (the picture a scope shows, a render target). The body of the weapon and of its attachments, opaque and lit, is camouflaged. A provider runs under `SafeCall` (five errors in a row switch it off), what it gives is checked (valid entities
-only), at most `GryMod.API.MAX_WEAPON_PARTS` (16), and the same id replaces the provider. The patch for TFA is in `lua/grymod/compat/weapons/cl_tfa_parts.lua` ([compat.md](compat.md)).
+only), at most `GryMod.API.MAX_WEAPON_PARTS` (16), and the same id replaces the provider. The patches for TFA and ARC9 are in `lua/grymod/compat/weapons/cl_tfa_parts.lua` and `cl_arc9_parts.lua` ([compat.md](compat.md)).
 
 ### Weapon menus: the menu of a weapon base (client)
 
@@ -639,6 +643,26 @@ GryMod.API.OpenWeaponMenu(weapon)    -- runs it, true when there was a menu to o
 
 A provider must be cheap (the quick menu asks it while it is open), runs under `SafeCall` (five errors in a row switch it off) and the same id replaces it. An opener that raises an
 error is caught. The patch for TFA is `lua/grymod/compat/weapons/cl_tfa_menu.lua` ([compat.md](compat.md)).
+
+### Plain views: a weapon whose own screen has the view (client)
+
+`GryMod.API.Has("plainview")` is true. Some weapon bases show the weapon on a screen of their own: ARC9's customization menu turns the gun towards the player over a dark, blurred
+picture of the world. The camouflage of the first person view copies the picture behind the gun before the weapon draws, so there it would show a world that is not the one on the
+screen, and the player needs to see the parts he picks. A **provider** says, for a weapon, that its view is such a screen; the effects then draw the weapon plain (no layer, no copy,
+no transparency), the arms too.
+
+```lua
+-- client side
+GryMod.API.AddPlainViewProvider("my_addon", function(weapon)
+	return weapon.MyMenuIsOpen == true     -- only the value true is a yes
+end)
+
+GryMod.API.RemovePlainViewProvider("my_addon")
+GryMod.API.IsPlainView(weapon)             -- true when a provider says so
+```
+
+A provider must be cheap (it is asked at every frame the camouflage is on, in first person), runs under `SafeCall` (five errors in a row switch it off) and the same id replaces it.
+The patch for ARC9 is in `lua/grymod/compat/weapons/cl_arc9_menu.lua` ([compat.md](compat.md)).
 
 ## Radar markers (client)
 

@@ -2792,6 +2792,97 @@ return {
 			end
 		},
 		{
+			-- fails when the weapon stays on the screen with the binoculars up (a weapon base that draws its view model with a field of view of its own, ARC9, keeps the gun at its
+			-- size and in front while the world is zoomed: reported by the owner), when it is hidden with the option off, with the binoculars down or with their HUD element off
+			name = "HideWeapon: the view model and the hands are not drawn while the binoculars are up, only with gry_binoculars_hide_weapon on and the binoculars' HUD element on; on by default",
+			func = function(state)
+				local M = GryMod.FlashBinoculars
+				local realWanted, realEnabled = M.Wanted, M.Enabled
+
+				local function hidden(option, wanted, enabled)
+					M.Wanted = function() return wanted end
+					M.Enabled = function() return enabled end
+					local result
+
+					withConVar("gry_binoculars_hide_weapon", option, function()
+						result = M.HideWeapon()
+					end)
+
+					return result
+				end
+
+				local ok, err = pcall(function()
+					expect(GetConVar("gry_binoculars_hide_weapon"):GetDefault()).to.equal("1")
+					expect(GetConVar("gry_binoculars_hide_weapon"):GetFlags()).to.equal(GetConVar("gry_binoculars_no_fire"):GetFlags())
+					expect(hidden("1", true, true)).to.equal(true)
+					expect(hidden("0", true, true)).to.beNil()
+					expect(hidden("1", false, true)).to.beNil()
+					expect(hidden("1", true, false)).to.beNil()
+				end)
+
+				M.Wanted, M.Enabled = realWanted, realEnabled
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails without the listener of GryMod_BinocularsToggled for the weapon: the two draw hooks would be there all the time (they run at every frame), or never
+			name = "the draw hooks that hide the weapon exist only while the binoculars are up",
+			func = function(state)
+				local listener = hook.GetTable().GryMod_BinocularsToggled and hook.GetTable().GryMod_BinocularsToggled["GRYBINOCULARSHIDEWEAPON"]
+				expect(listener).to.beA("function")
+
+				local ok, err = pcall(function()
+					listener(true)
+					expect(hook.GetTable().PreDrawViewModel["GRYBINOCULARSHIDEWEAPON"]).to.beA("function")
+					expect(hook.GetTable().PreDrawPlayerHands["GRYBINOCULARSHIDEWEAPON"]).to.beA("function")
+					listener(false)
+					expect(hook.GetTable().PreDrawViewModel["GRYBINOCULARSHIDEWEAPON"]).to.beNil()
+					expect(hook.GetTable().PreDrawPlayerHands["GRYBINOCULARSHIDEWEAPON"]).to.beNil()
+				end)
+
+				hook.Remove("PreDrawViewModel", "GRYBINOCULARSHIDEWEAPON")
+				hook.Remove("PreDrawPlayerHands", "GRYBINOCULARSHIDEWEAPON")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
+			-- fails when the option has no check box in the Binoculars options (the player could not turn it off)
+			name = "gry_binoculars_hide_weapon has a check box in the Binoculars options",
+			func = function(state)
+				local found = false
+				local panel = vgui.Create("ControlPanel")
+				local ok, err = pcall(function()
+					GryMod.BinocularsOptions(panel)
+
+					local function walk(p)
+						for _, child in ipairs(p:GetChildren()) do
+							if child.ClassName == "DCheckBoxLabel" and child.Button and child.Button.m_strConVar == "gry_binoculars_hide_weapon" then
+								found = true
+							end
+
+							walk(child)
+						end
+					end
+
+					walk(panel)
+				end)
+
+				panel:Remove()
+
+				if not ok then
+					error(err, 0)
+				end
+
+				expect(found).to.beTrue()
+			end
+		},
+		{
 			-- fails without Bino.PaceButtons: the sprint button would stay and no slow walk would be asked
 			name = "PaceButtons takes out the sprint button and asks the slow walk, keeping the other buttons",
 			func = function(state)
