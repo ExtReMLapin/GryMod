@@ -311,8 +311,11 @@ return {
 				local events = hook.GetTable()
 				local think = events.Think or {}
 
+				-- the Think hooks of the real simfphys (its weapon handler, "simfphys_weaponhandler") are its own: only the adapter's are looked for
 				for id in pairs(think) do
-					expect(string.find(tostring(id), "simfphys", 1, true)).to.beNil()
+					local name = string.lower(tostring(id))
+
+					expect(string.find(name, "grymod", 1, true) ~= nil and string.find(name, "simfphys", 1, true) ~= nil).to.beFalse()
 				end
 			end
 		}

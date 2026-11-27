@@ -44,16 +44,58 @@ function Compat.NightVisionKey()
 	return nil
 end
 
--- Whether Glide has an action on this button (Glide.Config.binds: group -> action -> button, lua/glide/client/events.lua reads it the same way).
-function Compat.GlideUsesKey(code)
+-- The seat of the local player in his Glide vehicle (1 is the driver's), or nil (a field: the tests replace it).
+function Compat.LocalSeat()
+	local ply = LocalPlayer()
+
+	if IsValid(ply) and isfunction(ply.GlideGetSeatIndex) then
+		return ply:GlideGetSeatIndex()
+	end
+
+	return nil
+end
+
+-- The groups of controls Glide reads for this seat of this vehicle, as a set; nil when they are not known (every group then counts). ENT:GetInputGroups(seatIndex) is a SERVER function
+-- (the clients never have it), so the client works the groups out from what the base classes answer: general + land for a car, a motorcycle, a tank or a boat, general + aircraft for a
+-- helicopter or a plane, general only for a passenger. VehicleType: CAR 1, MOTORCYCLE 2, HELICOPTER 3, PLANE 4, TANK 5, BOAT 6 (autorun/sh_glide.lua).
+local LAND_TYPES = {[1] = true, [2] = true, [5] = true, [6] = true}
+local AIR_TYPES = {[3] = true, [4] = true}
+
+local function readGroups(vehicle, seat)
+	if not vehicle or not isnumber(seat) then
+		return nil
+	end
+
+	if seat > 1 then
+		return {general_controls = true}
+	end
+
+	local kind = vehicle.VehicleType
+
+	if LAND_TYPES[kind] then
+		return {general_controls = true, land_controls = true}
+	end
+
+	if AIR_TYPES[kind] then
+		return {general_controls = true, aircraft_controls = true}
+	end
+
+	return nil
+end
+
+-- Whether Glide has an action on this button (Glide.Config.binds: group -> action -> button, lua/glide/client/events.lua reads it the same way), among the groups the seat reads when
+-- the vehicle and the seat are given.
+function Compat.GlideUsesKey(code, vehicle, seat)
 	local binds = Glide and Glide.Config and Glide.Config.binds
 
 	if not istable(binds) or not code or code <= 0 then
 		return false
 	end
 
-	for _, actions in pairs(binds) do
-		if istable(actions) then
+	local groups = readGroups(vehicle, seat)
+
+	for group, actions in pairs(binds) do
+		if istable(actions) and (groups == nil or groups[group]) then
 			for _, button in pairs(actions) do
 				if button == code then
 					return true
@@ -101,14 +143,32 @@ hook.Add("GryMod_CanUseView", "GryModGlide", function(kind, reason)
 		return
 	end
 
-	if not Compat.LocalVehicle() then
+	local vehicle = Compat.LocalVehicle()
+
+	if not vehicle then
 		return
 	end
 
-	if Compat.GlideUsesKey(Compat.NightVisionKey()) then
+	-- the keys Glide reads depend on the seat: N, the neutral gear, is a land control (the driver of a car), not an aircraft's or a passenger's
+	if Compat.GlideUsesKey(Compat.NightVisionKey(), vehicle, Compat.LocalSeat()) then
 		return false
 	end
 end)
+
+-- ---------------------------------------------------------------------------------------------------------
+-- The use prompt of a trailer
+-- ---------------------------------------------------------------------------------------------------------
+-- A trailer has no seat, but Glide's override of Entity:IsVehicle makes it a vehicle for the stock "ENTER VEHICLE" entry: no prompt for it.
+
+if API.AddUsableFilter then
+	API.AddUsableFilter("glide", function(ent)
+		if Compat.IsTrailer and IsValid(ent) and ent.IsGlideVehicle == true and Compat.IsTrailer(ent) then
+			return false
+		end
+
+		return nil
+	end)
+end
 
 -- ---------------------------------------------------------------------------------------------------------
 -- The settings (the Compatibility page, a tab for the base)

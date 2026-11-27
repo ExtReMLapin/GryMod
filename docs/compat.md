@@ -150,10 +150,13 @@ The original holds the binoculars in place of the weapon: `gry_binoculars_hide_w
 VJ HUD (health, ammunition, compass and crosshair in `HUDPaint`, hiding the same four game elements) and Crosshair Designer draw a HUD of their own over GryMod's. The patch does **not** hide
 either of them through `AddHudSuppressor`: which HUD the player wants is the player's choice, and GryMod never writes another addon's settings. Turn one off in its own options (VJ HUD:
 `vj_hud_enabled 0`) or GryMod's HUD in the options of GryMod (`gry_hud 0`). ARC9's own HUD is the one exception, with an option (`gry_arc9_hide_hud`).
-## simfphys: how it was written (2026-11-27)
+## simfphys: how it was written, and tried with the real addon (2026-11-27)
 
-`compat/vehicles/*simfphys.lua` was written from the public source of `simfphys_base` (8d4b1ad) and `simfphys_armed` (53f709f), without simfphys installed, and tested with stand-ins that answer what
-its code answers (`tests/sh_compat_simfphys_test.lua`, `sv_...`, `cl_...`). **What is read, not tried in a game**, to check with the real addon:
+`compat/vehicles/*simfphys.lua` was written from the public source of `simfphys_base` (8d4b1ad) and `simfphys_armed` (53f709f) and tested with stand-ins that answer what
+its code answers (`tests/sh_compat_simfphys_test.lua`, `sv_...`, `cl_...`). It was then **tried with the real simfphys** (the Lua of both packs in a test game, vehicles spawned with
+`simfphys.SpawnVehicleSimple`, models replaced by stock ones, see docs/superpowers/plans/real-vehicles-validation-2026-11-27.md): the registry, the seats, the hit filter (a bullet on a seated
+player: ignored; the explosion of the car: bypass), the shots of an armed jeep (machine gun through `FireBullets`), of a tank (the real `simfphys_tankprojectile`) and the thrown mine ended the
+camouflage, the prompt (locked car, wheels, mine) all answered as written: nothing had to be changed. **What was read**, as the adapter relies on it:
 
 - the seats: `Player:GetSimfphys()` is the car, `car:GetDriverSeat()` the seat of the driver who sits (`car:GetDriver()` is the remote driver of `weapon_simremote` when there is one);
 - the damage: simfphys' hook `!!!_simfphys_fix_vehicle_explosion_damage` cancels every hit that is not `DMG_DIRECT` on a seated player (the filter says "ignore" only while that hook is there); the exploding car
@@ -162,10 +165,13 @@ its code answers (`tests/sh_compat_simfphys_test.lua`, `sv_...`, `cl_...`). **Wh
 - the shells (`simfphys_tankprojectile`, made with `Attacker` and `AttackingEnt` set before the spawn, seen a tick after) and the thrown mine (`Thrown`, `CreatedBy`);
 - what is NOT done on purpose: no ring of the radar for the shell and the wreck (the core rings every `util.BlastDamage`; the wreck's gib makes one), no danger of the grenade warning for the shell (it flies at
   about 13 000 units a second: less than a second of warning at the warning's rate), no camouflage ban and no notarget for a seated player (the owner's decision: the suit works in a vehicle).
-## LVS: what was read, and what to check with the real addon
+## LVS: what was read, and what was tried with the real addon
 
-Nothing of this was tried with LVS itself: the tests use stand-ins that answer like what was read in `lvs_base` (commit 54c88e2, version 354, `github.com/SpaxscE/lvs_base`). The patch does nothing when the `LVS` table does not
-exist, and installs itself when LVS announces itself (`LVS:Initialize`) or at `InitPostEntity`. To check with the real addon (two minutes each):
+The tests use stand-ins that answer like what was read in `lvs_base` (commit 54c88e2, version 354, `github.com/SpaxscE/lvs_base`). The patch does nothing when the `LVS` table does not
+exist, and installs itself when LVS announces itself (`LVS:Initialize`) or at `InitPostEntity`. It was then **tried with the real LVS** (2026-11-27: a Willys jeep, a Sherman, a P-51, a Stuka, the
+rebel and combine helicopters, models replaced by stock ones; docs/superpowers/plans/real-vehicles-validation-2026-11-27.md). Two things the stand-ins hid were wrong and are fixed: the plain
+`lvs_missile` and `lvs_bomb` did not end the camouflage (`scripted_ents.IsBasedOn(class, base)` is false for the base itself), and a turret a player placed (`lvs_turret`) ended its creator's camouflage
+(the shot counts now only when the gun, or the vehicle the projectile left, is the vehicle the player sits in). The list that follows is what to look at by hand (two minutes each):
 
 1. **Hits**: in armor mode, seated in an LVS car, `ply:TakeDamage(20)`: the energy must not move (LVS zeroes the hit, the filter says "ignore"). Destroy the plane the player sits in: he must die (the explosion's `Health() + Armor()` hit goes through the bar).
 2. **Radar**: an LVS plane with `SetAI(true)` shows as a flying unit once scanned, and goes alerted / fighting when its target is the player; the car the player sits in is not on his radar; a wreck leaves the radar.
@@ -180,23 +186,30 @@ Not done on purpose (the owner decides): hiding GryMod's radar and status panels
 
 Glide (https://github.com/StyledStrike/gmod-glide) is a vehicle base made of scripted entities. A vehicle is not an engine vehicle (`IsVehicle()` is false) and the player sits on a
 seat that is a child of it (`Player:GetVehicle()` answers the seat, `ply:GlideGetVehicle()` the vehicle). Everything the adapter knows was **read in Glide's code** (commit 5fd934e of
-2026-11-26: its wiki documents its functions, not its hooks) and tested with **stand-ins** (`tests/sh_compat_glide_test.lua`, `sv_compat_glide_test.lua`, `cl_compat_glide_test.lua`):
-**no test with the real Glide was made yet** (it is not installed). The adapter does nothing without Glide.
+2026-11-26: its wiki documents its functions, not its hooks) and tested with **stand-ins** (`tests/sh_compat_glide_test.lua`, `sv_compat_glide_test.lua`, `cl_compat_glide_test.lua`), then
+**tried with the real Glide** (2026-11-27: a GTA lazer plane, an Infernus, a Sanchez, a Rhino, a Dinghy, a flat trailer; models replaced by stock ones; docs/superpowers/plans/real-vehicles-validation-2026-11-27.md).
+That found six faults, all fixed: the plain `glide_missile` and `glide_projectile` never ended the camouflage (`scripted_ents.IsBasedOn(class, base)` is false for the base itself); the explosive cannon of
+the aircraft calls no `FireBullets` (it is wrapped on the vehicle); a blast on a seated player cost energy although Glide cancels it (hit filter "ignore"); the kill of an exploding vehicle was absorbed by an infinite
+armor (hit filter "bypass"); a trailer showed "ENTER VEHICLE" (Glide overrides `IsVehicle`); the night vision key was refused in aircraft and passenger seats where Glide reads no N
+(`ENT:GetInputGroups` is a server function: the client works the groups out from `VehicleType` and the seat). The adapter does nothing without Glide.
 
 | What | How | Setting |
 | --- | --- | --- |
 | The vehicle of a player, its driver, its kind (air for helicopters and planes, water for boats) | `AddVehicleProvider("glide", ...)` | |
 | On the radar once scanned (the rectangle; the flying unit for aircraft; not trailers; not wrecks), heavy for the suit (not motorcycles), the colour of its crew, facing +X | `RegisterTracked` on `base_glide` and its bases | |
 | The missiles (`glide_missile` and the ones built on it) in the grenade warning, only for the player they follow | `RegisterTracked` with `danger` (`base`, `ownerOf = ent.attacker`, `warnFor`) | |
-| ENTER VEHICLE under the crosshair (not for trailers, dimmed while locked) | `RegisterUsable` | |
+| ENTER VEHICLE under the crosshair (not for trailers, dimmed while locked) | `RegisterUsable` and `AddUsableFilter` (the stock entry would answer a trailer) | |
+| A blast on a seated player costs nothing (Glide cancels it); the kill of an exploding vehicle goes through the bar | `AddHitFilter("glide")` ("ignore", "bypass") | |
+| The explosive cannon of the aircraft (no bullet for the engine: `Glide.FireBullet` only blasts the impact) ends the camouflage of its gunner | `ENT:FireBullet` wrapped on each Glide vehicle, `ReportShot` | |
 | Glide's camera has the view: no view of GryMod, the heading from the drawn view | `AddCameraOwner("glide", ...)` | |
 | A player who gets up from a ragdoll keeps his suit (Glide gets him back with `Player:Spawn()`) | `GryMod_CanResetOnSpawn`, with the hook `Glide_PrePlayerUnRagdoll` | |
-| A missile or a shell fired from the hands or the vehicle ends the camouflage (bullets are seen by the engine's hook) | `OnEntityCreated` on the classes built on `glide_missile` / `glide_projectile`, `GryMod.API.ReportAttack` | |
+| A missile or a shell fired from the hands or the vehicle ends the camouflage, with the noise of a shot (bullets are seen by the engine's hook) | `OnEntityCreated` on `glide_missile`, `glide_projectile` and the classes built on them, `GryMod.API.ReportShot` | |
 | Glide's dashboard (the dial in the bottom right) | the hook `Glide_CanDrawHUD` | `gry_glide_hide_hud` (0) |
-| The night vision key that Glide also uses (N is its neutral gear) does nothing in its vehicles | `GryMod_CanUseView("nightvision", "key")` | `gry_glide_nv_key` (1) |
+| The night vision key that Glide also uses (N is its neutral gear, a land control) does nothing in the driver's seat of a car, a motorcycle, a tank or a boat; free in an aircraft and in passenger seats | `GryMod_CanUseView("nightvision", "key")` | `gry_glide_nv_key` (1) |
 
 Not done, and why: no lock-on veto and no change of the name Glide writes over a camouflaged player (the camouflage hides from the visible light only: a lock-on is a radar or infrared lock, and a player in a vehicle is never invisible); a blast of Glide (`Glide.CreateExplosion`) goes through `util.BlastDamageInfo`, which the core now wraps too, but Glide keeps a copy of the function when it loads, so the ring is not checked; a bullet that a vehicle fires
-with no driver and a turret placed by a player carry their creator as the attacker, so the core's `data.Attacker` rule may end that creator's camouflage.
+with no driver and a turret placed by a player carry their creator as the attacker, but the core's `data.Attacker` rule counts it only when that player sits in the vehicle that fires (checked with
+a real simfphys car: a player named as the attacker of a car he does not sit in ends nothing). Not done either: the standalone turret of Glide (`glide_standalone_turret`) keeps its own copy of `Glide.FireBullet`: its explosive shells end no camouflage (it is a turret: nobody sits in it).
 
 ## Adding a patch
 
