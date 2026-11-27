@@ -104,11 +104,12 @@ return {
 		},
 		{
 			-- fails without Boot.PlacementFor, the setting gry_hud_lost_centered and the shift of the Lost screen
-			name = "gry_hud_lost_centered: the Lost screen (only that one) goes to the middle of the screen, still centred across; off, it stays low as in its movie",
+			name = "gry_hud_lost_centered: the Lost screen (only that one) goes to the middle of the screen, still centred across; on by default; off, it stays low as in its movie",
 			func = function(state)
 				local convar = GetConVar("gry_hud_lost_centered")
 				expect(convar).toNot.beNil()
-				expect(convar:GetDefault()).to.equal("0")
+				-- fails while the default is 0: the owner wants the shutdown screen in the middle without having to find the setting
+				expect(convar:GetDefault()).to.equal("1")
 
 				local saved = convar:GetString()
 

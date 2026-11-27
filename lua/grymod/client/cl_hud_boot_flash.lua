@@ -38,11 +38,11 @@ end
 
 -- The Lost screen ("DANGER SYSTEM OVERRUN") is drawn LOW in its own movie: the clip's origin is at the centre of the stage and the panels sit 80 to 378 stage
 -- pixels under it (hud_lost.lua), so the frame spans y 464 to 762 of the 768 and its centre is at about 80 % of the height. The Initialize and Reboot movies are
--- centred. That is the original's placement (the movie files are the same), so it is what is drawn by default; gry_hud_lost_centered moves only this screen up so
--- that the centre of its panel is the centre of the screen.
+-- centred. That is the original's placement (the movie files are the same); gry_hud_lost_centered, ON by default (the owner finds the low panel wrong), moves only this
+-- screen up so that the centre of its panel is the centre of the screen; off, it is drawn where the movie puts it.
 Boot.LOST_CENTRE_Y = 613
 
-local LostCenteredConVar = CreateClientConVar("gry_hud_lost_centered", "0", true, false, "1: the shutdown screen (DANGER SYSTEM OVERRUN, shown when the suit goes down or at a death) is in the middle of the screen; 0: low, where the original's movie puts it", 0, 1)
+local LostCenteredConVar = CreateClientConVar("gry_hud_lost_centered", "1", true, false, "1 (default): the shutdown screen (DANGER SYSTEM OVERRUN, shown when the suit goes down or at a death) is in the middle of the screen; 0: low, where the original's movie puts it", 0, 1)
 
 -- Where a sequence of this kind goes on a screen of w x h pixels: Placement, and for the Lost screen with gry_hud_lost_centered the stage is moved up so that
 -- the centre of the panel is the centre of the screen.
