@@ -35,6 +35,7 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_arc9_hud.lua` | ARC9's own HUD (weapon name, ammunition, fire mode) crowds the bottom left corner: `gry_arc9_hide_hud` (on by default, ARC9 tab of the Compatibility page) hides it while GryMod's HUD is up. Its key hints and customization menu stay, none of its settings is changed. |
 | | `sh_tfa_suit.lua`, `sv_tfa_suit.lua`, `sh_arc9_suit.lua`, `sv_arc9_suit.lua` | What the suit does to a TFA or ARC9 weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each, the same for both bases. |
 | | `sv_tfa.lua`, `sv_arc9.lua` | The attacks of TFA and ARC9 that are not bullets (a knife's stab, a bash, a grenade's throw, ARC9's launcher under the barrel) end the camouflage, through the base's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
+| `compat/vehicles/` | `sh_simfphys.lua`, `sv_simfphys.lua`, `cl_simfphys.lua` | simfphys, the physics vehicle base (the base and its armed pack). The car is one class for every vehicle, the player sits on a child seat, the wheels have a +use of their own. Shared: the vehicle provider (the car, not the seat; the driver who sits, never the remote driver), the tracked entries (every car is a vehicle contact once scanned, a tank is a heavy machine, the crew of the car colours it, its own forward turns its icon, a wreck is no contact, the anti-tank mine is a device), the prompts of the wheels and of the mine. Server: a hit filter (what simfphys cancels on a seated player costs the suit nothing; the explosion of the car, which wants its occupants dead, goes through the armor) and the shell of a cannon and the thrown mine ending the camouflage. Client: no prompt on a locked car. **Written from the source of simfphys, tested with stand-ins: see the section below.** |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -121,6 +122,19 @@ The original holds the binoculars in place of the weapon: `gry_binoculars_hide_w
 | 16. Settings | The ARC9 tab: its HUD, and the suit's server settings (the same as TFA's). |
 | 17. Shipping | Loader lines, syntax check and loader test, stand-in tests (`tests/cl_compat_arc9_test.lua`, `tests/sv_compat_arc9_suit_test.lua`, ...) and the live checks above. |
 | 18. Hooks | ARC9's own global hooks (`ARC9_<Stat>Hook`, `ARC9_Hook_...`), `pcall`, `nil` when nothing changes; nothing of ARC9 is replaced but `ARC9.ShouldDrawHUD` (a wrapper, for the HUD option). |
+
+## simfphys: how it was written (2026-11-27)
+
+`compat/vehicles/*simfphys.lua` was written from the public source of `simfphys_base` (8d4b1ad) and `simfphys_armed` (53f709f), without simfphys installed, and tested with stand-ins that answer what
+its code answers (`tests/sh_compat_simfphys_test.lua`, `sv_...`, `cl_...`). **What is read, not tried in a game**, to check with the real addon:
+
+- the seats: `Player:GetSimfphys()` is the car, `car:GetDriverSeat()` the seat of the driver who sits (`car:GetDriver()` is the remote driver of `weapon_simremote` when there is one);
+- the damage: simfphys' hook `!!!_simfphys_fix_vehicle_explosion_damage` cancels every hit that is not `DMG_DIRECT` on a seated player (the filter says "ignore" only while that hook is there); the exploding car
+  sets `car.destroyed` and gives each occupant `Health + Armor` as `DMG_DIRECT` (the filter says "bypass" then). A crash (2 or 5 points) is an ordinary hit;
+- the forward of the car (`car.Forward`, or `car.VehicleData.LocalAngForward` of its model), the heavy mass (the tanks weigh 8000 to 20000, the armored cars 4800 and less);
+- the shells (`simfphys_tankprojectile`, made with `Attacker` and `AttackingEnt` set before the spawn, seen a tick after) and the thrown mine (`Thrown`, `CreatedBy`);
+- what is NOT done on purpose: no ring of the radar for the shell and the wreck (the core rings every `util.BlastDamage`; the wreck's gib makes one), no danger of the grenade warning for the shell (it flies at
+  about 13 000 units a second: less than a second of warning at the warning's rate), no camouflage ban and no notarget for a seated player (the owner's decision: the suit works in a vehicle).
 
 ## Adding a patch
 
