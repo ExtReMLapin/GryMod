@@ -362,6 +362,62 @@ return {
 				Map.Close()
 			end
 		},
+		-- fails when the NPC contacts are not drawn in the PDA frame, are drawn with the window's scissor still on (the icons are groups drawn through a render target, which
+		-- the scissor cuts wrongly), or are drawn before the tiles (they would be under them)
+		{
+			name = "the NPC contacts are drawn once a frame with the map's view, after the window's scissor is lifted and after its tiles and markers",
+			func = function(state)
+				local Map = M()
+				local real = Map.Contacts.Draw
+				local calls = {}
+
+				standIns(state)
+				Map._state.opened = true
+				Map.Open()
+				tileUnderPlayer()
+				stubDrawing(state)
+				run(3)
+
+				Map.Contacts.Draw = function(view, ply, uiScale)
+					calls[#calls + 1] = {view = view, ply = ply, uiScale = uiScale}
+					recorded[#recorded + 1] = {"contacts"}
+
+					return 0
+				end
+
+				local ok, err = pcall(function()
+					recorded = {}
+					paint()
+
+					expect(#calls).to.equal(1)
+					expect(calls[1].view).to.equal(Map._state.view)
+					expect(calls[1].uiScale).to.equal(ScrH() / 1080)
+
+					local at, lastScissor, lastTile
+
+					for i, c in ipairs(recorded) do
+						if c[1] == "contacts" then
+							at = i
+						elseif c[1] == "render.SetScissorRect" and not at then
+							lastScissor = c
+						elseif c[1] == "surface.DrawTexturedRectUV" and not at then
+							lastTile = i
+						end
+					end
+
+					expect(at ~= nil).to.beTrue()
+					expect(lastScissor[6]).to.equal(false)
+					expect(lastTile ~= nil and lastTile < at).to.beTrue()
+				end)
+
+				Map.Contacts.Draw = real
+				Map.Close()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
 		-- fails when the map still draws its own title, DONE button or outline over the movie's
 		{
 			name = "the movie's texts replace the map's own: no 'STRATEGIC MAP', no 'DONE' drawn by the map; the zoom and cell, the hint and the grid letters are the map's",

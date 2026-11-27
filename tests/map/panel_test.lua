@@ -1351,6 +1351,85 @@ return {
 				end
 			end
 		},
+		-- fails when the plain panel does not draw the NPC contacts, draws them with the window's scissor still on, or before the tiles
+		{
+			name = "the plain panel draws the NPC contacts once a frame with the map's view, after the window's scissor is lifted and after its tiles",
+			func = function(state)
+				local Map = M()
+				local real = Map.Contacts.Draw
+				local calls = {}
+
+				Map.Open()
+				stubDrawing(state)
+
+				Map.Contacts.Draw = function(view, ply, uiScale)
+					calls[#calls + 1] = {view = view, ply = ply, uiScale = uiScale}
+					recorded[#recorded + 1] = {"contacts"}
+
+					return 0
+				end
+
+				local ok, err = pcall(function()
+					local panel = Map._state.panel
+
+					expect(pcall(panel.Paint, panel, ScrW(), ScrH())).to.beTrue()
+					expect(#calls).to.equal(1)
+					expect(calls[1].view).to.equal(Map._state.view)
+
+					local at, lastScissor
+
+					for i, c in ipairs(recorded) do
+						if c[1] == "contacts" then
+							at = i
+						elseif c[1] == "render.SetScissorRect" and not at then
+							lastScissor = c
+						end
+					end
+
+					expect(at ~= nil).to.beTrue()
+					expect(lastScissor[6]).to.equal(false)
+				end)
+
+				Map.Contacts.Draw = real
+				Map.Close()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		-- fails when a contact drawing that raises closes the map (the contacts are extra), or is reported at every frame
+		{
+			name = "a contact drawing that raises is reported once and stops for this opening; the map stays open and goes on drawing",
+			func = function(state)
+				local Map = M()
+				local real, realError = Map.Contacts.Draw, ErrorNoHalt
+				local calls, reported = 0, 0
+
+				Map.Open()
+				stubDrawing(state)
+				Map.Contacts.Draw = function() calls = calls + 1 error("contacts exploded") end
+				ErrorNoHalt = function() reported = reported + 1 end
+
+				local ok, err = pcall(function()
+					local panel = Map._state.panel
+
+					expect(pcall(panel.Paint, panel, ScrW(), ScrH())).to.beTrue()
+					expect(pcall(panel.Paint, panel, ScrW(), ScrH())).to.beTrue()
+					expect(Map.IsOpen()).to.beTrue()
+					expect(calls).to.equal(1)
+					expect(reported).to.equal(1)
+					expect(#callsOf("draw.SimpleText") > 0).to.beTrue() -- the frame and its texts are still drawn
+				end)
+
+				Map.Contacts.Draw, ErrorNoHalt = real, realError
+				Map.Close()
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
 		-- fails when the hint under the map does not tell about the right click, or keeps telling when it is switched off
 		{
 			name = "the hint lines: the right click is in the long ones when the switch is on, and in none when it is off; the last one is only the key",

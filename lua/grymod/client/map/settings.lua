@@ -15,6 +15,7 @@ Settings.DEFAULT_FINISHED = false
 Settings.DEFAULT_GRID = true
 Settings.DEFAULT_CHROME = true
 Settings.DEFAULT_WAYPOINTS = true
+Settings.DEFAULT_CONTACTS = true
 
 -- GetConVar first, so that a hot reload of this file keeps the same convars
 local EnableConVar = GetConVar("gry_map_enable") or CreateClientConVar("gry_map_enable", "1", true, false,
@@ -32,6 +33,9 @@ local GridConVar = GetConVar("gry_map_grid") or CreateClientConVar("gry_map_grid
 
 local WaypointsConVar = GetConVar("gry_map_waypoints") or CreateClientConVar("gry_map_waypoints", "1", true, false,
 	"The player's own objective points on the big map (a right click without moving the mouse puts one with a title, a right click on one takes it away; private, kept for each map): 1 on, 0 off", 0, 1)
+
+local ContactsConVar = GetConVar("gry_map_contacts") or CreateClientConVar("gry_map_contacts", "1", true, false,
+	"The NPCs on the big map: the contacts of the minimap and the compass radar (the soldiers, the creatures, the vehicles, the team mates), with the same icons (1), or none (0)", 0, 1)
 
 local ChromeConVar = GetConVar("gry_map_chrome") or CreateClientConVar("gry_map_chrome", "1", true, false,
 	"The big map is drawn in the frame of the original Crysis PDA map (1), or in the plain panel it had before (0)", 0, 1)
@@ -124,6 +128,11 @@ end
 
 function Settings.Chrome()
 	return Settings.ParseSwitch(ChromeConVar:GetString(), Settings.DEFAULT_CHROME)
+end
+
+-- Whether the big map shows the radar's contacts (gry_map_contacts).
+function Settings.Contacts()
+	return Settings.ParseSwitch(ContactsConVar:GetString(), Settings.DEFAULT_CONTACTS)
 end
 
 -- Whether the player may put objective points of his own on the big map (gry_map_waypoints).

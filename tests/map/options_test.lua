@@ -57,7 +57,7 @@ return {
 	cases = {
 		-- fails without GryMod.MapOptionsPanel (the file is missing) or when a control is left out or moved
 		{
-			name = "the page holds, in this order: the Big map category, the switch, the key picker, the Crysis PDA frame, the grid, the finished objectives, the player's own points and the loading look",
+			name = "the page holds, in this order: the Big map category, the switch, the key picker, the Crysis PDA frame, the grid, the finished objectives, the NPC contacts, the player's own points and the loading look",
 			func = function(state)
 				expect(isfunction(GryMod.MapOptionsPanel)).to.beTrue()
 
@@ -71,6 +71,7 @@ return {
 					"box:gry_map_chrome",
 					"box:gry_map_grid",
 					"box:gry_map_finished",
+					"box:gry_map_contacts",
 					"box:gry_map_waypoints",
 					"combo:gry_map_loading_fx"
 				}, "\n"))

@@ -23,12 +23,12 @@ GryMod.Map = GryMod.Map or {}
 
 local Map = GryMod.Map
 
-local Zoom, Frame, Bounds, Pyramid, Fx, Markers, Tiles, Settings, Chrome, Waypoints
+local Zoom, Frame, Bounds, Pyramid, Fx, Markers, Tiles, Settings, Chrome, Waypoints, Contacts
 
 local function modules()
 	Zoom, Frame, Bounds, Pyramid = Map.Zoom, Map.Frame, Map.Bounds, Map.Pyramid
 	Fx, Markers, Tiles, Settings, Chrome = Map.Fx, Map.Markers, Map.Tiles, Map.Settings, Map.Chrome
-	Waypoints = Map.Waypoints
+	Waypoints, Contacts = Map.Waypoints, Map.Contacts
 end
 
 modules()
@@ -879,6 +879,26 @@ end
 
 -- What the movie's window shows. The movie's drawing calls this from inside, in MapArea (chrome.lua), with the screen rectangle of the window that its opening mask
 -- reveals now. An error is kept and raised by drawMap after the movie's drawing (the movie only prints a failure of its hook once and goes on).
+-- The NPC contacts (contacts.lua), drawn with the window's scissor lifted: `shakeX`, `shakeY` is the shake of a lost uplink, which moves them with the map. They are
+-- extra: a failure is reported once and they stop for this opening, the map goes on.
+local function drawContacts(view, ply, uiScale, shakeX, shakeY)
+	if not Contacts or not Contacts.Draw or S.contactsFailed then
+		return
+	end
+
+	local pushed = (shakeX ~= 0 or shakeY ~= 0) and pcall(pushShake, shakeX, shakeY)
+	local ok, err = pcall(Contacts.Draw, view, ply, uiScale)
+
+	if pushed then
+		cam.PopModelMatrix()
+	end
+
+	if not ok then
+		S.contactsFailed = true
+		ErrorNoHalt("[GryMod] big map contacts: " .. tostring(err) .. "\n")
+	end
+end
+
 local function chromeContent(x0, y0, x1, y1, alpha)
 	local view, f = S.view, S.frame
 
@@ -914,6 +934,10 @@ local function chromeContent(x0, y0, x1, y1, alpha)
 
 	render.SetScissorRect(0, 0, 0, 0, false)
 	render.OverrideBlend(false)
+
+	if ok then
+		drawContacts(view, f.ply, f.uiScale, sx, sy)
+	end
 
 	-- the lost uplink dims the map (the original's 35 percent)
 	if ok and alpha < 1 then
@@ -1124,6 +1148,7 @@ local function drawMap(panel)
 			error(err, 0)
 		end
 
+		drawContacts(view, ply, uiScale, 0, 0)
 		drawFrameAndTexts(view, ply)
 	end
 
@@ -1289,6 +1314,7 @@ function Map._open()
 	S.keyDown = Map.Key and Map.Key.Effective() > 0 and input.IsButtonDown(Map.Key.Effective()) or false
 	S.lastReason = nil
 	S.paintFailed = false
+	S.contactsFailed = false
 	S.area = chrome and Chrome.ToScreen(S.ox, S.oy, S.scale, chrome.window) or nil
 
 	if S.area then

@@ -318,6 +318,13 @@ made by the same render, from straight above, outside view: terrain, rocks and r
   window (a bigger window or a smaller map reaches it at a different number, the pixel size is the same). A small map keeps x8. A wheel notch is `z * 1.35 - 0.25`
   in and `z / (1.35 - 0.25 / z)` out, which is the original game's rule (eleven notches from 1 to 8); over 8 the smooth zoom of the middle button goes faster
   in proportion, and the icons stop growing at 8.
+- **The NPCs.** The contacts of the minimap and the compass radar (the soldiers, the creatures, the vehicles, the team mates and the unit that hurt the player) are
+  drawn on the map with the same icons: the movie's own, the same frame, size, tint and pulse of an alert, at the radar HUD's own size (`ScrH() / 768` a movie pixel),
+  turned by the unit's yaw on a map that is not turned. Nothing is made twice: the contacts are the radar's (`GryMod.FlashRadar.Live()`), the look of one is the radar's
+  `ContactStyle`, the icons are the movie's clips given by the radar panel's `SetObjects` (a second panel of the movie, apart from the HUD's), and only the place is the
+  map's. The icons are blended with add as on the radar, so each has a dark disc under it, or a light icon would vanish over a light roof. The map asks the server for
+  nothing: it shows what the radar knows, the contacts near you (the radar's range, up to about 100 m, and a hostile only once it is alerted or scanned with the
+  binoculars), not every NPC of the level; they need the radar and its units switched on. `gry_map_contacts 0` turns them off.
 - **Your own points.** A right click on the map, **without moving the mouse** (a drag with the right button is still the pan), opens a small menu with one button,
   "Create an objective here". The button asks for a title (the box holds "Point C4", the grid cell, so Enter is enough), and the point is put where the click was,
   on the ground the map shows there (the first solid surface under the top of the level that is drawn; the player's own height outside the world). A right
@@ -432,6 +439,7 @@ The base of a cell (the coarse picture, or the plain tile) is drawn by the map; 
 | `gry_map_finished` | 0 | 0 or 1 | Also show the objectives that are done or failed, greyed. |
 | `gry_map_grid` | 1 | 0 or 1 | The 8 x 8 grid with its letters and numbers. |
 | `gry_map_chrome` | 1 | 0 or 1 | Draw the map in the frame of the original Crysis PDA map (1), or in the plain panel (0). Read at each opening. |
+| `gry_map_contacts` | 1 | 0 or 1 | The NPCs of the minimap and the compass radar on the big map, with the same icons (the radar's contacts: the ones near you). 0: none. |
 | `gry_map_waypoints` | 1 | 0 or 1 | The player's own objective points: a right click on the map puts one (a title is asked for), a right click on one takes it away. Private, kept for each map. 0: no menu, and the points leave the lists. |
 
 All of them are saved client convars, and in the options menu of the GryMod category, on the page "Big map". The tile size and the generator's time are the
@@ -478,6 +486,10 @@ GryMod.Map.RemoveMarkerSource("my_addon")
 `type` 5 is an objective (subtype 0 or 1 primary, green; 2 or 3 secondary, yellow), 6 a ring, 7 a team mate, the others are white dots; `alpha` (0 to 1) and `scale`
 (percent) are read. The objectives of `GryMod.Objectives` need no source: the map reads them.
 
+The NPCs are `GryMod.Map.Contacts` (`contacts.lua`): `Draw(view, ply, uiScale)` (how many icons were drawn), `Entries(view, contacts, playerZ, phase, k, margin, out)` (the radar panel's
+entries for the contacts that are wholly inside the window; pure), `Current()`, `Enabled()`, `Release()`. The look is shared with the radar: `GryMod.FlashRadar.ContactStyle(c,
+heightMetres, pulse)` (the frame of the movie's icon, its size in percent, its alpha and its tint), `Pulse(phase)` and `Rotation(viewYaw, unitYaw)`.
+
 The player's own points are `GryMod.Map.Waypoints` (`waypoints.lua`): `Add(x, y, z, title)` (the id `gry_user_N`, or `false` and why), `Remove(id)`, `Clear()`,
 `List()`, `Load()` and `Save()` (the file of the map), `Pick(view, sx, sy, radius)`, `GroundAt(x, y, zTop, zBottom, trace)`, `CleanTitle(text)`, `Enabled()`. They go
 into the client's objectives as `GryMod.Objectives.ApplyOwn(record)` and out with `RemoveOwn(id)`: an own objective is in `List()` with `own = true`, the full list and
@@ -485,7 +497,7 @@ the CLEAR of the server leave it alone, and no message of the server changes or 
 `o.own`). The menu and the title request are fields of `GryMod.Map.UI` (`Menu`, `Ask`, `CancelAsk`, `Ground`), so a test or an addon can replace them.
 
 The modules are in `lua/grymod/client/map/`: `zoom` (the zoom rules), `frame` (the maths between the world and the window: zoom toward a point, the drag, the hard
-clamp), `bounds`, `pyramid`, `store`, `fx`, `markers`, `settings`, `waypoints`, `tiles` and `panel`. The first seven are pure and have tests that need no render (`tests/map/`). The
+clamp), `bounds`, `pyramid`, `store`, `fx`, `markers`, `settings`, `waypoints`, `contacts`, `tiles` and `panel`. The first seven are pure and have tests that need no render (`tests/map/`). The
 tests of `tiles` and `panel` replace the minimap's cache, capture, floors and settings and the engine's render targets by stand-ins.
 
 ### Limits

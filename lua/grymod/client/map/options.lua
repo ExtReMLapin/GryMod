@@ -57,6 +57,7 @@ function GryMod.MapOptionsPanel(Panel)
 	GryMod.OptionBox(form, "Crysis PDA frame", "gry_map_chrome", "Draw the map in the frame of the original Crysis PDA map (its title, status strip, DONE button and opening). Off: the plain panel. Takes effect at the next opening.")
 	GryMod.OptionBox(form, "Grid", "gry_map_grid", "The 8 x 8 grid with the letters A to H and the numbers 1 to 8.")
 	GryMod.OptionBox(form, "Finished objectives", "gry_map_finished", "Show the objectives that are done or failed, greyed. Off: only the active ones.")
+	GryMod.OptionBox(form, "NPCs", "gry_map_contacts", "The NPCs of the minimap and the compass radar (the soldiers, the creatures, the vehicles, the team mates), with the same icons. They are the radar's contacts, so the map shows what the radar knows: the ones near you, not the whole level.")
 	GryMod.OptionBox(form, "My objective points", "gry_map_waypoints", "A right click on the map, without moving the mouse, puts an objective point of your own there (it asks for a title); a right click on one takes it away. They are private, kept for each map, and show on the minimap, the compass and, with the binoculars up, on the screen.")
 
 	local clear = form:Button("Remove my objective points of this map")

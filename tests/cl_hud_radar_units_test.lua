@@ -641,6 +641,58 @@ return {
 					error(err, 0)
 				end
 			end
+		},
+		{
+			-- fails when the look of a contact (the movie frame, the size, the alpha, the tint) is not one function the radar and the big map both ask: the big map would draw its
+			-- own icons, and the two would drift apart
+			name = "ContactStyle: the one place that says how a contact looks (frame = type * 5 + sub, the ally's own frame and tint, the pulse of an alert, the mates four times bigger) - the radar uses it too",
+			func = function()
+				local R = GryMod.FlashRadar
+				local S = GryMod.RadarShared
+
+				-- a hostile that is calm to one that fights: its subtype is the frame offset, the movie's own colours (no tint), 85 percent
+				local frame, scale, alpha, tint = R.ContactStyle({type = 1, sub = 2}, 0, 50)
+
+				expect(frame).to.equal(7)
+				expect(scale).to.equal(R.SizeFor(0, nil))
+				expect(alpha).to.equal(R.ALPHA)
+				expect(tint).to.beNil()
+
+				-- an alert (subtypes 3 and 4) takes the pulse, a marker (the unit that hurt the player) does not
+				expect((select(3, R.ContactStyle({type = 1, sub = 3}, 0, 50)))).to.equal(50)
+				expect((select(3, R.ContactStyle({type = 1, sub = 4}, 0, 50)))).to.equal(50)
+				expect((select(3, R.ContactStyle({type = 1, sub = 4, marker = true}, 0, 50)))).to.equal(R.ALPHA)
+
+				-- an ally has the first frame of its type and the blue tint
+				frame, _, _, tint = R.ContactStyle({type = 2, sub = S.SUB_ALLY}, 0, 50)
+				expect(frame).to.equal(10)
+				expect(tint).to.equal(R.ALLY_TINT)
+
+				-- the height changes the size, a big thing is bigger
+				expect(R.ContactStyle({type = 1, sub = 2}, 20, 50) ~= nil).to.beTrue()
+				expect(select(2, R.ContactStyle({type = 1, sub = 2}, 20, 50))).to.equal(R.SizeFor(20, nil))
+				expect(select(2, R.ContactStyle({type = 1, sub = 2, big = true}, 0, 50))).to.equal(R.SizeFor(0, true))
+
+				-- a team mate: four times the size, alpha 100
+				_, scale, alpha = R.ContactStyle({type = R.MATE_TYPE, sub = 0}, 0, 50)
+				expect(scale).to.equal(R.SizeFor(0, nil) * 4)
+				expect(alpha).to.equal(100)
+			end
+		},
+		{
+			-- fails when the pulse or the turn of an icon is computed in two places again
+			name = "Pulse and Rotation: the pulse goes from 30 to 100 percent with the phase; an icon turns by the view's yaw less its own, half a turn on",
+			func = function()
+				local R = GryMod.FlashRadar
+
+				expect(R.Pulse(0)).to.aboutEqual(100, 1e-9)
+				expect(R.Pulse(math.pi)).to.aboutEqual(30, 1e-9)
+				expect(R.Pulse(nil)).to.aboutEqual(100, 1e-9)
+				expect(R.Rotation(90, 30)).to.equal(240)
+				expect(R.Rotation(0, 90)).to.equal(90)
+				expect(R.Rotation(0, 0)).to.equal(180)
+				expect(R.Rotation(10, 400)).to.equal((10 - 400 + 180) % 360)
+			end
 		}
 	}
 }

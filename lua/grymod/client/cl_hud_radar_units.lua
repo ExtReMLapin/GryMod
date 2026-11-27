@@ -143,6 +143,33 @@ Radar.InsideFrame, Radar.BorderPoint, Radar.SizeFor = insideFrame, borderPoint, 
 -- No more marker icons than this on the radar at once (the sources' markers come after the contacts, whose limit is S.MAX_CONTACTS).
 Radar.MAX_MARKERS = 64
 
+-- How a contact LOOKS, in one place: the radar and the big map (map/contacts.lua) both ask it, so the two show the same icons. `c` is a contact {type, sub, marker,
+-- big}, `heightMetres` its height over the player and `pulse` the alpha of the pulse (Radar.Pulse). Returns the frame of the movie's icon (type * 5 + the subtype, an
+-- ally has the first frame of its type and the blue tint), its size in percent, its alpha in percent and its tint (nil: the movie's own colours). A mate is drawn
+-- at alpha 100 and four times the size (the original's numbers).
+function Radar.ContactStyle(c, heightMetres, pulse)
+	local ally = c.sub == S.SUB_ALLY
+	local scale = sizeFor(heightMetres, c.big)
+	local alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
+
+	if c.type == Radar.MATE_TYPE then
+		scale, alpha = scale * 4, 100
+	end
+
+	return c.type * 5 + (ally and 0 or c.sub), scale, alpha, ally and Radar.ALLY_TINT or nil
+end
+
+-- The alpha of an alerted icon at `phase` (radians): between 30 and 100 percent.
+function Radar.Pulse(phase)
+	return 100 * (math.cos(phase or 0) * 0.35 + 0.65)
+end
+
+-- The turn of an icon in degrees: the view's yaw less the unit's, and half a turn (the movie's icons point down at 0). The radar turns with the player (`viewYaw` is his
+-- yaw); the big map is not turned (up is +X), so it gives 0.
+function Radar.Rotation(viewYaw, unitYaw)
+	return (viewYaw - unitYaw + 180) % 360
+end
+
 -- The entries for the movie, from the player's position and yaw (degrees) and the contacts {id, x, y, z, yaw, type, sub,
 -- marker, big}: {id, x, y, rotation, frame, scale, alpha, tint}, in the movie's coordinates (tint: the colour multipliers of an
 -- ally, nil for the movie's own colours). A unit outside the frame or more
@@ -166,7 +193,7 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 	local radians = math.rad(yaw)
 	local cos, sin = math.cos(radians), math.sin(radians)
 	local pixels = S.METRES_PER_UNIT * S.PIXELS / (range or S.RANGE)
-	local pulse = 100 * (math.cos(phase or 0) * 0.35 + 0.65)
+	local pulse = Radar.Pulse(phase)
 	local px, py, pz = pos.x, pos.y, pos.z
 
 	for i = 1, math.min(#contacts, S.MAX_CONTACTS) do
@@ -197,15 +224,8 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 			end
 
 			if show then
-				local ally = c.sub == S.SUB_ALLY
 				local entry = reuse and list[count + 1]
-				-- a mate is drawn at alpha 100 and 100 times the height factor in percent: 4 times a unit's size (the original's numbers)
-				local scale = sizeFor(dz * S.METRES_PER_UNIT, c.big)
-				local alpha = (c.sub >= 3 and c.sub <= 4 and not c.marker) and pulse or Radar.ALPHA
-
-				if mate then
-					scale, alpha = scale * 4, 100
-				end
+				local frame, scale, alpha, tint = Radar.ContactStyle(c, dz * S.METRES_PER_UNIT, pulse)
 
 				count = count + 1
 
@@ -213,21 +233,21 @@ function Radar.Contacts(pos, yaw, contacts, phase, range, reuse)
 					entry.id = c.id
 					entry.x = Radar.UNITS_CENTRE_X + x * Radar.UNITS_PIXEL
 					entry.y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL
-					entry.rotation = (yaw - c.yaw + 180) % 360
-					entry.frame = c.type * 5 + (ally and 0 or c.sub)
+					entry.rotation = Radar.Rotation(yaw, c.yaw)
+					entry.frame = frame
 					entry.scale = scale
 					entry.alpha = alpha
-					entry.tint = ally and Radar.ALLY_TINT or nil
+					entry.tint = tint
 				else
 					list[count] = {
 						id = c.id,
 						x = Radar.UNITS_CENTRE_X + x * Radar.UNITS_PIXEL,
 						y = Radar.UNITS_CENTRE_Y + y * Radar.UNITS_PIXEL,
-						rotation = (yaw - c.yaw + 180) % 360,
-						frame = c.type * 5 + (ally and 0 or c.sub),
+						rotation = Radar.Rotation(yaw, c.yaw),
+						frame = frame,
 						scale = scale,
 						alpha = alpha,
-						tint = ally and Radar.ALLY_TINT or nil
+						tint = tint
 					}
 				end
 			end
