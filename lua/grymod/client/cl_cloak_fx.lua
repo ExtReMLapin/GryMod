@@ -285,6 +285,12 @@ function F.Update(ply)
 		end
 	end
 
+	-- the others are told of each change of the switch, for every player (the state is made when the camouflage starts, so the first answer is "on")
+	if s.told ~= cloaked then
+		s.told = cloaked
+		hook.Run("GryMod_CloakChanged", ply, cloaked, GryMod.API.CloakLevel(ply))
+	end
+
 	local dt = FrameTime()
 	s.cloaked = cloaked
 	s.amount = F.Step(s.amount, cloaked, dt)
@@ -582,6 +588,8 @@ local function drawn(ply, eye, forward)
 	return true, distance
 end
 
+local wornParts = {} -- the list of GryMod.API.GetPlayerParts, reused
+
 drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 	if depth or skybox or skybox3d or drawing or not next(States) or not F.Enabled() then return end
 
@@ -652,6 +660,19 @@ drawHooks.PostDrawTranslucentRenderables = function(depth, skybox, skybox3d)
 				elseif not IsValid(weapon) then
 					F.ClearWeaponProxy(ply)
 				end
+
+				-- what the player wears that the engine does not draw as part of him (GryMod.API.AddPlayerPartsProvider): the same layers, the same opacity
+				if distance <= F.DetailDistance then
+					local worn, wornCount = GryMod.API.GetPlayerParts(ply, wornParts)
+
+					for i = 1, wornCount do
+						drawLayers(worn[i], refract, base, 0, s.amount)
+
+						if shader and strength > 0 then
+							shader.Draw(worn[i], strength, s.amount, drawPlain)
+						end
+					end
+				end
 			end
 		end
 	end
@@ -681,6 +702,20 @@ local function startFirstPerson(ent, ply)
 	local s = States[ply]
 
 	if not s or s.amount <= 0 then return end
+
+	-- the binoculars hide the view model and the hands: their hook on this very event returns true, and the engine then skips the Post hook too, which would put the render
+	-- state back. Nothing is prepared here (and what a frame before left on is put back).
+	local Bino = GryMod.FlashBinoculars
+
+	if Bino and Bino.HideWeapon() == true then
+		if s.firstPerson then
+			s.firstPerson = false
+			render.MaterialOverride(nil)
+			render.SetBlend(1)
+		end
+
+		return
+	end
 
 	-- the weapon's own screen has the view (a customization menu): the gun is drawn plain there, the picture behind it is not the one the layer would copy
 	if GryMod.API.IsPlainView(ply:GetActiveWeapon()) then return end

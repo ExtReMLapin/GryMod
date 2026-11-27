@@ -156,7 +156,7 @@ end
 
 The warning is the grenade-detect icon with a label and a distance, drawn while the projectile is coming. `armed` runs on the
 **server** (the client cannot read the engine's internal fields) and says when the projectile is a danger now; the server sends
-the answer to the clients. An entry with a `danger` needs a `class`.
+the answer to the clients. An entry with a `danger` needs a `class`, a `base` or a `match` function (see [api.md](api.md): `GetDanger(entity)`).
 
 ```lua
 -- shared
@@ -187,6 +187,7 @@ What each `danger` field does:
 | `armed(ent)` | server. `true` while the projectile is dangerous (a fuse that runs, a rocket in flight). Without it, the entity is dangerous from its creation. An error counts as "not armed" |
 | `range` | metres, 200 at most. The warning starts at that distance. It can only shorten the range the player chose (`gry_grenade_range`) |
 | `ownerOf(ent)` | server. The player who threw or fired it, when the engine does not say. The server also reads the engine's owner and thrower |
+| `warnFor(ent, ply)` | client. `false`: this projectile does not warn this player (a missile that aims at another player's vehicle). Nothing, `true`, or an error: it warns |
 | `ownMissile` | `true`: something the player fires, it never warns its own shooter. `false` (default): it warns the thrower within 15 m if the player's switch `gry_grenade_own_warn` is on |
 | `type` | the kind of icon, a short word. Stored: the warning has one icon whatever you say |
 

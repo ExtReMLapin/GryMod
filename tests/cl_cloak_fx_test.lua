@@ -662,6 +662,51 @@ return {
 			end
 		},
 		{
+			-- fails when the models an addon gives for a player (GryMod.API.AddPlayerPartsProvider: armor, a backpack) are left plain on a camouflaged player, or are drawn with other layers than the body
+			name = "PlayerDraw: the parts the providers give for the player (armor, a backpack) follow the body like the weapon: the refraction and the plain model at the same opacity, only the refraction once done, nothing far away",
+			func = function(state)
+				local log = recordRender()
+				local ply = fakePlayer(0)
+				local armor, pack = fakePlayer(0), fakePlayer(0)
+				local asked = {}
+
+				GryMod.API.AddPlayerPartsProvider("test.cloakparts", function(who, out)
+					asked[#asked + 1] = who
+					out[#out + 1] = armor
+					out[#out + 1] = pack
+				end)
+
+				local ok, err = pcall(function()
+					setState(ply, 0.5)
+					translucent()
+					expect(ply.draws).to.equal(3)
+					expect(armor.draws).to.equal(2) -- refraction, plain model (no sparks)
+					expect(pack.draws).to.equal(2)
+					expect(asked[1]).to.equal(ply)
+					expect(leftClean(log)).to.beTrue()
+
+					armor.draws, pack.draws = 0, 0
+					setState(ply, 1)
+					translucent()
+					expect(armor.draws).to.equal(1)
+					expect(pack.draws).to.equal(1)
+
+					-- far away: the body only (the detail distance), and the provider is not even asked
+					armor.draws, pack.draws, asked = 0, 0, {}
+					ply.center = Vector(GryMod.CloakFX.DetailDistance + 500, 0, 0)
+					translucent()
+					expect(armor.draws).to.equal(0)
+					expect(#asked).to.equal(0)
+				end)
+
+				GryMod.API.RemovePlayerPartsProvider("test.cloakparts")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "WeaponProxy: the weapon the server hides (EF_NODRAW: the engine then refuses to draw it, whoever asks) is drawn through a client model of its world model, bone-merged on the player, made once and kept while the weapon is the same, replaced when it changes, gone with the player's state",
 			func = function(state)
 				local F = GryMod.CloakFX
@@ -923,6 +968,34 @@ return {
 				expect(vm.draws).to.equal(2) -- the outline (sparks are strong in the change)
 				expect(leftClean(log)).to.beTrue()
 				expect(log.blendNow).to.equal(1)
+			end
+		},
+		{
+			-- fails when the camouflage prepares the view model (a refraction draw, a blend below 1) while the binoculars hide it: their PreDrawViewModel returns true and the engine skips the
+			-- PostDrawViewModel, so the render state the camouflage set is never put back (view-J5)
+			name = "first person: while the binoculars hide the weapon (their PreDrawViewModel returns true, so no Post hook runs) the camouflage prepares nothing and sets no blend",
+			func = function(state)
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				setState(me, 0.4)
+				stub(GryMod.FlashBinoculars, "HideWeapon", function() return true end)
+
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(vm, vm, me, NULL)
+				expect(vm.draws).to.equal(0)
+				expect(#log.override).to.equal(0)
+				expect(#log.blend).to.equal(0)
+				expect(log.refreshed).to.equal(0)
+
+				-- the binoculars down: the same call prepares the view model as before
+				stub(GryMod.FlashBinoculars, "HideWeapon", function() return nil end)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(vm.draws).to.equal(1)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(leftClean(log)).to.beTrue()
 			end
 		},
 		{

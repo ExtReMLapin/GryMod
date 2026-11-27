@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"weaponmenu"` (client), `"plainview"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"weaponmenu"` (client), `"plainview"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client), `"cameraowner"`, `"viewfov"`, `"viewveto"`, `"hudsuppress"`, `"clientrelation"`, `"playerparts"`, `"usablefilter"` (all client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -787,6 +787,118 @@ GryMod.API.IsPlainView(weapon)             -- true when a provider says so
 A provider must be cheap (it is asked at every frame the camouflage is on, in first person), runs under `SafeCall` (five errors in a row switch it off) and the same id replaces it.
 The patch for ARC9 is in `lua/grymod/compat/weapons/cl_arc9_menu.lua` ([compat.md](compat.md)).
 
+## The view: cameras, the HUD, the relation and the player's parts (client)
+
+What an addon with a screen or a camera of its own (a drone, a vehicle's special view, a dashboard, a cinematic) needs to leave GryMod's HUD and zoom alone, and what a
+client side addon may ask. All of it is optional: GryMod does nothing different until an addon uses it. Every callback runs under `GryMod.API.SafeCall` (five errors in a row
+switch it off, adding it again re-arms it), is asked at most once per frame where it says so, and must be cheap.
+
+### Camera owners: `AddCameraOwner(key, function(ply) return true end)`
+
+`GryMod.API.Has("cameraowner")` is true. While any owner answers `true` for the local player, another camera has the view, so:
+
+- the binoculars give **no view** (no zoom stage, no sway) and do not read the game's zoom key (`IN_ZOOM`) for the binoculars;
+- the suit's own zoom closes at once (reason `cameraowner`) and does not open;
+- the heading of the radar, the compass and the damage arrows is the one of the view that is really drawn (they read `MainEyeAngles()`, once per frame).
+
+```lua
+GryMod.API.AddCameraOwner("my_addon", function(ply)
+	return MyAddon.CameraIsUp == true     -- only the value true counts
+end)
+
+GryMod.API.RemoveCameraOwner("my_addon")
+GryMod.API.IsCameraOwned(ply)             -- true while any owner says so
+```
+
+The same key replaces the owner. Without any owner this costs a table length. Independently of the owners, the binoculars' `CalcView` never gives a view in a vehicle, in
+third person or while another entity has the view (`GetViewEntity() ~= ply`), and ignores a nested call whose `znear` is not a number (VManip calls the hooks again with a
+boolean there). The Flash crosshair is hidden in third person.
+
+### The field of view really drawn: `GetViewFov()`
+
+`GryMod.API.GetViewFov()` gives the horizontal field of view in degrees as `CalcView` gives it (4:3, like `Player:GetFOV`), of the view drawn at the last render: what a vehicle's
+zoom, another addon's camera or the binoculars' stages set. `nil` when the render does not know it yet. `GryMod.API.Has("viewfov")`. The radar's view cone uses it.
+
+### Veto: `GryMod_CanUseView(kind, reason)`
+
+`GryMod.API.Has("viewveto")` is true. An addon whose own view must not be disturbed refuses the player's night vision (`kind = "nightvision"`) or the suit's own zoom
+(`kind = "zoom"`) at the moment they are about to switch on or open, by returning `false` from a handler of this hook (a veto, see the conventions). `reason` is what asks:
+`"key"`, `"bind"`, `"toggle"`, `"api"`, `"event"`, or `"query"` for a question that changes nothing (`NightVision.CanTurnOn`, `SuitZoom.CanEnter`). A night vision or a zoom that is
+already on is not switched off by the hook; use a camera owner for that, which also closes the zoom.
+
+```lua
+hook.Add("GryMod_CanUseView", "my_addon", function(kind, reason)
+	if MyAddon.CameraIsUp then return false end
+end)
+```
+
+### Hide an element of the HUD: `AddHudSuppressor(key, function(element, ply) return true end)`
+
+`GryMod.API.Has("hudsuppress")` is true. The function is asked about an element of GryMod's HUD (the names of `GryMod.HUDOptions.List`: `"status"`, `"radar"`, `"crosshair"`,
+`"damage"`, `"hit"`, `"grenade"`, `"binoculars"`, `"quickmenu"`, `"messages"`, `"usehint"`, `"pickups"`, `"corners"`, `"weaponlist"`, `"objectives"`...) and answers `true` to hide it.
+A hidden element is not drawn and does nothing; the player's own switch (`gry_hud_<name>`) is never written, so the element is back as soon as you answer no, and a suppressor cannot
+show an element the player switched off.
+
+```lua
+GryMod.API.AddHudSuppressor("my_addon", function(element, ply)
+	return MyAddon.DashboardIsUp and (element == "radar" or element == "crosshair")
+end)
+
+GryMod.API.RemoveHudSuppressor("my_addon")
+GryMod.API.IsHudSuppressed("radar")       -- what GryMod.HUDOptions.Enabled asks
+```
+
+It is asked once per frame and element, and only when there is a suppressor. The same key replaces it.
+
+### The relation of an entity, on the client: `ClientRelation(ent)`
+
+`GryMod.API.Has("clientrelation")` is true. The relation chain (`GryMod.API.Relation`) lives on the server; a client cannot read an NPC's attitude. `GryMod.API.ClientRelation(ent)`
+gives `"ally"`, `"neutral"` or `"hostile"`, or `nil` while the server has not answered yet: the question goes out in the background, through the crosshair's own limits (one every
+0.2 s in all, the server answers five a second to a player), and the next call finds the answer (kept for two seconds, asked again every second while you keep asking). It is
+`nil` for what is not an entity. A player is answered at once from the teams (the server's built-in rule); a client side entity (an index of 0 or less) is `"neutral"`. Ask it for the
+entity the player aims at, not for a whole map in one frame.
+
+```lua
+local relation = GryMod.API.ClientRelation(ent)
+if relation == "ally" then ... end    -- nil: not known yet, show nothing
+```
+
+A server that has not been updated to send the relation word (the older message) answers `"ally"` or `"neutral"` only.
+
+### What a player wears: `AddPlayerPartsProvider(id, function(ply, out) ... end)` and `GryMod_CloakChanged`
+
+`GryMod.API.Has("playerparts")` is true. A player can wear models of his own that the engine does not know as part of him (armor, a backpack, an outfit): the camouflage would leave them
+plain. A provider appends them (client side entities) to `out`, like the weapon parts, and the camouflage lays its layers on them with the same fade as on the body, for a camouflaged
+player drawn in detail (not far away; the local player in third person too).
+
+```lua
+GryMod.API.AddPlayerPartsProvider("my_addon", function(ply, out)
+	local armor = MyAddon.ArmorModelOf(ply)
+	if IsValid(armor) then out[#out + 1] = armor end
+end)
+
+GryMod.API.RemovePlayerPartsProvider("my_addon")
+GryMod.API.GetPlayerParts(ply, out)        -- fills out (reused) and returns it with the count; 16 parts at most
+```
+
+An addon that draws its parts itself hides them instead, with the hook **`GryMod_CloakChanged(ply, on, level)`**: run on the client for **every** player at each change of his camouflage
+(`on` is the new state, `level` is `GryMod.API.CloakLevel(ply)` at that moment, 0 to 1). A player who is already camouflaged when he comes into view is told as `on = true`. It never
+changes anything.
+
+### Take the use prompt away: `AddUsableFilter(id, function(ent, ply) return false end)`
+
+`GryMod.API.Has("usablefilter")` is true. The registry of usable entities says what the use key does, not who may use it: a prop protection, a locked vehicle, a door that only its owner
+opens. A filter that answers `false` takes the prompt (and the crosshair's "usable" state) away for this entity; any other answer (`nil`, `true`...) is no opinion. A filter never adds a
+prompt. It is asked ten times a second at most, for the one entity the player aims at, and only when the registry already calls it usable.
+
+```lua
+GryMod.API.AddUsableFilter("my_addon", function(ent, ply)
+	if MyAddon.IsLockedAgainst(ent, ply) then return false end
+end)
+
+GryMod.API.RemoveUsableFilter("my_addon")
+```
+
 ## Radar markers (client)
 
 `GryMod.API.Has("radarmarkers")` is true. Anything can put icons on the radar of the HUD by giving it a **source**: a function that returns the markers of
@@ -1059,17 +1171,23 @@ danger = {
 	range = 25,                  -- metres, 200 at most: warn within this distance (it can only shorten the player's own range)
 	ownerOf = function(ent) ... end, -- SERVER: the player who threw or fired it, when the engine does not say
 	ownMissile = true,           -- a projectile the player FIRES: it never warns its shooter (default false)
+	warnFor = function(ent, ply) ... end, -- CLIENT: does it aim at THIS player? false: no warning for him (default: warn)
 }
 ```
 
-- A **danger needs a `class`** (a name or a list): the client looks for these entities by class. A `base` or a `match` alone is
-  refused with a reason.
+- A danger needs something to match on: a `class` (a name or a list), a `base`, or a `match` function (any of them). `GetDanger(entity)` gives the first entry **with a danger**, in the
+  order of the registry, that matches the entity by class, base or function (the answer for an entity that is found is kept until the registry changes, so the function runs once
+  for it); `GetDanger("class")` with a text only knows the entries that name that class. `GryMod.API.DangerNeedsEntity()` tells whether an entry names its entities by a base or a
+  function. The client follows an entity from its creation and, while such an entry exists, judges again one frame later an entity it could not place (its fields may only be there
+  then). What stands before the entry is registered is looked for by class only, at the load of the client.
 - `armed(ent)` runs on the **server only**: the client cannot read the engine's internal variables (`m_flDetonateTime`,
   `m_iMineState`...). The server follows every entity that has a danger entry from its creation (`OnEntityCreated`; the ones that
   stand before the entry is registered are not looked for again), asks `armed` five times a second and sends the answer to the
   clients in the networked boolean `GryArmed`. A projectile a player holds in the hands (or with the gravity gun) is never armed,
   whatever `armed` says. `armed` runs under `SafeCall`: an error means "not armed", and 5 errors in a row disable it with one console
   line. Return `true` only for a danger that is coming (a grenade whose fuse runs, a mine in the air), not for one that lies around.
+- `warnFor(ent, ply)` runs on the **client**, for each projectile followed, each frame: a missile that locks another player's vehicle is no danger to this one. Only the answer `false`
+  silences the warning; no function, `true`, `nil` or an error (it runs under `SafeCall`) warns. Keep it cheap.
 - `ownerOf(ent)` helps for a projectile that keeps its owner in a field of its own; the server also reads the engine's owner and
   thrower. The thrower is networked in `GryThrower`.
 - The player's settings apply to every entry with a danger, yours included: the range (`gry_grenade_range`, the entry's `range` can only
@@ -1103,7 +1221,8 @@ is armed and what the binoculars may tag; the client draws.
 | `danger.type` | stored | stored | the kind of icon: stored, the warning has one icon |
 | `danger.range` | | yes | the warning's range |
 | `danger.ownMissile` | | yes | a projectile the player fires never warns them |
-| `danger` (the table itself) | yes | yes | the server follows and marks these entities, the client looks for them by class |
+| `danger.warnFor` | | yes | `function(ent, ply)`: `false` = this projectile does not warn this player |
+| `danger` (the table itself) | yes | yes | the server follows and marks these entities, the client follows them from their creation (by class, base or function) |
 | `indicator` | | yes | `"warning"` draws the warning; `"marker"` and `"none"` draw nothing yet |
 
 ### Full example: an addon registers its mine

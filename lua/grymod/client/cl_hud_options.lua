@@ -59,11 +59,17 @@ function Options.MigrateCorners()
 	cornersMigrated:SetString("1")
 end
 
--- Whether this element is switched on (an element that has no switch is on).
+-- Whether this element is switched on (an element that has no switch is on) and no addon hides it (GryMod.API.AddHudSuppressor: the player's switch is not touched).
 function Options.Enabled(name)
 	local convar = convars[name]
 
-	return not convar or convar:GetBool()
+	if convar and not convar:GetBool() then
+		return false
+	end
+
+	local API = GryMod.API
+
+	return not (API and API.IsHudSuppressed and API.IsHudSuppressed(name))
 end
 
 -- Puts every switch back to its default (on, but for the elements that are off by default).

@@ -221,6 +221,37 @@ return {
 			end
 		},
 		{
+			-- fails when no handler of GryMod_CanUseView is asked, when the kind or the reason is not told, or when a refusal does not keep the zoom from opening
+			name = "the hook GryMod_CanUseView(\"zoom\", reason): a handler that returns false keeps the own zoom from opening (the press does nothing, CanEnter says no); another answer or another kind is no opinion",
+			func = function(state)
+				local Z = GryMod.SuitZoom
+				local asked = {}
+
+				hook.Add("GryMod_CanUseView", "GRYTESTZOOMVETO", function(kind, reason) asked[#asked + 1] = {kind, reason} if kind == "zoom" then return false end end)
+
+				local ok, err = pcall(function()
+					expect(Z.CanEnter()).to.beFalse()
+					Z.Press("key", true)
+					expect(Z.IsActive()).to.beFalse()
+					expect(asked[#asked][1]).to.equal("zoom")
+					expect(asked[#asked][2]).to.equal("key")
+					expect(#state.events).to.equal(0)
+					Z.Press("key", false)
+
+					hook.Add("GryMod_CanUseView", "GRYTESTZOOMVETO", function(kind) if kind == "nightvision" then return false end return nil end)
+					expect(Z.CanEnter()).to.beTrue()
+					Z.Press("key", true)
+					expect(Z.IsActive()).to.beTrue()
+				end)
+
+				hook.Remove("GryMod_CanUseView", "GRYTESTZOOMVETO")
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			name = "a held key opens the zoom and its release closes it; a down that repeats (the engine runs a prediction again) counts once",
 			func = function(state)
 				local Z = GryMod.SuitZoom
@@ -739,6 +770,8 @@ return {
 					Alive = function() return true end,
 					KeyDown = function() return false end,
 					InVehicle = function() return inVehicle end,
+					ShouldDrawLocalPlayer = function() return false end,
+					GetViewEntity = function(self) return self end,
 					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
 				}
 				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
@@ -1434,6 +1467,8 @@ return {
 					Alive = function() return true end,
 					KeyDown = function(_, key) return key == IN_ZOOM and zooming end,
 					InVehicle = function() return false end,
+					ShouldDrawLocalPlayer = function() return false end,
+					GetViewEntity = function(self) return self end,
 					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
 				}
 				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
@@ -2214,6 +2249,8 @@ return {
 					Alive = function() return true end,
 					KeyDown = function() return false end,
 					InVehicle = function() return false end,
+					ShouldDrawLocalPlayer = function() return false end,
+					GetViewEntity = function(self) return self end,
 					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
 				}
 

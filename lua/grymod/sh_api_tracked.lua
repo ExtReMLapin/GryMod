@@ -80,7 +80,7 @@ local function names(v)
 end
 
 -- The `danger` table: nil and the name of the field that is not valid, or the normalised copy. `armed` and `ownerOf` run under
--- SafeCall, on the server only. label is left nil when it is not given: RegisterTracked then takes the entry's label.
+-- SafeCall, on the server only; `warnFor` runs on the client only (the warning asks it for each projectile). label is left nil when it is not given: RegisterTracked then takes the entry's label.
 local function danger(v)
 	if not istable(v) then
 		return nil, "danger"
@@ -134,6 +134,14 @@ local function danger(v)
 		end
 
 		d.ownMissile = v.ownMissile
+	end
+
+	if v.warnFor ~= nil then
+		if not isfunction(v.warnFor) then
+			return nil, "danger.warnFor"
+		end
+
+		d.warnFor = v.warnFor
 	end
 
 	return d
@@ -194,12 +202,19 @@ local cache = {}
 -- danger (dangerByClass), and the list of the classes that have one (dangerList).
 local byClass, dangerByClass, dangerList
 
+-- Built with the indexes: the entries with a danger in the order of the registry (dangerEntries), and whether one of them names its entities by a base or a match
+-- function (dangerNeedsEntity: a class name alone cannot place such an entity). dangerOfEntity keeps the entries found for entities (weak keys; an entity with no
+-- danger is not kept: a match function may answer later, when the entity has its fields); dropped at every change too.
+local dangerEntries, dangerNeedsEntity
+local dangerOfEntity = setmetatable({}, {__mode = "k"})
+
 -- [field] = the list of the classes whose entry has that field set (TrackedClasses); dropped at every change too.
 local fieldClasses = {}
 
 local function changed()
 	cache = {}
-	byClass, dangerByClass, dangerList = nil, nil, nil
+	byClass, dangerByClass, dangerList, dangerEntries, dangerNeedsEntity = nil, nil, nil, nil, nil
+	dangerOfEntity = setmetatable({}, {__mode = "k"})
 	fieldClasses = {}
 end
 
@@ -234,7 +249,7 @@ function API.RegisterTracked(key, def)
 	end
 
 	local entry = {key = key, scan = true, shape = "unit", relation = "auto", priority = 0, matchId = "tracked:" .. key .. "/match",
-		relationId = "tracked:" .. key .. "/relation", armedId = "tracked:" .. key .. "/armed", ownerId = "tracked:" .. key .. "/owner",
+		warnId = "tracked:" .. key .. "/warnfor", relationId = "tracked:" .. key .. "/relation", armedId = "tracked:" .. key .. "/armed", ownerId = "tracked:" .. key .. "/owner",
 		deadId = "tracked:" .. key .. "/dead", awarenessId = "tracked:" .. key .. "/awareness", crewId = "tracked:" .. key .. "/crew", facingId = "tracked:" .. key .. "/facing"}
 
 	for _, field in ipairs(FIELDS) do
@@ -256,10 +271,6 @@ function API.RegisterTracked(key, def)
 	end
 
 	if entry.danger then
-		if not entry.class then
-			return false, "a danger needs a class (the client looks for these entities by class)"
-		end
-
 		entry.danger.label = entry.danger.label or (isstring(entry.label) and entry.label) or "DANGER"
 		entry.indicator = entry.indicator or "warning"
 	end
@@ -273,6 +284,7 @@ function API.RegisterTracked(key, def)
 	end
 
 	API.SafeCallReset(entry.matchId)
+	API.SafeCallReset(entry.warnId)
 	API.SafeCallReset(entry.relationId)
 	API.SafeCallReset(entry.armedId)
 	API.SafeCallReset(entry.ownerId)
@@ -415,10 +427,18 @@ local function index()
 		return
 	end
 
-	byClass, dangerByClass, dangerList = {}, {}, {}
+	byClass, dangerByClass, dangerList, dangerEntries, dangerNeedsEntity = {}, {}, {}, {}, false
 
 	for i = 1, #order do
 		local entry = order[i]
+
+		if entry.danger then
+			dangerEntries[#dangerEntries + 1] = entry
+
+			if entry.base or entry.match then
+				dangerNeedsEntity = true
+			end
+		end
 
 		if entry.class then
 			for _, class in ipairs(entry.class) do
@@ -445,8 +465,11 @@ function API.GetTrackedByClass(class)
 	return byClass[class]
 end
 
--- The first entry with a `danger` that names the class (a class name, or an entity: its class), or nil. Read only. Both realms ask
--- it for every projectile: the server to follow and mark it, the client to say what to warn about.
+-- The first entry with a `danger` for a class name or for an entity, or nil. Read only. Both realms ask it for every projectile: the server to follow and mark it, the
+-- client to say what to warn about.
+--   a class name: the first entry with a danger that NAMES the class (a base or a match function need an entity);
+--   an entity: the first entry with a danger, in the order of the registry, that matches it by class, base or match function. An entity that is found is kept until the
+--   registry changes (a match function runs once for it); one that is not is asked again each time, because a function can answer later.
 function API.GetDanger(class)
 	if not isstring(class) then
 		if not isentity(class) and not istable(class) then
@@ -457,7 +480,38 @@ function API.GetDanger(class)
 			return nil
 		end
 
-		class = API.ClassOf and API.ClassOf(class) or class:GetClass()
+		if order[1] == nil then
+			return nil
+		end
+
+		index()
+
+		local found = dangerOfEntity[class]
+
+		if found then
+			return found
+		end
+
+		local name = API.ClassOf and API.ClassOf(class) or class:GetClass() -- (the real class: GryMod.API.AddClassProvider)
+
+		for i = 1, #dangerEntries do
+			local entry = dangerEntries[i]
+			local matched = (entry.classSet and entry.classSet[name] or hasBase(entry, name, class)) and true or false
+
+			if not matched and entry.match then
+				local ok, result = API.SafeCall(entry.matchId, entry.match, class)
+
+				matched = ok and result == true
+			end
+
+			if matched then
+				dangerOfEntity[class] = entry
+
+				return entry
+			end
+		end
+
+		return nil
 	end
 
 	if order[1] == nil then
@@ -467,6 +521,14 @@ function API.GetDanger(class)
 	index()
 
 	return dangerByClass[class]
+end
+
+-- Whether an entry with a danger names its entities by a base or a match function: then a class name does not say whether an entity is a danger, only the entity does
+-- (GetDanger(entity)), and an entity that was not placed when it was made is worth asking again a frame later.
+function API.DangerNeedsEntity()
+	index()
+
+	return dangerNeedsEntity
 end
 
 -- The classes that have a danger entry, in the order of the entries (a list that is kept: read it, do not change it).

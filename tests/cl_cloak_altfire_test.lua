@@ -26,7 +26,8 @@ local savedConVar
 -- a player in the given suit mode holding a weapon: class, magazine, reserve of the primary and secondary ammo; extra (all
 -- optional): nextPrimary / nextSecondary (seconds from now when the weapon may fire again, default -1: it may fire),
 -- noAmmoType (a weapon with no ammo of its own, like the crowbar), held (the attack key is still down), noSnapshot (the
--- numbers of the weapon were not read at the last command without attack: a weapon that came in the last command)
+-- numbers of the weapon were not read at the last command without attack: a weapon that came in the last command),
+-- inVehicle (the player sits in a vehicle) and allowWeapons (the vehicle lets him fire his weapons)
 local function fakePlayer(mode, class, clip1, primary, secondary, extra)
 	extra = extra or {}
 
@@ -42,6 +43,8 @@ local function fakePlayer(mode, class, clip1, primary, secondary, extra)
 	function weapon:GetNextSecondaryFire() return CurTime() + (extra.nextSecondary or -1) end
 
 	function ply:GetActiveWeapon() return ply.weapon or weapon end
+	function ply:InVehicle() return extra.inVehicle == true end
+	function ply:GetAllowWeaponsInVehicle() return extra.allowWeapons == true end
 	function ply:KeyDown(key) return key == IN_ATTACK and extra.held == true end
 	function ply:GetAmmoCount(kind) return kind == 1 and primary or secondary end
 	function ply:SetNanosuitMode(newMode, networked)
@@ -663,6 +666,30 @@ return {
 				GryMod.CloakShot(ply, false)
 				expect(#ply.modeSet).to.equal(0)
 				expect(#sent).to.equal(0)
+			end
+		},
+		{
+			-- fails when a click that only drives a vehicle (a gear change in a simfphys car, the vehicle's own weapon) is judged as a shot of the holstered weapon and ends the camouflage
+			name = "a click in a vehicle whose weapons are stowed is no shot (the left and the right click keep the camouflage); with the weapons allowed it is judged as on foot; the server's shot report still ends it",
+			func = function(state)
+				local stowed = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 6, 0, 0, {inVehicle = true})
+				GryMod.CloackAttack(stowed, IN_ATTACK)
+				GryMod.CloackAttack(stowed, IN_ATTACK2)
+				expect(#stowed.modeSet).to.equal(0)
+				expect(#sent).to.equal(0)
+
+				local allowed = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 6, 0, 0, {inVehicle = true, allowWeapons = true})
+				GryMod.CloackAttack(allowed, IN_ATTACK)
+				expect(#allowed.modeSet).to.equal(1)
+
+				local onFoot = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 6, 0, 0)
+				GryMod.CloackAttack(onFoot, IN_ATTACK)
+				expect(#onFoot.modeSet).to.equal(1)
+
+				-- a shot the server saw (the vehicle's weapon with the player as attacker) ends it as before
+				local shot = fakePlayer(GryMod.Modes.CLOAK, "weapon_shotgun", 6, 0, 0, {inVehicle = true})
+				GryMod.CloakShot(shot, false)
+				expect(#shot.modeSet).to.equal(1)
 			end
 		},
 		{

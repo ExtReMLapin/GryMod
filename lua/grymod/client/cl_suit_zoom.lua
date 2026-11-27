@@ -110,7 +110,7 @@ Zoom.VIEW_FRAMES = 2
 -- The reasons that put the binoculars away at once. The others (release, toggle, weapon, weaponkey, water) close them as usual.
 Zoom.HARD = {
 	init = true, death = true, disabled = true, quickmenu = true, pause = true, console = true, ui = true, chat = true, focus = true,
-	malfunction = true, vehicle = true, thirdperson = true, viewentity = true, observer = true, frozen = true, viewtaken = true,
+	malfunction = true, vehicle = true, thirdperson = true, viewentity = true, observer = true, frozen = true, viewtaken = true, cameraowner = true,
 	shutdown = true, spawnmenu = true, contextmenu = true
 }
 
@@ -258,6 +258,7 @@ function Zoom.Reason(sit, active)
 	if sit.vehicle then return "vehicle" end
 	if sit.thirdperson then return "thirdperson" end
 	if sit.viewother then return "viewentity" end
+	if sit.cameraowner then return "cameraowner" end
 	if sit.observer ~= 0 then return "observer" end
 	if sit.frozen then return "frozen" end
 	if sit.water >= 3 then return "water" end
@@ -316,6 +317,7 @@ function Zoom.Read(sit)
 	sit.vehicle = ply:InVehicle()
 	sit.thirdperson = ply:ShouldDrawLocalPlayer()
 	sit.viewother = ply:GetViewEntity() ~= ply
+	sit.cameraowner = GryMod.API.IsCameraOwned(ply)
 	sit.observer = ply:GetObserverMode()
 	sit.frozen = ply:IsFrozen()
 	sit.water = ply:WaterLevel()
@@ -340,11 +342,18 @@ local situation = {}
 -- Open and close
 -- ---------------------------------------------------------------------------------------------------------
 
+-- An addon whose own view must not be disturbed (a camera, a cinematic) refuses the zoom through the hook GryMod_CanUseView("zoom", reason) by returning false
+-- (SHARED-VIEW-VETO-1). `reason` is what asks ("key", "bind", or "query" for a question that opens nothing). Only the opening is asked: an open zoom is closed by
+-- the camera owners (GryMod.API.AddCameraOwner), see Zoom.Reason.
+local function vetoed(reason)
+	return hook.Run("GryMod_CanUseView", "zoom", reason) == false
+end
+
 -- Opens the zoom when nothing in the world prevents it. Returns whether it did.
-local function open()
+local function open(reason)
 	local sit = Zoom.Read(situation)
 
-	if Zoom.Reason(sit, false) ~= nil then
+	if Zoom.Reason(sit, false) ~= nil or vetoed(reason) then
 		return false
 	end
 
@@ -356,7 +365,7 @@ end
 
 -- Whether a zoom could open now (the same conditions, nothing changes).
 function Zoom.CanEnter()
-	return Zoom.Reason(Zoom.Read(situation), false) == nil
+	return Zoom.Reason(Zoom.Read(situation), false) == nil and not vetoed("query")
 end
 
 -- THE way to close the zoom, safe to call from anywhere, as often as wanted. A key that is still down stays blocked until it is
@@ -420,7 +429,7 @@ function Zoom.Press(source, down)
 		local action = Zoom.PressAction(Zoom.Mode(), S.active)
 
 		if action == "open" then
-			open()
+			open(source)
 		elseif action == "close" then
 			Zoom.Exit("toggle")
 		end

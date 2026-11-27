@@ -96,14 +96,14 @@ return {
 				GryMod.SetHUDEnabled(false)
 				expect(GetConVar("gry_hud"):GetBool()).to.beFalse()
 				expect(hook.GetTable().HUDPaint.GRYFLASHHUD).to.beNil()
-				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"]).to.beNil()
+				expect(hook.GetTable().HUDShouldDraw["GRYHUDHIDE"]).to.beNil()
 				-- the quick menu is not part of the HUD: it stays usable
 				expect(GryMod.FlashMenu.Enabled()).to.beTrue()
 
 				GryMod.SetHUDEnabled(true)
 				expect(GetConVar("gry_hud"):GetBool()).to.beTrue()
 				expect(hook.GetTable().HUDPaint.GRYFLASHHUD ~= nil).to.beTrue()
-				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"] ~= nil).to.beTrue()
+				expect(hook.GetTable().HUDShouldDraw["GRYHUDHIDE"] ~= nil).to.beTrue()
 				GryMod.ApplyHUD()
 			end
 		},
@@ -113,10 +113,10 @@ return {
 				local realApply = GryMod.FlashHUD.Apply
 				GryMod.FlashHUD.Apply = function() return false end
 				GryMod.SetHUDEnabled(true)
-				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"]).to.beNil()
+				expect(hook.GetTable().HUDShouldDraw["GRYHUDHIDE"]).to.beNil()
 				GryMod.FlashHUD.Apply = realApply
 				GryMod.SetHUDEnabled(true)
-				expect(hook.GetTable().HUDShouldDraw["How to: HUD Example HUD hider"] ~= nil).to.beTrue()
+				expect(hook.GetTable().HUDShouldDraw["GRYHUDHIDE"] ~= nil).to.beTrue()
 			end
 		},
 		{

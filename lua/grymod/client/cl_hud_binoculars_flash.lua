@@ -798,7 +798,7 @@ function Bino.SilhouetteValid(entity)
 		return false
 	end
 
-	if entity:IsNPC() then
+	if GryMod.API.IsCreature(entity) then
 		return entity:Health() > 0
 	end
 
@@ -1115,6 +1115,11 @@ function Bino.Wanted(ply)
 		return false
 	end
 
+	-- another addon's camera has the view: the game's zoom key is not read (GryMod.API.AddCameraOwner)
+	if GryMod.API.IsCameraOwned(ply) then
+		return false
+	end
+
 	if ply:KeyDown(IN_ZOOM) then
 		return true
 	end
@@ -1238,7 +1243,7 @@ Bino.Aimed = nil
 -- list, so that the binoculars may scan it: the server decides in the end (Radar.Scan), this only spares the sound of a lock it would
 -- refuse. Not the vehicle the player sits in; nothing with the switch gry_radar_objects off.
 function Bino.IsObject(entity)
-	if not IsValid(entity) or entity:IsNPC() or entity:IsNextBot() or entity:IsPlayer() then
+	if not IsValid(entity) or GryMod.API.IsCreature(entity) or entity:IsNextBot() or entity:IsPlayer() then
 		return false
 	end
 
@@ -1257,7 +1262,8 @@ function Bino.IsObject(entity)
 
 	local ply = LocalPlayer()
 
-	if IsValid(ply) and entity:IsVehicle() and ply:GetVehicle() == entity then
+	-- (the player's logical vehicle: an LVS, Glide or simfphys car is not the seat the engine says he sits in, see GryMod.API.AddVehicleProvider)
+	if IsValid(ply) and entity:IsVehicle() and API.GetVehicleOf(ply) == entity then
 		return false
 	end
 
@@ -1272,7 +1278,7 @@ function Bino.IsItem(entity)
 end
 
 local function aimable(entity)
-	return IsValid(entity) and not entity:IsWorld() and (entity:IsNPC() or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle() or Bino.IsObject(entity) or Bino.IsItem(entity))
+	return IsValid(entity) and not entity:IsWorld() and (GryMod.API.IsCreature(entity) or entity:IsPlayer() or entity:IsNextBot() or entity:IsVehicle() or Bino.IsObject(entity) or Bino.IsItem(entity))
 end
 
 Bino.Aimable = aimable
@@ -1332,8 +1338,9 @@ function Bino.Scannable(entity, isTagged)
 	local API = GryMod.API
 	local tracked = API and API.GetTracked and API.GetTracked(entity)
 
-	if entity:IsNPC() then
-		if entity:Health() <= 0 then
+	if API.IsCreature(entity) then
+		-- (a creature that is a nextbot may have no health at all, like the ones below: only one that lost its health is dead)
+		if entity:Health() <= 0 and (entity:IsNPC() or entity:GetMaxHealth() > 0) then
 			return false
 		end
 	elseif tracked and entity:IsNextBot() then
@@ -1977,9 +1984,33 @@ local function swayFor(ply, wanted)
 	return Bino.SwayStep(sway, true, Bino.Now(), crouch, prone, strength)
 end
 
+-- GryMod.View.Compose(ply, origin, angles, fov, znear, zfar): the view the gamemode would give (GAMEMODE:CalcView: its vehicle and weapon rules, a weapon's own CalcView), as
+-- origin, angles, fov, znear, zfar and the gamemode's table, so that a view of GryMod's is made ON it. A game with no CalcView of its own, or one that fails (it runs under pcall),
+-- gives the arguments as they came.
+GryMod.View = GryMod.View or {}
+
+function GryMod.View.Compose(ply, origin, angles, fov, znear, zfar)
+	local gamemode = GAMEMODE
+
+	if istable(gamemode) and isfunction(gamemode.CalcView) then
+		local ok, base = pcall(gamemode.CalcView, gamemode, ply, origin, angles, fov, znear, zfar)
+
+		if ok and istable(base) then
+			return base.origin or origin, base.angles or angles, base.fov or fov, base.znear or znear, base.zfar or zfar, base
+		end
+	end
+
+	return origin, angles, fov, znear, zfar, nil
+end
+
 -- CalcView: the view with the stage's field of view and / or the sway's angles, or nothing (the stage state is dropped as soon as
 -- the stages are not wanted, the sway's as soon as the binoculars are down).
 function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
+	-- a nested call of another addon (VManip calls the hooks again with a boolean in place of znear) is not a view of the frame: answering it would end its chain
+	if not isnumber(znear) then
+		return nil
+	end
+
 	local suit = GryMod.SuitZoom
 
 	-- the own zoom looks at the world before the view is given: with the game paused (the menu or the console open in a single
@@ -1990,9 +2021,10 @@ function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 
 	local own = suit ~= nil and suit.IsActive()
 
-	-- with the own zoom up never a view in a vehicle: the game's CalcView would not run (our table ends the hook chain) and the
-	-- vehicle's camera would be lost (the zoom itself ends in the next Think, see SuitZoom.Reason)
-	if own and ply:InVehicle() then
+	-- never a view in a vehicle (the game's CalcView would not run, our table ends the hook chain, and the vehicle's camera would be lost; the own zoom itself ends
+	-- in the next Think, see SuitZoom.Reason), in third person, while another entity has the view (a camera, a spectated player) or another addon's camera has it
+	-- (GryMod.API.AddCameraOwner)
+	if ply:InVehicle() or ply:ShouldDrawLocalPlayer() or ply:GetViewEntity() ~= ply or GryMod.API.IsCameraOwned(ply) then
 		if zoom.active then
 			Bino.ZoomReset(zoom)
 		end
@@ -2034,11 +2066,15 @@ function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 		return nil
 	end
 
+	-- the game's own view first (the weapon's CalcView, the gamemode's rules: our table ends the hook chain, so the gamemode's CalcView would never run), then ours on it
+	local base
+	origin, angles, fov, znear, zfar, base = GryMod.View.Compose(ply, origin, angles, fov, znear, zfar)
+
 	if pitch then
 		angles = Angle(angles.p + math.deg(pitch), angles.y + math.deg(yaw), angles.r)
 	end
 
-	return {origin = origin, angles = angles, fov = stageFov or fov, znear = znear, zfar = zfar}
+	return {origin = origin, angles = angles, fov = stageFov or fov, znear = znear, zfar = zfar, drawviewer = base and base.drawviewer or nil}
 end
 
 -- The sound of a stage step, through the mix like the others (nothing with the binoculars' sounds off).
