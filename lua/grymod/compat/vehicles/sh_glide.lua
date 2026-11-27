@@ -106,17 +106,21 @@ local function register(key, def)
 end
 
 -- The more special classes first (the priority): the first entry that matches wins. All of them are above the stock entries (-100).
--- A trailer has no seat and nobody in it: never a contact, but a heavy thing that crushes.
-register("glide_trailers", {base = "base_glide_trailer", radar = "never", heavy = true, priority = 30})
+-- Only the tanks are heavy machines for the suit (a hit that breaks the armor puts the suit down), as simfphys' tanks are (its cars and armored cars are not): the owner's rule.
+-- A trailer has no seat and nobody in it: never a contact.
+register("glide_trailers", {base = "base_glide_trailer", radar = "never", priority = 30})
+
+-- A tank: a contact like any machine, and a heavy one.
+register("glide_tanks", {base = "base_glide_tank", type = "machine", radar = "scan", heavy = true, priority = 25, dead = dead, crew = crew, facing = facing})
 
 -- A motorcycle is a contact, not a heavy machine.
 register("glide_motorcycles", {base = "base_glide_motorcycle", type = "machine", radar = "scan", priority = 20, dead = dead, crew = crew, facing = facing})
 
 -- Helicopters and planes: the flying unit's icon.
-register("glide_aircraft", {base = "base_glide_aircraft", type = "flying", radar = "scan", heavy = true, priority = 10, dead = dead, crew = crew, facing = facing})
+register("glide_aircraft", {base = "base_glide_aircraft", type = "flying", radar = "scan", priority = 10, dead = dead, crew = crew, facing = facing})
 
--- Cars, tanks, boats and every vehicle of another addon built on base_glide: the rectangle, once the binoculars scanned it.
-register("glide_vehicles", {base = "base_glide", type = "machine", radar = "scan", heavy = true, priority = 0, dead = dead, crew = crew, facing = facing})
+-- Cars, boats and every vehicle of another addon built on base_glide: the rectangle, once the binoculars scanned it.
+register("glide_vehicles", {base = "base_glide", type = "machine", radar = "scan", priority = 0, dead = dead, crew = crew, facing = facing})
 
 -- The missile (glide_missile and every missile an addon builds on it): the player who fired it is in the field `attacker` (the engine's owner is the vehicle, or the
 -- player's hands). It flies from its creation, so it is armed at once. A missile that follows a target is only a danger for the one it follows: the server leaves the target on the

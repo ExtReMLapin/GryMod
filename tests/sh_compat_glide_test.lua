@@ -171,8 +171,9 @@ return {
 			end
 		},
 		{
-			-- fails when the entry for the vehicles is missing, is not a rectangle contact scanned by the binoculars, or the vehicle is not heavy
-			name = "a car is a radar contact once scanned (the machine icon) and a heavy machine for the suit; a motorcycle is a contact but not heavy",
+			-- fails when the entry for the vehicles is missing, is not a rectangle contact scanned by the binoculars, or when a car, an aircraft, a boat or a motorcycle is a heavy machine for the
+			-- suit (only the tanks are: a hit of a car that breaks the armor does not put the suit down, as simfphys' armored cars and its cars do not), or when a tank is not
+			name = "a car is a radar contact once scanned (the machine icon) and not a heavy machine; only a tank is heavy for the suit",
 			func = function()
 				local car = API.GetTracked(vehicle("t_glide_sedan", 1))
 				local bike = API.GetTracked(vehicle("t_glide_bike", 2))
@@ -181,11 +182,18 @@ return {
 				expect(car).to.exist()
 				expect(car.radar).to.equal("scan")
 				expect(car.type).to.equal(3)
-				expect(car.heavy).to.beTrue()
-				expect(tank.heavy).to.beTrue()
+				expect(car.heavy).to.beNil()
 				expect(bike).to.exist()
 				expect(bike.radar).to.equal("scan")
 				expect(bike.heavy).to.beNil()
+				expect(tank).to.exist()
+				expect(tank.radar).to.equal("scan")
+				expect(tank.type).to.equal(3)
+				expect(tank.heavy).to.beTrue()
+
+				for _, aircraft in ipairs({API.GetTracked(vehicle("t_glide_heli", 3)), API.GetTracked(vehicle("t_glide_plane", 4)), API.GetTracked(vehicle("t_glide_boat", 6))}) do
+					expect(aircraft.heavy).to.beNil()
+				end
 			end
 		},
 		{
@@ -199,13 +207,13 @@ return {
 		},
 		{
 			-- fails when a trailer (no seat, nobody in it) is listed on the radar
-			name = "a trailer is never a radar contact, and still a heavy thing that crushes",
+			name = "a trailer is never a radar contact, and not a heavy machine either",
 			func = function()
 				local trailer = API.GetTracked(vehicle("t_glide_trailer", 0))
 
 				expect(trailer).to.exist()
 				expect(trailer.radar).to.equal("never")
-				expect(trailer.heavy).to.beTrue()
+				expect(trailer.heavy).to.beNil()
 			end
 		},
 		{
