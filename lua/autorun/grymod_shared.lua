@@ -45,10 +45,6 @@ end
 -- bits of the cause in a net message (4 bits hold 16 causes; the list has 9)
 GryMod.ModeReasonBits = 4
 
-function math.MapSimple(numb, endA, endB)
-	return numb * (endB / endA)
-end
-
 
 if SERVER then
 	AddCSLuaFile()
