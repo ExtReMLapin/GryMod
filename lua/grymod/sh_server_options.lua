@@ -35,6 +35,7 @@ Settings.List = {
 	{name = "gry_suit_strength_recoil", kind = "bool"},
 	{name = "gry_suit_shot_cost", kind = "choice", values = {"0", "3.75", "7.5", "15"}},
 	{name = "gry_suit_shot_cost_by_ammo", kind = "bool"},
+	{name = "gry_suit_melee_cost", kind = "choice", values = {"0", "0.5", "1", "2"}},
 	{name = "gry_suit_reload_rate", kind = "choice", values = {"1", "1.25", "1.5", "2"}},
 	{name = "gry_objectives", kind = "bool"},
 	{name = "gry_campaign_objectives", kind = "bool"},

@@ -47,6 +47,25 @@ hook.Add("ARC9_Hook_BashHit", KEY, function(weapon, data)
 	return nil -- the hit goes on as it was (this only changes its numbers)
 end)
 
+-- A blow (a knife swing, the stab, the butt stroke of a gun) takes its price when it starts.
+hook.Add("ARC9_Hook_Bash", KEY, function(weapon)
+	pcall(function()
+		local ply = holderOf(weapon)
+
+		if not ply or GryMod.Config.InfiniteArmor then
+			return
+		end
+
+		local cost = SW.MeleeCost(SW.ModeOf(ply))
+
+		if cost > 0 then
+			API.AddEnergy(ply, -cost)
+		end
+	end)
+
+	return nil
+end)
+
 hook.Add("ARC9_Hook_PrimaryAttack", KEY, function(weapon)
 	pcall(function()
 		local ply = holderOf(weapon)

@@ -47,6 +47,17 @@ local function suitEffects(root, Panel, base)
 
 	GryMod.AdminOption(Panel, "Strength mode: the calibre counts", "gry_suit_shot_cost_by_ammo", "bool", {into = strength, help = "A shot costs more energy with a bigger calibre: pistol and SMG rounds less, magnum, sniper and buckshot more. Off: the same price for every weapon, like the original game."})
 
+	GryMod.AdminOption(Panel, "Melee: energy of a blow", "gry_suit_melee_cost", "choice", {
+		into = strength,
+		help = "Each melee blow takes energy in the strength mode (10 of the bar) and in the speed mode (7.5), like the original game.",
+		choices = {
+			{"Free", "0"},
+			{"Half the original's", "0.5"},
+			{"The original's", "1"},
+			{"Double", "2"}
+		}
+	})
+
 	local speed = GryMod.OptionsCategory(root, "Speed mode", true)
 
 	GryMod.AdminOption(Panel, "Speed mode: faster weapon handling", "gry_suit_handling", "bool", {into = speed, help = "Like the original game: a weapon is drawn, put away and raised faster (x1.75) and a melee swing is faster (x1.5)."})

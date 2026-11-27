@@ -24,6 +24,8 @@ local shotCost = CreateConVar("gry_suit_shot_cost", "7.5", flags, "Strength mode
 
 local shotCostByAmmo = CreateConVar("gry_suit_shot_cost_by_ammo", "1", flags, "Strength mode: a shot costs more energy with a bigger calibre (pistol and SMG rounds less, magnum, sniper and buckshot more). 0 = the same price for every weapon, like the original game", 0, 1)
 
+local meleeCost = CreateConVar("gry_suit_melee_cost", "1", flags, "The energy a melee blow takes in the strength mode (10 of the bar) and in the speed mode (7.5), like the original game. This is a multiplier of those prices: 0 = free, 2 = double", 0, 4)
+
 -- The weight of a kind of ammunition (its calibre) in the price of a shot, by the name of the game's ammunition. The plain price is the rifle's; an ammunition that is not here
 -- (a modded one) costs the plain price.
 local AMMO_WEIGHT = {
@@ -116,6 +118,19 @@ function SW.ShotCost(mode, ammo)
 	end
 
 	return cost
+end
+
+-- The energy a melee blow (a swing of a melee weapon, the quick melee of a gun) takes in `mode` (of 100): the original's 20 of 200 in the strength mode and 15 of 200 in the speed mode
+-- (the retail game's numbers; the demo's are twice that), times the setting. The other modes take nothing here (a blow ends the camouflage, see the attack reports).
+local MELEE_COST = {}
+
+function SW.MeleeCost(mode)
+	local Modes = GryMod.Modes
+
+	MELEE_COST[Modes.STRENGTH] = 10
+	MELEE_COST[Modes.SPEED] = 7.5
+
+	return (MELEE_COST[mode] or 0) * math.max(meleeCost:GetFloat(), 0)
 end
 
 -- The same rules, with the settings: what an adapter asks.

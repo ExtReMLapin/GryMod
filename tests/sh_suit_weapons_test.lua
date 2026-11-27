@@ -159,11 +159,43 @@ return {
 			end
 		},
 		{
+			-- fails when a melee blow is free (the owner saw a knife in the strength mode cost nothing), when the price is not the original's (10 of 100 in the strength mode, 7.5 in the speed
+			-- mode: 20 and 15 of its 200), when another mode pays, or when the setting does not scale it (0 = free)
+			name = "MeleeCost: 10 of the bar for a blow in the strength mode, 7.5 in the speed mode, nothing in the other modes, scaled by gry_suit_melee_cost (0 = free)",
+			func = function()
+				local convar = GetConVar("gry_suit_melee_cost")
+
+				expect(convar ~= nil).to.beTrue()
+
+				local before = convar:GetString()
+				local ok, err = pcall(function()
+					convar:SetString("1")
+					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(10)
+					expect(SW.MeleeCost(Modes.SPEED)).to.equal(7.5)
+					expect(SW.MeleeCost(Modes.ARMOR)).to.equal(0)
+					expect(SW.MeleeCost(Modes.CLOAK)).to.equal(0)
+
+					convar:SetString("2")
+					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(20)
+
+					convar:SetString("0")
+					expect(SW.MeleeCost(Modes.STRENGTH)).to.equal(0)
+					expect(SW.MeleeCost(Modes.SPEED)).to.equal(0)
+				end)
+
+				convar:SetString(before)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails when an effect cannot be switched off (everything is optional) or a default is not on: the original's behaviour is the default, a reload that the original does
 			-- not speed up stays at x1
 			name = "every effect has its setting, the original's behaviour is the default, and an effect that is off changes nothing",
 			func = function()
-				for _, name in ipairs({"gry_suit_handling", "gry_suit_strength_melee", "gry_suit_strength_recoil", "gry_suit_shot_cost", "gry_suit_shot_cost_by_ammo", "gry_suit_reload_rate"}) do
+				for _, name in ipairs({"gry_suit_handling", "gry_suit_strength_melee", "gry_suit_strength_recoil", "gry_suit_shot_cost", "gry_suit_shot_cost_by_ammo", "gry_suit_melee_cost", "gry_suit_reload_rate"}) do
 					expect(GetConVar(name) ~= nil).to.beTrue()
 				end
 

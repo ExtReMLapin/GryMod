@@ -49,9 +49,46 @@ hook.Add("EntityTakeDamage", KEY, function(_, info)
 	return nil -- the hit goes on as it was (this only changes its numbers)
 end)
 
+-- A melee blow takes its price when the swing starts (the original takes it then, and the energy that is left decides how hard the blow hits).
+local function payMelee(weapon)
+	local ply = SW.HolderOf(weapon)
+
+	if not ply or GryMod.Config.InfiniteArmor then
+		return
+	end
+
+	local cost = SW.MeleeCost(SW.ModeOf(ply))
+
+	if cost > 0 then
+		API.AddEnergy(ply, -cost)
+	end
+end
+
+-- The right click of a melee weapon is a blow; the right click of a gun is the sights (or its own alt attack, which is not a blow).
+hook.Add("TFA_PostSecondaryAttack", KEY, function(weapon)
+	pcall(function()
+		if weapon.IsMelee == true then
+			payMelee(weapon)
+		end
+	end)
+end)
+
+-- The quick melee of a gun (the bash key).
+hook.Add("TFA_PostBash", KEY, function(weapon)
+	pcall(function()
+		payMelee(weapon)
+	end)
+end)
+
 hook.Add("TFA_PostPrimaryAttack", KEY, function(weapon)
 	pcall(function()
-		if weapon.IsMelee == true or weapon.IsGrenade == true then
+		if weapon.IsMelee == true then
+			payMelee(weapon)
+
+			return
+		end
+
+		if weapon.IsGrenade == true then
 			return
 		end
 

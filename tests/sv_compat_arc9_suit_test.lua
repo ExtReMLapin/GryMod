@@ -285,6 +285,22 @@ return {
 			end
 		},
 		{
+			-- fails when a bash (a knife swing, the stab, the butt stroke) costs nothing in the strength and speed modes: 10 and 7.5 of the bar
+			name = "ARC9_Hook_Bash: a blow takes the melee price in the strength and speed modes, nothing in the others",
+			func = function()
+				local added = {}
+
+				stub(GryMod.API, "AddEnergy", function(ply, amount) added[#added + 1] = amount end)
+
+				hook.GetTable().ARC9_Hook_Bash["GryMod compat arc9 suit"](weapon(fakePlayer(Modes.STRENGTH, 100)), {})
+				hook.GetTable().ARC9_Hook_Bash["GryMod compat arc9 suit"](weapon(fakePlayer(Modes.SPEED, 100)), {})
+				hook.GetTable().ARC9_Hook_Bash["GryMod compat arc9 suit"](weapon(fakePlayer(Modes.ARMOR, 100)), {})
+				expect(#added).to.equal(2)
+				expect(near(added[1], -10)).to.beTrue()
+				expect(near(added[2], -7.5)).to.beTrue()
+			end
+		},
+		{
 			-- fails when the calibre is not read from ARC9's ammunition (its Primary.Ammo, set from the weapon's Ammo): a magnum round must cost 1.5 times the plain price, an SMG round 0.75
 			name = "ARC9_Hook_PrimaryAttack: the price of a shot follows the calibre of the weapon's ammunition",
 			func = function()

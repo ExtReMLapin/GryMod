@@ -219,6 +219,58 @@ return {
 			end
 		},
 		{
+			-- fails when a melee swing costs nothing (a knife, the right click of a melee weapon, the quick melee of a gun): the strength mode takes 10 of the bar and the speed mode 7.5 for
+			-- each blow, the other modes nothing; a gun's right click that is only the sights costs nothing
+			name = "a melee blow costs energy: the swing of a melee weapon, its right click and the bash of a gun pay the melee price in the strength and speed modes only",
+			func = function()
+				local ply = player.GetAll()[1]
+
+				if not IsValid(ply) then
+					return
+				end
+
+				local mode, energy = ply:GetNW2Int("GryMode", Modes.ARMOR), ply:GetNW2Float("GryEnergy")
+				local ok, err = pcall(function()
+					local knife = weapon(ply, {IsMelee = true})
+					local gun = weapon(ply, {IsMelee = false})
+
+					local function paid(hookName, w)
+						ply:SetNW2Float("GryEnergy", 100)
+						hook.Run(hookName, w)
+
+						return 100 - ply:GetNW2Float("GryEnergy")
+					end
+
+					ply:SetNW2Int("GryMode", Modes.STRENGTH)
+					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(10)
+					expect(paid("TFA_PostSecondaryAttack", knife)).to.equal(10)
+					expect(paid("TFA_PostBash", gun)).to.equal(10)
+					expect(paid("TFA_PostSecondaryAttack", gun)).to.equal(0) -- the sights of a gun are not a blow
+
+					ply:SetNW2Int("GryMode", Modes.SPEED)
+					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(7.5)
+					expect(paid("TFA_PostBash", gun)).to.equal(7.5)
+
+					ply:SetNW2Int("GryMode", Modes.ARMOR)
+					expect(paid("TFA_PostPrimaryAttack", knife)).to.equal(0)
+					expect(paid("TFA_PostBash", gun)).to.equal(0)
+
+					-- never under 0
+					ply:SetNW2Int("GryMode", Modes.STRENGTH)
+					ply:SetNW2Float("GryEnergy", 4)
+					hook.Run("TFA_PostPrimaryAttack", knife)
+					expect(ply:GetNW2Float("GryEnergy")).to.equal(0)
+				end)
+
+				ply:SetNW2Int("GryMode", mode)
+				ply:SetNW2Float("GryEnergy", energy)
+
+				if not ok then
+					error(err, 0)
+				end
+			end
+		},
+		{
 			-- fails when a shot of a strength mode player does not take the energy the rule says (7.5 of the bar) through the public energy API, when a melee weapon pays it,
 			-- when another mode pays, or when the bar goes under 0. A real player: the energy API only takes a real one
 			name = "TFA_PostPrimaryAttack: a gun's shot takes the energy in the strength mode only, never under 0 and nothing for a melee weapon",
@@ -253,10 +305,12 @@ return {
 					hook.Run("TFA_PostPrimaryAttack", gun)
 					expect(ply:GetNW2Float("GryEnergy")).to.equal(0)
 
+					-- a melee weapon's swing pays the melee price (10 in the strength mode), not the price of a shot
 					ply:SetNW2Float("GryEnergy", 100)
 					hook.Run("TFA_PostPrimaryAttack", weapon(ply, {IsMelee = true}))
-					expect(ply:GetNW2Float("GryEnergy")).to.equal(100)
+					expect(ply:GetNW2Float("GryEnergy")).to.equal(90)
 
+					ply:SetNW2Float("GryEnergy", 100)
 					ply:SetNW2Int("GryMode", Modes.SPEED)
 					hook.Run("TFA_PostPrimaryAttack", gun)
 					expect(ply:GetNW2Float("GryEnergy")).to.equal(100)
