@@ -69,18 +69,6 @@ local function dead(ent)
 	return isfunction(ent.IsDead) and ent:IsDead() == true
 end
 
-local ok, reason = API.RegisterTracked(KEY, {
-	base = "drgbase_nextbot",
-	priority = STOCK,
-	relation = relation,
-	awareness = awareness,
-	dead = dead
-})
-
-if not ok then
-	MsgN("GryMod: the DrGBase entry of the tracked registry was refused: " .. tostring(reason))
-end
-
 -- ---------------------------------------------------------------------------------------------------------
 -- The grenades of DrGBase (proj_drg_grenade and what packs build on it). The pin is out while the networked boolean DrGBaseUnpined is true, and the grenade is over once
 -- DrGBaseDetonated is. The smoke grenade is no danger (it only makes smoke); the flash grenade is one that blinds, so it has its own label.
@@ -109,6 +97,12 @@ local function armed(ent)
 	return ent:GetNW2Bool("DrGBaseUnpined") == true and ent:GetNW2Bool("DrGBaseDetonated") ~= true
 end
 
+-- The registry entries exist only while DrGBase is installed (a class built on a base the game does not have is looked up for nothing, and the entries of the grenades name their entities by a
+-- function, which makes the grenade warning follow every new entity of the client one frame longer: API.DangerNeedsEntity). Installed when the file loads (DrGBase's autorun comes first) and when
+-- the game is up.
+local D = GryMod.DrGBaseCompat or {}
+GryMod.DrGBaseCompat = D
+
 local function register(key, def)
 	def.priority = STOCK
 
@@ -119,16 +113,43 @@ local function register(key, def)
 	end
 end
 
-register(KEY .. ".flash", {
-	match = function(ent)
-		return ent.IsDrGGrenade == true and builtOn(ent, FLASH)
-	end,
-	danger = {label = "FLASHBANG", type = "grenade", armed = armed}
-})
+function D.Install()
+	if _G.DrGBase == nil then
+		return false
+	end
 
-register(KEY .. ".grenade", {
-	match = function(ent)
-		return ent.IsDrGGrenade == true and not builtOn(ent, SMOKE) and not builtOn(ent, FLASH)
-	end,
-	danger = {label = "GRENADE", type = "grenade", armed = armed}
-})
+	-- every class built on drgbase_nextbot: its relation, its awareness, whether it is dead
+	register(KEY, {
+		base = "drgbase_nextbot",
+		priority = STOCK,
+		relation = relation,
+		awareness = awareness,
+		dead = dead
+	})
+
+	register(KEY .. ".flash", {
+		match = function(ent)
+			return ent.IsDrGGrenade == true and builtOn(ent, FLASH)
+		end,
+		danger = {label = "FLASHBANG", type = "grenade", armed = armed}
+	})
+
+	register(KEY .. ".grenade", {
+		match = function(ent)
+			return ent.IsDrGGrenade == true and not builtOn(ent, SMOKE) and not builtOn(ent, FLASH)
+		end,
+		danger = {label = "GRENADE", type = "grenade", armed = armed}
+	})
+
+	return true
+end
+
+-- Takes the entries of the grenades away (the tests).
+function D.Uninstall()
+	API.UnregisterTracked(KEY)
+	API.UnregisterTracked(KEY .. ".flash")
+	API.UnregisterTracked(KEY .. ".grenade")
+end
+
+D.Install()
+hook.Add("InitPostEntity", "GryMod compat drgbase", D.Install)

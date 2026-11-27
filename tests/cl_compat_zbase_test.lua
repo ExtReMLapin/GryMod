@@ -53,6 +53,14 @@ return {
 
 				controlling = false
 				expect(GryMod.API.IsCameraOwned(ply, true)).to.beFalse()
+
+				-- a thing that cannot say is no camera owner, and is no error either (an owner is switched off after five errors in a row)
+				for _ = 1, 6 do
+					expect(GryMod.API.IsCameraOwned({}, true)).to.beFalse()
+				end
+
+				controlling = true
+				expect(GryMod.API.IsCameraOwned(ply, true)).to.beTrue()
 			end
 		},
 		{

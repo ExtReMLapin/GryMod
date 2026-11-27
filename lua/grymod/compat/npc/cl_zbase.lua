@@ -12,7 +12,8 @@ end
 local KEY = "compat.zbase"
 
 API.AddCameraOwner(KEY, function(ply)
-	return IsValid(ply:GetNWEntity("ZBASE_ControllerCamEnt", NULL))
+	-- (nothing is asked of a thing that cannot say: the owner is switched off after five errors in a row)
+	return _G.ZBaseInstalled ~= nil and isfunction(ply.GetNWEntity) and IsValid(ply:GetNWEntity("ZBASE_ControllerCamEnt", NULL))
 end)
 
 -- Whether this NPC of ZBase can follow a player (its definition says so, ZBase's setting zbase_followplayers is on).

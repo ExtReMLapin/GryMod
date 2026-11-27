@@ -3,6 +3,7 @@
 -- "dull" copy that must never be a contact, and its projectiles (the rocket and the mortar of the NPCs) are dangers. ZBase is stood in for. Each case names the change that makes it fail.
 
 local API
+local wasInstalled
 local saved = {}
 
 local function stub(tbl, key, value)
@@ -34,10 +35,16 @@ return {
 	beforeEach = function()
 		API = GryMod.API
 		saved = {}
+		wasInstalled = _G.ZBaseInstalled ~= nil
 		stub(_G, "ZBaseInstalled", true)
 		stub(_G, "ZBASE_SkipClassNameWrapper", false)
+		GryMod.ZBaseCompat.Install() -- (the entries below exist while ZBase is installed: ZBase is stood in for)
 	end,
 	afterEach = function()
+		if not wasInstalled then
+			GryMod.ZBaseCompat.Uninstall()
+		end
+
 		for i = #saved, 1, -1 do
 			saved[i][1][saved[i][2]] = saved[i][3]
 		end
@@ -122,6 +129,20 @@ return {
 				local other = API.GetTracked(ghost)
 
 				expect(other == nil or other.key ~= "compat.zbase.dull").to.beTrue()
+			end
+		},
+		{
+			-- fails when the entries are registered without ZBase (the first is asked about every NPC of the map)
+			name = "the entries exist only while ZBase is there",
+			func = function()
+				GryMod.ZBaseCompat.Uninstall()
+				_G.ZBaseInstalled = nil
+				expect(GryMod.ZBaseCompat.Install()).to.beFalse()
+				expect(API.GetDanger("zb_rocket")).to.beNil()
+
+				_G.ZBaseInstalled = true
+				expect(GryMod.ZBaseCompat.Install()).to.beTrue()
+				expect(API.GetDanger("zb_rocket")).toNot.beNil()
 			end
 		},
 		{

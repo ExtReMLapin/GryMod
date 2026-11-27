@@ -4,6 +4,7 @@
 -- stand-in checks its arguments. Each case names the production change whose absence makes it fail.
 
 local API
+local realDrG
 
 local D_LI_, D_HT_, D_FR_, D_NU_ = D_LI, D_HT, D_FR, D_NU
 
@@ -35,6 +36,18 @@ return {
 	groupName = "GryMod compat: DrGBase nextbots (shared)",
 	beforeEach = function()
 		API = GryMod.API
+		realDrG = _G.DrGBase
+
+		-- (the grenades' entries exist while DrGBase is installed: DrGBase is stood in for, the entries come and go with it)
+		_G.DrGBase = realDrG or {}
+		GryMod.DrGBaseCompat.Install()
+	end,
+	afterEach = function()
+		if not realDrG then
+			GryMod.DrGBaseCompat.Uninstall()
+		end
+
+		_G.DrGBase = realDrG
 	end,
 	cases = {
 		{

@@ -38,37 +38,60 @@ API.AddClassProvider(KEY, function(ent)
 	return nil
 end)
 
--- The copy ZBase leaves of an NPC it replaced. Priority well above the stock entries: whatever the class of the original says (a Combine soldier, hostile to the player), it is nothing.
-local ok, reason = API.RegisterTracked(KEY .. ".dull", {
-	match = function(ent)
-		return _G.ZBaseInstalled ~= nil and isfunction(ent.GetNWBool) and ent:GetNWBool("ZBaseNPCCopy_DullState", false) == true
-	end,
-	radar = "never",
-	scan = false,
-	relation = "neutral",
-	priority = 500
-})
+-- The entries below exist only while ZBase is installed: the first is asked about every NPC of the map, and the dangers add classes to the grenade warning's search. Installed when the file
+-- loads (ZBase's autorun may come after: ZBaseInstalled is not there yet) and when the game is up.
+local Z = GryMod.ZBaseCompat or {}
+GryMod.ZBaseCompat = Z
 
-if not ok then
-	MsgN("GryMod: the ZBase entry of the tracked registry was refused: " .. tostring(reason))
-end
-
--- The projectiles of the ZBase NPCs that hurt (the spit is small and falls at once: no warning). They are physics entities, in flight while they move; the rocket also carries a real
--- rpg_missile that never moves of itself (the warning's stock entry for the missile reads it as at rest, so only the rocket warns).
 local MOVING = 50
 
 local function moving(ent)
 	return ent:GetVelocity():Length() > MOVING
 end
 
-for class, label in pairs({zb_rocket = "ROCKET", zb_mortar = "MORTAR"}) do
-	local registered, why = API.RegisterTracked(KEY .. "." .. class, {
-		class = class,
-		priority = -50,
-		danger = {label = label, type = class == "zb_rocket" and "missile" or "bomb", armed = moving}
-	})
+local function register(key, def)
+	local ok, reason = API.RegisterTracked(key, def)
 
-	if not registered then
-		MsgN("GryMod: the ZBase entry '" .. class .. "' of the tracked registry was refused: " .. tostring(why))
+	if not ok then
+		MsgN("GryMod: the ZBase entry '" .. key .. "' of the tracked registry was refused: " .. tostring(reason))
 	end
 end
+
+function Z.Install()
+	if _G.ZBaseInstalled == nil then
+		return false
+	end
+
+	-- The copy ZBase leaves of an NPC it replaced. Priority well above the stock entries: whatever the class of the original says (a Combine soldier, hostile to the player), it is nothing.
+	register(KEY .. ".dull", {
+		match = function(ent)
+			return _G.ZBaseInstalled ~= nil and isfunction(ent.GetNWBool) and ent:GetNWBool("ZBaseNPCCopy_DullState", false) == true
+		end,
+		radar = "never",
+		scan = false,
+		relation = "neutral",
+		priority = 500
+	})
+
+	-- The projectiles of the ZBase NPCs that hurt (the spit is small and falls at once: no warning). They are physics entities, in flight while they move; the rocket also carries a real
+	-- rpg_missile that never moves of itself (the warning's stock entry for the missile reads it as at rest, so only the rocket warns).
+	for class, label in pairs({zb_rocket = "ROCKET", zb_mortar = "MORTAR"}) do
+		register(KEY .. "." .. class, {
+			class = class,
+			priority = -50,
+			danger = {label = label, type = class == "zb_rocket" and "missile" or "bomb", armed = moving}
+		})
+	end
+
+	return true
+end
+
+-- Takes the entries away (the tests).
+function Z.Uninstall()
+	API.UnregisterTracked(KEY .. ".dull")
+	API.UnregisterTracked(KEY .. ".zb_rocket")
+	API.UnregisterTracked(KEY .. ".zb_mortar")
+end
+
+Z.Install()
+hook.Add("InitPostEntity", "GryMod compat zbase", Z.Install)

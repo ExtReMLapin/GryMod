@@ -84,13 +84,14 @@ check("the smoke grenade is no danger", GryMod.API.GetDanger(smoke) == nil and s
 frag:Remove()
 smoke:Remove()
 
--- 3. the noises of the suit reach a nextbot that does not see the player
+-- 3. the noises of the suit reach a nextbot that does not see the player (a blind one: the zombie turns by itself, a narrow field of view would not keep it from seeing him)
+ply:SetPos(Vector(0, 0, -130))
+
 local z2 = ents.Create("npc_drg_zombie")
 
 z2:SetPos(ply:GetPos() + Vector(600, 0, 0))
-z2:SetAngles(Angle(0, 0, 0))
 z2:Spawn()
-z2:SetSightFOV(60)
+z2:SetSightFOV(0)
 job:sleep(0.7)
 check("it does not see the player first", z2:HasSpotted(ply) == false and z2:IsInSight(ply) == false)
 GryMod.EmitSuitNoise(ply, "speed_sprint")
