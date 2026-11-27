@@ -35,6 +35,10 @@ Taking a file away takes the patch away and breaks nothing else.
 | | `cl_arc9_hud.lua` | ARC9's own HUD (weapon name, ammunition, fire mode) crowds the bottom left corner: `gry_arc9_hide_hud` (on by default, ARC9 tab of the Compatibility page) hides it while GryMod's HUD is up. Its key hints and customization menu stay, none of its settings is changed. |
 | | `sh_tfa_suit.lua`, `sv_tfa_suit.lua`, `sh_arc9_suit.lua`, `sv_arc9_suit.lua` | What the suit does to a TFA or ARC9 weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each, the same for both bases. |
 | | `sv_tfa.lua`, `sv_arc9.lua` | The attacks of TFA and ARC9 that are not bullets (a knife's stab, a bash, a grenade's throw, ARC9's launcher under the barrel) end the camouflage, through the base's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
+| `compat/view/` | `cl_thirdperson.lua` | The third person cameras of other addons are **camera owners** (`GryMod.API.AddCameraOwner`): while one has the view, the binoculars give no view and do not read the game's zoom key, the heading follows the drawn view. Simple ThirdPerson, Enhanced ThirdPerson, DarkFated's third person, tpcgm, Customisable Thirdperson (which removes every other CalcView hook while it is on), ARC9's own third person, PAC's camera part, editor camera and the camera a server imposes. An owner is put only for an addon that is there. Also: Enhanced ThirdPerson's HUDShouldDraw answers `true` for the game's crosshair when its third person is off, so the patch wraps that one hook once (no answer while GryMod's crosshair is up, in first person). **Read in their public source and checked with stand-ins, not tried in a game** (none installed when written). |
+| | `cl_legs_ec2.lua` | Gmod Legs 3 (`LocalPlayer().ShouldDisableLegs`, set only if it was not set) and Enhanced Camera 2 (`EnhancedCameraTwo:ShouldDraw` wrapped once) draw the local player's legs and body with models of their own that the camouflage does not cover: they are **hidden** while the camouflage is on and while it fades out (`GryMod_CloakChanged`, one timer for the end of the fade). Covering them is `AddPlayerPartsProvider`, not done. Stand-ins only. |
+| | `cl_vmanip.lua` | VManip's animations are not started while the binoculars are up (`VManipPrePlayAnim` answers `false`) and the one that plays is ended: the view model is not drawn then, so its `PostDrawViewModel` does not come and the animation would freeze, with its camera angle. Stand-ins only. |
+| | `cl_nvg_others.lua` | `GryMod_CanUseView("nightvision")` answers `false` while another night vision is on, so the key does not stack a second one. Reads NVScript (its `NV_FX` hook; read in two forks of its code) and JMod's goggles (`ply.EZarmor.effects`). Modern Warfare NVGs and Arctic's GCAL are not read (no public source, not installed): add a reader to `GryMod.CompatOtherNV.Sources`. Stand-ins only. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 
 ## Damage: living with the addons that change it
@@ -121,6 +125,12 @@ The original holds the binoculars in place of the weapon: `gry_binoculars_hide_w
 | 16. Settings | The ARC9 tab: its HUD, and the suit's server settings (the same as TFA's). |
 | 17. Shipping | Loader lines, syntax check and loader test, stand-in tests (`tests/cl_compat_arc9_test.lua`, `tests/sv_compat_arc9_suit_test.lua`, ...) and the live checks above. |
 | 18. Hooks | ARC9's own global hooks (`ARC9_<Stat>Hook`, `ARC9_Hook_...`), `pcall`, `nil` when nothing changes; nothing of ARC9 is replaced but `ARC9.ShouldDrawHUD` (a wrapper, for the HUD option). |
+
+## HUDs of other addons: left to the player
+
+VJ HUD (health, ammunition, compass and crosshair in `HUDPaint`, hiding the same four game elements) and Crosshair Designer draw a HUD of their own over GryMod's. The patch does **not** hide
+either of them through `AddHudSuppressor`: which HUD the player wants is the player's choice, and GryMod never writes another addon's settings. Turn one off in its own options (VJ HUD:
+`vj_hud_enabled 0`) or GryMod's HUD in the options of GryMod (`gry_hud 0`). ARC9's own HUD is the one exception, with an option (`gry_arc9_hide_hud`).
 
 ## Adding a patch
 
