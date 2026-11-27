@@ -55,7 +55,9 @@ hook.Add("ARC9_Hook_PrimaryAttack", KEY, function(weapon)
 			return
 		end
 
-		local cost = SW.ShotCost(SW.ModeOf(ply))
+		-- the calibre: ARC9 keeps the name of the weapon's ammunition in Primary.Ammo (sh_init.lua)
+		local ammo = istable(weapon.Primary) and weapon.Primary.Ammo or nil
+		local cost = SW.ShotCost(SW.ModeOf(ply), ammo)
 
 		if cost > 0 then
 			API.AddEnergy(ply, -cost)

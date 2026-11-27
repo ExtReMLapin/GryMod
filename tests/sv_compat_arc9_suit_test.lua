@@ -285,6 +285,24 @@ return {
 			end
 		},
 		{
+			-- fails when the calibre is not read from ARC9's ammunition (its Primary.Ammo, set from the weapon's Ammo): a magnum round must cost 1.5 times the plain price, an SMG round 0.75
+			name = "ARC9_Hook_PrimaryAttack: the price of a shot follows the calibre of the weapon's ammunition",
+			func = function()
+				local added = {}
+
+				stub(GryMod.API, "AddEnergy", function(ply, amount) added[#added + 1] = amount end)
+
+				local ply = fakePlayer(Modes.STRENGTH, 100)
+
+				hook.Run("ARC9_Hook_PrimaryAttack", weapon(ply, {Primary = {Ammo = "357"}}))
+				hook.Run("ARC9_Hook_PrimaryAttack", weapon(ply, {Primary = {Ammo = "smg1"}}))
+				hook.Run("ARC9_Hook_PrimaryAttack", weapon(ply, {Primary = {}}))
+				expect(near(added[1], -7.5 * 1.5)).to.beTrue()
+				expect(near(added[2], -7.5 * 0.75)).to.beTrue()
+				expect(near(added[3], -7.5)).to.beTrue() -- no ammunition name: the plain price
+			end
+		},
+		{
 			-- fails when a bash (the swing of a knife, the stab, the butt stroke of a gun) does not end the camouflage, through ARC9's own hook at the moment of the blow, as a left click attack
 			name = "ARC9_Hook_Bash: a blow is reported as an attack (not the right click)",
 			func = function()
