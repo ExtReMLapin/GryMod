@@ -3,8 +3,20 @@
 -- entities/m9k_proxy.lua:38 (a false answer means the mine does not go off for that target), and the weapons' way of throwing (weapons/bobs_nade_base.lua, SWEP:Throw:
 -- ents.Create, SetOwner, Spawn) and launching (weapons/m9k_m79gl.lua). Each case names the change whose absence makes it fail.
 
+-- the patch's own function of an event (hook.Run would also run every other addon's hooks with these stand-ins)
+local function fire(event, ...)
+	local fn = hook.GetTable()[event] and hook.GetTable()[event]["GryMod compat m9k"]
+
+	if fn then
+		return fn(...)
+	end
+
+	return nil
+end
+
 local API
 local realCloakLevel, realReport, reports
+local realSimple, queue
 local aiVar, aiWas
 
 local function player(fields)
@@ -17,15 +29,26 @@ local function player(fields)
 	return p
 end
 
-local function projectile(class, owner)
-	local e = {IsValid = function() return true end, GetClass = function() return class end, GetOwner = function() return owner or NULL end}
+local function projectile(class, owner, base)
+	local e = {IsValid = function() return true end, GetClass = function() return class end, GetOwner = function() return owner or NULL end, Base = base}
 
 	return e
 end
 
+-- timer.Simple of the patch is kept in a queue the case runs when it wants (the tick after the creation)
+local function flush()
+	local list = queue
+
+	queue = {}
+
+	for _, fn in ipairs(list) do
+		fn()
+	end
+end
+
 local function created(e)
-	hook.Run("OnEntityCreated", e)
-	RunTimers() -- the weapon sets the owner after ents.Create: the patch looks one tick later
+	fire("OnEntityCreated", e)
+	flush() -- the weapon sets the owner after ents.Create: the patch looks one tick later
 end
 
 local mine = {IsValid = function() return true end, GetClass = function() return "m9k_proxy" end}
@@ -36,6 +59,9 @@ return {
 		API = GryMod.API
 		realCloakLevel, realReport = API.CloakLevel, API.ReportAttack
 		reports = {}
+		queue = {}
+		realSimple = timer.Simple
+		timer.Simple = function(_, fn) queue[#queue + 1] = fn end
 		API.ReportAttack = function(ply, alt) reports[#reports + 1] = {ply, alt} return true end
 		API.CloakLevel = function(ply) return ply.__cloak or 0 end
 		aiVar = GetConVar("gry_cloak_ai") or CreateConVar("gry_cloak_ai", "1")
@@ -43,43 +69,40 @@ return {
 		aiVar:SetBool(true)
 		include("grymod/compat/tools/sh_m9k_specialties.lua")
 		include("grymod/compat/tools/sv_m9k_specialties.lua")
-		scripted_ents._bases["m9k_launched_m79"] = "m9k_launched_projectile_base"
 	end,
 	afterEach = function()
 		API.CloakLevel, API.ReportAttack = realCloakLevel, realReport
+		timer.Simple = realSimple
 		aiVar:SetBool(aiWas)
-		scripted_ents._bases = {}
-		hook.Remove("M9k_ProxyMineCanTrigger", "GryMod compat m9k")
-		hook.Remove("OnEntityCreated", "GryMod compat m9k")
 	end,
 	cases = {
 		{
 			-- fails when the proximity mine goes off for a camouflaged player like for anybody
 			name = "a proximity mine does not go off for a camouflaged player",
 			func = function()
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, player({__cloak = 1}), nil)).to.equal(false)
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.6}), nil)).to.equal(false)
+				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 1}), nil)).to.equal(false)
+				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.6}), nil)).to.equal(false)
 			end
 		},
 		{
 			-- fails when it answers for a player who is not (or hardly) camouflaged, for an NPC, or when the switch of the enemies that forget him is off
 			name = "no opinion for a visible player, one in the first part of the fade, an NPC, or with the enemies' switch off",
 			func = function()
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0}), nil)).to.beNil()
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.3}), nil)).to.beNil()
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, {IsValid = function() return true end, IsPlayer = function() return false end}, nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0}), nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.3}), nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, {IsValid = function() return true end, IsPlayer = function() return false end}, nil)).to.beNil()
 
 				aiVar:SetBool(false)
 
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, player({__cloak = 1}), nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 1}), nil)).to.beNil()
 			end
 		},
 		{
 			-- fails when a bad target raises an error into the mine's Think (it runs ten times a second)
 			name = "a nil or an odd target raises nothing",
 			func = function()
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, nil, nil)).to.beNil()
-				expect(hook.Run("M9k_ProxyMineCanTrigger", mine, {}, nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, nil, nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, {}, nil)).to.beNil()
 			end
 		},
 		{
@@ -89,7 +112,7 @@ return {
 				local me = player()
 
 				created(projectile("m9k_thrown_m61", me))
-				created(projectile("m9k_launched_m79", me))
+				created(projectile("m9k_launched_m79", me, "m9k_launched_projectile_base"))
 				created(projectile("m9k_m202_rocket", me))
 
 				expect(#reports).to.equal(3)
@@ -122,12 +145,12 @@ return {
 				local owner = NULL
 
 				late.GetOwner = function() return owner end
-				hook.Run("OnEntityCreated", late)
+				fire("OnEntityCreated", late)
 
 				expect(#reports).to.equal(0)
 
 				owner = me
-				RunTimers()
+				flush()
 
 				expect(#reports).to.equal(1)
 			end
@@ -138,9 +161,9 @@ return {
 			func = function()
 				local gone = projectile("m9k_thrown_m61", player())
 
-				hook.Run("OnEntityCreated", gone)
+				fire("OnEntityCreated", gone)
 				gone.IsValid = function() return false end
-				RunTimers()
+				flush()
 				created({IsValid = function() return true end, GetClass = function() return "m9k_thrown_m61" end})
 
 				expect(#reports).to.equal(0)

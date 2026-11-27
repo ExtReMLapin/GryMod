@@ -30,9 +30,6 @@ return {
 		API = GryMod.API
 		include("grymod/compat/tools/sh_m9k_specialties.lua")
 	end,
-	afterEach = function()
-		scripted_ents._bases = {}
-	end,
 	cases = {
 		{
 			-- fails when a thrown grenade of M9K does not warn, or needs a state it does not have (it is live from the moment it exists)
@@ -55,11 +52,8 @@ return {
 			-- fails when the 40 mm grenades (the base the launchers' projectiles share) or the rockets (no common base) are not dangers, or when the player's own shot warns him
 			name = "the launched grenades (by their base) and the rockets (by class) are dangers the shooter is never warned of",
 			func = function()
-				scripted_ents._bases["m9k_launched_m79"] = "m9k_launched_projectile_base"
-				scripted_ents._bases["m9k_milkor_nade"] = "m9k_launched_projectile_base"
-
 				for _, class in ipairs({"m9k_launched_m79", "m9k_milkor_nade"}) do
-					local entry = API.GetDanger(ent(class))
+					local entry = API.GetDanger(ent(class, {Base = "m9k_launched_projectile_base"}))
 
 					expect(entry ~= nil).to.beTrue()
 					expect(entry.danger.label).to.equal("GRENADE")
@@ -127,10 +121,10 @@ return {
 			-- fails when the ammo boxes (the base and every box built on it) have no prompt, or the ones of other addons get one
 			name = "the ammo boxes have the TAKE AMMO prompt, what is not M9K's does not",
 			func = function()
-				scripted_ents._bases["m9k_ammo_frags"] = "m9k_ammo_base"
+				local frags = ent("m9k_ammo_frags", {Base = "m9k_ammo_base"})
 
-				expect(API.GetUsable(ent("m9k_ammo_frags")).text).to.equal("TAKE AMMO")
-				expect(API.GetUsable(ent("m9k_ammo_frags")).icon).to.equal("pickup")
+				expect(API.GetUsable(frags).text).to.equal("TAKE AMMO")
+				expect(API.GetUsable(frags).icon).to.equal("pickup")
 				expect(API.GetUsable(ent("m9k_ammo_base")) ~= nil).to.beTrue()
 				expect(API.GetUsable(ent("some_other_ammo_box"))).to.beNil()
 			end

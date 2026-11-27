@@ -4,6 +4,17 @@
 -- which GryMod's own draw of the camouflaged player runs again. JMod was not installed when this was written: the cases use stand-ins. Each case names the change whose absence
 -- makes it fail.
 
+-- the patch's own function of an event (hook.Run would also run every other addon's hooks with these stand-ins)
+local function fire(event, ...)
+	local fn = hook.GetTable()[event] and hook.GetTable()[event]["GryMod compat jmod"]
+
+	if fn then
+		return fn(...)
+	end
+
+	return nil
+end
+
 local API
 local realAdd, realRemove, providers
 
@@ -41,7 +52,6 @@ return {
 	end,
 	afterEach = function()
 		API.AddPlayerPartsProvider, API.RemovePlayerPartsProvider = realAdd, realRemove
-		hook.Remove("GryMod_CloakChanged", "GryMod compat jmod")
 		JMod = nil
 	end,
 	cases = {
@@ -76,7 +86,7 @@ return {
 				local ply = wearer({ours, theirs})
 
 				expect(#provide(ply)).to.equal(1) -- a model JMod put away itself is not given to the camouflage either
-				hook.Run("GryMod_CloakChanged", ply, false, 0)
+				fire("GryMod_CloakChanged", ply, false, 0)
 
 				expect(ours.nodraw).to.beFalse()
 				expect(theirs.nodraw).to.beTrue() -- JMod's own NoDraw (a weapon armor put away): the patch did not set it, so it does not take it off
@@ -90,8 +100,8 @@ return {
 				local ply = wearer({a})
 
 				provide(ply)
-				hook.Run("GryMod_CloakChanged", ply, true, 0.1)
-				hook.Run("GryMod_CloakChanged", wearer({}), false, 0)
+				fire("GryMod_CloakChanged", ply, true, 0.1)
+				fire("GryMod_CloakChanged", wearer({}), false, 0)
 
 				expect(a.nodraw).to.beTrue()
 			end

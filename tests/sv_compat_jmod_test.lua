@@ -3,6 +3,17 @@
 -- mine, a sentry... asks whether a target is one, and JMod.GetPlayerHeldEntity (sh_init.lua:208), the grenade that is in the player's hands, which the attack keys throw
 -- (JMod.ThrowablePickup, sv_util.lua:294). Each case names the change whose absence makes it fail.
 
+-- the patch's own function of an event (hook.Run would also run every other addon's hooks with these stand-ins)
+local function fire(event, ...)
+	local fn = hook.GetTable()[event] and hook.GetTable()[event]["GryMod compat jmod"]
+
+	if fn then
+		return fn(...)
+	end
+
+	return nil
+end
+
 local API
 local realJMod, realCloakLevel, realReport, reports
 local aiVar, aiWas
@@ -20,11 +31,11 @@ end
 local mine = {IsValid = function() return true end, GetClass = function() return "ent_jack_gmod_ezlandmine" end}
 
 local function shouldAttack(target)
-	return hook.Run("JMod_ShouldAttack", mine, target, false, false)
+	return fire("JMod_ShouldAttack", mine, target, false, false)
 end
 
 local function press(ply, key)
-	hook.Run("KeyPress", ply, key)
+	fire("KeyPress", ply, key)
 end
 
 return {
@@ -45,8 +56,6 @@ return {
 	afterEach = function()
 		JMod, API.CloakLevel, API.ReportAttack = realJMod, realCloakLevel, realReport
 		aiVar:SetBool(aiWas)
-		hook.Remove("JMod_ShouldAttack", "GryMod compat jmod")
-		hook.Remove("KeyPress", "GryMod compat jmod")
 	end,
 	cases = {
 		{
@@ -90,7 +99,6 @@ return {
 				local nade = {IsValid = function() return true end, GetClass = function() return "ent_jack_gmod_ezfragnade" end, Base = "ent_jack_gmod_ezgrenade"}
 				local ply = player({__held = nade})
 
-				scripted_ents._bases["ent_jack_gmod_ezfragnade"] = "ent_jack_gmod_ezgrenade"
 				press(ply, IN_ATTACK)
 				press(ply, IN_ATTACK2)
 

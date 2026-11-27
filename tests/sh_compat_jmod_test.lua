@@ -23,9 +23,9 @@ end
 
 -- an entity of `class` built on `base`, in `state`
 local function jmod(class, base, state, fields)
-	scripted_ents._bases[class] = base
-
 	local e = ent(class, fields)
+
+	e.Base = base
 
 	e.GetState = function() return state end
 
@@ -42,7 +42,6 @@ return {
 	end,
 	afterEach = function()
 		JMod = realJMod
-		scripted_ents._bases = {}
 	end,
 	cases = {
 		{
