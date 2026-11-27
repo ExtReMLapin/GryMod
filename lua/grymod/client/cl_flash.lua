@@ -49,9 +49,26 @@ function Flash.Unload(name)
 	movies[name] = nil
 end
 
--- The yaw of the player's view in the world (degrees). In a vehicle the eye angles are relative to it (measured in a Buggy, view at 1.2 in the world: EyeAngles 86.9,
--- vehicle at -85.7), so the radar, its map, the compass and the damage arcs turned with the vehicle: there they are turned by the vehicle's own angles.
+-- The yaw of the view in the world (degrees). The local player's is the yaw of the view that is really drawn (MainEyeAngles: the angles at the start of the latest
+-- main render, after every CalcView of the game and of the addons: a vehicle's camera, another addon's camera, the binoculars' sway), read once per frame. Measured: a
+-- CalcView that gives (0, 10, 0) gives MainEyeAngles (0, 10, 0) in HUDPaint and in a Think, where EyeAngles says something else. Another player (and a game that has no
+-- MainEyeAngles) has the old rule: in a vehicle the eye angles are relative to it (measured in a Buggy, view at 1.2 in the world: EyeAngles 86.9, vehicle at -85.7),
+-- so the radar, its map, the compass and the damage arcs turned with the vehicle: there they are turned by the vehicle's own angles.
+Flash.ViewYawFrame = -1 -- the frame of the kept yaw (a test sets it back to -1 to read the view again)
+
+local viewYaw = 0
+
 function Flash.ViewYaw(ply)
+	if isfunction(MainEyeAngles) and ply == LocalPlayer() then
+		local frame = FrameNumber()
+
+		if frame ~= Flash.ViewYawFrame then
+			Flash.ViewYawFrame, viewYaw = frame, MainEyeAngles().y
+		end
+
+		return viewYaw
+	end
+
 	local eyes = ply:EyeAngles()
 
 	if ply:InVehicle() then

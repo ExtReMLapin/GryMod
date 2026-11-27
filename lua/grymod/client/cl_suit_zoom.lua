@@ -110,7 +110,7 @@ Zoom.VIEW_FRAMES = 2
 -- The reasons that put the binoculars away at once. The others (release, toggle, weapon, weaponkey, water) close them as usual.
 Zoom.HARD = {
 	init = true, death = true, disabled = true, quickmenu = true, pause = true, console = true, ui = true, chat = true, focus = true,
-	malfunction = true, vehicle = true, thirdperson = true, viewentity = true, observer = true, frozen = true, viewtaken = true,
+	malfunction = true, vehicle = true, thirdperson = true, viewentity = true, observer = true, frozen = true, viewtaken = true, cameraowner = true,
 	shutdown = true, spawnmenu = true, contextmenu = true
 }
 
@@ -258,6 +258,7 @@ function Zoom.Reason(sit, active)
 	if sit.vehicle then return "vehicle" end
 	if sit.thirdperson then return "thirdperson" end
 	if sit.viewother then return "viewentity" end
+	if sit.cameraowner then return "cameraowner" end
 	if sit.observer ~= 0 then return "observer" end
 	if sit.frozen then return "frozen" end
 	if sit.water >= 3 then return "water" end
@@ -316,6 +317,7 @@ function Zoom.Read(sit)
 	sit.vehicle = ply:InVehicle()
 	sit.thirdperson = ply:ShouldDrawLocalPlayer()
 	sit.viewother = ply:GetViewEntity() ~= ply
+	sit.cameraowner = GryMod.API.IsCameraOwned(ply)
 	sit.observer = ply:GetObserverMode()
 	sit.frozen = ply:IsFrozen()
 	sit.water = ply:WaterLevel()

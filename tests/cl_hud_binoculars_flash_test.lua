@@ -1497,7 +1497,7 @@ return {
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local now, wanted, enabled, stages, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.Now
-				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return false end, GetViewEntity = function(self) return self end}
 				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
 				local want, hud, on = true, true, true
 
@@ -1552,7 +1552,7 @@ return {
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local wanted, enabled, stages, clock, ratio = M.Wanted, M.Enabled, M.StagesEnabled, M.Now, M.ZoomRatio
-				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return false end, GetViewEntity = function(self) return self end}
 				local now = 0
 
 				local ok, err = pcall(function()
@@ -1586,7 +1586,7 @@ return {
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local wanted, enabled, stages, clock, sounds, playSound = M.Wanted, M.Enabled, M.StagesEnabled, M.Now, M.SoundsEnabled, GryMod.PlaySound
-				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return false end, GetViewEntity = function(self) return self end}
 				local played = {}
 				local want, on, sound = true, true, true
 
@@ -1851,7 +1851,7 @@ return {
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local now, wanted, enabled, stages, sway, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled, M.Now
-				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, Crouching = function() return false end}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return false end, GetViewEntity = function(self) return self end, Crouching = function() return false end}
 				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
 				local want, on = true, true
 
@@ -1918,7 +1918,7 @@ return {
 			func = function(state)
 				local M = GryMod.FlashBinoculars
 				local now, wanted, enabled, stages, sway, clock = 0, M.Wanted, M.Enabled, M.StagesEnabled, M.SwayEnabled, M.Now
-				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, Crouching = function() return false end}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return false end, GetViewEntity = function(self) return self end, Crouching = function() return false end}
 
 				local ok, err = pcall(function()
 					M.Now = function() return now end
@@ -3059,7 +3059,7 @@ return {
 				local realWanted, realEnabled, realNow, realHeld, realSound = M.Wanted, M.Enabled, M.Now, M.ZoomStepHeld, M.PlayZoomSound
 				local now = 0
 				local sounds = {}
-				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end}
+				local ply = {GetInfoNum = function(self, name, default) return name == "fov_desired" and 100 or default end, InVehicle = function() return false end, ShouldDrawLocalPlayer = function() return false end, GetViewEntity = function(self) return self end}
 
 				M.Wanted = function() return true end
 				M.Enabled = function() return true end

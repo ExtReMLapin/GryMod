@@ -1115,6 +1115,11 @@ function Bino.Wanted(ply)
 		return false
 	end
 
+	-- another addon's camera has the view: the game's zoom key is not read (GryMod.API.AddCameraOwner)
+	if GryMod.API.IsCameraOwned(ply) then
+		return false
+	end
+
 	if ply:KeyDown(IN_ZOOM) then
 		return true
 	end
@@ -1980,6 +1985,11 @@ end
 -- CalcView: the view with the stage's field of view and / or the sway's angles, or nothing (the stage state is dropped as soon as
 -- the stages are not wanted, the sway's as soon as the binoculars are down).
 function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
+	-- a nested call of another addon (VManip calls the hooks again with a boolean in place of znear) is not a view of the frame: answering it would end its chain
+	if not isnumber(znear) then
+		return nil
+	end
+
 	local suit = GryMod.SuitZoom
 
 	-- the own zoom looks at the world before the view is given: with the game paused (the menu or the console open in a single
@@ -1990,9 +2000,10 @@ function Bino.CalcView(ply, origin, angles, fov, znear, zfar)
 
 	local own = suit ~= nil and suit.IsActive()
 
-	-- with the own zoom up never a view in a vehicle: the game's CalcView would not run (our table ends the hook chain) and the
-	-- vehicle's camera would be lost (the zoom itself ends in the next Think, see SuitZoom.Reason)
-	if own and ply:InVehicle() then
+	-- never a view in a vehicle (the game's CalcView would not run, our table ends the hook chain, and the vehicle's camera would be lost; the own zoom itself ends
+	-- in the next Think, see SuitZoom.Reason), in third person, while another entity has the view (a camera, a spectated player) or another addon's camera has it
+	-- (GryMod.API.AddCameraOwner)
+	if ply:InVehicle() or ply:ShouldDrawLocalPlayer() or ply:GetViewEntity() ~= ply or GryMod.API.IsCameraOwned(ply) then
 		if zoom.active then
 			Bino.ZoomReset(zoom)
 		end

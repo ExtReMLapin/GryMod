@@ -739,6 +739,8 @@ return {
 					Alive = function() return true end,
 					KeyDown = function() return false end,
 					InVehicle = function() return inVehicle end,
+					ShouldDrawLocalPlayer = function() return false end,
+					GetViewEntity = function(self) return self end,
 					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
 				}
 				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
@@ -1433,6 +1435,8 @@ return {
 					Alive = function() return true end,
 					KeyDown = function(_, key) return key == IN_ZOOM and zooming end,
 					InVehicle = function() return false end,
+					ShouldDrawLocalPlayer = function() return false end,
+					GetViewEntity = function(self) return self end,
 					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
 				}
 				local origin, angles = Vector(1, 2, 3), Angle(4, 5, 6)
@@ -2213,6 +2217,8 @@ return {
 					Alive = function() return true end,
 					KeyDown = function() return false end,
 					InVehicle = function() return false end,
+					ShouldDrawLocalPlayer = function() return false end,
+					GetViewEntity = function(self) return self end,
 					GetInfoNum = function(_, name, default) return name == "fov_desired" and 100 or default end
 				}
 

@@ -524,13 +524,15 @@ return {
 			end
 		},
 		{
-			name = "a danger without a class is refused (the client looks for these entities by class); with a class and a match function it is fine",
+			-- fails while a danger still needs a class (SHARED-DANGER-1: a vehicle weapon's missile is a class of a base, found by base or by a function)
+			name = "a danger needs something to match on, a class, a base or a match function (a danger with none is refused)",
 			func = function()
-				local ok, reason = API.RegisterTracked("t_trk_a", {match = function() return true end, danger = {}})
+				local ok, reason = API.RegisterTracked("t_trk_a", {danger = {}})
 
 				expect(ok).to.beFalse()
-				expect(string.find(reason, "class", 1, true) ~= nil).to.beTrue()
-				expect(API.RegisterTracked("t_trk_a", {base = "t_base", danger = {}})).to.beFalse()
+				expect(string.find(reason, "nothing to match", 1, true) ~= nil).to.beTrue()
+				expect(API.RegisterTracked("t_trk_a", {base = "t_base", danger = {}})).to.beTrue()
+				expect(API.RegisterTracked("t_trk_a", {match = function() return true end, danger = {}})).to.beTrue()
 				expect(API.RegisterTracked("t_trk_a", {class = "t_mine", match = function() return true end, danger = {}})).to.beTrue()
 			end
 		},

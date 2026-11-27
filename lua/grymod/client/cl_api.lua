@@ -418,3 +418,96 @@ function API.IsPlainView(weapon)
 end
 
 API.AddFeature("plainview")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Camera owners (client)
+-- ---------------------------------------------------------------------------------------------------------
+-- Some addons give the player a camera of their own (a drone, a security camera, a cinematic, a vehicle's special view). GryMod must leave such a view alone: the binoculars
+-- and the suit's own zoom give no view (no field of view, no sway) and do not read the game's zoom key, and the heading of the radar, the compass and the damage arrows is
+-- the one of the view that is really drawn. An owner says, for the local player, whether its camera has the view now.
+--
+--   GryMod.API.AddCameraOwner(key, function(ply) return true end)   true while this addon's camera has the view; anything else is a no
+--   GryMod.API.RemoveCameraOwner(key)
+--   GryMod.API.IsCameraOwned(ply)                                   true while any owner says so
+--
+-- An owner runs under SafeCall (five errors in a row switch it off; adding it again re-arms it) and must be cheap. It is asked once per frame and player (the answer is kept
+-- for the frame), and only when there is one: with no owner this costs a table length. The same key replaces the owner.
+local cameraOwners = API._cameraOwners or {} -- {{key, fn, callId}, ...} in the order they were added
+API._cameraOwners = cameraOwners
+
+local cameraFrame, cameraPly, cameraAnswer = -1, nil, false
+
+local function forgetCamera()
+	cameraFrame, cameraPly = -1, nil
+end
+
+function API.AddCameraOwner(key, fn)
+	if not isstring(key) or key == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "camera:" .. key
+
+	API.SafeCallReset(callId)
+	forgetCamera()
+
+	for _, owner in ipairs(cameraOwners) do
+		if owner.key == key then
+			owner.fn = fn
+
+			return true
+		end
+	end
+
+	cameraOwners[#cameraOwners + 1] = {key = key, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemoveCameraOwner(key)
+	for i, owner in ipairs(cameraOwners) do
+		if owner.key == key then
+			table.remove(cameraOwners, i)
+			API.SafeCallReset(owner.callId)
+			forgetCamera()
+
+			return true
+		end
+	end
+
+	return false
+end
+
+-- Whether another addon's camera has the view of this player. `fresh` (tests) asks the owners again in the same frame.
+function API.IsCameraOwned(ply, fresh)
+	local count = #cameraOwners
+
+	if count == 0 then
+		return false
+	end
+
+	local frame = FrameNumber()
+
+	if not fresh and frame == cameraFrame and ply == cameraPly then
+		return cameraAnswer
+	end
+
+	local owned = false
+
+	for i = 1, count do
+		local owner = cameraOwners[i]
+		local ok, answer = API.SafeCall(owner.callId, owner.fn, ply)
+
+		if ok and answer == true then
+			owned = true
+
+			break
+		end
+	end
+
+	cameraFrame, cameraPly, cameraAnswer = frame, ply, owned
+
+	return owned
+end
+
+API.AddFeature("cameraowner")

@@ -69,9 +69,10 @@ local function dangerEntry(class)
 	return API and API.GetDanger and API.GetDanger(class) or nil
 end
 
--- The text the warning shows for a class (the `label` of its danger entry), nil for a class that is not a danger.
-function Grenade.TypeFor(class)
-	local entry = dangerEntry(class)
+-- The text the warning shows for a projectile (the `label` of its danger entry), nil for one that is not a danger. `entry` is the one the candidate carries (an entry
+-- found by a base or a match function has no class to be read by); without it the class names it.
+function Grenade.TypeFor(class, entry)
+	entry = entry or dangerEntry(class)
 
 	return entry and entry.danger.label or nil
 end
@@ -133,7 +134,7 @@ end
 function Grenade.Warns(c, armedOnly, opts)
 	opts = opts or {}
 	local range = opts.range or Grenade.DEFAULT_RANGE
-	local entry = dangerEntry(c.class)
+	local entry = c.entry or dangerEntry(c.class)
 
 	-- only the entries whose indicator is the warning (the grenade-detect film) are drawn here; "marker" and "none" are stored
 	if not entry or entry.indicator ~= "warning" then
@@ -407,17 +408,22 @@ local function unresolved(class)
 	return class == "" or string.sub(class, 1, 6) == "class "
 end
 
--- Follows the entity when its class has a danger entry.
+-- Follows the entity when the registry has a danger entry for it (by its class, its base or the entry's match function: the registry asks once for it and keeps the
+-- answer). Returns whether it does.
 function Grenade.Follow(ent)
 	local API = GryMod.API
 
 	if not IsValid(ent) or not API or not API.GetDanger then
-		return
+		return false
 	end
 
-	if API.GetDanger(ent:GetClass()) then
+	if API.GetDanger(ent) then
 		followed[ent] = true
+
+		return true
 	end
+
+	return false
 end
 
 function Grenade.Forget(ent)
@@ -435,6 +441,9 @@ local function settle()
 	end
 end
 
+-- Judges the waiting entities now (the timer's job, at once); a timer that did not run leaves nothing waiting for it. For the tests.
+Grenade.Settle = settle
+
 hook.Add("OnEntityCreated", "GRYGRENADEFOLLOW", function(ent)
 	local API = GryMod.API
 
@@ -442,11 +451,12 @@ hook.Add("OnEntityCreated", "GRYGRENADEFOLLOW", function(ent)
 		return
 	end
 
-	local class = ent:GetClass()
+	-- (an entry that names its entities by a base or a function may not place an entity that is only made: its fields come a frame later, like a class)
+	if Grenade.Follow(ent) then
+		return
+	end
 
-	if API.GetDanger(class) then
-		followed[ent] = true
-	elseif unresolved(class) then
+	if unresolved(ent:GetClass()) or (API.DangerNeedsEntity and API.DangerNeedsEntity()) then
 		pending[ent] = true
 
 		if not settling then
@@ -510,6 +520,20 @@ function Grenade.Candidate(ent, ply, point, visible, front)
 	}
 end
 
+-- Whether this projectile may warn THIS player: the entry's `danger.warnFor(ent, ply)` (a missile that locks another player's vehicle is no danger to this one). No
+-- function, an answer that is not false, or an error (it runs under SafeCall) is a yes: the default is to warn.
+function Grenade.WarnFor(entry, ent, ply)
+	local warnFor = entry.danger.warnFor
+
+	if warnFor == nil then
+		return true
+	end
+
+	local ok, answer = GryMod.API.SafeCall(entry.warnId, warnFor, ent, ply)
+
+	return not (ok and answer == false)
+end
+
 -- The projectiles followed whose entry draws a warning (the registry's indicator, read now: an entry changed since the entity was
 -- made counts), as candidates for Pick.
 function Grenade.Candidates(ply, opts)
@@ -526,9 +550,9 @@ function Grenade.Candidates(ply, opts)
 
 	for ent in pairs(followed) do
 		if IsValid(ent) then
-			local entry = API.GetDanger(ent:GetClass())
+			local entry = API.GetDanger(ent)
 
-			if entry and entry.indicator == "warning" then
+			if entry and entry.indicator == "warning" and Grenade.WarnFor(entry, ent, ply) then
 				local centre = ent:WorldSpaceCenter()
 				local point = centre:ToScreen()
 				local visible
@@ -543,7 +567,10 @@ function Grenade.Candidates(ply, opts)
 					visible = lineOfSight(ent, ply)
 				end
 
-				list[#list + 1] = Grenade.Candidate(ent, ply, point, visible, front)
+				local candidate = Grenade.Candidate(ent, ply, point, visible, front)
+
+				candidate.entry = entry -- (an entry found by a base or a function is not found again by the class)
+				list[#list + 1] = candidate
 			end
 		else
 			followed[ent] = nil
