@@ -370,7 +370,7 @@ return {
 				expect(M.ModeName(GryMod.Modes.SPEED)).to.equal("Speed")
 				expect(M.ModeName(GryMod.Modes.CLOAK)).to.equal("Cloak")
 				expect(M.ModeName(GryMod.Modes.STRENGTH)).to.equal("Strength")
-				expect(M.ModeName(GryMod.Modes.DROP)).to.equal("Armor")
+				expect(M.ModeName(4)).to.equal("Armor")
 				expect(M.ModeName(nil)).to.equal("Armor")
 			end
 		},

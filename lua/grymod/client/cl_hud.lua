@@ -102,7 +102,19 @@ end
 
 -- `reason` (one of GryMod.ModeReasons, OTHER when left out) is the 4th argument of GryMod_ModeChanged. The client changes at once when the PLAYER asks (the
 -- server is only told): if the server refuses, it sends the real mode back and a second change follows, with the cause VETOED (or MALFUNCTION, DISABLED).
+local VALID_MODES = {
+	[GryMod.Modes.ARMOR] = true,
+	[GryMod.Modes.SPEED] = true,
+	[GryMod.Modes.CLOAK] = true,
+	[GryMod.Modes.STRENGTH] = true
+}
+
 function meta:SetNanosuitMode(mode, networked, reason)
+	-- a number that is not a mode is ignored (the weapon icon of the quick menu is not a mode: it opens the weapon's own menu, GryMod.API.OpenWeaponMenu)
+	if not VALID_MODES[mode] then
+		return
+	end
+
 	local oldMode = LocalPlayer().NanosuitMode
 	reason = reason or GryMod.ModeReasons.OTHER
 
@@ -114,10 +126,8 @@ function meta:SetNanosuitMode(mode, networked, reason)
 		return
 	end
 
-	-- the voice of the last mode is not heard any more (dropping the suit's item is not a mode)
-	if mode ~= GryMod.Modes.DROP then
-		timer.Remove("GryModModeVoice")
-	end
+	-- the voice of the last mode is not heard any more
+	timer.Remove("GryModModeVoice")
 
 	-- the tint and the sound of the mode: one HUD event (the camouflage's own picture is cl_cloak_fx.lua's)
 	local viewModelThere = IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetViewModel())
@@ -144,23 +154,17 @@ function meta:SetNanosuitMode(mode, networked, reason)
 		end
 	end
 
-	if mode == GryMod.Modes.DROP then
-		net.Start("gry_drop")
+	if networked then
+		net.Start("gry_nanosuit_mode_change")
+		net.WriteUInt(mode, 3)
 		net.SendToServer()
-	else
-		if networked then
-			net.Start("gry_nanosuit_mode_change")
-			net.WriteUInt(mode, 3)
-			net.SendToServer()
-		end
-
-		LocalPlayer().NanosuitMode = mode
-		LocalPlayer().NanosuitModeAssumed = nil
-
-		-- after the assignment: a handler that reads LocalPlayer().NanosuitMode sees the new mode
-		announceMode(mode, oldMode, reason)
 	end
-	-- it's not a real mode so don't change anything (and no hook)
+
+	LocalPlayer().NanosuitMode = mode
+	LocalPlayer().NanosuitModeAssumed = nil
+
+	-- after the assignment: a handler that reads LocalPlayer().NanosuitMode sees the new mode
+	announceMode(mode, oldMode, reason)
 end
 
 -- The server decides the mode (at every respawn it goes back to Armor). This must not wait for the

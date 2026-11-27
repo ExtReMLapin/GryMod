@@ -134,7 +134,7 @@ return {
 		{
 			name = "no profile for the camouflage (cl_cloak_fx.lua has it), the drop, or anything else",
 			func = function(state)
-				for _, mode in ipairs({Modes.CLOAK, Modes.DROP, 99, "armor"}) do
+				for _, mode in ipairs({Modes.CLOAK, 4, 99, "armor"}) do
 					expect(FX.Duration(mode)).to.equal(0)
 					local o = r3(mode, 0.1)
 					expect(o[1] + o[2] + o[3]).to.equal(0)
@@ -154,7 +154,7 @@ return {
 				expect(FX.TintDue(s, Modes.SPEED, Modes.SPEED, sample(), 10)).to.beFalse()
 				expect(FX.TintDue(s, nil, Modes.SPEED, sample(), 10)).to.beFalse()
 				expect(FX.TintDue(s, Modes.ARMOR, Modes.CLOAK, sample(), 10)).to.beFalse()
-				expect(FX.TintDue(s, Modes.ARMOR, Modes.DROP, sample(), 10)).to.beFalse()
+				expect(FX.TintDue(s, Modes.ARMOR, 4, sample(), 10)).to.beFalse()
 				expect(FX.TintDue(s, Modes.ARMOR, nil, sample(), 10)).to.beFalse()
 			end
 		},
@@ -222,11 +222,11 @@ return {
 				expect(FX.ModeFromData("cloak")).to.equal(Modes.CLOAK)
 				expect(FX.ModeFromData(Modes.SPEED)).to.equal(Modes.SPEED)
 				expect(FX.ModeFromData(Modes.ARMOR)).to.equal(Modes.ARMOR)
-				expect(FX.ModeFromData(Modes.DROP)).to.beNil()
+				expect(FX.ModeFromData(4)).to.beNil()
 				expect(FX.ModeFromData("nonsense")).to.beNil()
 				expect(FX.ModeFromData(nil)).to.beNil()
 				expect(FX.NameOf(Modes.STRENGTH)).to.equal("strength")
-				expect(FX.NameOf(Modes.DROP)).to.beNil()
+				expect(FX.NameOf(4)).to.beNil()
 			end
 		},
 		{

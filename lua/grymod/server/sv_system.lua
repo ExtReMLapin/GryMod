@@ -1,7 +1,6 @@
 util.AddNetworkString("gry_nanosuit_mode_change")
 util.AddNetworkString("gry_spawn")
 util.AddNetworkString("gry_jump")
-util.AddNetworkString("gry_drop")
 util.AddNetworkString("gry_empty_energy")
 util.AddNetworkString("gry_cloak_shot")
 util.AddNetworkString("gry_armor_hit_sound")
@@ -47,7 +46,7 @@ cvars.AddChangeCallback("gry_infinite_armor", function(_, _, new)
 	GryMod.Config.InfiniteArmor = isOn(new)
 end, "GryMod_ToggleInfiniteArmor")
 
--- The only modes a client is allowed to ask for (DROP is not a real mode, it only drops the weapon)
+-- The only modes a client is allowed to ask for (any other number is refused)
 local selectableModes = {
 	[GryMod.Modes.ARMOR] = true,
 	[GryMod.Modes.SPEED] = true,
@@ -274,12 +273,6 @@ net.Receive("gry_empty_energy", function(len, ply)
 	ply:SetNW2Float("GryEnergy", 0)
 	-- count it as a use: otherwise the regeneration starts again from the energy of the last drain tick
 	hook.Run("GryUseEnergy", ply)
-end)
-
-net.Receive("gry_drop", function(len, ply)
-	if IsValid(ply) and IsValid(ply:GetActiveWeapon()) then
-		ply:DropWeapon(ply:GetActiveWeapon()) --Drop active weapon
-	end
 end)
 
 function GryMod.SuperJump(ply, key)

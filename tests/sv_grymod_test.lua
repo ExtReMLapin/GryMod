@@ -172,7 +172,7 @@ return {
 				local p = ply()
 				GryMod.SetModeFromClient(p, 99)
 				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
-				GryMod.SetModeFromClient(p, GryMod.Modes.DROP)
+				GryMod.SetModeFromClient(p, 4)
 				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.ARMOR)
 			end
 		},

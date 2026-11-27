@@ -23,7 +23,7 @@ end
 - `GryMod.API.Version` is the interface version (an integer, 1 today). It goes up only when something breaks.
 - `GryMod.GetInterfaceVersion()` gives the same number.
 - `GryMod.API.Has("hudevents")` tells whether an optional part exists. Today: `"suit"`, `"relation"`, `"hudevents"`,
-  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
+  `"safecall"`, `"attackreport"`, `"weapons"`, `"weaponparts"` (client), `"weaponmenu"` (client), `"tracked"`, `"objectives"`, `"messages"`, `"campaign"`, `"usable"`, `"pickups"` (client), `"radarmarkers"` (client), `"weaponlist"` (client). New parts add a name here and never change the version number.
 - `GryMod.Version` is the addon version as text (`"dev"` in a checkout). Use it for display only.
 
 ## Safe calls
@@ -172,7 +172,7 @@ calls of the hook for each living player at each tick, so at most 6 calls a seco
 GryMod.API.RefreshModeStates(ply) -- true, or false and "invalid player"; the open menu greys or restores its icons at once if the answer changed
 ```
 
-A player can turn the display off with `gry_menu_show_refused 0` (the menu then only greys the weapon icon when he holds nothing). On the client,
+A player can turn the display off with `gry_menu_show_refused 0` (the menu then only greys the weapon icon when the weapon in hand has no menu of its own, see the weapon menus below). On the client,
 `GryMod.FlashMenu.IsRefused(mode)` says what the server last sent.
 
 ### Notes on the reporting hooks
@@ -617,6 +617,28 @@ during the camouflage is the next frame's list: nothing to refresh. The layers l
 unlit material (a reticle, a holographic sight), a translucent or additive one (the glass of a lens, with the dot of a red dot sight painted on it), and a material whose texture is
 not a file (the picture a scope shows, a render target). The body of the weapon and of its attachments, opaque and lit, is camouflaged. A provider runs under `SafeCall` (five errors in a row switch it off), what it gives is checked (valid entities
 only), at most `GryMod.API.MAX_WEAPON_PARTS` (16), and the same id replaces the provider. The patch for TFA is in `lua/grymod/compat/weapons/cl_tfa_parts.lua` ([compat.md](compat.md)).
+
+### Weapon menus: the menu of a weapon base (client)
+
+`GryMod.API.Has("weaponmenu")` is true. The weapon icon of the suit's quick menu opens the menu of the weapon in hand (for a TFA weapon: its attachments and ammunition menu), and it is
+greyed for a weapon that has none. It used to drop the weapon: that is gone, and so is the old drop "mode". GryMod knows no weapon base: a **provider** answers, for a weapon, with the
+function that opens its menu, or with nothing when the weapon is not its own or has no menu to open.
+
+```lua
+-- client side
+GryMod.API.AddWeaponMenuProvider("my_addon", function(weapon)
+	if weapon:GetClass() ~= "my_weapon" then return nil end
+
+	return function(weapon) weapon:OpenMyMenu() end   -- what opens the menu
+end)
+
+GryMod.API.RemoveWeaponMenuProvider("my_addon")
+GryMod.API.GetWeaponMenu(weapon)     -- the opener of the first provider that has one, or nil
+GryMod.API.OpenWeaponMenu(weapon)    -- runs it, true when there was a menu to open
+```
+
+A provider must be cheap (the quick menu asks it while it is open), runs under `SafeCall` (five errors in a row switch it off) and the same id replaces it. An opener that raises an
+error is caught. The patch for TFA is `lua/grymod/compat/weapons/cl_tfa_menu.lua` ([compat.md](compat.md)).
 
 ## Radar markers (client)
 

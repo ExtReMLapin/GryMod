@@ -265,3 +265,85 @@ function API.GetWeaponParts(weapon, out)
 end
 
 API.AddFeature("weaponparts")
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Weapon menus (client)
+-- ---------------------------------------------------------------------------------------------------------
+-- Some weapon bases have a menu of their own to inspect and change the weapon in hand (the attachments, the ammunition). The weapon icon of the suit's quick menu opens
+-- it, and only for a weapon that has one. GryMod knows none of them: a provider answers, for a weapon, with the function that opens its menu, or with nothing when the
+-- weapon is not its own or has no menu to open. The weapon bases that need this have their provider in lua/grymod/compat/weapons/ (docs/compat.md); an addon with its
+-- own weapons registers its own.
+--
+--   GryMod.API.AddWeaponMenuProvider(id, function(weapon) return function(weapon) ... end end)   answers the opener of the weapon's menu, or nil
+--   GryMod.API.RemoveWeaponMenuProvider(id)
+--   GryMod.API.GetWeaponMenu(weapon)                                                            the opener of the first provider that has one, or nil
+--   GryMod.API.OpenWeaponMenu(weapon)                                                           runs it; true when a menu was there to open
+--
+-- A provider runs under SafeCall (five errors in a row switch it off; adding it again re-arms it) and must be cheap: the quick menu asks it while it is open. The same id
+-- replaces the provider. An opener that raises an error is caught: the player's input never breaks.
+local menuProviders = API._weaponMenuProviders or {} -- {{id, fn, callId}, ...} in the order they were added
+API._weaponMenuProviders = menuProviders
+
+function API.AddWeaponMenuProvider(id, fn)
+	if not isstring(id) or id == "" or not isfunction(fn) then
+		return false
+	end
+
+	local callId = "weaponmenu:" .. id
+
+	API.SafeCallReset(callId)
+
+	for _, provider in ipairs(menuProviders) do
+		if provider.id == id then
+			provider.fn = fn
+
+			return true
+		end
+	end
+
+	menuProviders[#menuProviders + 1] = {id = id, fn = fn, callId = callId}
+
+	return true
+end
+
+function API.RemoveWeaponMenuProvider(id)
+	for i, provider in ipairs(menuProviders) do
+		if provider.id == id then
+			table.remove(menuProviders, i)
+			API.SafeCallReset(provider.callId)
+
+			return true
+		end
+	end
+
+	return false
+end
+
+function API.GetWeaponMenu(weapon)
+	if not (isentity(weapon) or istable(weapon)) or not IsValid(weapon) then
+		return nil
+	end
+
+	for i = 1, #menuProviders do
+		local provider = menuProviders[i]
+		local ok, opener = API.SafeCall(provider.callId, provider.fn, weapon)
+
+		if ok and isfunction(opener) then
+			return opener
+		end
+	end
+
+	return nil
+end
+
+function API.OpenWeaponMenu(weapon)
+	local opener = API.GetWeaponMenu(weapon)
+
+	if not opener then
+		return false
+	end
+
+	return pcall(opener, weapon)
+end
+
+API.AddFeature("weaponmenu")

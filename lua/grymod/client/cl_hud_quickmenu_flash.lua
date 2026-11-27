@@ -178,22 +178,20 @@ function Pointer:Selection()
 end
 
 -- GryMod's suit modes against the movie's names: the armor is "Defense" in the selection and "Armor" for the
--- icon; dropping the weapon takes the place of the weapon accessories.
+-- icon. "Weapon" is not a mode: it opens the menu of the weapon in hand (GryMod.API.OpenWeaponMenu, Menu.Finish).
 local NAME_MODE = {
 	Defense = GryMod.Modes.ARMOR,
 	Armor = GryMod.Modes.ARMOR,
 	Speed = GryMod.Modes.SPEED,
 	Cloak = GryMod.Modes.CLOAK,
-	Strength = GryMod.Modes.STRENGTH,
-	Weapon = GryMod.Modes.DROP
+	Strength = GryMod.Modes.STRENGTH
 }
 
 local MODE_NAME = {
 	[GryMod.Modes.ARMOR] = "Armor",
 	[GryMod.Modes.SPEED] = "Speed",
 	[GryMod.Modes.CLOAK] = "Cloak",
-	[GryMod.Modes.STRENGTH] = "Strength",
-	[GryMod.Modes.DROP] = "Weapon"
+	[GryMod.Modes.STRENGTH] = "Strength"
 }
 
 function Menu.ModeFromName(name)
@@ -556,7 +554,8 @@ local function feedStates(ply)
 
 	local input = stateInput
 	local show = ShowRefused:GetBool()
-	input.weapon = IsValid(ply:GetActiveWeapon())
+	-- the weapon icon can be chosen when the weapon in hand has a menu of its own to open (a weapon base's provider, GryMod.API.AddWeaponMenuProvider)
+	input.weapon = GryMod.API.GetWeaponMenu(ply:GetActiveWeapon()) ~= nil
 	input.refused = show and refusedNow or nil
 	input.down, input.off = false, false
 
@@ -622,6 +621,15 @@ function Menu.Finish()
 	end
 
 	local ply = LocalPlayer()
+
+	-- the weapon icon: the menu of the weapon in hand, no mode change
+	if choice == "Weapon" and IsValid(ply) and ply:Alive() then
+		play(snd_close)
+		GryMod.API.OpenWeaponMenu(ply:GetActiveWeapon())
+
+		return
+	end
+
 	local mode = choice and Menu.ModeFromName(choice)
 
 	if not (mode and IsValid(ply) and ply:Alive()) then

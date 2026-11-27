@@ -9,8 +9,7 @@ GryMod.Modes = {
 	ARMOR = 0,
 	SPEED = 1,
 	CLOAK = 2,
-	STRENGTH = 3,
-	DROP = 4
+	STRENGTH = 3
 }
 
 -- Why the suit changed mode: the 4th argument of the GryMod_ModeChanged hook (server and client). Plain strings, so a log or a print is readable.
@@ -95,6 +94,7 @@ if SERVER then
 	AddCSLuaFile("grymod/compat/weapons/cl_m9k.lua")
 	AddCSLuaFile("grymod/compat/weapons/cl_cw2_fas2.lua")
 	AddCSLuaFile("grymod/compat/weapons/cl_tfa_parts.lua")
+	AddCSLuaFile("grymod/compat/weapons/cl_tfa_menu.lua")
 	AddCSLuaFile("grymod/compat/weapons/sh_tfa_suit.lua")
 	AddCSLuaFile("grymod/client/cl_hud_radar_flash.lua")
 	AddCSLuaFile("grymod/client/cl_hud_radar_units.lua")
@@ -476,6 +476,7 @@ if CLIENT then
 	include("grymod/compat/weapons/cl_m9k.lua")
 	include("grymod/compat/weapons/cl_cw2_fas2.lua")
 	include("grymod/compat/weapons/cl_tfa_parts.lua")
+	include("grymod/compat/weapons/cl_tfa_menu.lua")
 	include("grymod/compat/weapons/sh_tfa_suit.lua")
 	include("grymod/client/cl_hud_crosshair_flash.lua")
 	include("grymod/client/cl_hud_boot_flash.lua")

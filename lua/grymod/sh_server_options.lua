@@ -28,6 +28,12 @@ Settings.List = {
 	{name = "gry_zonemap_navmesh", kind = "bool"},
 	{name = "gry_health_regen", kind = "bool"},
 	{name = "gry_infinite_armor", kind = "bool"},
+	-- what the suit does to a weapon (sh_suit_weapons.lua); the energy of a shot in the strength mode and the speed of a reload in the speed mode are choices
+	{name = "gry_suit_handling", kind = "bool"},
+	{name = "gry_suit_strength_melee", kind = "bool"},
+	{name = "gry_suit_strength_recoil", kind = "bool"},
+	{name = "gry_suit_shot_cost", kind = "choice", values = {"0", "3.75", "7.5", "15"}},
+	{name = "gry_suit_reload_rate", kind = "choice", values = {"1", "1.25", "1.5", "2"}},
 	{name = "gry_objectives", kind = "bool"},
 	{name = "gry_campaign_objectives", kind = "bool"},
 	{name = "gry_campaign_secrets", kind = "bool"},

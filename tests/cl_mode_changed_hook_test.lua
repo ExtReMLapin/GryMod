@@ -173,19 +173,21 @@ return {
 			end
 		},
 		{
-			-- would fail if: DROP (not a mode, only the weapon is dropped) ran the hook, or changed the player's mode
-			name = "dropping the suit's item (DROP) is not a mode: no hook, the mode stays",
+			-- would fail if: a number that is not a mode (4 was the old "drop the weapon", which is gone) was taken for one: the hook would run, the mode would change and the
+			-- server would be sent something it has to refuse
+			name = "a number that is not a mode (4, the old drop of the weapon, 9) is ignored: no hook, no message, the mode stays",
 			func = function()
 				listen()
 				local me = fakeMe(Modes.SPEED)
 
 				local log = recorded(me, function()
-					meta.SetNanosuitMode(me, Modes.DROP, true, Why.PLAYER)
+					meta.SetNanosuitMode(me, 4, true, Why.PLAYER)
+					meta.SetNanosuitMode(me, 9, true, Why.PLAYER)
 				end)
 
 				expect(#calls).to.equal(0)
 				expect(me.NanosuitMode).to.equal(Modes.SPEED)
-				expect(log.net[1].name).to.equal("gry_drop")
+				expect(#log.net).to.equal(0)
 			end
 		},
 		{

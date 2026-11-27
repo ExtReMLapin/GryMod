@@ -562,17 +562,18 @@ return {
 			end
 		},
 		{
-			name = "GryMod's modes map to the movie's names and back (Armor is Defense, dropping the weapon is Weapon)",
+			name = "GryMod's modes map to the movie's names and back (Armor is Defense); the Weapon icon is not a mode (it opens the weapon's menu), and dropping the weapon is gone",
 			func = function(state)
 				local M = GryMod.FlashMenu
 				expect(M.ModeFromName("Defense")).to.equal(GryMod.Modes.ARMOR)
 				expect(M.ModeFromName("Speed")).to.equal(GryMod.Modes.SPEED)
 				expect(M.ModeFromName("Cloak")).to.equal(GryMod.Modes.CLOAK)
 				expect(M.ModeFromName("Strength")).to.equal(GryMod.Modes.STRENGTH)
-				expect(M.ModeFromName("Weapon")).to.equal(GryMod.Modes.DROP)
+				expect(M.ModeFromName("Weapon")).to.equal(nil)
+				expect(GryMod.Modes.DROP).to.equal(nil)
 				expect(M.ModeFromName("Center")).to.equal(nil)
 				expect(M.NameFromMode(GryMod.Modes.ARMOR)).to.equal("Armor")
-				expect(M.NameFromMode(GryMod.Modes.DROP)).to.equal("Weapon")
+				expect(M.NameFromMode(4)).to.equal(nil)
 				expect(M.NameFromMode(nil)).to.equal(nil)
 			end
 		},
@@ -595,6 +596,48 @@ return {
 				M.Cancel() -- nothing to cancel: no error
 				FindMetaTable("Player").SetNanosuitMode = real
 				M.Reset()
+			end
+		},
+		{
+			-- fails when releasing the key on the Weapon icon does something else than open the held weapon's menu (it used to drop the weapon), or when the icon is chosen while the
+			-- weapon has no menu (the icon is inactive then: nothing may happen)
+			name = "releasing the key on the Weapon icon opens the weapon's menu when the weapon has one, and does nothing (no mode change either) when it has not",
+			func = function(state)
+				local M = GryMod.FlashMenu
+				local API = GryMod.API
+				local meta = FindMetaTable("Player")
+				local real = {get = API.GetWeaponMenu, open = API.OpenWeaponMenu, mode = meta.SetNanosuitMode}
+				local opened, changes = 0, 0
+
+				meta.SetNanosuitMode = function() changes = changes + 1 end
+				API.OpenWeaponMenu = function() opened = opened + 1 return true end
+
+				local ok, err = pcall(function()
+					-- the weapon has a menu: the icon is active and chosen
+					API.GetWeaponMenu = function() return function() end end
+					M.Reset()
+					expect(M.Begin()).to.beTrue()
+					M.GetMenu():Select("Weapon")
+					M.Finish()
+					expect(opened).to.equal(1)
+					expect(changes).to.equal(0)
+
+					-- no menu: the icon is inactive, nothing opens
+					API.GetWeaponMenu = function() return nil end
+					M.Reset()
+					expect(M.Begin()).to.beTrue()
+					M.GetMenu():Select("Weapon")
+					M.Finish()
+					expect(opened).to.equal(1)
+					expect(changes).to.equal(0)
+				end)
+
+				API.GetWeaponMenu, API.OpenWeaponMenu, meta.SetNanosuitMode = real.get, real.open, real.mode
+				M.Reset()
+
+				if not ok then
+					error(err, 0)
+				end
 			end
 		},
 		{
@@ -948,7 +991,7 @@ return {
 				expect(active.Weapon).to.beFalse()
 
 				-- the armor is the suit's safe state: a veto never reaches it
-				M.FillStates(active, defect, {weapon = true, refused = {[Modes.ARMOR] = true, [Modes.DROP] = true}})
+				M.FillStates(active, defect, {weapon = true, refused = {[Modes.ARMOR] = true, [4] = true}})
 				expect(active.Armor).to.beTrue()
 				expect(active.Weapon).to.beTrue()
 

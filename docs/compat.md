@@ -28,6 +28,8 @@ Taking a file away takes the patch away and breaks nothing else.
 | `compat/weapons/` | `cl_arc9.lua`, `cl_arccw.lua`, `cl_tfa.lua`, `cl_m9k.lua`, `cl_cw2_fas2.lua` | One reader for each third-party weapon base: how to read the fire mode it keeps in its own fields, for the icon of the weapon slot. |
 | | `cl_tfa_parts.lua` | The attachments of a TFA weapon (a reflex sight, a laser) are models the weapon draws itself: they are the weapon's parts, so the camouflage covers them like the gun (`GryMod.API.AddWeaponPartsProvider`). |
 | | | The optics are found by their materials, for any base: the picture of a scope, a reticle, a lens with a dot stay readable on a camouflaged gun (`GryMod.CloakFX.Refract.Keeps`, see [api.md](api.md)). |
+| | `cl_tfa_menu.lua` | The weapon icon of the quick menu opens TFA's own menu (attachments, ammunition) for the weapon in hand, with the impulse TFA's key sends (`GryMod.API.AddWeaponMenuProvider`, see [api.md](api.md)). |
+| | `sh_tfa_suit.lua`, `sv_tfa_suit.lua` | What the suit does to a TFA weapon, with the original game's numbers (`lua/grymod/sh_suit_weapons.lua`): strength mode, melee x9.2 with a full bar, recoil x0.375, 7.5 of the bar a shot; speed mode, draw, holster and raise x1.75, melee swing x1.5 (a reload is not faster in the original: `gry_suit_reload_rate`). One setting each. |
 | | `sv_tfa.lua` | TFA's attacks that are not bullets (a knife's right click, a bash, a grenade's low throw) end the camouflage, through TFA's own hooks and `GryMod.API.ReportAttack`. A gun's right click that is only the sights does not. |
 | `compat/damage/`, `compat/npc/` | (none yet) | Where the patches for addons that change the damage, and the adapters for NPC bases (DrGBase, VJ Base), go. |
 

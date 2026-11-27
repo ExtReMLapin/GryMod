@@ -94,7 +94,7 @@ end)
 -- The mode
 -- ---------------------------------------------------------------------------------------------------------
 
--- The modes a command may ask for (DROP is not a mode: it only drops the weapon)
+-- The modes a command may ask for
 local selectable = {
 	[Modes.ARMOR] = true,
 	[Modes.SPEED] = true,

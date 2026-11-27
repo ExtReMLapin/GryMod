@@ -275,7 +275,7 @@ return {
 				local API, p = GryMod.API, ply()
 				API.SetMode(p, GryMod.Modes.SPEED)
 
-				for _, bad in ipairs({GryMod.Modes.DROP, 7, -1, "speed", 1.5}) do
+				for _, bad in ipairs({4, 7, -1, "speed", 1.5}) do
 					local ok, reason = API.SetMode(p, bad)
 					expect(ok).to.beFalse()
 					expect(reason).to.equal("invalid mode")
@@ -506,7 +506,7 @@ return {
 				GryMod.API.SetMode(p, GryMod.Modes.SPEED)
 
 				spied(function()
-					GryMod.SetModeFromClient(p, GryMod.Modes.DROP)
+					GryMod.SetModeFromClient(p, 4)
 				end)
 
 				expect(p.Nanosuit_mode).to.equal(GryMod.Modes.SPEED)

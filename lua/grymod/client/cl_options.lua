@@ -491,6 +491,29 @@ function GryMod.AdminOptions(Panel)
 		}
 	})
 	form:ControlHelp("Crysis vanilla: the original game's walk 177 and sprint 266 units a second, the speed mode's sprint climbing to 757 in a second. Ratios: GMod's walk 200 and sprint 400 with the same increases in the speed mode. Both also use the original's energy rules.")
+	GryMod.AdminOption(Panel, "Speed mode: faster weapon handling", "gry_suit_handling", "bool", {into = form, help = "Like the original game: in the speed mode a weapon is drawn, put away and raised faster (x1.75) and a melee swing is faster (x1.5). Works with TFA weapons."})
+	GryMod.AdminOption(Panel, "Speed mode: reload speed", "gry_suit_reload_rate", "choice", {
+		into = form,
+		help = "The original game does not make a reload faster in the speed mode, so the default is the normal speed. TFA weapons.",
+		choices = {
+			{"Normal (the original's)", "1"},
+			{"x1.25", "1.25"},
+			{"x1.5", "1.5"},
+			{"x2", "2"}
+		}
+	})
+	GryMod.AdminOption(Panel, "Strength mode: stronger melee", "gry_suit_strength_melee", "bool", {into = form, help = "A melee hit does more damage and pushes harder with the energy, up to 9 times with a full bar. Works with TFA weapons."})
+	GryMod.AdminOption(Panel, "Strength mode: less recoil", "gry_suit_strength_recoil", "bool", {into = form, help = "The kick of a shot is much smaller with the energy (about a third with a full bar). Works with TFA weapons."})
+	GryMod.AdminOption(Panel, "Strength mode: energy of a shot", "gry_suit_shot_cost", "choice", {
+		into = form,
+		help = "The energy each shot takes in the strength mode. The original takes 7.5 of the bar.",
+		choices = {
+			{"Free", "0"},
+			{"Half the original's", "3.75"},
+			{"The original's (7.5)", "7.5"},
+			{"Double", "15"}
+		}
+	})
 	GryMod.AdminOption(Panel, "Objectives", "gry_objectives", "bool", {into = form, help = "Objectives given by maps and addons are sent to the players. Off: none are sent."})
 	GryMod.AdminOption(Panel, "Campaign objectives", "gry_campaign_objectives", "bool", {into = form, help = "The Half-Life 2 and episode maps give objectives (the way out of each map, key steps). Off: none, and nothing is read."})
 	GryMod.AdminOption(Panel, "Campaign secrets", "gry_campaign_secrets", "bool", {into = form, help = "Count the hidden items of a campaign map in one objective, \"Secrets 3/7\". Off: they are not mentioned."})

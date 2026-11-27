@@ -160,7 +160,7 @@ return {
 				expect(States.Pack({[Modes.CLOAK] = true})).to.equal(2)
 				expect(States.Pack({[Modes.STRENGTH] = true})).to.equal(4)
 				expect(States.Pack({[Modes.SPEED] = true, [Modes.STRENGTH] = true})).to.equal(5)
-				expect(States.Pack({[Modes.ARMOR] = true, [Modes.DROP] = true})).to.equal(0)
+				expect(States.Pack({[Modes.ARMOR] = true, [4] = true})).to.equal(0)
 
 				local back = States.Unpack(6)
 				expect(back[Modes.CLOAK]).to.beTrue()
