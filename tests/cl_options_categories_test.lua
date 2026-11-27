@@ -97,6 +97,7 @@ combo:?
 combo:?
 combo:gry_binoculars_holo_style
 combo:gry_objectives_marker_mode
+combo:gry_weapon_selector
 mixer
 mixer
 mixer
