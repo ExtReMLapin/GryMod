@@ -275,7 +275,22 @@ end
 function Mech.IsHeavyMachine(who)
 	local entry = who ~= nil and trackedOf(who)
 
-	return entry and entry.heavy == true or false
+	if not entry then
+		return false
+	end
+
+	-- `heavy` may be a function of the entity (an entry that cannot tell it by class); a class name gives it nothing to look at
+	if isfunction(entry.heavy) then
+		if isstring(who) then
+			return false
+		end
+
+		local ok, heavy = GryMod.API.SafeCall(entry.heavyId, entry.heavy, who)
+
+		return ok and heavy == true
+	end
+
+	return entry.heavy == true
 end
 
 function Mech.HeavyImpactDamage()

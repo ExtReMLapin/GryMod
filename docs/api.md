@@ -72,6 +72,12 @@ It returns `true` when the player was camouflaged (his client ends the camouflag
 whatever you give it. `GryMod.API.Has("attackreport")` tells whether it exists. Weapons that are not yours: GryMod ships patches for some weapon bases (TFA, see
 [compat.md](compat.md)).
 
+A **shot** that leaves no bullet for the engine's hook (the gun of a vehicle whose addon does not use `FireBullets`, a launcher) is told with `GryMod.API.ReportShot(ply, rightClick)`: it
+does what `ReportAttack` does and also makes the noise of a shot for the AI that listens (`GryMod_SuitNoise`, kind `cloak_fire`, at most once a quarter second). `GryMod.API.Has("shotreport")`.
+
+The bullets of a **vehicle** name the player as `data.Attacker` of `EntityFireBullets`. That counts as the player's shot only when he sits in the vehicle that fires (or the entity that
+fires is a part of it): a turret he placed, or an empty vehicle that remembers its last driver, does not end his camouflage when he is elsewhere.
+
 ### The suit on or off
 
 ```lua
@@ -342,7 +348,8 @@ GryMod.API.Has("vehicles")
 ```
 
 - `GetVehicleOf` asks the providers in the order they were added; the first that answers a valid entity wins. When none does it falls back on the engine's `Player:GetVehicle()` (the Half-Life 2
-  vehicles). `GetVehicleDriver` asks the providers that have a `driver`, then the entity's own `GetDriver`.
+  vehicles). `GetVehicleDriver` asks the providers that have a `driver`, then the entity's own `GetDriver`. A `driver` that answers `false` says "nobody drives it" (a car commanded from outside by a
+  remote driver, whose own `GetDriver` is that remote driver): the answer is `nil` and the entity's `GetDriver` is not asked.
 - `GetVehicleKind` is the `kind` of the provider that found the vehicle (a provider with both `driver` and `kind` also claims a vehicle nobody asked about yet when its `driver` answers for it).
   `kind` may also be a function `fn(vehicle)` that answers one of the three words. A vehicle no provider knows is `"air"` when its registry entry has `type = "flying"`, `"ground"` otherwise.
   The radar's range for each kind stays a matter of the registry (`RegisterTracked`).
@@ -1063,7 +1070,7 @@ that matches the entity, or `nil`: it is the stored table, read it and do not ch
 | `danger` | a table (below) | the entity is a projectile or a trap the player must be warned about (the grenade warning) |
 | `indicator` | `"warning"`, `"marker"`, `"none"` | how a danger shows on the screen. `"warning"` (the default for an entry with `danger`) is the grenade-detect warning: an icon with the label and the distance. `"marker"` and `"none"` are accepted and stored: the warning does not draw them, and no marker is drawn yet |
 | `priority` | a number, -1000 to 1000, `0` by default | the entries with the higher priority are tried first (see below) |
-| `heavy` | boolean | server: a hit by this entity (attacker or inflictor) that breaks the armor of a player in armor mode puts the suit down for 3 s (`gry_malfunction_impact`). Matched by class, base or `match` |
+| `heavy` | boolean or `function(ent) -> boolean` | server: a hit by this entity (attacker or inflictor) that breaks the armor of a player in armor mode puts the suit down for 3 s (`gry_malfunction_impact`). Matched by class, base or `match` |
 | `shock` | `"light"` or `"strong"` | server: a hit by this inflictor is a light shock (flicker, energy drain) or a strong one (suit down for 5 s), whatever the damage type (`gry_malfunction_shock`) |
 | `dead` | `function(ent)` | server: `true` when the entity is destroyed: it is not a contact (see "`dead`, `awareness`, `crew` and `facing`") |
 | `awareness` | `function(ent, ply)` | server: `level, exposure, seen, heard`, the registry's equivalent of `ENT:GetGryAwareness` |

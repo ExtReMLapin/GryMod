@@ -66,31 +66,11 @@ hook.Add("GryMod_ModeChanged", "GryMod suit noise", function(ply, mode, oldMode,
 	end
 end)
 
--- Whose shot: the player's, or the scripted weapon's whose owner is a player, or, for a vehicle that fires on the player's behalf, the player named as `data.Attacker`.
-local function shooter(ent, data)
-	if not IsValid(ent) then
-		return nil
-	end
+-- The noise of a shot by this player, at most once a quarter second, and only while the cloak level is above 0.
+local function noteShot(ply)
+	local ok, level = pcall(GryMod.API.CloakLevel, ply)
 
-	if ent:IsWeapon() then
-		ent = ent:GetOwner()
-	end
-
-	if IsValid(ent) and ent:IsPlayer() then
-		return ent
-	end
-
-	if istable(data) and IsValid(data.Attacker) and data.Attacker:IsPlayer() then
-		return data.Attacker
-	end
-
-	return nil
-end
-
-hook.Add("EntityFireBullets", "GryMod suit noise", function(ent, data)
-	local ply = shooter(ent, data)
-
-	if not ply or GryMod.API.CloakLevel(ply) <= 0 then
+	if not ok or not isnumber(level) or level <= 0 then
 		return
 	end
 
@@ -103,6 +83,28 @@ hook.Add("EntityFireBullets", "GryMod suit noise", function(ent, data)
 
 	lastFire[ply] = now
 	GryMod.EmitSuitNoise(ply, "cloak_fire")
+end
+
+-- Whose shot: GryMod.ShotPlayer (sv_system.lua): the player's, the weapon's owner, or the player who sits in the vehicle that fires on his behalf.
+hook.Add("EntityFireBullets", "GryMod suit noise", function(ent, data)
+	local ply = GryMod.ShotPlayer(ent, data)
+
+	if ply then
+		noteShot(ply)
+	end
 end)
 
+-- An attack that leaves no bullet for the engine's hook (a vehicle's gun, a launcher of a patch for a weapon base) tells GryMod here: it ends the camouflage like
+-- API.ReportAttack and makes the noise of a shot like a bullet does. Returns what ReportAttack returns.
+function GryMod.API.ReportShot(ply, rightClick)
+	local told, why = GryMod.API.ReportAttack(ply, rightClick)
+
+	if told then
+		noteShot(ply)
+	end
+
+	return told, why
+end
+
 GryMod.API.AddFeature("suitnoise")
+GryMod.API.AddFeature("shotreport")

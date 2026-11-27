@@ -317,7 +317,38 @@ end
 -- alt fire (the right click alone is down), or nothing.
 -- `data` is the table of the bullets (EntityFireBullets): a vehicle that fires on behalf of the player (LVS, Glide, simfphys: the entity that fires is the vehicle or its gun) names him
 -- as `data.Attacker`. The shooter is looked for first in the entity (the player, or the weapon he holds), then in the attacker: one shot is one shooter, never counted twice.
-function GryMod.CloakShooter(ent, data)
+-- The attacker counts only when the player sits in the vehicle that fires (or the entity that fires is a part of it): a turret or an empty vehicle also names its creator or its last
+-- driver as the attacker, who may be elsewhere and has not shot.
+local function sitsIn(ply, ent)
+	local API = GryMod.API
+
+	if not API or not API.GetVehicleOf then
+		return false
+	end
+
+	local ok, vehicle = pcall(API.GetVehicleOf, ply)
+
+	if not ok or not IsValid(vehicle) then
+		return false
+	end
+
+	for _ = 1, 4 do
+		if ent == vehicle then
+			return true
+		end
+
+		if not IsValid(ent) or not isfunction(ent.GetParent) then
+			return false
+		end
+
+		ent = ent:GetParent()
+	end
+
+	return false
+end
+
+-- The player whose shot this is (whatever his mode), or nil.
+function GryMod.ShotPlayer(ent, data)
 	if not IsValid(ent) then return nil end
 
 	local ply = ent
@@ -326,11 +357,21 @@ function GryMod.CloakShooter(ent, data)
 		ply = ent:GetOwner()
 	end
 
-	if not (IsValid(ply) and ply:IsPlayer()) and istable(data) and IsValid(data.Attacker) and data.Attacker:IsPlayer() then
-		ply = data.Attacker
+	if IsValid(ply) and ply:IsPlayer() then
+		return ply
 	end
 
-	if not IsValid(ply) or not ply:IsPlayer() or ply.Nanosuit_mode ~= GryMod.Modes.CLOAK then
+	if istable(data) and IsValid(data.Attacker) and data.Attacker:IsPlayer() and sitsIn(data.Attacker, ent) then
+		return data.Attacker
+	end
+
+	return nil
+end
+
+function GryMod.CloakShooter(ent, data)
+	local ply = GryMod.ShotPlayer(ent, data)
+
+	if not ply or ply.Nanosuit_mode ~= GryMod.Modes.CLOAK then
 		return nil
 	end
 

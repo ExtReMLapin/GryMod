@@ -183,7 +183,7 @@ end
 
 -- The vehicle of a player: the car, not the seat. `GetVehicleDriver` is the player who sits at the wheel (the remote driver is not asked about: the crew below gives the radar the colour).
 if API.AddVehicleProvider then
-	local ok, reason = API.AddVehicleProvider("simfphys", {ofPlayer = S.CarOf, driver = S.Driver, kind = "ground"})
+	local ok, reason = API.AddVehicleProvider("simfphys", {ofPlayer = S.CarOf, driver = function(car) if car:GetClass() == CAR then return S.Driver(car) or false end end, kind = "ground"})
 
 	if not ok then
 		MsgN("GryMod: the simfphys vehicle provider was refused: " .. tostring(reason))

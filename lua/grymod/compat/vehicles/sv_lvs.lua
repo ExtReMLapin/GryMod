@@ -79,7 +79,8 @@ function L.ReportShot(ply)
 
 	ply.gryLvsShotAt = now
 
-	return API.ReportAttack(ply, false) == true
+	-- a gun of a vehicle leaves no bullet for the engine's hook: the shot is told with its noise (ReportShot, the core's) when the core has it
+	return (API.ReportShot or API.ReportAttack)(ply, false) == true
 end
 
 -- LVS:FireBullet(data) is the one place its machine guns, cannons and lasers go through: data.Attacker is the driver or the gunner.

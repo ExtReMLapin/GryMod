@@ -135,6 +135,12 @@ return {
 				expect(S.Driver(empty)).to.beNil()
 				expect(S.Driver(nil)).to.beNil()
 				expect(S.Driver({IsValid = function() return true end})).to.beNil()
+
+				-- through the registry: a car commanded from outside with nobody at the wheel has no driver (not the remote driver); a vehicle of another base is none of the provider's business
+				expect(API.GetVehicleDriver(empty)).to.beNil()
+
+				local other = {IsValid = function() return true end, GetClass = function() return "t_other_vehicle" end, GetDriver = function() return ply end}
+				expect(API.GetVehicleDriver(other)).to.equal(ply)
 			end
 		},
 		{

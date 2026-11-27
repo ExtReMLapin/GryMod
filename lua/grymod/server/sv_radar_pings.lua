@@ -262,6 +262,70 @@ function Radar.InstallBlast()
 	return true
 end
 
+-- util.BlastDamageInfo(damageInfo, position, radius) is the other way to blow things up (Glide's explosions use it, and it keeps a copy of the function when it loads: this wrapper helps
+-- only an addon that looks the function up when it explodes, or one that loads after GryMod). Wrapped the same way, once; the inflictor and the attacker are the damage info's.
+function Radar.InstallBlastInfo()
+	if util.GryBlastInfoWrapper ~= nil and util.BlastDamageInfo == util.GryBlastInfoWrapper then
+		return false
+	end
+
+	local original = util.BlastDamageInfo
+
+	if not isfunction(original) then
+		return false
+	end
+
+	local function wrapper(...)
+		if util.GryBlastBusy then
+			return original(...)
+		end
+
+		util.GryBlastBusy = true
+
+		local ok, a, b, c = pcall(original, ...)
+
+		util.GryBlastBusy = false
+
+		if not ok then
+			error(a, 0)
+		end
+
+		local info, pos, radius = ...
+		local told, err = pcall(function()
+			local inflictor, attacker
+
+			if istable(info) or isentity(info) or type(info) == "CTakeDamageInfo" then
+				inflictor, attacker = info:GetInflictor(), info:GetAttacker()
+			end
+
+			GryMod.Radar.OnBlast(pos, radius, inflictor, attacker)
+		end)
+
+		if not told then
+			ErrorNoHalt("[GryMod] The radar's blast ring failed: " .. tostring(err) .. "\n")
+		end
+
+		return a, b, c
+	end
+
+	Radar.BlastInfoOriginal = original
+	util.GryBlastInfoWrapper = wrapper
+	util.BlastDamageInfo = wrapper
+
+	return true
+end
+
+function Radar.UninstallBlastInfo()
+	if util.GryBlastInfoWrapper ~= nil and util.BlastDamageInfo == util.GryBlastInfoWrapper then
+		util.BlastDamageInfo = Radar.BlastInfoOriginal
+		util.GryBlastInfoWrapper = nil
+
+		return true
+	end
+
+	return false
+end
+
 -- Puts the original back (the tests): only when the wrapper is the function in place.
 function Radar.UninstallBlast()
 	if util.GryBlastWrapper ~= nil and util.BlastDamage == util.GryBlastWrapper then
@@ -275,6 +339,7 @@ function Radar.UninstallBlast()
 end
 
 Radar.InstallBlast()
+Radar.InstallBlastInfo()
 
 function Radar.OnEntityCreated(ent)
 	if not IsValid(ent) or not automatic:GetBool() or ent:GetClass() ~= "env_explosion" then

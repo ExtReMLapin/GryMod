@@ -52,6 +52,16 @@ local function mute(fn)
 	return sent
 end
 
+-- A vehicle's bullet is the attacker's shot only when he sits in that vehicle (GryMod.ShotPlayer): who sits in which vehicle, for GetVehicleOf; the function it returns puts the real one back
+local function seats(map)
+	local API = GryMod.API
+	local real = API.GetVehicleOf
+
+	API.GetVehicleOf = function(who) return map[who] end
+
+	return function() API.GetVehicleOf = real end
+end
+
 return {
 	groupName = "GryMod suit of a player in a vehicle (server)",
 	beforeAll = function()
@@ -193,11 +203,17 @@ return {
 				local armor = fakePlayer(false, 0)
 				local car = {IsValid = function() return true end, IsWeapon = function() return false end, IsPlayer = function() return false end}
 
-				expect(GryMod.CloakShooter(car)).to.beNil()
-				expect(GryMod.CloakShooter(car, {})).to.beNil()
-				expect(GryMod.CloakShooter(car, {Attacker = car})).to.beNil()
-				expect(GryMod.CloakShooter(car, {Attacker = armor})).to.beNil()
-				expect(GryMod.CloakShooter(car, {Attacker = cloaked})).to.equal(cloaked)
+				local restore = seats({[cloaked] = car, [armor] = car})
+				local ok, err = pcall(function()
+					expect(GryMod.CloakShooter(car)).to.beNil()
+					expect(GryMod.CloakShooter(car, {})).to.beNil()
+					expect(GryMod.CloakShooter(car, {Attacker = car})).to.beNil()
+					expect(GryMod.CloakShooter(car, {Attacker = armor})).to.beNil()
+					expect(GryMod.CloakShooter(car, {Attacker = cloaked})).to.equal(cloaked)
+				end)
+
+				restore()
+				assert(ok, err)
 			end
 		},
 		{
@@ -227,10 +243,16 @@ return {
 
 				p:SetNanosuitMode(GryMod.Modes.CLOAK, false)
 
-				local sent = mute(function()
-					hook.GetTable().EntityFireBullets["GryCloakShot"](car, {Attacker = p})
+				local restore = seats({[p] = car})
+				local sent
+				local ok, err = pcall(function()
+					sent = mute(function()
+						hook.GetTable().EntityFireBullets["GryCloakShot"](car, {Attacker = p})
+					end)
 				end)
 
+				restore()
+				assert(ok, err)
 				expect(#sent).to.equal(1)
 				expect(sent[1]).to.equal("gry_cloak_shot")
 			end
@@ -249,11 +271,13 @@ return {
 				calls = {}
 
 				local fn = hook.GetTable().EntityFireBullets["GryMod suit noise"]
+				local restore = seats({[p] = car})
 				local ok, err = pcall(function()
 					fn(car, {Attacker = p})
 					fn(car, {Attacker = p})
 				end)
 
+				restore()
 				hook.Remove("GryMod_SuitNoise", "gry_test_vehicle")
 				assert(ok, err)
 				expect(#calls).to.equal(1)

@@ -127,8 +127,8 @@ function API.GetVehicleOf(ply)
 	return nil
 end
 
--- Who is at the wheel of the vehicle: the first provider with a `driver` function that answers a valid player or NPC, else the entity's own GetDriver (the
--- Half-Life 2 vehicles), else nil.
+-- Who is at the wheel of the vehicle: the first provider with a `driver` function that answers a valid player or NPC (or `false`: nobody, and the answer is nil), else the
+-- entity's own GetDriver (the Half-Life 2 vehicles), else nil.
 function API.GetVehicleDriver(vehicle)
 	if not validObject(vehicle) then
 		return nil
@@ -144,6 +144,13 @@ function API.GetVehicleDriver(vehicle)
 				owners[vehicle] = owners[vehicle] or provider
 
 				return driver
+			end
+
+			-- `false` is "nobody drives it" (a car commanded from outside by a remote driver has no one at the wheel): the entity's own GetDriver is not asked
+			if ok and driver == false then
+				owners[vehicle] = owners[vehicle] or provider
+
+				return nil
 			end
 		end
 	end

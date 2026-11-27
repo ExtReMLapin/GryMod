@@ -170,7 +170,7 @@ local CHECK = {
 	size = function(v) if isstring(v) and SIZE[v] then return v end end,
 	danger = danger,
 	indicator = function(v) if isstring(v) and INDICATOR[v] then return v end end,
-	heavy = function(v) if isbool(v) then return v end end,
+	heavy = function(v) if isbool(v) or isfunction(v) then return v end end, -- true or false, or `heavy(ent) -> bool` (server, SafeCall: an entity that only a function can tell)
 	shock = function(v) if isstring(v) and SHOCK[v] then return v end end,
 	cloakBlind = function(v) if isbool(v) then return v end end,
 	-- functions of the entry (SafeCall): `dead(ent) -> bool` a destroyed entity is not a contact; `awareness(ent, ply) -> level, exposure, seen, heard` the registry's
@@ -250,7 +250,7 @@ function API.RegisterTracked(key, def)
 
 	local entry = {key = key, scan = true, shape = "unit", relation = "auto", priority = 0, matchId = "tracked:" .. key .. "/match",
 		warnId = "tracked:" .. key .. "/warnfor", relationId = "tracked:" .. key .. "/relation", armedId = "tracked:" .. key .. "/armed", ownerId = "tracked:" .. key .. "/owner",
-		deadId = "tracked:" .. key .. "/dead", awarenessId = "tracked:" .. key .. "/awareness", crewId = "tracked:" .. key .. "/crew", facingId = "tracked:" .. key .. "/facing"}
+		deadId = "tracked:" .. key .. "/dead", heavyId = "tracked:" .. key .. "/heavy", awarenessId = "tracked:" .. key .. "/awareness", crewId = "tracked:" .. key .. "/crew", facingId = "tracked:" .. key .. "/facing"}
 
 	for _, field in ipairs(FIELDS) do
 		local value = def[field]
