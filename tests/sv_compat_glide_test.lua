@@ -12,7 +12,8 @@ local reports
 local pending
 
 -- class -> base for the stand-in missiles (put in scripted_ents.IsBasedOn for the case)
-local CHAIN = {glide_missile = "base_anim", glide_projectile = "base_anim", t_glide_firework = "glide_missile", t_glide_shell = "glide_projectile", t_other_rocket = "base_anim"}
+local CHAIN = {glide_missile = "base_anim", glide_projectile = "base_anim", t_glide_firework = "glide_missile", t_glide_shell = "glide_projectile", t_other_rocket = "base_anim",
+	base_glide = "base_anim", base_glide_car = "base_glide", t_glide_car = "base_glide_car"}
 local realIsBasedOn
 
 local function player(name, extra)
@@ -96,8 +97,9 @@ return {
 		saved = {}
 		realIsBasedOn = scripted_ents.IsBasedOn
 
+		-- the engine's IsBasedOn(class, base) is false for a class and itself (found with the real Glide: the plain glide_missile and glide_projectile were never looked at)
 		scripted_ents.IsBasedOn = function(class, base)
-			local at, guard = class, 0
+			local at, guard = CHAIN[class], 0
 
 			while at and guard < 20 do
 				if at == base then
@@ -112,21 +114,31 @@ return {
 			return ok and answer or false
 		end
 
-		saved.CloakLevel, saved.ReportAttack = API.CloakLevel, API.ReportAttack
+		-- what the adapter learned about the classes with the real IsBasedOn must not decide for the stand-in's
+		GryMod.GlideCompat.ForgetClasses()
+
+		saved.CloakLevel, saved.ReportAttack, saved.ReportShot = API.CloakLevel, API.ReportAttack, API.ReportShot
 
 		API.CloakLevel = function(ply) return ply.cloak or 0 end
 		API.ReportAttack = function(ply, right)
-			reports[#reports + 1] = {ply = ply, right = right}
+			reports[#reports + 1] = {ply = ply, right = right, via = "attack"}
+
+			return true
+		end
+		-- the core's report of a shot that leaves no bullet: the same tell, with the noise of a shot (sv_suit_noise.lua)
+		API.ReportShot = function(ply, right)
+			reports[#reports + 1] = {ply = ply, right = right, via = "shot"}
 
 			return true
 		end
 	end,
 	afterEach = function()
 		scripted_ents.IsBasedOn = realIsBasedOn
-		API.CloakLevel, API.ReportAttack = saved.CloakLevel, saved.ReportAttack
+		GryMod.GlideCompat.ForgetClasses()
+		API.CloakLevel, API.ReportAttack, API.ReportShot = saved.CloakLevel, saved.ReportAttack, saved.ReportShot
 
 		for name, value in pairs(saved) do
-			if name ~= "CloakLevel" and name ~= "ReportAttack" and GetConVar(name) then
+			if name ~= "CloakLevel" and name ~= "ReportAttack" and name ~= "ReportShot" and GetConVar(name) then
 				GetConVar(name):SetString(value)
 			end
 		end
@@ -221,6 +233,102 @@ return {
 				created(missile("t_other_rocket", owner, owner))
 
 				expect(#reports).to.equal(0)
+			end
+		},
+		{
+			-- fails when a missile or a shell fired from a vehicle makes no noise: a shot that leaves no bullet is told with GryMod.API.ReportShot (the core's, with the noise of a shot for the
+			-- AI that listens), as LVS's and simfphys's are
+			name = "a missile or a shell is told with the noise of a shot (ReportShot), not as a silent attack",
+			func = function()
+				local shooter = player("shooter")
+
+				created(missile("glide_missile", shooter, shooter))
+				created(missile("glide_projectile", shooter, shooter))
+
+				expect(#reports).to.equal(2)
+				expect(reports[1].via).to.equal("shot")
+				expect(reports[2].via).to.equal("shot")
+			end
+		},
+		{
+			-- fails when the explosive cannon of an aircraft (VSWEP explosive_cannon: Glide.FireBullet only blasts the impact, no FireBullets, so no bullet for the engine's hook) does not end
+			-- the camouflage of the player who sits in the vehicle that fires, when a normal bullet is told twice, when a player elsewhere is told, when the original is not called with the same
+			-- arguments, or when a vehicle wrapped twice tells twice (found with the real Glide, gtav_lazer, 2026-11-27)
+			name = "the explosive cannon of a Glide vehicle ends the camouflage of its gunner (once a quarter second); a bullet, or another player named as attacker, tells nothing",
+			func = function()
+				local calls = {}
+				local car = vehicle(nil, {FireBullet = function(self, params) calls[#calls + 1] = {self, params} return "fired" end})
+				local original = car.FireBullet
+				local gunner = player("gunner", {GlideGetVehicle = function() return car end})
+				local walker = player("walker", {GlideGetVehicle = function() return nil end})
+
+				created(car)
+				created(car)
+
+				expect(car.FireBullet).notTo.equal(original)
+
+				local params = {isExplosive = true, attacker = gunner}
+
+				expect(car:FireBullet(params)).to.equal("fired")
+				expect(#calls).to.equal(1)
+				expect(calls[1][1]).to.equal(car)
+				expect(calls[1][2]).to.equal(params)
+				expect(#reports).to.equal(1)
+				expect(reports[1].ply).to.equal(gunner)
+				expect(reports[1].via).to.equal("shot")
+
+				-- twelve shots a second: one tell in a quarter second
+				car:FireBullet({isExplosive = true, attacker = gunner})
+				expect(#reports).to.equal(1)
+
+				gunner.gryGlideShotAt = nil
+				car:FireBullet({isExplosive = true, attacker = gunner})
+				expect(#reports).to.equal(2)
+
+				-- a machine gun's bullet goes through FireBullets: the engine's hook tells it, not the adapter
+				gunner.gryGlideShotAt = nil
+				car:FireBullet({attacker = gunner})
+				expect(#reports).to.equal(2)
+
+				-- the creator of the vehicle (the attacker when nobody drives it) is not the one who shoots
+				car:FireBullet({isExplosive = true, attacker = walker})
+				car:FireBullet({isExplosive = true})
+				car:FireBullet()
+				expect(#reports).to.equal(2)
+				expect(#calls).to.equal(7)
+			end
+		},
+		{
+			-- fails when a blast on a player in a Glide vehicle pays the suit's bar (Glide sets that damage to 0 itself, events.lua Glide.OverrideDamage: the energy went down for nothing, found
+			-- with the real Glide), when another kind of hit is ignored, or when a player on foot is
+			name = "hit verdict: a blast on a player who sits in a Glide vehicle is ignored by the suit (Glide cancels it); any other hit, and a player on foot, are the suit's business",
+			func = function()
+				local car = vehicle(nil)
+				local seated = player("rider", {GlideGetVehicle = function() return car end})
+				local walker = player("walker", {GlideGetVehicle = function() return nil end})
+
+				expect(API.HitVerdict(seated, {GetDamage = function() return 20 end, IsDamageType = function(_, flag) return bit.band(DMG_BLAST, flag) ~= 0 end})).to.equal("ignore")
+				expect(API.HitVerdict(seated, {GetDamage = function() return 20 end, IsDamageType = function(_, flag) return bit.band(DMG_BULLET, flag) ~= 0 end})).to.beNil()
+				expect(API.HitVerdict(walker, {GetDamage = function() return 20 end, IsDamageType = function(_, flag) return bit.band(DMG_BLAST, flag) ~= 0 end})).to.beNil()
+				expect(API.HitVerdict(player("no glide function"), {GetDamage = function() return 20 end, IsDamageType = function() return true end})).to.beNil()
+			end
+		},
+		{
+			-- fails when the kill of an exploding vehicle (Glide: ply:TakeDamage(999) after hasExploded is set, then the vehicle is removed) is left to the bar: with infinite armor the occupant
+			-- lived in the explosion of his vehicle (found with the real Glide); or when a whole vehicle, another player's vehicle, or a blast, gets that verdict
+			name = "hit verdict: the kill of a vehicle that exploded goes through the bar (bypass); a whole vehicle's hit, or a blast, does not",
+			func = function()
+				local car = vehicle(nil, {hasExploded = true})
+				local whole = vehicle(nil)
+				local seated = player("rider", {GlideGetVehicle = function() return car end})
+				local safe = player("rider in a whole one", {GlideGetVehicle = function() return whole end})
+				local kind = function(flag) return function(_, f) return bit.band(flag, f) ~= 0 end end
+
+				expect(API.HitVerdict(seated, {GetDamage = function() return 999 end, IsDamageType = kind(DMG_GENERIC)})).to.equal("bypass")
+				expect(API.HitVerdict(seated, {GetDamage = function() return 999 end, IsDamageType = kind(DMG_CRUSH)})).to.equal("bypass")
+				expect(API.HitVerdict(safe, {GetDamage = function() return 999 end, IsDamageType = kind(DMG_GENERIC)})).to.beNil()
+				-- the blast of the explosion is cancelled by Glide: still ignored, not paid
+				expect(API.HitVerdict(seated, {GetDamage = function() return 200 end, IsDamageType = kind(DMG_BLAST)})).to.equal("ignore")
 			end
 		}
 	}
