@@ -1789,6 +1789,101 @@ return {
 			end
 		},
 		{
+			-- fails when the first person copy is the engine's shared one (a weapon base that copies the screen again while the layer draws its view model, ARC9, makes the layer show
+			-- the plain gun it should hide), or when it is made for the hands too or at the wrong time
+			name = "refraction layer, first person: the picture behind is copied into the layer's own copy once, before the view model, never through the engine's shared copy",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				function me:GetViewModel() return vm end
+				stub(F.Refract, "Active", function() return true end)
+				stub(F.Refract, "Draw", function() return true end)
+
+				local captures = 0
+				stub(F.Refract, "CaptureScreen", function() captures = captures + 1 end)
+
+				setState(me, 0.4)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				expect(captures).to.equal(1)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+
+				expect(captures).to.equal(1) -- the hands come right after the view model: no second copy
+				expect(log.screenCopies).to.equal(0) -- and the shared copy is not what the layer reads
+			end
+		},
+		{
+			-- fails when the depth range is not set before the layers of the first person view: ARC9 draws the view model in its own depth range, and the draw the layer makes of the view
+			-- model runs ARC9's own end of draw, which puts the whole range back; the layer over the hands that came after was then hidden by the hands (measured)
+			name = "refraction layer, first person: the depth range is the engine's view model range (0 to 0.1) before each layer, so that what a weapon base left behind does not hide it",
+			func = function(state)
+				local F = GryMod.CloakFX
+				recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				function me:GetViewModel() return vm end
+				stub(F.Refract, "Active", function() return true end)
+				stub(F.Refract, "CaptureScreen", function() end)
+
+				local order = {}
+				stub(render, "DepthRange", function(near, far) order[#order + 1] = "range " .. near .. " " .. far end)
+				stub(F.Refract, "Draw", function(ent) order[#order + 1] = ent == vm and "vm" or "hands" return true end)
+
+				setState(me, 0.4)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, NULL)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, NULL)
+
+				expect(table.concat(order, ",")).to.equal("range 0 0.1,vm,range 0 0.1,hands")
+			end
+		},
+		{
+			-- fails when a weapon whose own screen has the view (a customization menu) is covered by the layer anyway, or when the view model is made part transparent / copied for it
+			name = "first person: a weapon that says its view is a screen of its own (a plain view) is left to the engine: no layer, no copy, no blend, for the view model and for the hands",
+			func = function(state)
+				local F = GryMod.CloakFX
+				local log = recordRender()
+				local me = fakePlayer(0)
+				stub(_G, "LocalPlayer", function() return me end)
+				local vm, hands = fakePlayer(0), fakePlayer(0)
+				local weapon = fakePlayer(0)
+				function me:GetViewModel() return vm end
+				function me:GetActiveWeapon() return weapon end
+				stub(F.Refract, "Active", function() return true end)
+
+				local drawn, captures = 0, 0
+				stub(F.Refract, "Draw", function() drawn = drawn + 1 return true end)
+				stub(F.Refract, "CaptureScreen", function() captures = captures + 1 end)
+
+				local plain = true
+				stub(GryMod.API, "IsPlainView", function(w) return plain and w == weapon end)
+
+				setState(me, 0.4)
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, weapon)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, weapon)
+				hook.GetTable().PreDrawPlayerHands.GryCloakFX(hands, vm, me, weapon)
+				hook.GetTable().PostDrawPlayerHands.GryCloakFX(hands, vm, me, weapon)
+
+				expect(drawn).to.equal(0)
+				expect(captures).to.equal(0)
+				expect(#log.blend).to.equal(0)
+				expect(log.screenCopies).to.equal(0)
+
+				-- the menu is closed: the layer is back, at once
+				plain = false
+				hook.GetTable().PreDrawViewModel.GryCloakFX(vm, me, weapon)
+				hook.GetTable().PostDrawViewModel.GryCloakFX(vm, me, weapon)
+				expect(drawn).to.equal(1)
+				expect(captures).to.equal(1)
+			end
+		},
+		{
 			name = "refraction layer, first person: at the very end of the change (the plain model nearly all there) no layer and no copy, and the engine's draw is the plain one",
 			func = function(state)
 				local F = GryMod.CloakFX

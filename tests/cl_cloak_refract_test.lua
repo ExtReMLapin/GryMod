@@ -213,6 +213,73 @@ return {
 			end
 		},
 		{
+			-- fails when the first person layer reads the engine's shared copy of the screen (ARC9 copies it again while the layer draws the view model, and the layer then shows
+			-- the plain gun it should hide: measured with a real ARC9 weapon), or when the third person layer stops reading the engine's copy
+			name = "Part: the material of the first person layer reads the layer's own copy of the screen, the one of the body and the third person the engine's",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				local own = R.Part("models/debug/debugwhite", true)
+				local shared = R.Part("models/debug/debugwhite")
+
+				expect(own.material ~= shared.material).to.beTrue()
+				expect(string.lower(own.material:GetTexture("$basetexture"):GetName())).to.equal(string.lower(R.COPY))
+				expect(string.lower(shared.material:GetTexture("$basetexture"):GetName())).to.equal(string.lower(R.SCREEN))
+				expect(R.Part("models/debug/debugwhite", true)).to.equal(own) -- made once
+				expect(R.Part("models/debug/debugwhite")).to.equal(shared)
+			end
+		},
+		{
+			-- fails when the copy is taken before the engine's own is refreshed (the layer would hold the previous frame), when it is not made into the layer's target, or when the
+			-- target is not the one the first person material reads
+			name = "CaptureScreen: the engine's screen is refreshed, then copied into the layer's own render target (the one its first person material reads)",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				local calls = {}
+				local source = {name = "screen"}
+
+				stub(render, "UpdateScreenEffectTexture", function() calls[#calls + 1] = "update" end)
+				stub(render, "GetScreenEffectTexture", function() return source end)
+				stub(render, "CopyTexture", function(from, to) calls[#calls + 1] = {from = from, to = to} end)
+
+				R.CaptureScreen()
+
+				expect(calls[1]).to.equal("update")
+				expect(calls[2].from).to.equal(source)
+				expect(string.lower(calls[2].to:GetName())).to.equal(string.lower(R.COPY))
+				expect(#calls).to.equal(2)
+				expect(R.CopyTarget()).to.equal(calls[2].to) -- one target, made once
+			end
+		},
+		{
+			-- fails when keep (the first person view model, the hands, a weapon's parts) draws with the engine's shared copy, or when the body drops the shared one
+			name = "Draw: with keep (first person) the parts are the ones of the layer's own copy, without it (the body) the shared ones",
+			func = function()
+				local R = GryMod.CloakFX.Refract
+				stub(R, "works", true)
+				GetConVar(OPTION):SetString("1")
+
+				local asked = {}
+				local material = {}
+				function material:SetFloat() end
+				stub(R, "Part", function(path, own) asked[#asked + 1] = own and "own" or "shared" return {material = material, tiling = 1} end)
+				stub(R, "Keeps", function() return false end)
+				stub(render, "MaterialOverrideByIndex", function() end)
+
+				local ent = {}
+				function ent:IsValid() return true end
+				function ent:GetMaterials() return {"a"} end
+				local model = "models/test_own_" .. math.random(1, 1e9) .. ".mdl"
+				function ent:GetModel() return model end
+
+				R.Draw(ent, 1.5, 0.7, function() end, true)
+				expect(table.concat(asked, ",")).to.equal("own")
+
+				asked = {}
+				R.Draw(ent, 1.5, 0.7, function() end)
+				expect(table.concat(asked, ",")).to.equal("shared")
+			end
+		},
+		{
 			name = "Draw: every part of the model is overridden with its own material, the constants are set, and the overrides come off whatever happens",
 			func = function()
 				local R = GryMod.CloakFX.Refract
