@@ -151,14 +151,74 @@ return {
 				API.RegisterWeapon("t_alt_gun", {alt = "shoot"})
 				expect(shoots("t_alt_gun", 0, 0, 0)).to.beTrue()
 
-				-- a zoom, a swing, nothing: no shot; altShoots = false turns a shooting secondary off
+				-- a zoom, nothing: no shot; a swing counts only when the weapon says altShoots = true (a blow is an attack); altShoots = false turns a shooting secondary off
 				for _, alt in ipairs({"zoom", "melee", "none"}) do
 					API.RegisterWeapon("t_alt_gun", {alt = alt})
 					expect(shoots("t_alt_gun", 30, 90, 90)).to.beFalse()
 				end
 
+				API.RegisterWeapon("t_alt_gun", {alt = "melee", altShoots = true})
+				expect(shoots("t_alt_gun", -1, 0, 0)).to.beTrue()
+				API.RegisterWeapon("t_alt_gun", {alt = "melee", altShoots = false})
+				expect(shoots("t_alt_gun", -1, 0, 0)).to.beFalse()
+
 				API.RegisterWeapon("t_alt_gun", {alt = "grenade", altAmmo = "SMG1_Grenade", altShoots = false})
 				expect(shoots("t_alt_gun", 30, 90, 3)).to.beFalse()
+			end
+		},
+		{
+			-- fails when the fists do not declare their right click as a blow in the registry (alt "melee", altShoots true), when AltFireShoots does not count a declared swing (the
+			-- owner's report: the right click of the fists did not end the camouflage), or when the crowbar's or the stun baton's right click counts (measured: it does nothing in the
+			-- game, no swing, no cooldown: a click that does nothing must not end the camouflage)
+			name = "the right click of the fists is a blow and counts as a shot; the crowbar's and the stun baton's does nothing in the game and does not",
+			func = function(state)
+				expect(GryMod.AltFireShoots("weapon_fists", -1, 0, 0)).to.beTrue()
+				expect(GryMod.AltFireShoots("weapon_fists", -1, 0, nil)).to.beTrue() -- no ammo of any kind, nothing to count
+
+				for _, class in ipairs({"weapon_crowbar", "weapon_stunstick", "weapon_physcannon", "weapon_crossbow"}) do
+					expect(GryMod.AltFireShoots(class, -1, 0, 0)).to.beFalse()
+				end
+			end
+		},
+		{
+			name = "a right click with the fists ends the camouflage and empties the energy, like the left click; with the crowbar or the stun baton only the left click does",
+			func = function(state)
+				local ply = fakePlayer(GryMod.Modes.CLOAK, "weapon_fists", -1, 0, 0, {noAmmoType = true})
+
+				GryMod.CloackAttack(ply, IN_ATTACK2)
+				expect(#ply.modeSet).to.equal(1)
+				expect(ply.modeSet[1][1]).to.equal(GryMod.Modes.ARMOR)
+
+				for _, class in ipairs({"weapon_fists", "weapon_crowbar", "weapon_stunstick"}) do
+					local left = fakePlayer(GryMod.Modes.CLOAK, class, -1, 0, 0, {noAmmoType = true})
+
+					GryMod.CloackAttack(left, IN_ATTACK)
+					expect(#left.modeSet).to.equal(1)
+				end
+
+				for _, class in ipairs({"weapon_crowbar", "weapon_stunstick"}) do
+					local right = fakePlayer(GryMod.Modes.CLOAK, class, -1, 0, 0, {noAmmoType = true})
+
+					GryMod.CloackAttack(right, IN_ATTACK2)
+					expect(#right.modeSet).to.equal(0)
+				end
+			end
+		},
+		{
+			-- fails when the swing of the right click ignores the weapon being drawn or the player's own switch (gry_cloak_altfire 0)
+			name = "the right click of the fists keeps the camouflage while the weapon is drawn, and with gry_cloak_altfire at 0",
+			func = function(state)
+				local drawing = fakePlayer(GryMod.Modes.CLOAK, "weapon_fists", -1, 0, 0, {noAmmoType = true, nextSecondary = 0.5})
+
+				GryMod.CloackAttack(drawing, IN_ATTACK2)
+				expect(#drawing.modeSet).to.equal(0)
+
+				GetConVar("gry_cloak_altfire"):SetString("0")
+
+				local off = fakePlayer(GryMod.Modes.CLOAK, "weapon_fists", -1, 0, 0, {noAmmoType = true})
+
+				GryMod.CloackAttack(off, IN_ATTACK2)
+				expect(#off.modeSet).to.equal(0)
 			end
 		},
 		{

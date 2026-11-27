@@ -253,8 +253,8 @@ local CloakAltFire = CreateClientConVar("gry_cloak_altfire", "1", true, false, "
 -- primary and of the secondary ammo type of the weapon. What the secondary IS comes from the weapon registry (GryMod.API, the stock
 -- weapons are registered there as data): the shotgun's right click needs a shell in the magazine (both barrels with two, a single shot
 -- with the last one: the engine's own rule, which the first version of this table got wrong), a grenade, an energy ball
--- or another shot needs its secondary ammo, the frag grenade's lob needs a grenade left. A zoom (the crossbow), a swing and the
--- weapons the registry does not know never count.
+-- or another shot needs its secondary ammo, the frag grenade's lob needs a grenade left, a blow (alt "melee" with altShoots = true: the stock melee
+-- weapons) is always one. A zoom (the crossbow), a swing that does not say it is an attack and the weapons the registry does not know never count.
 function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
 	local read = GryMod.API and GryMod.API.ResolveWeapon
 	local def = isstring(class) and read and read(class)
@@ -269,6 +269,8 @@ function GryMod.AltFireShoots(class, clip1, primaryReserve, secondaryReserve)
 		return (clip1 or 0) >= 1 -- both barrels with two shells or more; with the last one the engine fires a single shot instead
 	elseif alt == "throwlow" then
 		return (primaryReserve or 0) > 0 -- the lob, while there is a grenade
+	elseif alt == "melee" then
+		return true -- a blow (the crowbar's, the stun baton's, the other hand of the fists): only a weapon that declares it (altShoots = true) gets here
 	elseif alt == "grenade" or alt == "energy" or alt == "shoot" then
 		if alt == "shoot" and not def.altAmmo then
 			return true -- a shot that costs no ammo of its own

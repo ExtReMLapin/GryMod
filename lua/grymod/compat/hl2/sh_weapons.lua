@@ -36,10 +36,11 @@ register("weapon_357", {fire = "semi", ammo = "357", alt = "none", listIcon = "S
 -- (the RPG, like the fists, shows no crosshair in the original game: crosshair = false)
 register("weapon_rpg", {ammo = "RPG_Round", alt = "none", slotIcon = "Missle", crosshair = false, listIcon = "LAW"})
 
--- The melee weapons and the gravity gun: no gun icon. The secondary of the crowbar and of the stun baton is another swing.
+-- The melee weapons and the gravity gun: no gun icon. The crowbar and the stun baton have NO secondary in Garry's Mod (measured: the right click starts no swing and no
+-- cooldown). The right click of the fists is another blow (the other hand): altShoots, because a blow ends the camouflage like a shot (see the fists below).
 register("weapon_physcannon", {fire = "none", alt = "none"})
-register("weapon_crowbar", {fire = "none", alt = "melee", listIcon = "Fists"})
-register("weapon_stunstick", {fire = "none", alt = "melee", listIcon = "Fists"})
+register("weapon_crowbar", {fire = "none", alt = "none", listIcon = "Fists"})
+register("weapon_stunstick", {fire = "none", alt = "none", listIcon = "Fists"})
 
 -- The list of weapons shows a silhouette (listIcon) only where the movie has a look-alike. The gravity gun, the physics gun, the tool gun,
 -- the camera and the bug bait have none: the list writes their name instead of drawing a wrong picture.
@@ -49,7 +50,7 @@ register("weapon_flechettegun", {fire = "auto"})
 register("weapon_slam", {slotIcon = "Mine", listIcon = "AVMine"})
 register("weapon_medkit", {slotIcon = "Repairkit", listIcon = "RepairKit"})
 register("weapon_physgun", {fire = "none"})
-register("weapon_fists", {fire = "none", crosshair = false, listIcon = "Fists"})
+register("weapon_fists", {fire = "none", alt = "melee", altShoots = true, crosshair = false, listIcon = "Fists"})
 register("gmod_tool", {fire = "none"})
 register("gmod_camera", {fire = "none"})
 register("weapon_bugbait", {fire = "none"})

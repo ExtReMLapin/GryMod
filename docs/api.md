@@ -500,7 +500,7 @@ A weapon is described by a **definition**, a table of optional fields. A field y
 | `counter` | `"clip"`, `"none"`, or `function(wep)` returning a text | what the counter shows (default `"clip"`; `"none"` when `CustomAmmoDisplay` says `Draw = false`) |
 | `alt` | `"none"`, `"grenade"`, `"energy"`, `"zoom"`, `"doublebarrel"`, `"shoot"`, `"throwlow"`, `"melee"` | what the secondary fire (right click) is; `"zoom"` also makes the binoculars end the weapon's zoom when they open (client and server read the registry) |
 | `altAmmo` | ammo type name | the ammo the secondary counts (`"SMG1_Grenade"` for a grenade launcher, `"AR2AltFire"` for the energy ball) |
-| `altShoots` | boolean | true when the secondary fires a shot. The camouflage ends on a right click that shoots. Default: true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow` |
+| `altShoots` | boolean | true when the secondary fires a shot or is a blow (`"melee"` with `altShoots = true`). The camouflage ends on a right click that does. Default: true for `grenade`, `energy`, `doublebarrel`, `shoot` and `throwlow` (not `melee`: say it) |
 | `altLabel` | short text, 24 characters at most | the name of the secondary fire (`"40mm"`) |
 | `altIcon` | an icon key (see below) | the icon the HUD shows for the secondary fire |
 | `icon` | an icon key | the icon of the weapon slot (it wins over `fire`) |
