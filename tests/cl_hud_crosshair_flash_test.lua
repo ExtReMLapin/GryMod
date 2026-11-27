@@ -403,6 +403,24 @@ return {
 			end
 		},
 		{
+			-- fails when a shot opens the crosshair as much in the strength mode as in any other (the suit's recoil reduction is not shown), when the opening is not the plain 0.25 for a
+			-- scale of 1, when it goes over 1, or when a missing scale breaks it. The crosshair estimates its own opening from what the player does, the same for every weapon base, so
+			-- this one place covers every base: nothing per base is needed to show the reduced recoil
+			name = "a shot opens the crosshair by 0.25 times the suit's recoil scale (never over 1): the strength mode shows a tighter crosshair for any weapon",
+			func = function(state)
+				local C = GryMod.FlashCrosshair
+
+				expect(isfunction(C.KickAfterShot)).to.beTrue()
+				expect(near(C.KickAfterShot(0, 1), 0.25)).to.beTrue()
+				expect(near(C.KickAfterShot(0, 0.375), 0.09375)).to.beTrue()
+				expect(near(C.KickAfterShot(0.5, 0.375), 0.59375)).to.beTrue()
+				expect(C.KickAfterShot(0.9, 1)).to.equal(1)
+				expect(near(C.KickAfterShot(0, nil), 0.25)).to.beTrue() -- no scale: the plain opening
+				expect(near(C.KickAfterShot(0, 0 / 0), 0.25)).to.beTrue()
+				expect(C.KickAfterShot(0, 0) >= 0).to.beTrue()
+			end
+		},
+		{
 			name = "the spread grows with speed, in the air and while firing, and shrinks when crouching; it eases at 20 a second",
 			func = function(state)
 				local C = GryMod.FlashCrosshair

@@ -158,7 +158,7 @@ in the commit message, not skipped.
 
 **Strength mode** (costs energy; the weapon base's code must not be edited, only hooked)
 11. **Melee damage and push, from a gun (bash, butt stroke) and from a melee weapon**, multiplied with the energy (`GryMod.SuitWeapons.MeleeScale`).
-12. **Recoil** reduced with the energy (`RecoilScale`); check the kick stat names of the base (some versions rename them).
+12. **Recoil** reduced with the energy (`RecoilScale`); check the kick stat names of the base (some versions rename them). The HUD crosshair needs nothing per base: it estimates its own opening and applies `RecoilScale` to what a shot adds to it (`FlashCrosshair.KickAfterShot`).
 13. **Energy**: each shot takes its cost, a melee hit takes its cost, never under 0, nothing while the armor is infinite.
 
 **Speed mode**

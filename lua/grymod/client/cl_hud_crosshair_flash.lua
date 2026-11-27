@@ -206,6 +206,16 @@ function Cross.SpreadTarget(speedFraction, onGround, crouching, kick)
 	return math.Clamp(spread + (kick or 0), 0, 1)
 end
 
+-- What a shot adds to the kick of the crosshair: 0.25 times the suit's recoil scale (GryMod.SuitWeapons.RecoilScale: smaller in the strength mode), never over 1. The crosshair reads no
+-- weapon's own spread (the bases have none in common): it estimates its opening from what the player does, so the reduced recoil of the suit shows here for every weapon base.
+function Cross.KickAfterShot(kick, scale)
+	if not isnumber(scale) or scale ~= scale then
+		scale = 1
+	end
+
+	return math.min(kick + 0.25 * math.max(scale, 0), 1)
+end
+
 -- The original eases the value towards its target at a rate of 20 a second.
 function Cross.Ease(current, target, dt)
 	return current + (target - current) * (1 - math.exp(-20 * math.max(dt, 0)))
@@ -996,7 +1006,9 @@ local function updateSpread(ply, weapon, dt)
 	local nextFire = IsValid(weapon) and weapon:GetNextPrimaryFire() or 0
 
 	if nextFire > lastNextFire + 0.001 then
-		kick = math.min(kick + 0.25, 1)
+		local suit = GryMod.SuitWeapons
+
+		kick = Cross.KickAfterShot(kick, suit and suit.RecoilScale(suit.ModeOf(ply), suit.EnergyOf(ply)) or 1)
 	end
 
 	lastNextFire = nextFire
