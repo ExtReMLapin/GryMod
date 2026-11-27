@@ -116,6 +116,48 @@ return {
 			end
 		},
 		{
+			-- fails when a prompt that is asked to be a modal one (the quick menu: a player who does not know where the menu is must see it) stays a small frame in a corner, or does not wait
+			-- for the key at once (the player had to click the box first), or has no way to say "later"
+			name = "a modal prompt is big and in the middle of the screen, already waits for the key, and still has a Later button",
+			func = function(state)
+				make({modal = true, title = "Quick menu", text = "Press the key that opens the quick menu.", heading = "Your suit's quick menu has no key"})
+				made.ShowPrompt()
+
+				local frame = made.panel
+
+				expect(IsValid(frame)).to.beTrue()
+
+				local w, h = frame:GetSize()
+				local x, y = frame:GetPos()
+
+				expect(w >= 480 and h >= 220).to.beTrue()
+				expect(math.abs(x - (ScrW() - w) / 2) <= 2).to.beTrue()
+				expect(math.abs(y - (ScrH() - h) / 2) <= 2).to.beTrue()
+
+				local binder, later
+
+				for _, child in ipairs(frame:GetChildren()) do
+					if child.ClassName == "DBinder" then
+						binder = child
+					elseif child.ClassName == "DButton" then
+						later = child
+					end
+				end
+
+				expect(binder ~= nil).to.beTrue()
+				expect(binder.Trapping == true).to.beTrue()
+				expect(later ~= nil and later:GetText() == "Later").to.beTrue()
+
+				made.HidePrompt()
+
+				-- a plain prompt stays the small one it was
+				make({title = "Zoom keys", text = "Pick the zoom key."})
+				made.ShowPrompt()
+				expect(made.panel:GetWide() < 400).to.beTrue()
+				made.HidePrompt()
+			end
+		},
+		{
 			name = "the prompt has its own title, text and place, shows once, is only asked for while no key is set and the active function says so, and goes away on request",
 			func = function(state)
 				local active = true

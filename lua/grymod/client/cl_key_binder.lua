@@ -258,9 +258,67 @@ function Binder.New(options)
 		Key.panel = nil
 	end
 
-	-- The prompt: a small frame with a key picker, until a key is chosen or the player closes it.
+	-- The modal prompt (options.modal: the quick menu, which a new player must find): a big frame in the middle of the screen with a heading, the text, a key picker that ALREADY waits
+	-- for the key (the player presses the key he wants, no click needed) and a Later button (asked again at the next spawn).
+	local function showModalPrompt()
+		local w, h = math.min(560, ScrW() - 40), 250
+		local frame = vgui.Create("DFrame")
+
+		frame:SetTitle(options.title)
+		frame:SetSize(w, h)
+		frame:Center()
+		frame:SetDeleteOnClose(true)
+		frame:SetDraggable(true)
+		frame:ShowCloseButton(false)
+
+		local heading = vgui.Create("DLabel", frame)
+
+		heading:SetFont("DermaLarge")
+		heading:SetText(options.heading or options.title)
+		heading:SetWrap(true)
+		heading:SetAutoStretchVertical(true)
+		heading:SetWide(w - 40)
+		heading:SetPos(20, 36)
+
+		local label = vgui.Create("DLabel", frame)
+
+		label:SetText(options.text)
+		label:SetWrap(true)
+		label:SetAutoStretchVertical(true)
+		label:SetWide(w - 40)
+		label:SetPos(20, 96)
+
+		local binder = vgui.Create("DBinder", frame)
+
+		binder:SetSize(w - 160, 36)
+		binder:SetPos(20, h - 60)
+		binder.OnChange = function(_, code)
+			Key.SetKey(code)
+		end
+
+		local later = vgui.Create("DButton", frame)
+
+		later:SetText("Later")
+		later:SetSize(110, 36)
+		later:SetPos(w - 130, h - 60)
+		later.DoClick = function()
+			Key.HidePrompt()
+		end
+
+		frame:MakePopup()
+		binder:DoClick() -- the key picker waits for the key at once
+		Key.panel = frame
+	end
+
+	-- The prompt: a small frame with a key picker, until a key is chosen or the player closes it (a big one in the middle for a key that must be found: options.modal).
 	function Key.ShowPrompt()
 		if IsValid(Key.panel) then
+			return
+		end
+
+		if options.modal then
+			showModalPrompt()
+
 			return
 		end
 

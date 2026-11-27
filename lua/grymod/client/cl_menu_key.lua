@@ -14,7 +14,9 @@ Key = GryMod.KeyBinder.New{
 	description = "Key that opens the quick menu (a button code, 0 = none; `bind <key> +crysishud` works too)",
 	command = "+crysishud",
 	title = "GryMod quick menu",
-	text = "No key opens the quick menu yet.\nClick the box and press the key you want\n(or bind one to +crysishud in the console).",
+	text = "It is where you change the mode of the suit (armor, speed, cloak, strength).\nPress the key you want to open it with, now. You can change it later in the GryMod options\n(or bind a key to +crysishud in the console).",
+	heading = "Your suit's quick menu has no key yet",
+	modal = true,
 	-- the chosen key goes down or up: the menu opens or applies
 	press = function(down)
 		local chosen = Key.Chosen()
