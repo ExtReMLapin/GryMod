@@ -14,5 +14,10 @@ HUD.AddFireModeResolver(function(weapon)
 		return nil
 	end
 
+	-- a weapon that only strikes (a knife, a sword) is not a gun: no fire mode, as the crowbar and the ARC9 knives
+	if weapon.IsMelee == true or weapon.IsKnife == true then
+		return "NoGun"
+	end
+
 	return HUD.FireModeFromName(weapon.FireModes[weapon:GetFireMode()])
 end, "compat.tfa")

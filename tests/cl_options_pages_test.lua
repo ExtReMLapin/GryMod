@@ -125,7 +125,6 @@ box:gry_compass_intercardinals
 box:gry_decloak_glitch
 box:gry_glide_hide_hud
 box:gry_glide_nv_key
-box:gry_glide_tag_cloak
 box:gry_grenade_los
 box:gry_grenade_own_warn
 box:gry_hit_shake

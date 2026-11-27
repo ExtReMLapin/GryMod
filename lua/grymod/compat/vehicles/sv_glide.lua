@@ -36,38 +36,14 @@ hook.Add("GryMod_CanResetOnSpawn", "GryModGlide", function(ply)
 end)
 
 -- ---------------------------------------------------------------------------------------------------------
--- A camouflaged driver is not locked on
+-- No lock-on veto
 -- ---------------------------------------------------------------------------------------------------------
--- Glide asks Glide_CanLockOn(ent, attacker) for each target it could lock a missile on (lua/glide/server/weaponry.lua, CanLockOnEntity): the vehicles, the seats and the players on a
--- seat. A refusal means no lock for that target. The vehicle itself stays visible (the owner's rule: the player is not invisible), it is the lock that does not take on a player whose
--- camouflage is more than half on (the cloak level is the camouflage's fade, API.CloakLevel). The server setting switches it off.
-
-local lockOn = CreateConVar("gry_glide_cloak_lockon", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
-	"1: a missile of Glide does not lock on a vehicle whose driver is camouflaged (more than half); 0: it locks on as it always did", 0, 1)
-
-Compat.LockOnConVar = lockOn
-
-local HIDDEN_FROM = 0.5
+-- Glide asks Glide_CanLockOn(ent, attacker) before a missile locks on a target. GryMod does not answer: the lock-on is not an eye, and the camouflage hides from the visible light only
+-- (and a player in a vehicle is never invisible anyway).
 
 local function isPlayer(who)
 	return IsValid(who) and isfunction(who.IsPlayer) and who:IsPlayer()
 end
-
-hook.Add("Glide_CanLockOn", "GryModGlide", function(ent, attacker)
-	if not lockOn:GetBool() or not IsValid(ent) or not API.CloakLevel then
-		return
-	end
-
-	local driver = isPlayer(ent) and ent or API.GetVehicleDriver(ent)
-
-	if not isPlayer(driver) or driver == attacker then
-		return
-	end
-
-	if API.CloakLevel(driver) >= HIDDEN_FROM then
-		return false
-	end
-end)
 
 -- ---------------------------------------------------------------------------------------------------------
 -- A missile or a shell ends the camouflage of the player who fired it

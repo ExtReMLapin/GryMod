@@ -73,7 +73,16 @@ B.wrappers[wrapper] = true
 
 -- Puts the wrapper on Enhanced Camera 2's function. True when it is there, false when the addon is not installed.
 function B.Install()
-	if not istable(EnhancedCameraTwo) or not isfunction(EnhancedCameraTwo.ShouldDraw) then
+	if not istable(EnhancedCameraTwo) then
+		return false
+	end
+
+	if not isfunction(EnhancedCameraTwo.ShouldDraw) then
+		-- Enhanced Camera 2 is there but its function is not (it changed): the patch is off, the owner is told once the game is up
+		if GryMod.API and GryMod.API.WarnPatchMissing then
+			GryMod.API.WarnPatchMissing("Enhanced Camera 2", "EnhancedCameraTwo.ShouldDraw", function() return istable(EnhancedCameraTwo) and not isfunction(EnhancedCameraTwo.ShouldDraw) end)
+		end
+
 		return false
 	end
 

@@ -14,11 +14,7 @@ local Compat = GryMod.GlideCompat or {}
 GryMod.GlideCompat = Compat
 
 local hideHud = CreateClientConVar("gry_glide_hide_hud", "0", true, false, "1: Glide's dashboard (the dial of a car, the list of the seats) is not drawn while GryMod's HUD is up")
-local tagCloak = CreateClientConVar("gry_glide_tag_cloak", "1", true, false, "1: Glide does not write the name of a camouflaged player over him")
 local nvKey = CreateClientConVar("gry_glide_nv_key", "1", true, false, "1: in a Glide vehicle the night vision key does nothing when Glide uses that key too (N is its neutral gear)")
-
-local HIDDEN_FROM = 0.5
-local WHITE = Color(255, 255, 255)
 
 -- The Glide vehicle the local player sits in, or nil (a field: the tests replace it).
 function Compat.LocalVehicle()
@@ -82,22 +78,6 @@ if API.AddCameraOwner then
 end
 
 -- ---------------------------------------------------------------------------------------------------------
--- The name Glide writes over a player
--- ---------------------------------------------------------------------------------------------------------
--- From its camera Glide writes the name (and the health) of any player the player aims at, and the name of the driver of a vehicle (lua/glide/client/target_info.lua). Its hook
--- Glide_PlayerTagColor(ply, nick, health) answers a colour and a name: a camouflaged player is not named. (The hook only counts when its FIRST answer is a colour.)
-
-hook.Add("Glide_PlayerTagColor", "GryModGlide", function(ply, nick, health)
-	if not tagCloak:GetBool() or not API.CloakLevel then
-		return
-	end
-
-	if API.CloakLevel(ply) >= HIDDEN_FROM then
-		return WHITE, "???"
-	end
-end)
-
--- ---------------------------------------------------------------------------------------------------------
 -- Glide's dashboard
 -- ---------------------------------------------------------------------------------------------------------
 -- Glide asks Glide_CanDrawHUD(vehicle) before it draws its HUD: the dial of a car in the bottom right corner (a third of the screen's height), the list of the seats... A player who finds it
@@ -138,8 +118,6 @@ if GryMod.AddOptionTab then
 	GryMod.AddOptionTab("compat", "Glide", function(root)
 		GryMod.OptionNote(root, "Glide is a vehicle base. In its vehicles GryMod's suit works as on foot, and the radar lists the vehicles once the binoculars scanned them. A missile of Glide that follows your vehicle shows in the grenade warning.")
 		GryMod.OptionBox(root, "Hide Glide's dashboard", "gry_glide_hide_hud", "Glide draws a dial in the bottom right corner of the screen (a third of its height) and the list of the seats. Hidden while you are in one of its vehicles; Glide's own settings are not changed.")
-		GryMod.OptionBox(root, "Camouflage: Glide does not name me", "gry_glide_tag_cloak", "Glide writes the name of the player you aim at. A camouflaged player is written as ???.")
 		GryMod.OptionBox(root, "Night vision key: not the one of Glide", "gry_glide_nv_key", "In a Glide vehicle the night vision key does nothing when Glide uses the same key (N is its neutral gear).")
-		GryMod.OptionNote(root, "On the server: gry_glide_cloak_lockon (1 by default) keeps the missiles of Glide from locking on a vehicle whose driver is camouflaged.")
 	end, 60)
 end

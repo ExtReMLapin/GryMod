@@ -52,6 +52,37 @@ return {
 			end
 		},
 		{
+			-- fails when a weapon that has no attachment slot at all (a knife) gets the menu: it would open on nothing to choose; one with a slot, or with no table, keeps it
+			name = "no menu for a TFA weapon with no attachment slot (a knife); one with a slot or with no table keeps it",
+			func = function()
+				local API = GryMod.API
+
+				expect(API.GetWeaponMenu(weapon({Attachments = {}}))).to.beNil()
+				expect(API.GetWeaponMenu(weapon({Attachments = {{PrintName = "Sight"}}}))).to.beA("function")
+				expect(API.GetWeaponMenu(weapon())).to.beA("function")
+			end
+		},
+		{
+			-- fails when a TFA weapon that only strikes (IsMelee or IsKnife: a knife, a sword) shows the fire mode of a gun: the stock crowbar and the ARC9 knives show NoGun
+			name = "fire mode icon: a TFA melee weapon shows NoGun like the crowbar, a TFA gun keeps its mode",
+			func = function()
+				local M = GryMod.FlashHUD
+
+				local function tfa(fields)
+					local w = {IsTFAWeapon = true, FireModes = {"Auto", "Semi"}, IsValid = function() return true end, GetFireMode = function() return 1 end}
+
+					for k, v in pairs(fields or {}) do w[k] = v end
+
+					return w
+				end
+
+				expect(M.FireModeFor(tfa({IsMelee = true}))).to.equal("NoGun")
+				expect(M.FireModeFor(tfa({IsKnife = true}))).to.equal("NoGun")
+				expect(M.FireModeFor(tfa())).to.equal("Auto")
+				expect(M.FireModeFor(tfa({IsMelee = false}))).to.equal("Auto")
+			end
+		},
+		{
 			-- fails when the opener does not send TFA's own impulse (the menu would not open), or sends it with the wrong number
 			name = "the opener sends TFA's inspection impulse",
 			func = function()

@@ -183,6 +183,15 @@ function T.FixEnhancedCrosshair()
 	local current = hooks and hooks[ETP_ID]
 
 	if not isfunction(current) then
+		-- Enhanced ThirdPerson is there (its convar) but not the hook the patch replaces (it changed): the patch is off, the owner is told once the game is up
+		if convar("thirdperson_etp") ~= nil and GryMod.API and GryMod.API.WarnPatchMissing then
+			GryMod.API.WarnPatchMissing("Enhanced ThirdPerson", "the hook HUDShouldDraw " .. ETP_ID, function()
+				local list = hook.GetTable().HUDShouldDraw
+
+				return convar("thirdperson_etp") ~= nil and not (list and isfunction(list[ETP_ID]))
+			end)
+		end
+
 		return false
 	end
 

@@ -255,6 +255,32 @@ return {
 			end
 		},
 		{
+			-- fails when LVS is there without the function the patch replaces and nobody is told (the patch would be off in silence), or when the check given says "missing" when it is there
+			name = "WrapFireBullet tells GryMod.API.WarnPatchMissing when LVS has no FireBullet: the addon, the function, and a check that is true only while it is missing",
+			func = function()
+				local told = {}
+				local real = API.WarnPatchMissing
+
+				API.WarnPatchMissing = function(addon, what, check) told[#told + 1] = {addon = addon, what = what, check = check} end
+
+				local ok, err = pcall(function()
+					LVS = {}
+
+					expect(L.WrapFireBullet()).to.beFalse()
+					expect(#told).to.equal(1)
+					expect(told[1].addon).to.equal("LVS")
+					expect(told[1].what).to.equal("LVS.FireBullet")
+					expect(told[1].check()).to.beTrue()
+
+					LVS.FireBullet = function() end -- defined late
+					expect(told[1].check()).to.beFalse()
+				end)
+
+				API.WarnPatchMissing = real
+				assert(ok, err)
+			end
+		},
+		{
 			-- fails when a missile or a bomb (or a pack's class built on them) is not looked at, when another entity is, when the look is not one frame later (the attacker is set after
 			-- Spawn), or when the shooter is not told
 			name = "a projectile is looked at one frame after it is made: the player who fired it is told; other entities cost nothing",

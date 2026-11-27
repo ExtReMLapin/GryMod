@@ -22,6 +22,11 @@ API.AddWeaponMenuProvider("compat.tfa", function(weapon)
 		return nil
 	end
 
+	-- a weapon with no attachment slot at all (a knife) has nothing to choose in the menu: none offered (a weapon that does not declare the table keeps it)
+	if istable(weapon.Attachments) and next(weapon.Attachments) == nil then
+		return nil
+	end
+
 	local allowed = GetConVar("sv_tfa_cmenu")
 
 	if allowed and not allowed:GetBool() then

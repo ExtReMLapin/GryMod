@@ -35,6 +35,97 @@ function API.AddFeature(feature)
 end
 
 -- ---------------------------------------------------------------------------------------------------------
+-- A patch that cannot replace a function of another addon says so
+-- ---------------------------------------------------------------------------------------------------------
+
+-- A compatibility patch (lua/grymod/compat/) that replaces a function of another addon looks for it first. When the addon is there but the function is not (the addon changed), the patch
+-- is off and the owner must know: GryMod.API.WarnPatchMissing(addon, what [, stillMissing]) writes it to the console and, a few seconds later, to the chat (the administrators on the server,
+-- the player on the client; an administrator who joins later is told too). Once for each `what`. `stillMissing`, when given, is a function asked a moment after the game is up: the
+-- warning is made only if it answers true (the other addon may define its function after this one is loaded). Returns whether a warning was made now.
+local warnedPatches = API._patchWarned or {}
+local patchTexts = API._patchTexts or {}
+API._patchWarned, API._patchTexts = warnedPatches, patchTexts
+
+local WARN_COLOR = Color(255, 170, 0)
+
+function API.ForgetPatchWarnings()
+	for key in pairs(warnedPatches) do warnedPatches[key] = nil end
+	for i = #patchTexts, 1, -1 do patchTexts[i] = nil end
+end
+
+local function tellPlayer(ply, text)
+	ply.GryPatchTold = ply.GryPatchTold or {}
+
+	if ply.GryPatchTold[text] then return end
+
+	ply.GryPatchTold[text] = true
+	ply:ChatPrint(text)
+end
+
+local function deliverChat(text)
+	if SERVER then
+		for _, ply in ipairs(player.GetAll()) do
+			if IsValid(ply) and ply:IsAdmin() then
+				pcall(tellPlayer, ply, text)
+			end
+		end
+	elseif chat and chat.AddText then
+		pcall(chat.AddText, WARN_COLOR, text)
+	end
+end
+
+local function emitPatchWarning(addon, what)
+	local key = tostring(addon) .. "/" .. tostring(what)
+
+	if warnedPatches[key] then
+		return false
+	end
+
+	warnedPatches[key] = true
+
+	local text = "[GryMod] " .. tostring(addon) .. ": GryMod tried to replace " .. tostring(what) .. ", but it does not exist (any more). The addon has probably changed, so GryMod's patch for it is off. "
+		.. "How should it be handled? Please report it."
+
+	MsgC(WARN_COLOR, text, "\n")
+	patchTexts[#patchTexts + 1] = text
+
+	-- the chat is not ready at the very start of a game: a few seconds later
+	timer.Simple(5, function() deliverChat(text) end)
+
+	return true
+end
+
+function API.WarnPatchMissing(addon, what, stillMissing)
+	if not isfunction(stillMissing) then
+		return emitPatchWarning(addon, what)
+	end
+
+	-- asked once the game is up and its addons have loaded (an addon may define its functions after this file)
+	timer.Simple(1, function()
+		local ok, missing = pcall(stillMissing)
+
+		if ok and missing == true then
+			emitPatchWarning(addon, what)
+		end
+	end)
+
+	return false
+end
+
+-- An administrator who joins after a warning was made is told of it too.
+if SERVER then
+	hook.Add("PlayerInitialSpawn", "GryMod patch warnings", function(ply)
+		timer.Simple(8, function()
+			if not IsValid(ply) or not ply:IsAdmin() then return end
+
+			for _, text in ipairs(patchTexts) do
+				pcall(tellPlayer, ply, text)
+			end
+		end)
+	end)
+end
+
+-- ---------------------------------------------------------------------------------------------------------
 -- Safe calls (lesson of the hook-spam incident of 2026-11-21)
 -- ---------------------------------------------------------------------------------------------------------
 

@@ -3,9 +3,8 @@
 -- installed (its hook is never run, none of its entities is made) and never raises an error into M9K's code or the game's. Read in the public code of M9K
 -- (github.com/CFC-Servers/m9k_monorepo), not tried in a game.
 --
--- 1. The proximity mine (entities/m9k_proxy.lua:38) asks the hook M9k_ProxyMineCanTrigger(mine, target, owner) for each player or NPC in its box: a false answer keeps it from
---    going off. A camouflaged player is not a target while the setting that makes the enemies forget him is on (`gry_cloak_ai`): the half of the fade is the limit, before it he
---    is still half visible (GryMod.API.CloakLevel).
+-- 1. The proximity mine (entities/m9k_proxy.lua:38) asks the hook M9k_ProxyMineCanTrigger(mine, target, owner) for each player or NPC in its box. GryMod does not answer: a mine
+--    goes off under the feet, and the camouflage hides from the visible light only.
 -- 2. A grenade thrown (weapons/bobs_nade_base.lua, SWEP:Throw), a 40 mm grenade or a rocket (weapons/m9k_m79gl.lua...) is made by the weapon with ents.Create, owned by the player
 --    (SetOwner, after the creation) and spawned: no bullet, so nothing ended the camouflage. The patch looks at the entities that carry the danger entries of sh_m9k_specialties.lua
 --    for the thrown grenades and the launched projectiles, one tick after their creation (the owner is set by then), and tells GryMod the player attacked. The things laid on the
@@ -29,29 +28,7 @@ local function cloakRuleOn()
 	return var == nil or var:GetBool()
 end
 
-hook.Add("M9k_ProxyMineCanTrigger", KEY, function(_, target)
-	local ok, verdict = pcall(function()
-		if not istable(target) and not isentity(target) then
-			return nil
-		end
-
-		if not isfunction(target.IsPlayer) or not target:IsPlayer() or not IsValid(target) then
-			return nil
-		end
-
-		if API.CloakLevel(target) >= HALF and cloakRuleOn() then
-			return false
-		end
-
-		return nil
-	end)
-
-	if ok then
-		return verdict
-	end
-
-	return nil
-end)
+-- (the proximity mine is not asked about: it goes off under the feet, and the camouflage hides from the visible light only)
 
 -- The player who owns the projectile now: the engine's owner, or the field M9K's grenades also keep.
 local function shooterOf(ent)

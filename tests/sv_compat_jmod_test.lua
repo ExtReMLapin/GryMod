@@ -29,9 +29,12 @@ local function player(fields)
 end
 
 local mine = {IsValid = function() return true end, GetClass = function() return "ent_jack_gmod_ezlandmine" end}
+local atMine = {IsValid = function() return true end, GetClass = function() return "ent_jack_gmod_ezatmine" end}
+local sentry = {IsValid = function() return true end, GetClass = function() return "ent_jack_gmod_ezsentry" end}
 
-local function shouldAttack(target)
-	return fire("JMod_ShouldAttack", mine, target, false, false)
+-- the device that asks (a sentry unless told otherwise): the camouflage hides from the eyes of a sentry, not from a mine that goes off under the feet
+local function shouldAttack(target, device)
+	return fire("JMod_ShouldAttack", device or sentry, target, false, false)
 end
 
 local function press(ply, key)
@@ -60,10 +63,19 @@ return {
 	cases = {
 		{
 			-- fails when the hook is not there, or when a camouflaged player is attacked by a device of JMod like anybody else
-			name = "a mine or a sentry of JMod does not take a camouflaged player for a target",
+			name = "a sentry of JMod does not take a camouflaged player for a target (it recognises by sight)",
 			func = function()
 				expect(shouldAttack(player({__cloak = 1}))).to.equal(false)
 				expect(shouldAttack(player({__cloak = 0.6}))).to.equal(false)
+			end
+		},
+		{
+			-- fails when a mine goes by the camouflage: it goes off under the feet whatever the player is seen as (the camouflage hides from the visible light only)
+			name = "a mine of JMod goes off for a camouflaged player like for anybody: no opinion",
+			func = function()
+				expect(shouldAttack(player({__cloak = 1}), mine)).to.beNil()
+				expect(shouldAttack(player({__cloak = 1}), atMine)).to.beNil()
+				expect(shouldAttack(player({__cloak = 1}), {IsValid = function() return true end, GetClass = function() return "ent_jack_gmod_ezbomb" end})).to.beNil()
 			end
 		},
 		{

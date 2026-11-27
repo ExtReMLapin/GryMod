@@ -81,28 +81,14 @@ return {
 			end
 		},
 		{
-			-- fails when Glide writes the name of a camouflaged player: the hook of the tag must answer a colour and another name
-			name = "Glide_PlayerTagColor hides the name of a camouflaged player (from half of the camouflage on)",
+			-- fails when Glide's name tag is replaced for a camouflaged player: that is an effect the original game does not have (no "???"), so Glide writes the name as it always did
+			name = "no name tag change: Glide writes the name of a camouflaged player as it always did",
 			func = function()
-				local color, name = hook.Run("Glide_PlayerTagColor", player("secret", nil, 1), "secret", 1)
+				local hooks = hook.GetTable().Glide_PlayerTagColor
 
-				expect(color).to.exist()
-				expect(name).to.equal("???")
-
-				expect(select(2, hook.Run("Glide_PlayerTagColor", player("fading", nil, 0.6), "fading", 1))).to.equal("???")
-				expect(hook.Run("Glide_PlayerTagColor", player("half", nil, 0.4), "half", 1)).to.beNil()
-				expect(hook.Run("Glide_PlayerTagColor", player("plain", nil, 0), "plain", 1)).to.beNil()
-			end
-		},
-		{
-			-- fails when the setting does not exist (default on), or does not give the name back when it is off
-			name = "gry_glide_tag_cloak 0 lets Glide write the name",
-			func = function()
-				expect(GetConVar("gry_glide_tag_cloak")).to.exist()
-				expect(GetConVar("gry_glide_tag_cloak"):GetDefault()).to.equal("1")
-
-				setConVar("gry_glide_tag_cloak", "0")
+				expect(hooks == nil or hooks.GryModGlide == nil).to.beTrue()
 				expect(hook.Run("Glide_PlayerTagColor", player("secret", nil, 1), "secret", 1)).to.beNil()
+				expect(GetConVar("gry_glide_tag_cloak")).to.beNil()
 			end
 		},
 		{

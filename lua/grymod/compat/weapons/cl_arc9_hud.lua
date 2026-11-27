@@ -47,7 +47,16 @@ H.wrappers[wrapper] = true
 
 -- Puts the wrapper on ARC9's function. True when it is there (also when it already was), false when ARC9 is not installed or has no such function.
 function H.Install()
-	if not istable(ARC9) or not isfunction(ARC9.ShouldDrawHUD) then
+	if not istable(ARC9) then
+		return false
+	end
+
+	if not isfunction(ARC9.ShouldDrawHUD) then
+		-- ARC9 is there but its function is not (ARC9 changed): the patch is off, the owner is told once the game is up (ARC9 defines its functions when its own files load)
+		if GryMod.API and GryMod.API.WarnPatchMissing then
+			GryMod.API.WarnPatchMissing("ARC9", "ARC9.ShouldDrawHUD", function() return istable(ARC9) and not isfunction(ARC9.ShouldDrawHUD) end)
+		end
+
 		return false
 	end
 

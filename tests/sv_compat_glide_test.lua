@@ -170,48 +170,15 @@ return {
 			end
 		},
 		{
-			-- fails when the lock-on is not refused for the driver of a vehicle whose camouflage is more than half on
-			name = "Glide_CanLockOn refuses a vehicle whose driver is camouflaged",
+			-- fails when GryMod refuses the lock-on of a missile to a camouflaged driver: the lock-on is a radar or infrared lock, not an eye, and the camouflage hides from the visible light only (a player
+			-- in a vehicle is never invisible anyway)
+			name = "no lock-on veto: a missile of Glide locks on a vehicle whose driver is camouflaged like on any other",
 			func = function()
-				local driver = player("driver", {cloak = 1})
-				local attacker = player("attacker")
+				local hooks = hook.GetTable().Glide_CanLockOn
 
-				expect(hook.Run("Glide_CanLockOn", vehicle(driver), attacker)).to.equal(false)
-			end
-		},
-		{
-			-- fails when the refusal ignores the fade (a camouflage that just began, or just ended, is still half seen) or when a plain driver is refused
-			name = "the lock-on is refused from half of the camouflage on, never for a driver who is not camouflaged",
-			func = function()
-				local attacker = player("attacker")
-
-				expect(hook.Run("Glide_CanLockOn", vehicle(player("a", {cloak = 0.6})), attacker)).to.equal(false)
-				expect(hook.Run("Glide_CanLockOn", vehicle(player("b", {cloak = 0.4})), attacker)).to.beNil()
-				expect(hook.Run("Glide_CanLockOn", vehicle(player("c", {cloak = 0})), attacker)).to.beNil()
-				expect(hook.Run("Glide_CanLockOn", vehicle(nil), attacker)).to.beNil()
-			end
-		},
-		{
-			-- fails when a player is refused the lock-on of his own vehicle (the homing launcher asks with the attacker), or a seat or a player is not read
-			name = "the refusal does not apply to the driver himself, and a camouflaged player or a seat with one in it is refused too",
-			func = function()
-				local driver = player("driver", {cloak = 1})
-				local attacker = player("attacker")
-
-				expect(hook.Run("Glide_CanLockOn", vehicle(driver), driver)).to.beNil()
-				expect(hook.Run("Glide_CanLockOn", driver, attacker)).to.equal(false)
-				expect(hook.Run("Glide_CanLockOn", {IsValid = function() return true end, GetClass = function() return "prop_vehicle_prisoner_pod" end, GetDriver = function() return driver end}, attacker)).to.equal(false)
-			end
-		},
-		{
-			-- fails when the server setting does not switch the refusal off, or does not exist (default 1)
-			name = "gry_glide_cloak_lockon 0 gives the lock-on back, and the setting is on by default",
-			func = function()
-				expect(GetConVar("gry_glide_cloak_lockon")).to.exist()
-				expect(GetConVar("gry_glide_cloak_lockon"):GetDefault()).to.equal("1")
-
-				setConVar("gry_glide_cloak_lockon", "0")
+				expect(hooks == nil or hooks.GryModGlide == nil).to.beTrue()
 				expect(hook.Run("Glide_CanLockOn", vehicle(player("driver", {cloak = 1})), player("attacker"))).to.beNil()
+				expect(GetConVar("gry_glide_cloak_lockon")).to.beNil()
 			end
 		},
 		{

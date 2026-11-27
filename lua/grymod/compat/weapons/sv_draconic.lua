@@ -104,7 +104,16 @@ S.wrappers[emp] = true
 function S.InstallEMP()
 	local drc = _G.DRC
 
-	if not istable(drc) or not isfunction(drc.EMP) then
+	if not istable(drc) then
+		return false
+	end
+
+	if not isfunction(drc.EMP) then
+		-- Draconic is there but its function is not (Draconic changed): the patch is off, the owner is told once the game is up
+		if GryMod.API and GryMod.API.WarnPatchMissing then
+			GryMod.API.WarnPatchMissing("Draconic Base", "DRC.EMP", function() local d = _G.DRC return istable(d) and not isfunction(d.EMP) end)
+		end
+
 		return false
 	end
 
@@ -142,6 +151,11 @@ function S.PatchWeapon(weapon)
 	local original = weapon.ShouldFixFOV
 
 	if not isfunction(original) then
+		-- a Draconic weapon with no ShouldFixFOV: the patch for its field of view is off for it, the owner is told
+		if GryMod.API and GryMod.API.WarnPatchMissing then
+			GryMod.API.WarnPatchMissing("Draconic Base", "ShouldFixFOV of " .. tostring(weapon:GetClass()))
+		end
+
 		return
 	end
 

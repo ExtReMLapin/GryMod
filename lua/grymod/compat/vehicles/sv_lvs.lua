@@ -85,7 +85,16 @@ end
 
 -- LVS:FireBullet(data) is the one place its machine guns, cannons and lasers go through: data.Attacker is the driver or the gunner.
 function L.WrapFireBullet()
-	if not L.Present() or not isfunction(LVS.FireBullet) then
+	if not L.Present() then
+		return false
+	end
+
+	if not isfunction(LVS.FireBullet) then
+		-- LVS is there but the function the patch replaces is not (LVS changed): the patch is off, and the owner is told once the game is up (LVS may define it late)
+		if API.WarnPatchMissing then
+			API.WarnPatchMissing("LVS", "LVS.FireBullet", function() return istable(LVS) and not isfunction(LVS.FireBullet) end)
+		end
+
 		return false
 	end
 

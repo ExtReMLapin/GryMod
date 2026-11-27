@@ -77,32 +77,13 @@ return {
 	end,
 	cases = {
 		{
-			-- fails when the proximity mine goes off for a camouflaged player like for anybody
-			name = "a proximity mine does not go off for a camouflaged player",
+			-- fails when the proximity mine is kept from going off for a camouflaged player: it goes off under the feet whatever the player is seen as (the camouflage hides from the visible
+			-- light only, not from a mine), so GryMod leaves the hook M9k_ProxyMineCanTrigger alone
+			name = "a proximity mine goes off for a camouflaged player like for anybody: GryMod has no say in it",
 			func = function()
-				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 1}), nil)).to.equal(false)
-				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.6}), nil)).to.equal(false)
-			end
-		},
-		{
-			-- fails when it answers for a player who is not (or hardly) camouflaged, for an NPC, or when the switch of the enemies that forget him is off
-			name = "no opinion for a visible player, one in the first part of the fade, an NPC, or with the enemies' switch off",
-			func = function()
-				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0}), nil)).to.beNil()
-				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.3}), nil)).to.beNil()
-				expect(fire("M9k_ProxyMineCanTrigger", mine, {IsValid = function() return true end, IsPlayer = function() return false end}, nil)).to.beNil()
-
-				aiVar:SetBool(false)
-
+				expect(hook.GetTable()["M9k_ProxyMineCanTrigger"] == nil or hook.GetTable()["M9k_ProxyMineCanTrigger"]["GryMod compat m9k"] == nil).to.beTrue()
 				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 1}), nil)).to.beNil()
-			end
-		},
-		{
-			-- fails when a bad target raises an error into the mine's Think (it runs ten times a second)
-			name = "a nil or an odd target raises nothing",
-			func = function()
-				expect(fire("M9k_ProxyMineCanTrigger", mine, nil, nil)).to.beNil()
-				expect(fire("M9k_ProxyMineCanTrigger", mine, {}, nil)).to.beNil()
+				expect(fire("M9k_ProxyMineCanTrigger", mine, player({__cloak = 0.6}), nil)).to.beNil()
 			end
 		},
 		{
