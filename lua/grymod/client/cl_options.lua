@@ -461,6 +461,7 @@ function GryMod.AdminOptions(Panel)
 
 	GryMod.AdminOption(Panel, "Suit malfunctions", "gry_malfunction", "bool", {into = form, help = "EMP, electric hits and heavy impacts put the suit down."})
 	GryMod.AdminOption(Panel, "Drowning rules", "gry_drown_rules", "bool", {into = form, help = "60 s of breath, then the suit energy, then health. Off: the engine's drowning."})
+	GryMod.AdminOption(Panel, "Realistic fall damage", "gry_realistic_fall", "bool", {into = form, help = "The fall hurts by its speed, not 10 whatever the height. The armor takes it first. Turns the game's own setting on at every launch."})
 	GryMod.AdminOption(Panel, "Energy sent at every tick", "gry_energy_net", "bool", {into = form, help = "Off: the slower networked value."})
 	GryMod.AdminOption(Panel, "Suit rules", "gry_mechanics", "choice", {
 		into = form,

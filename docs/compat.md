@@ -48,6 +48,35 @@ lets the rest through (at least 30 percent, as the original game). What other ad
 - The reports for addons are `GryMod_ArmorAbsorbed(ply, absorbed, passed)` (after the damage was changed: do not call `TakeDamage` from it) and the suit's other hooks in
   [api.md](api.md).
 
+## Fall damage: living with the addons that change it
+
+A fall is one number. When a player lands faster than 526.5 units a second the engine asks `GM:GetFallDamage(ply, speed)` (the `GetFallDamage` hooks of the addons first,
+the first answer that is not `nil` wins, then the gamemode) and applies the answer as damage of the type `DMG_FALL`, from the world, through `EntityTakeDamage`. Nothing in
+GryMod listens to `GetFallDamage` or `OnPlayerHitGround`: **the armor pays the fall like any other damage**, and it pays the number the engine really uses, whatever the order
+of the addons (the order problem above only exists for an addon that *scales* damage inside `EntityTakeDamage`). `tests/sv_fall_damage_test.lua` states it, and
+`tests/fall_damage_job.lua` does real falls.
+
+- The game's own answer is 10 for every fall, whatever the height. With the game's setting `mp_falldamage 1` ("realistic fall damage" of the sandbox's server settings) it is
+  `(speed - 526.5) * 100 / 396`: about 18 for a fall of 300 units, 81 for 600 and 170 for 1200 (a gravity of 600). The armor pays that from the bar (the health takes what
+  the bar cannot pay, and the armor always takes at least 30 percent of the damage, as for any other hit). In the strength, speed and camouflage modes there is no armor: the
+  health takes the fall.
+- That setting is not saved by the game: it goes back to 0 at every launch. **`gry_realistic_fall`** (replicated, saved, off by default, in the options panel under "Server
+  (administrators only)") turns it on at every launch and as soon as it is changed. It sets the game's setting and nothing else: no `GetFallDamage` hook of GryMod, so the answer
+  of any addon keeps winning. Turning the option off takes the game's setting back only if GryMod turned it on: a setting that was on before (the sandbox's check box, a server
+  config) is left alone.
+
+| Addon (read in its public code) | What it does | With the armor |
+| --- | --- | --- |
+| JMod | `GetFallDamage` returns `speed^2 / 8000` when its option "realistic fall damage" is on; `OnPlayerHitGround` only for the parachute. | The armor pays that number. |
+| Prone Mod | `GetFallDamage` returns the gamemode's realistic number times a multiplier, for a prone player. | Same. |
+| Beatrun | `GetFallDamage` returns 0 on a landing mat and under a speed of 800, `math.huge` from 800 (a lethal fall, even with a full bar: the addon wants it), unless in overdrive or in god mode. `OnPlayerHitGround` runs the roll. | The 0 costs nothing; the infinite fall kills through the armor, with no error and an energy that stays between 0 and 100. |
+| gwater2 (fluid), DrGBase (possession of an NPC), the bunny hop of notagain (jump held) | `GetFallDamage` returns 0 in their case. | No damage, no energy. |
+| Draconic Base | Only listens (`OnPlayerHitGround`: landing animation and footsteps; a voice line on `DMG_FALL`). | Nothing to do. |
+
+What GryMod cannot do for you: an addon that takes health away itself (`SetHealth`, not a damage) goes around the armor, and an addon that scales `DMG_FALL` inside
+`EntityTakeDamage` is the case of the first section (the armor pays for the damage it sees, the order of the two hooks is not ours). An addon that answers `GetFallDamage`
+is the clean way to change a fall, and is the one to prefer.
+
 ## Adding a patch
 
 1. Put the file in the folder that fits (`compat/<what it is about>/`), with the prefix of its realm.

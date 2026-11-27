@@ -184,6 +184,7 @@ if SERVER then
 	include("grymod/server/sv_movement.lua")
 	include("grymod/server/sv_mechanics.lua")
 	include("grymod/server/sv_health.lua")
+	include("grymod/server/sv_fall_damage.lua")
 	include("grymod/server/sv_feedback.lua")
 	include("grymod/server/sv_system.lua")
 	include("grymod/server/sv_malfunction.lua")

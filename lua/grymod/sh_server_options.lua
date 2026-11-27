@@ -13,6 +13,7 @@ Settings.List = {
 	{name = "gry_malfunction", kind = "bool"},
 	{name = "gry_grenade_armed_only", kind = "bool"},
 	{name = "gry_drown_rules", kind = "bool"},
+	{name = "gry_realistic_fall", kind = "bool"},
 	{name = "gry_energy_net", kind = "bool"},
 	{name = "gry_mechanics", kind = "choice", values = {"crysis", "classic"}},
 	{name = "gry_cloak_ai", kind = "bool"},
