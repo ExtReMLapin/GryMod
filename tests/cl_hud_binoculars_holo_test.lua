@@ -112,6 +112,42 @@ return {
 			end
 		},
 		{
+			-- fails when an entity whose model is too big for the engine's dynamic vertex buffer is drawn by the hologram (the fill, the halo and the vision buffer draw the model through a material
+			-- override: the engine freezes on such a model, see cl_cloak_fx.lua), when a light one is not, or when the guard is missing and everything is refused
+			name = "Holo.Drawable: an entity whose model is too big for a material override is left out of the hologram, any other is drawn",
+			func = function()
+				expect(isfunction(H().Drawable)).to.beTrue()
+
+				local F = GryMod.CloakFX
+				local realMeshes = util.GetModelMeshes
+
+				util.GetModelMeshes = function(model)
+					local n = model == "models/t_holo_heavy.mdl" and 40000 or 500
+					local list = {}
+
+					for i = 1, n do list[i] = {pos = Vector(i, 0, 0), normal = Vector(0, 0, 1), u = 0, v = 0} end
+
+					return {{triangles = list}}
+				end
+
+				F.ForgetModelWeights()
+
+				local function entity(model)
+					return {IsValid = function() return true end, GetModel = function() return model end}
+				end
+
+				local ok, err = pcall(function()
+					expect(H().Drawable(entity("models/t_holo_heavy.mdl"))).to.beFalse()
+					expect(H().Drawable(entity("models/t_holo_light.mdl"))).to.beTrue()
+					expect(H().Drawable({IsValid = function() return true end})).to.beTrue() -- no model method: nothing to measure
+				end)
+
+				util.GetModelMeshes = realMeshes
+				F.ForgetModelWeights()
+				assert(ok, err)
+			end
+		},
+		{
 			-- fails without Holo.PhaseOf
 			name = "the phase: white for the entity being scanned, spotted for one the binoculars found, none for the others",
 			func = function()

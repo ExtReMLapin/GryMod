@@ -33,10 +33,12 @@ end
 
 -- A model drawn through a material override (the refraction layer, the sparks, the scan lines) goes through the engine's DYNAMIC vertex buffer, which holds 32768 vertices: a model with more
 -- (the view model of the sonar grenade of ARC9's CS:GO pack: 36684, "Too many verts for a dynamic vertex buffer") makes the engine retry for ever and the game freezes. Such a model is drawn
--- plain, at the opacity of the camouflage, with no override. The size is the number of listed vertices of the model's first level of detail (util.GetModelMeshes: about 2.8 of them per
--- vertex of the buffer's size... measured: 102240 listed for 36684 in the buffer), kept per model; 60000 keeps a margin (the heaviest weapon view model measured is 51000). 0 = no guard.
-local vertexLimit = GetConVar("gry_cloak_vertex_limit") or CreateClientConVar("gry_cloak_vertex_limit", "60000", true, false,
-	"Models with more listed vertices than this are drawn plain by the camouflage (no refraction layer): the engine freezes on a model that is too big for its dynamic vertex buffer. 0 = no guard", 0, 1000000)
+-- plain, at the opacity of the camouflage, with no override. The size is EXACT: the engine fills the buffer one mesh at a time, with the DIFFERENT vertices of the mesh (position, normal and
+-- texture coordinates), which util.GetModelMeshes gives for the first level of detail: counted per mesh, the biggest one against the limit (measured on the sonar grenade's view model: 36439
+-- in its big mesh, 36511 in all, the engine said 36684). A mesh that lists fewer vertices than the limit cannot exceed it and is not counted. Kept per model. The limit keeps a margin
+-- under the buffer's 32768. 0 = no guard.
+local vertexLimit = GetConVar("gry_cloak_mesh_limit") or CreateClientConVar("gry_cloak_mesh_limit", "28000", true, false,
+	"Models with a mesh of more different vertices than this are drawn plain by the camouflage and left out of the binoculars' hologram: the engine freezes on a mesh that is too big for its dynamic vertex buffer (32768). 0 = no guard", 0, 1000000)
 
 local modelWeights = F.modelWeights or {}
 F.modelWeights = modelWeights
@@ -63,8 +65,38 @@ function F.ModelTooHeavy(model)
 		local ok, meshes = pcall(util.GetModelMeshes, model, 0)
 
 		if ok and istable(meshes) then
-			for _, mesh in ipairs(meshes) do
-				weight = weight + #(mesh.triangles or {})
+			-- the biggest mesh's different vertices; a mesh that lists no more than the limit cannot have more different ones (no counting), and the exact count is made only for the big ones
+			local counted, err = pcall(function()
+				for _, mesh in ipairs(meshes) do
+					local list = mesh.triangles or {}
+					local listed = #list
+					local different = listed
+
+					if listed > limit then
+						local seen = {}
+
+						different = 0
+
+						for i = 1, listed do
+							local v = list[i]
+							local p, n = v.pos, v.normal
+							local key = p.x .. "," .. p.y .. "," .. p.z .. "," .. n.x .. "," .. n.y .. "," .. n.z .. "," .. (v.u or 0) .. "," .. (v.v or 0)
+
+							if not seen[key] then
+								seen[key] = true
+								different = different + 1
+							end
+						end
+					end
+
+					if different > weight then
+						weight = different
+					end
+				end
+			end)
+
+			if not counted then
+				weight = 0 -- a model that cannot be read is not taken for a heavy one: the error is the model's, not a reason to lose the effect
 			end
 		end
 
@@ -494,7 +526,7 @@ local function drawLayers(ent, refract, base, spark, level)
 	local refractMat, edgeMat = materials()
 	drawing = true
 
-	-- a model too big for the dynamic vertex buffer: the plain model at the opacity, no override (see gry_cloak_vertex_limit)
+	-- a model too big for the dynamic vertex buffer: the plain model at the opacity, no override (see gry_cloak_mesh_limit)
 	if heavyEntity(ent) then
 		local ok, err = pcall(function()
 			render.MaterialOverride(nil)
@@ -811,7 +843,7 @@ local function startFirstPerson(ent, ply)
 
 	s.firstPerson = true
 
-	-- a view model too big for the dynamic vertex buffer (gry_cloak_vertex_limit): no refraction, no override; the engine's own draw only, at the opacity (the Post hook adds nothing)
+	-- a view model too big for the dynamic vertex buffer (gry_cloak_mesh_limit): no refraction, no override; the engine's own draw only, at the opacity (the Post hook adds nothing)
 	if heavyEntity(ent) then
 		if base < F.NearlyPlain then
 			render.SetBlend(base >= F.Invisible and base or 0)

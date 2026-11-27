@@ -478,6 +478,20 @@ end
 -- What was resolved for this frame: {ent, r, g, b} entries (reused) and how many; filled by Holo.Resolve, read by the fill and the outline.
 local drawn, drawnCount = {}, 0
 
+-- Whether the hologram may draw this entity: the fill, the halo and the vision buffer draw its model through a material override, and the engine freezes on a model with a mesh too big for its
+-- dynamic vertex buffer (cl_cloak_fx.lua, GryMod.CloakFX.ModelTooHeavy). Such an entity is left out (a vehicle or an NPC of a very detailed model). No model to measure: drawn.
+function Holo.Drawable(ent)
+	local F = GryMod.CloakFX
+
+	if not F or not F.ModelTooHeavy or not IsValid(ent) or not isfunction(ent.GetModel) then
+		return true
+	end
+
+	local ok, model = pcall(ent.GetModel, ent)
+
+	return not (ok and F.ModelTooHeavy(model))
+end
+
 -- Works out the entries to draw this frame (a look five times a second, the colours at every frame: the white phase is short).
 function Holo.Resolve(ply, now)
 	if now >= nextRefresh then
@@ -498,7 +512,7 @@ function Holo.Resolve(ply, now)
 		if IsValid(entry.ent) and not entry.ent:IsDormant() then
 			local style = Holo.StyleOf(entry, whiteEntity, aimed, baseline)
 
-			if style then
+			if style and Holo.Drawable(entry.ent) then
 				count = count + 1
 
 				local d = drawn[count]
@@ -511,6 +525,10 @@ function Holo.Resolve(ply, now)
 				d.ent, d.style = entry.ent, style
 				-- (what an NPC holds is part of its silhouette: the weapon is a separate entity, drawn in the same colour)
 				d.weapon = entry.kind == "npc" and Holo.CarriedWeapon(entry.ent) or nil
+
+				if d.weapon and not Holo.Drawable(d.weapon) then
+					d.weapon = nil
+				end
 				d.r, d.g, d.b = Holo.Rgb(style, progress)
 			end
 		end

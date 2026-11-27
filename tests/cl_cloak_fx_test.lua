@@ -459,16 +459,35 @@ return {
 			end
 		},
 		{
-			-- fails when the guard does not exist, when a model over the limit is not told heavy (the engine's dynamic vertex buffer holds 32768 vertices: the sonar grenade's view model of
-			-- ARC9's CS:GO pack, 102240 listed vertices, froze the game under a material override), when a light one is, when the count is asked again for a model already measured,
-			-- when 0 does not turn the guard off, or when an unknown model or an error is taken for a heavy one
-			name = "ModelTooHeavy: told by the listed vertices of the model (over gry_cloak_vertex_limit), measured once, 0 = no guard, an unknown model or an error is not heavy",
+			-- fails when the guard does not exist; when a mesh that holds more vertices than the engine's dynamic vertex buffer (32768) is not told heavy (the sonar grenade's view model of ARC9's
+			-- CS:GO pack: one mesh of 36439 vertices, froze the game under a material override); when a model made of many meshes that each fit is taken for heavy (the buffer is filled one
+			-- mesh at a time); when a mesh listed with many repeated vertices (100000 listed, 5000 different) is taken for heavy (the engine counts the DIFFERENT vertices: position, normal,
+			-- texture coordinates); when the count is made again for a model already measured; when 0 does not turn the guard off; or when an unknown model or an error is taken for heavy
+			name = "ModelTooHeavy: the biggest mesh's different vertices against the buffer (gry_cloak_mesh_limit), measured once, 0 = no guard, an unknown model or an error is not heavy",
 			func = function(state)
 				local F = GryMod.CloakFX
 
 				expect(isfunction(F.ModelTooHeavy)).to.beTrue()
 
-				local sizes = {["models/t_heavy.mdl"] = 102240, ["models/t_light.mdl"] = 12615}
+				-- a mesh of `listed` triangle-list vertices of which `different` are different
+				local function mesh(different, listed)
+					local list = {}
+
+					for i = 1, listed or different do
+						local k = (i - 1) % different
+
+						list[i] = {pos = Vector(k, 0, 0), normal = Vector(0, 0, 1), u = 0, v = 0}
+					end
+
+					return {triangles = list}
+				end
+
+				local models = {
+					["models/t_heavy.mdl"] = {mesh(36439), mesh(72)}, -- the sonar's: one big mesh and a small one
+					["models/t_split.mdl"] = {mesh(20000), mesh(20000), mesh(20000)}, -- 60000 in all, each mesh fits
+					["models/t_repeated.mdl"] = {mesh(5000, 100000)}, -- 100000 listed, 5000 different
+					["models/t_light.mdl"] = {mesh(3364)}
+				}
 				local calls = 0
 
 				stub(util, "GetModelMeshes", function(model)
@@ -476,37 +495,31 @@ return {
 
 					if model == "models/t_broken.mdl" then error("no such model") end
 
-					local n = sizes[model]
-
-					if not n then return nil end
-
-					local list = {}
-
-					for i = 1, n do list[i] = true end
-
-					return {{triangles = list}}
+					return models[model]
 				end)
 
 				F.ForgetModelWeights()
 				expect(F.ModelTooHeavy("models/t_heavy.mdl")).to.beTrue()
+				expect(F.ModelTooHeavy("models/t_split.mdl")).to.beFalse()
+				expect(F.ModelTooHeavy("models/t_repeated.mdl")).to.beFalse()
 				expect(F.ModelTooHeavy("models/t_light.mdl")).to.beFalse()
-				expect(calls).to.equal(2)
+				expect(calls).to.equal(4)
 
-				F.ModelTooHeavy("models/t_heavy.mdl")
-				F.ModelTooHeavy("models/t_light.mdl")
-				expect(calls).to.equal(2) -- measured once
+				for model in pairs(models) do F.ModelTooHeavy(model) end
+
+				expect(calls).to.equal(4) -- measured once
 
 				expect(F.ModelTooHeavy("models/t_unknown.mdl")).to.beFalse()
 				expect(F.ModelTooHeavy("models/t_broken.mdl")).to.beFalse()
 				expect(F.ModelTooHeavy("")).to.beFalse()
 				expect(F.ModelTooHeavy(nil)).to.beFalse()
 
-				local var = GetConVar("gry_cloak_vertex_limit")
+				local var = GetConVar("gry_cloak_mesh_limit")
 				local before = var:GetString()
 
 				var:SetString("0")
 				local off = F.ModelTooHeavy("models/t_heavy.mdl")
-				var:SetString("200000")
+				var:SetString("50000")
 				local high = F.ModelTooHeavy("models/t_heavy.mdl")
 				var:SetString(before)
 				F.ForgetModelWeights()
@@ -530,7 +543,7 @@ return {
 				stub(util, "GetModelMeshes", function()
 					local list = {}
 
-					for i = 1, 102240 do list[i] = true end
+					for i = 1, 40000 do list[i] = {pos = Vector(i, 0, 0), normal = Vector(0, 0, 1), u = 0, v = 0} end
 
 					return {{triangles = list}}
 				end)
@@ -561,7 +574,7 @@ return {
 				stub(util, "GetModelMeshes", function()
 					local list = {}
 
-					for i = 1, 102240 do list[i] = true end
+					for i = 1, 40000 do list[i] = {pos = Vector(i, 0, 0), normal = Vector(0, 0, 1), u = 0, v = 0} end
 
 					return {{triangles = list}}
 				end)
